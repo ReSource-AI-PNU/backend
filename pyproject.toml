@@ -16,6 +16,17 @@ dev = [
     "pytest>=8",
     "ruff>=0.6",
 ]
+# ① 식별 모델 추론 (RT-DETRv2, ByteTrack). 학습 코드는 별도 저장소. API 컨테이너에는 이 extra 만 들어간다.
+ml = [
+    "torch>=2.5",
+    "torchvision>=0.20",
+    "transformers>=4.57",
+    "supervision>=0.25,<0.30",  # 0.30+ 에서 ByteTrack 이 빠짐(trackers 패키지로 분리)
+    "opencv-python-headless>=4.10",
+    "numpy>=1.26",
+    "scikit-learn>=1.5",
+    "pillow>=10",
+]
 
 [tool.ruff]
 line-length = 100

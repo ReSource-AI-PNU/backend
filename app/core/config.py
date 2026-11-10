@@ -18,5 +18,13 @@ class Settings(BaseSettings):
     azure_storage_connection_string: str = ""
     database_url: str = ""
 
+    # ① 식별 모델 (backend#8). 가중치는 git 에 없다 -> scripts/fetch_models.py 가 MODEL_BLOB_URL 에서 받는다.
+    classifier_backend: str = "auto"  # auto | trained | zeroshot
+    material_model_dir: str = "models/material"
+    condition_model_dir: str = "models/condition"
+    domain_clf_dir: str = "models/domain_clf"
+    model_blob_url: str = ""  # 모델 tar.gz 의 Azure Blob SAS URL (또는 Azure ML 레지스트리 다운로드 URL)
+    classify_fps: float = 4.0
+
 
 settings = Settings()
