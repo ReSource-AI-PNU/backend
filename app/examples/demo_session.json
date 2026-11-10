@@ -1,16 +1,16 @@
 {
-  "id": "ses_b4fd5c6e2492",
-  "orgId": "org_51730b612fe2",
+  "id": "ses_2fcb93909bc9",
+  "orgId": "org_99f61d8d68c0",
   "ownerId": "dev:kim@hanbit.example",
   "complexId": "noksan",
   "title": "(주)한빛정밀 폐플라스틱 진단 · 4개 흐름",
-  "createdAt": "2026-11-10T07:53:19.045Z",
-  "updatedAt": "2026-11-10T07:53:34.492Z",
+  "createdAt": "2026-11-10T08:57:22.981Z",
+  "updatedAt": "2026-11-10T08:59:29.630Z",
   "status": "completed",
   "step": "proposal",
   "streams": [
     {
-      "id": "st_c08b4d854e71",
+      "id": "st_e4bb22819f14",
       "name": "스프루·러너",
       "process": "사출 1·2라인",
       "media": [
@@ -31,7 +31,7 @@
         "frames": 24,
         "detections": [
           {
-            "id": "st_c08b4d854e71_main",
+            "id": "st_e4bb22819f14_main",
             "label": "PP 사출 스프루·러너",
             "kind": "item",
             "confidence": 0.93,
@@ -56,7 +56,7 @@
       "monthlyKgConfirmed": true
     },
     {
-      "id": "st_af3c48dc1efd",
+      "id": "st_b7b2281daa19",
       "name": "불량 성형품",
       "process": "검사 공정",
       "media": [
@@ -77,7 +77,7 @@
         "frames": 24,
         "detections": [
           {
-            "id": "st_af3c48dc1efd_main",
+            "id": "st_b7b2281daa19_main",
             "label": "PP 불량 하우징",
             "kind": "item",
             "confidence": 0.93,
@@ -90,7 +90,7 @@
             "source": "ai"
           },
           {
-            "id": "st_af3c48dc1efd_c1",
+            "id": "st_b7b2281daa19_c1",
             "label": "종이 라벨",
             "kind": "contaminant",
             "confidence": 0.82,
@@ -104,7 +104,7 @@
             "source": "ai"
           },
           {
-            "id": "st_af3c48dc1efd_c2",
+            "id": "st_b7b2281daa19_c2",
             "label": "금속 인서트",
             "kind": "contaminant",
             "confidence": 0.75,
@@ -130,7 +130,7 @@
       "monthlyKgConfirmed": true
     },
     {
-      "id": "st_81b7eb68cf13",
+      "id": "st_a73222cadab6",
       "name": "퍼지·색 혼합",
       "process": "색 교체·금형 세척",
       "media": [
@@ -151,7 +151,7 @@
         "frames": 24,
         "detections": [
           {
-            "id": "st_81b7eb68cf13_main",
+            "id": "st_a73222cadab6_main",
             "label": "PP+ABS 퍼지 덩어리",
             "kind": "item",
             "confidence": 0.81,
@@ -164,7 +164,7 @@
             "source": "ai"
           },
           {
-            "id": "st_81b7eb68cf13_c1",
+            "id": "st_a73222cadab6_c1",
             "label": "ABS 혼입",
             "kind": "contaminant",
             "confidence": 0.82,
@@ -178,7 +178,7 @@
             "source": "ai"
           },
           {
-            "id": "st_81b7eb68cf13_c2",
+            "id": "st_a73222cadab6_c2",
             "label": "탄화물",
             "kind": "contaminant",
             "confidence": 0.75,
@@ -204,7 +204,7 @@
       "monthlyKgConfirmed": true
     },
     {
-      "id": "st_eb910bb0b352",
+      "id": "st_02955736f5d1",
       "name": "원자재 포장 필름",
       "process": "원료 입고",
       "media": [
@@ -225,7 +225,7 @@
         "frames": 24,
         "detections": [
           {
-            "id": "st_eb910bb0b352_main",
+            "id": "st_02955736f5d1_main",
             "label": "LDPE 스트레치 필름",
             "kind": "item",
             "confidence": 0.93,
@@ -238,7 +238,7 @@
             "source": "ai"
           },
           {
-            "id": "st_eb910bb0b352_c1",
+            "id": "st_02955736f5d1_c1",
             "label": "종이 태그",
             "kind": "contaminant",
             "confidence": 0.82,
@@ -252,7 +252,7 @@
             "source": "ai"
           },
           {
-            "id": "st_eb910bb0b352_c2",
+            "id": "st_02955736f5d1_c2",
             "label": "테이프",
             "kind": "contaminant",
             "confidence": 0.75,
@@ -291,9 +291,9 @@
       ]
     },
     {
-      "id": "pcr-proof:st_eb910bb0b352",
+      "id": "pcr-proof:st_02955736f5d1",
       "step": "regulation",
-      "streamId": "st_eb910bb0b352",
+      "streamId": "st_02955736f5d1",
       "text": "원자재 포장 필름의 입고 기록(원자재 납품서·포장 사양)이 있나요?",
       "why": "공장이 쓰고 버린 포장재를 사용 후(PCR) 재생원료로 팔려면 출처를 증명해야 합니다.",
       "kind": "choice",
@@ -307,7 +307,7 @@
   "feasibility": {
     "decisions": [
       {
-        "streamId": "st_c08b4d854e71",
+        "streamId": "st_e4bb22819f14",
         "route": "reuse",
         "reason": "깨끗한 단일 PP라 분쇄해서 같은 공정에 다시 넣을 수 있습니다(신재 대비 10% 이내 혼합).",
         "currentPerKg": -250,
@@ -354,7 +354,7 @@
         ]
       },
       {
-        "streamId": "st_af3c48dc1efd",
+        "streamId": "st_b7b2281daa19",
         "route": "sell",
         "reason": "단일 PP이고 이물이 6%라, 이물을 떼면 재생원료 업체에 팔 수 있습니다.",
         "currentPerKg": -250,
@@ -401,7 +401,7 @@
         ]
       },
       {
-        "streamId": "st_81b7eb68cf13",
+        "streamId": "st_a73222cadab6",
         "route": "pyrolysis",
         "reason": "PP+ABS 재질이 섞여 기계적 재활용이 어렵습니다. 소각보다 싼 열분해 위탁이 낫습니다.",
         "currentPerKg": -250,
@@ -439,7 +439,7 @@
         ]
       },
       {
-        "streamId": "st_eb910bb0b352",
+        "streamId": "st_02955736f5d1",
         "route": "bundle",
         "reason": "공장이 쓰고 버린 LDPE 포장재라 사용 후(PCR) 원료가 됩니다. 월 300kg은 혼자 팔기엔 적어 같은 단지 기업과 묶습니다.",
         "currentPerKg": -250,
@@ -519,8 +519,8 @@
   "regulation": {
     "items": [
       {
-        "id": "reuse:st_c08b4d854e71",
-        "streamId": "st_c08b4d854e71",
+        "id": "reuse:st_e4bb22819f14",
+        "streamId": "st_e4bb22819f14",
         "label": "스프루·러너 · 공정 재투입",
         "status": "ok",
         "result": "가능",
@@ -528,8 +528,8 @@
         "excerpt": "같은 사업장 공정에 원료로 다시 쓰는 부산물은 외부로 배출하지 않으므로 위탁 처리 대상이 아닙니다. 보관 기간과 장부 기록은 지킵니다."
       },
       {
-        "id": "sell:st_af3c48dc1efd",
-        "streamId": "st_af3c48dc1efd",
+        "id": "sell:st_b7b2281daa19",
+        "streamId": "st_b7b2281daa19",
         "label": "불량 성형품 · 매입처 허가 범위",
         "status": "ok",
         "result": "허가 품목 일치",
@@ -537,8 +537,8 @@
         "excerpt": "매입처가 폐합성수지 재활용 허가를 갖고 있어 위탁할 수 있습니다. 인계는 올바로시스템 전자인계서로 합니다."
       },
       {
-        "id": "circular:st_af3c48dc1efd",
-        "streamId": "st_af3c48dc1efd",
+        "id": "circular:st_b7b2281daa19",
+        "streamId": "st_b7b2281daa19",
         "label": "불량 성형품 · 순환자원 인정",
         "status": "ask",
         "result": "성분분석표 필요",
@@ -546,8 +546,8 @@
         "excerpt": "유해물질 기준, 경제성, 방치 우려가 없을 것 등을 충족하면 순환자원으로 인정받아 폐기물 규제에서 벗어납니다."
       },
       {
-        "id": "pyro:st_81b7eb68cf13",
-        "streamId": "st_81b7eb68cf13",
+        "id": "pyro:st_a73222cadab6",
+        "streamId": "st_a73222cadab6",
         "label": "퍼지·색 혼합 · 열분해 위탁",
         "status": "ok",
         "result": "가능",
@@ -555,8 +555,8 @@
         "excerpt": "열분해 재활용 허가를 가진 업체에 위탁합니다. 혼합 재질도 받지만 염소계(PVC) 혼입은 피해야 합니다."
       },
       {
-        "id": "pcr:st_eb910bb0b352",
-        "streamId": "st_eb910bb0b352",
+        "id": "pcr:st_02955736f5d1",
+        "streamId": "st_02955736f5d1",
         "label": "원자재 포장 필름 · 사용 후(PCR) 출처 증빙",
         "status": "ask",
         "result": "정보 부족",
@@ -564,8 +564,8 @@
         "excerpt": "재생원료 사용 실적은 최종 소비자가 쓴 뒤 나온 원료만 인정하고, 공정부산물은 제외합니다. 공장이 원자재 포장재로 쓰고 버린 필름은 사용 후 원료로 볼 여지가 있으나 해석 확인이 필요합니다."
       },
       {
-        "id": "bundle:st_eb910bb0b352",
-        "streamId": "st_eb910bb0b352",
+        "id": "bundle:st_02955736f5d1",
+        "streamId": "st_02955736f5d1",
         "label": "원자재 포장 필름 · 단지 내 순회 수거",
         "status": "ok",
         "result": "가능 (각사 개별 계약)",
@@ -586,7 +586,7 @@
     ],
     "bundles": [
       {
-        "streamId": "st_eb910bb0b352",
+        "streamId": "st_02955736f5d1",
         "mode": "순회 수거",
         "item": "포장재",
         "minKg": 1000,
@@ -653,12 +653,18 @@
             "name": "아름푸드(주)",
             "sharePct": 48.8
           }
-        ]
+        ],
+        "visitOrder": [
+          "noksan-017",
+          "noksan-018",
+          "noksan-001"
+        ],
+        "routeM": 8710
       }
     ],
     "partners": [
       {
-        "streamId": "st_af3c48dc1efd",
+        "streamId": "st_b7b2281daa19",
         "route": "sell",
         "companyId": "noksan-008",
         "name": "(주)새길자원",
@@ -667,7 +673,7 @@
         "note": "PP 재생원료 매입 · 허가 품목 폐플라스틱·포장재"
       },
       {
-        "streamId": "st_81b7eb68cf13",
+        "streamId": "st_a73222cadab6",
         "route": "pyrolysis",
         "companyId": "ext_namhae_pyro",
         "name": "(주)남해열분해",
@@ -691,25 +697,25 @@
         "recommended": true,
         "breakdown": [
           {
-            "streamId": "st_c08b4d854e71",
+            "streamId": "st_e4bb22819f14",
             "route": "reuse",
             "monthlyKrw": 510000,
             "carbonT": -0.96
           },
           {
-            "streamId": "st_af3c48dc1efd",
+            "streamId": "st_b7b2281daa19",
             "route": "sell",
             "monthlyKrw": 90000,
             "carbonT": -0.6
           },
           {
-            "streamId": "st_81b7eb68cf13",
+            "streamId": "st_a73222cadab6",
             "route": "pyrolysis",
             "monthlyKrw": -20000,
             "carbonT": -0.07
           },
           {
-            "streamId": "st_eb910bb0b352",
+            "streamId": "st_02955736f5d1",
             "route": "bundle",
             "monthlyKrw": 15000,
             "carbonT": -0.43
@@ -727,25 +733,25 @@
         "recommended": false,
         "breakdown": [
           {
-            "streamId": "st_c08b4d854e71",
+            "streamId": "st_e4bb22819f14",
             "route": "reuse",
             "monthlyKrw": 510000,
             "carbonT": -0.96
           },
           {
-            "streamId": "st_af3c48dc1efd",
+            "streamId": "st_b7b2281daa19",
             "route": "sell",
             "monthlyKrw": 90000,
             "carbonT": -0.6
           },
           {
-            "streamId": "st_81b7eb68cf13",
+            "streamId": "st_a73222cadab6",
             "route": "pyrolysis",
             "monthlyKrw": -20000,
             "carbonT": -0.07
           },
           {
-            "streamId": "st_eb910bb0b352",
+            "streamId": "st_02955736f5d1",
             "route": "incinerate",
             "monthlyKrw": -75000,
             "carbonT": 0.23
@@ -763,25 +769,25 @@
         "recommended": false,
         "breakdown": [
           {
-            "streamId": "st_c08b4d854e71",
+            "streamId": "st_e4bb22819f14",
             "route": "incinerate",
             "monthlyKrw": -150000,
             "carbonT": 0.47
           },
           {
-            "streamId": "st_af3c48dc1efd",
+            "streamId": "st_b7b2281daa19",
             "route": "incinerate",
             "monthlyKrw": -100000,
             "carbonT": 0.31
           },
           {
-            "streamId": "st_81b7eb68cf13",
+            "streamId": "st_a73222cadab6",
             "route": "incinerate",
             "monthlyKrw": -62500,
             "carbonT": 0.2
           },
           {
-            "streamId": "st_eb910bb0b352",
+            "streamId": "st_02955736f5d1",
             "route": "incinerate",
             "monthlyKrw": -75000,
             "carbonT": 0.23
@@ -799,25 +805,25 @@
         "recommended": false,
         "breakdown": [
           {
-            "streamId": "st_c08b4d854e71",
+            "streamId": "st_e4bb22819f14",
             "route": "incinerate",
             "monthlyKrw": -138000,
             "carbonT": 0.31
           },
           {
-            "streamId": "st_af3c48dc1efd",
+            "streamId": "st_b7b2281daa19",
             "route": "incinerate",
             "monthlyKrw": -92000,
             "carbonT": 0.2
           },
           {
-            "streamId": "st_81b7eb68cf13",
+            "streamId": "st_a73222cadab6",
             "route": "incinerate",
             "monthlyKrw": -57500,
             "carbonT": 0.13
           },
           {
-            "streamId": "st_eb910bb0b352",
+            "streamId": "st_02955736f5d1",
             "route": "incinerate",
             "monthlyKrw": -69000,
             "carbonT": 0.15
@@ -937,12 +943,12 @@
         "body": "정부 사업장 폐플라스틱 기술진단(2026년 10곳)과 같은 항목(공정별 발생량, 종류·성상, 주변 재활용시설, 이행 방안)으로 작성한 신청 초안이다. 공고가 나오면 양식에 맞춰 옮긴다. 지원 금액과 자격 요건은 공고문으로 확인해야 한다."
       },
       {
-        "id": "pickup:st_eb910bb0b352",
+        "id": "pickup:st_02955736f5d1",
         "kind": "pickup",
         "title": "순회 수거 요청서",
         "to": "(주)새길자원",
         "external": true,
-        "streamId": "st_eb910bb0b352",
+        "streamId": "st_02955736f5d1",
         "fields": [
           {
             "label": "품목",
@@ -965,6 +971,10 @@
             "value": "매월 둘째·넷째 주 화요일 오전, 사업장별 순회"
           },
           {
+            "label": "순회 순서(제안)",
+            "value": "(주)새길자원 출발 → 1. 하늬로지스 → 2. 아름푸드(주) → 3. (주)한빛정밀 → 복귀 · 약 8.7km"
+          },
+          {
             "label": "희망 단가",
             "value": "LDPE 필름 kg당 150원 이상(운반비 별도 분담)"
           }
@@ -972,12 +982,12 @@
         "body": "(주)새길자원 담당자님께. 녹산국가산업단지 내 3개 사업장이 원자재 포장 필름을 사업장별로 분리 보관하고 있습니다. 매월 정해진 날 한 번에 순회해 주실 수 있는지, 매입 단가와 사업장별 계량·인계 방식을 회신해 주시기 바랍니다."
       },
       {
-        "id": "quote:st_af3c48dc1efd",
+        "id": "quote:st_b7b2281daa19",
         "kind": "quote",
         "title": "매각 견적 요청서",
         "to": "(주)새길자원",
         "external": true,
-        "streamId": "st_af3c48dc1efd",
+        "streamId": "st_b7b2281daa19",
         "fields": [
           {
             "label": "품목",
@@ -999,12 +1009,12 @@
         "body": "(주)새길자원 담당자님께. PP 불량 하우징을(를) 매월 400kg 내놓으려 합니다. 이물 제거 후 상태 기준 매입 단가와 수거 주기를 회신해 주시기 바랍니다."
       },
       {
-        "id": "pyro:st_81b7eb68cf13",
+        "id": "pyro:st_a73222cadab6",
         "kind": "quote",
         "title": "열분해 위탁 요청서",
         "to": "(주)남해열분해",
         "external": true,
-        "streamId": "st_81b7eb68cf13",
+        "streamId": "st_a73222cadab6",
         "fields": [
           {
             "label": "품목",
@@ -1036,7 +1046,7 @@
         "to": "부산 강서구청 환경과",
         "external": false,
         "optional": true,
-        "streamId": "st_eb910bb0b352",
+        "streamId": "st_02955736f5d1",
         "fields": [
           {
             "label": "근거",
@@ -1062,7 +1072,7 @@
   "selectedRoute": "A",
   "approval": {
     "approvedBy": "김담당",
-    "approvedAt": "2026-11-10T07:53:29.214Z",
+    "approvedAt": "2026-11-10T08:57:47.025Z",
     "routeId": "A",
     "sentTo": [
       {
@@ -1088,47 +1098,47 @@
     ]
   },
   "outcome": {
-    "recordedAt": "2026-11-10T07:53:34.492Z",
+    "recordedAt": "2026-11-10T08:59:29.629Z",
     "recordedBy": "김담당",
     "recorderRole": "담당자",
-    "streamId": "st_eb910bb0b352",
+    "streamId": "st_02955736f5d1",
     "accepted": true,
     "actualGrade": "B등급",
-    "actualPerKg": 250,
+    "actualPerKg": 110,
     "actualKg": 300,
     "reason": ""
   },
   "outcomes": [
     {
-      "recordedAt": "2026-11-10T07:53:29.468Z",
+      "recordedAt": "2026-11-10T08:59:24.619Z",
       "recordedBy": "김담당",
       "recorderRole": "담당자",
-      "streamId": "st_af3c48dc1efd",
+      "streamId": "st_b7b2281daa19",
       "accepted": true,
       "actualGrade": "B등급",
-      "actualPerKg": 250,
-      "actualKg": 300,
+      "actualPerKg": 280,
+      "actualKg": 390,
       "reason": ""
     },
     {
-      "recordedAt": "2026-11-10T07:53:31.978Z",
+      "recordedAt": "2026-11-10T08:59:27.125Z",
       "recordedBy": "김담당",
       "recorderRole": "담당자",
-      "streamId": "st_81b7eb68cf13",
+      "streamId": "st_a73222cadab6",
       "accepted": true,
       "actualGrade": "B등급",
-      "actualPerKg": 250,
-      "actualKg": 300,
+      "actualPerKg": -70,
+      "actualKg": 250,
       "reason": ""
     },
     {
-      "recordedAt": "2026-11-10T07:53:34.492Z",
+      "recordedAt": "2026-11-10T08:59:29.629Z",
       "recordedBy": "김담당",
       "recorderRole": "담당자",
-      "streamId": "st_eb910bb0b352",
+      "streamId": "st_02955736f5d1",
       "accepted": true,
       "actualGrade": "B등급",
-      "actualPerKg": 250,
+      "actualPerKg": 110,
       "actualKg": 300,
       "reason": ""
     }

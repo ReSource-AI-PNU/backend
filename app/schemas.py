@@ -462,6 +462,10 @@ class BundleGroup(Contract):
     excluded: list[ExcludedCompany]
     schedule: str
     cost_share: list[CostShare]
+    visit_order: list[str] | None = None
+    """수거 업체가 출발해 도는 사업장 순서(그룹 기업 id). 가장 가까운 곳부터 돈다(backend#14에서 OR-Tools로 대체)"""
+    route_m: float | None = Field(default=None, ge=0)
+    """수거 업체 출발 → 순회 → 복귀 거리(m). 직선거리에 도로 계수 1.3을 곱한 가정값"""
 
 
 class StreamPartner(Contract):
@@ -647,6 +651,15 @@ class Session(Contract):
     corrections: list[Correction]
 
 
+class MessageReply(Contract):
+    """요청서에 대한 받는 쪽의 회신. 묶음 참여 제안이면 참여 여부다."""
+
+    decision: Literal["accepted", "declined"]
+    at: str
+    by: str
+    reason: str | None = None
+
+
 class OutboxMessage(Contract):
     """승인 후 업체에 보낸 요청(시연은 모의 메일함)."""
 
@@ -661,6 +674,7 @@ class OutboxMessage(Contract):
     subject: str
     sent_at: str
     status: Literal["sent", "read", "replied", "completed"]
+    reply: MessageReply | None = None
 
 
 # ── 현장 지식·재학습 ───────────────────────────────────────────────────
