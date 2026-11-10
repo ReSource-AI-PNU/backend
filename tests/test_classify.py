@@ -76,3 +76,42 @@ def test_contaminant_names_assigned_only_to_contaminants():
     assert out[0]["label"] == "plastic" and "name_source" not in out[0]
     assert out[1]["label"] == "라벨" and out[1]["name_source"] == "owlv2"  # 겹치는 것 중 점수 높은 이름
     assert out[2]["label"] == "이물질"  # 안 겹치면 그대로
+
+
+def _raw(items, primary):
+    return {"stage": "classify", "backend": "stub", "model_version": "test", "mode": "photos", "primary_material": primary,
+            "items": [{"material": m, "label_ko": m, "count_estimate": 1, "area_ratio": a, "frame_coverage": a, "confidence": c} for m, a, c in items],
+            "input_domain": "aihub137_field", "contamination": None, "frames_analyzed": 1, "tracks_total": 0, "needs_followup": False,
+            "followup_questions": [], "latency_sec": 0.1, "detections": [], "rep_frame": 0}
+
+
+def _texts(out):
+    return [q["text"] for q in out["questions"]]
+
+
+def test_film_name_routes_to_packaging_even_with_v3_model():
+    from app.ml.contract import to_stream_classify
+
+    # v3 모델은 plastic 하나뿐이다. 사람이 쓴 흐름 이름 '스트레치 필름'이 포장재 경로를 정한다
+    out = to_stream_classify(_raw([("plastic", 0.7, 0.9)], "plastic"), stream_id="s", name="스트레치 필름", process="포장")
+    assert out["classify"]["item"] == "포장재" and out["classify"]["material"] == "LDPE"
+    assert out["classify"]["confidence"] == 0.9
+    assert not any("필름·비닐로 보입니다" in t for t in _texts(out))  # 이름으로 이미 확인됨
+
+
+def test_v5_split_plastic_beats_paper_and_asks_film_confirmation():
+    from app.ml.contract import to_stream_classify
+
+    # 경질 0.25 + 필름 0.35 = 플라스틱 0.6 > 종이 0.4. 면적이 큰 필름이 1위, 이름에 단서가 없으니 확인 질문
+    out = to_stream_classify(_raw([("paper", 0.4, 0.8), ("plastic_film", 0.35, 0.6), ("plastic_rigid", 0.25, 0.9)], "paper"), stream_id="s", name="라인 폐기물")
+    assert out["classify"]["item"] == "포장재"
+    assert any("필름·비닐로 보입니다" in t for t in _texts(out))
+    ClassifyResult.model_validate(out["classify"])
+
+
+def test_sprue_name_forces_rigid_over_film_prediction():
+    from app.ml.contract import to_stream_classify
+
+    out = to_stream_classify(_raw([("plastic_film", 0.6, 0.5)], "plastic_film"), stream_id="s", name="스프루·러너", process="사출 1라인")
+    assert out["classify"]["item"] == "폐플라스틱" and out["classify"]["material"] == "PP"
+    assert not any("필름·비닐로 보입니다" in t for t in _texts(out))
