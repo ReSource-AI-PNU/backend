@@ -33,7 +33,7 @@ def to_stream_classify(res: dict, *, stream_id: str, name: str = "", process: st
     NAME_MAT = {"금속": "metal", "스크랩": "metal", "캔": "metal", "철": "metal", "알루미늄": "metal", "목재": "wood", "나무": "wood", "팔레트": "wood",
                 "골판지": "paper", "박스": "paper", "상자": "paper", "종이": "paper", "필름": "plastic_film", "랩": "plastic_film", "비닐": "plastic_film",
                 "스트레치": "plastic_film", "플라스틱": "plastic", "스프루": "plastic_rigid", "러너": "plastic_rigid", "퍼지": "plastic_rigid",
-                "성형품": "plastic_rigid", "사출": "plastic_rigid"}
+                "성형품": "plastic_rigid", "사출": "plastic_rigid", "스티로폼": "plastic_rigid", "발포": "plastic_rigid"}
     area: dict = {}
     for i in items:
         area[i["material"]] = area.get(i["material"], 0.0) + float(i.get("area_ratio", 0) or 0)
@@ -46,6 +46,7 @@ def to_stream_classify(res: dict, *, stream_id: str, name: str = "", process: st
     model_primary = primary
     named = None
     named_term = None  # 이름이 가리킨 재질 종류 (plastic_film/plastic_rigid 면 사람이 종류까지 말한 것)
+    conflict_term = None  # 이름은 이 재질을 말하는데 사진에서 그 재질이 안 보임
     for tok in tokens(name):
         for k, v in NAME_MAT.items():
             if not _match(tok, k):
@@ -64,6 +65,7 @@ def to_stream_classify(res: dict, *, stream_id: str, name: str = "", process: st
                 cand = v if v in detected else None
             if cand:
                 named = cand; named_term = v; break
+            conflict_term = conflict_term or v
         if named:
             break
     if named and named != primary:
@@ -75,9 +77,14 @@ def to_stream_classify(res: dict, *, stream_id: str, name: str = "", process: st
         item = "폐플라스틱"
         questions.append({"id": _qid(), "step": "classify", "streamId": stream_id, "kind": "choice", "options": ["폐플라스틱", "금속 스크랩", "폐목재", "포장재"],
                           "text": "이 흐름의 품목을 골라 주세요.", "why": "사진에서 품목을 확정하지 못했습니다(유리·전지 등 대회 품목 밖이거나 신뢰도가 낮음)."})
+    elif named is None and conflict_term is not None and ITEM_OF.get(conflict_term) not in (None, item):
+        want = ITEM_OF[conflict_term]
+        questions.append({"id": _qid(), "step": "classify", "streamId": stream_id, "kind": "choice", "options": ["폐플라스틱", "금속 스크랩", "폐목재", "포장재"],
+                          "text": f"흐름 이름은 {want} 쪽인데 사진에서는 {item}(으)로 보입니다. 어느 쪽이 맞나요?", "suggested": want,
+                          "why": "현장 사진에서는 모델이 재질을 헷갈릴 수 있습니다(예: 흙 묻은 플라스틱 관을 목재로). 품목에 따라 처리 경로가 달라집니다."})
     # 재질(수지 종류)은 사진으로 확정하지 않는다: 힌트(공정명·명세) + 확인 질문
     mat = material_hint
-    if not mat:
+    if not mat and primary in PLASTICS:
         for tok in tokens(name + " " + process + " " + material_doc_text):
             for k, v in MATERIAL_HINT.items():
                 if _match(tok, k):
@@ -112,8 +119,8 @@ def to_stream_classify(res: dict, *, stream_id: str, name: str = "", process: st
     conf = next((i["confidence"] for i in items if i["material"] == primary), None) if primary else None
     if conf is None:
         conf = max((i["confidence"] for i in items if i["material"] in PLASTICS), default=0.0) if primary in PLASTICS else 0.0
-    if primary == "plastic_film" and material != "LDPE":
-        detail = f"{material + ' ' if material != '미확인' else ''}필름·비닐·마대(추정)"
+    if primary == "plastic_film":
+        detail = "LDPE 필름(추정)" if material == "LDPE" else f"{material + ' ' if material != '미확인' else ''}필름·비닐·마대(추정)"
     else:
         detail = f"{material if material != '미확인' else ''} {DETAIL_OF.get(primary, '')}".strip() or (name or "미확인")
     classify = {"item": item, "detail": detail, "material": material, "singleMaterial": single, "confidence": round(float(conf), 3),
@@ -127,7 +134,8 @@ def to_stream_classify(res: dict, *, stream_id: str, name: str = "", process: st
     c = res.get("contamination")
     if c and not c.get("reliable"):
         questions.append({"id": _qid(), "step": "classify", "streamId": stream_id, "kind": "number", "unit": "%",
-                          "text": "사진 기준 이물질 비율을 약 {}%로 추정했습니다(면적 기준). 실제와 비슷한가요?".format(int(c["overall_ratio"] * 100)),
+                          "text": ("사진에서는 이물질이 거의 보이지 않습니다. 실제로도 이물질이 없나요? 있다면 대략 몇 %인가요?" if c["overall_ratio"] < 0.01 else
+                                   "사진 기준 이물질 비율을 약 {}%로 추정했습니다(면적 기준). 실제와 비슷한가요?".format(int(c["overall_ratio"] * 100))),
                           "why": c.get("note", ""), "suggested": str(int(c["overall_ratio"] * 100))})
     # 월 발생량 확정
     questions.append({"id": _qid(), "step": "classify", "streamId": stream_id, "kind": "number", "unit": "kg",

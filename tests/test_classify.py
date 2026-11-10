@@ -117,3 +117,20 @@ def test_sprue_name_forces_rigid_over_film_prediction():
     out = to_stream_classify(_raw([("plastic_film", 0.6, 0.5)], "plastic_film"), stream_id="s", name="스프루·러너", process="사출 1라인")
     assert out["classify"]["item"] == "폐플라스틱" and out["classify"]["material"] == "PP"
     assert not any("필름·비닐로 보입니다" in t for t in _texts(out))
+
+
+def test_name_photo_conflict_asks_item_and_drops_resin_hint():
+    from app.ml.contract import to_stream_classify
+
+    # 흙 묻은 플라스틱 관을 모델이 목재로 본 실제 사례. 이름은 플라스틱(스티로폼)을 말한다
+    out = to_stream_classify(_raw([("wood", 0.4, 0.58)], "wood"), stream_id="s", name="스티로폼 완충재", process="입고")
+    assert out["classify"]["item"] == "폐목재" and out["classify"]["material"] == "미확인"  # 목재에 PS 를 붙이지 않음
+    q = next(q for q in out["questions"] if "흐름 이름은" in q["text"])
+    assert q["suggested"] == "폐플라스틱"
+
+
+def test_film_detail_not_duplicated():
+    from app.ml.contract import to_stream_classify
+
+    out = to_stream_classify(_raw([("plastic_film", 0.6, 0.9)], "plastic_film"), stream_id="s", name="스트레치 필름")
+    assert out["classify"]["detail"] == "LDPE 필름(추정)"
