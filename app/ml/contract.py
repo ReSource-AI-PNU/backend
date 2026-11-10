@@ -6,7 +6,6 @@
 
 재질 -> 품목(WasteItem 4종) 매핑. 필름(plastic_film)은 '포장재'로 보내야 앱에서 단지 묶음 매각 경로를 탄다.
 """
-import uuid
 
 from app.ml.origin import _match, estimate_origin, tokens
 
@@ -19,8 +18,9 @@ MATERIAL_OPTIONS = ["PP", "PE(HDPE)", "LDPE", "PET", "PS", "ABS", "PVC", "혼합
 MATERIAL_HINT = {"사출": "PP", "필름": "LDPE", "스트레치": "LDPE", "랩": "LDPE", "병": "PET", "페트": "PET", "발포": "PS", "스티로폼": "PS"}
 
 
-def _qid():
-    return "q" + uuid.uuid4().hex[:8]
+def _qid(kind: str, stream_id: str) -> str:
+    """답을 흐름에 되돌려 반영할 수 있도록 고정 id: classify-<종류>:<streamId> (apply_classify_answer 참고)"""
+    return f"classify-{kind}:{stream_id}"
 
 
 def to_stream_classify(res: dict, *, stream_id: str, name: str = "", process: str = "", material_doc_text: str = "",
@@ -75,11 +75,11 @@ def to_stream_classify(res: dict, *, stream_id: str, name: str = "", process: st
     questions: list[dict] = []
     if item is None:
         item = "폐플라스틱"
-        questions.append({"id": _qid(), "step": "classify", "streamId": stream_id, "kind": "choice", "options": ["폐플라스틱", "금속 스크랩", "폐목재", "포장재"],
+        questions.append({"id": _qid("item", stream_id), "step": "classify", "streamId": stream_id, "kind": "choice", "options": ["폐플라스틱", "금속 스크랩", "폐목재", "포장재"],
                           "text": "이 흐름의 품목을 골라 주세요.", "why": "사진에서 품목을 확정하지 못했습니다(유리·전지 등 대회 품목 밖이거나 신뢰도가 낮음)."})
     elif named is None and conflict_term is not None and ITEM_OF.get(conflict_term) not in (None, item):
         want = ITEM_OF[conflict_term]
-        questions.append({"id": _qid(), "step": "classify", "streamId": stream_id, "kind": "choice", "options": ["폐플라스틱", "금속 스크랩", "폐목재", "포장재"],
+        questions.append({"id": _qid("item", stream_id), "step": "classify", "streamId": stream_id, "kind": "choice", "options": ["폐플라스틱", "금속 스크랩", "폐목재", "포장재"],
                           "text": f"흐름 이름은 {want} 쪽인데 사진에서는 {item}(으)로 보입니다. 어느 쪽이 맞나요?", "suggested": want,
                           "why": "현장 사진에서는 모델이 재질을 헷갈릴 수 있습니다(예: 흙 묻은 플라스틱 관을 목재로). 품목에 따라 처리 경로가 달라집니다."})
     # 재질(수지 종류)은 사진으로 확정하지 않는다: 힌트(공정명·명세) + 확인 질문
@@ -94,18 +94,22 @@ def to_stream_classify(res: dict, *, stream_id: str, name: str = "", process: st
     # 필름으로 보여도 수지는 단정하지 않는다: 현장 '필름' 중에는 PP 직조 마대·방수포도 많다(v5 표본 확인). 추천값만 LDPE
     material = mat or "미확인"
     if item in ("폐플라스틱", "포장재") and primary not in ("paper",):
-        questions.append({"id": _qid(), "step": "classify", "streamId": stream_id, "kind": "choice", "options": MATERIAL_OPTIONS,
+        questions.append({"id": _qid("resin", stream_id), "step": "classify", "streamId": stream_id, "kind": "choice", "options": MATERIAL_OPTIONS,
                           "text": "이 흐름의 수지 종류는 무엇인가요?", "suggested": mat or ("LDPE" if primary == "plastic_film" else "PP"),
                           "why": "사진으로는 PP·PE·ABS를 가를 수 없습니다. 재투입·매각 단가가 수지에 따라 달라집니다. 원자재 구매 명세가 있으면 올려 주세요."})
     if model_primary == "plastic_film" and named_term not in ("plastic_film", "plastic_rigid"):
-        questions.append({"id": _qid(), "step": "classify", "streamId": stream_id, "kind": "choice", "options": ["필름·비닐", "경질 플라스틱"],
-                          "text": "사진에서 필름·비닐로 보입니다. 맞나요?", "suggested": "필름·비닐",
+        questions.append({"id": _qid("film", stream_id), "step": "classify", "streamId": stream_id, "kind": "choice", "options": FILM_OPTIONS,
+                          "text": "사진에서 필름·비닐로 보입니다. 맞나요?", "suggested": "LDPE 필름·비닐",
                           "why": "필름은 포장재로 묶어 파는 경로, 경질은 재투입·매각 경로를 탑니다. 사진 기반 필름 판별은 아직 정확도가 낮아 확인이 필요합니다."})
     # 단일/혼합: 면적 15% 이상인 재질이 둘 이상이면 혼합 후보. 확정은 공정 정보·답변으로
-    big = [i for i in items if i.get("area_ratio", 0) >= 0.15]
+    groups: dict = {}
+    for i in items:
+        g = "plastic" if i["material"] in PLASTICS else i["material"]
+        groups[g] = groups.get(g, 0.0) + float(i.get("area_ratio", 0) or 0)
+    big = [{"material": g, "area_ratio": a} for g, a in groups.items() if a >= 0.15]
     single = len(big) <= 1
     if not single:
-        questions.append({"id": _qid(), "step": "classify", "streamId": stream_id, "kind": "choice", "options": ["단일 재질", "여러 재질이 섞임"],
+        questions.append({"id": _qid("mixed", stream_id), "step": "classify", "streamId": stream_id, "kind": "choice", "options": ["단일 재질", "여러 재질이 섞임"],
                           "text": "사진에 " + "·".join(LABEL_KO.get(b["material"], b["material"]) for b in big) + "이(가) 함께 보입니다. 한 흐름에 섞여 나오나요?",
                           "why": "섞인 흐름은 기계적 재활용이 어려워 열분해나 소각으로 갑니다.", "suggested": "여러 재질이 섞임"})
     # detections -> 계약 Detection
@@ -128,19 +132,91 @@ def to_stream_classify(res: dict, *, stream_id: str, name: str = "", process: st
                 "model": {"name": res.get("backend", "trained"), "version": res.get("model_version", "")},
                 "durationMs": int(float(res.get("latency_sec", 0)) * 1000)}
     org = estimate_origin(name, process, material_doc_text, dets)
-    if "question" in org:
-        questions.append({"id": _qid(), "streamId": stream_id, **org.pop("question")})
+    if "question" in org:  # origin.py 가 항상 붙인다 (AI 추정은 담당자 확인 필수)
+        questions.append({"id": _qid("origin", stream_id), "streamId": stream_id, **org.pop("question")})
     # 이물질 비율 확인(현장 사진은 의사 라벨 학습이라 확인 요망)
     c = res.get("contamination")
     if c and not c.get("reliable"):
-        questions.append({"id": _qid(), "step": "classify", "streamId": stream_id, "kind": "number", "unit": "%",
+        questions.append({"id": _qid("contamination", stream_id), "step": "classify", "streamId": stream_id, "kind": "number", "unit": "%",
                           "text": ("사진에서는 이물질이 거의 보이지 않습니다. 실제로도 이물질이 없나요? 있다면 대략 몇 %인가요?" if c["overall_ratio"] < 0.01 else
                                    "사진 기준 이물질 비율을 약 {}%로 추정했습니다(면적 기준). 실제와 비슷한가요?".format(int(c["overall_ratio"] * 100))),
                           "why": c.get("note", ""), "suggested": str(int(c["overall_ratio"] * 100))})
     # 월 발생량 확정
-    questions.append({"id": _qid(), "step": "classify", "streamId": stream_id, "kind": "number", "unit": "kg",
+    questions.append({"id": _qid("kg", stream_id), "step": "classify", "streamId": stream_id, "kind": "number", "unit": "kg",
                       "text": "이 흐름의 월 발생량은 얼마인가요?", "why": "경로별 월 손익과 트럭 적재율 계산의 기준값입니다.",
                       "suggested": str(int(est)) if est else ""})
     return {"classify": classify, "origin": org["origin"], "originSource": "ai", "originConfidence": org["confidence"],
             "originEvidence": org["evidence"], "questions": questions,
             "meta": {"input_domain": res.get("input_domain"), "contamination": c, "items": items}}
+
+
+FILM_OPTIONS = ["LDPE 필름·비닐", "PP 마대·직조", "경질 플라스틱"]
+ITEM_OPTIONS = ["폐플라스틱", "금속 스크랩", "폐목재", "포장재"]
+ORIGIN_OF_ANSWER = {"공정에서 나온 부산물 (PIR)": "PIR", "입고 자재의 포장재 (PCR)": "PCR"}
+
+
+def apply_classify_answer(stream: dict, question_id: str, answer: str, *, by: str = "담당자", at: str = "") -> tuple:
+    """① 되묻기 답을 흐름(Stream, camelCase dict)에 반영한다. 반환: (새 흐름 dict, Correction 초안 list)
+
+    질문 id 는 'classify-<종류>:<streamId>' (item, film, resin, mixed, origin, contamination, kg).
+    답이 어떤 순서로 와도 결과가 같도록: film 답은 item·detail 을 정하고 material 은 '미확인'일 때만 채운다.
+    resin 답은 material 을 정한다('혼합·모름'은 덮어쓰지 않는다).
+    AI 값을 사람이 바꾼 항목은 Correction 초안으로 돌려준다(현장 지식 카드·재학습 입구용).
+    """
+    import copy
+    from datetime import datetime
+
+    kind = question_id.split(":", 1)[0]
+    kind = kind.removeprefix("classify-")
+    s = copy.deepcopy(stream); c = s["classify"]; changes = []
+
+    def setv(obj, key, val, field):
+        if obj.get(key) != val:
+            changes.append((field, obj.get(key), val)); obj[key] = val
+
+    unknown = c.get("material") in (None, "", "미확인")
+    if kind == "film":
+        if answer == "LDPE 필름·비닐":
+            setv(c, "item", "포장재", "classify.item"); setv(c, "detail", "LDPE 필름", "classify.detail")
+            if unknown:
+                setv(c, "material", "LDPE", "classify.material")
+        elif answer == "PP 마대·직조":
+            setv(c, "item", "포장재", "classify.item"); setv(c, "detail", "PP 마대·직조 포대", "classify.detail")
+            if unknown:
+                setv(c, "material", "PP", "classify.material")
+        elif answer == "경질 플라스틱":
+            setv(c, "item", "폐플라스틱", "classify.item")
+            setv(c, "detail", "경질 플라스틱" if unknown else f"{c['material']} 경질 플라스틱", "classify.detail")
+        else:
+            raise ValueError(f"필름 질문의 답이 아님: {answer}")
+    elif kind == "resin":
+        if answer not in MATERIAL_OPTIONS:
+            raise ValueError(f"수지 질문의 답이 아님: {answer}")
+        if answer != "혼합·모름":
+            setv(c, "material", "HDPE" if answer == "PE(HDPE)" else answer, "classify.material")
+    elif kind == "item":
+        if answer not in ITEM_OPTIONS:
+            raise ValueError(f"품목 질문의 답이 아님: {answer}")
+        if c.get("item") != answer:
+            setv(c, "item", answer, "classify.item"); setv(c, "detail", answer, "classify.detail")
+            if answer not in ("폐플라스틱", "포장재"):
+                setv(c, "material", "미확인", "classify.material")
+    elif kind == "mixed":
+        setv(c, "singleMaterial", answer == "단일 재질", "classify.singleMaterial")
+    elif kind == "origin":
+        if answer not in ORIGIN_OF_ANSWER:
+            raise ValueError(f"출처 질문의 답이 아님: {answer}")
+        setv(s, "origin", ORIGIN_OF_ANSWER[answer], "origin"); s["originSource"] = "human"
+    elif kind == "kg":
+        kg = float(answer)
+        if kg < 0:
+            raise ValueError("월 발생량은 0 이상")
+        setv(s, "monthlyKg", kg, "monthlyKg"); s["monthlyKgConfirmed"] = True
+    elif kind == "contamination":
+        pass  # 계약에 흐름 단위 이물 비율 필드가 없다(Detection.ratio 는 박스별). 답은 Question.answer 로만 남는다
+    else:
+        raise ValueError(f"모르는 질문 id: {question_id}")
+    at = at or datetime.now().isoformat(timespec="seconds")
+    corrections = [{"id": f"corr-{kind}:{s.get('id', '')}:{i}", "at": at, "by": by, "step": "classify", "streamId": s.get("id"),
+                    "field": f, "before": "" if b is None else str(b), "after": str(a)} for i, (f, b, a) in enumerate(changes)]
+    return s, corrections

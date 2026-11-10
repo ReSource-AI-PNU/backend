@@ -5,9 +5,9 @@
 """
 from __future__ import annotations
 
-from app.ml.contract import to_stream_classify
+from app.ml.contract import apply_classify_answer, to_stream_classify
 from app.ml.detector import get_detector
-from app.schemas import ClassifyResult, Contract, Mark, Question, StreamOrigin
+from app.schemas import ClassifyResult, Contract, Correction, Mark, Question, Stream, StreamOrigin
 
 
 class ClassifyOutput(Contract):
@@ -39,3 +39,24 @@ def classify_stream(media_paths: list[str], *, stream_id: str, name: str = "", p
         questions=[Question.model_validate(q) for q in out["questions"]],
         input_domain=out["meta"].get("input_domain"),
     )
+
+
+class ClassifyAnswerIn(Contract):
+    stream: Stream
+    question_id: str
+    """classify-<종류>:<streamId> (item, film, resin, mixed, origin, contamination, kg)"""
+    answer: str
+    by: str = "담당자"
+
+
+class ClassifyAnswerOut(Contract):
+    stream: Stream
+    corrections: list[Correction]
+    """AI 값을 사람이 바꾼 기록. Session.corrections 에 더한다(재학습 입구는 박스 수정만 라벨로 쓴다)."""
+
+
+def answer_classify_question(body: ClassifyAnswerIn) -> ClassifyAnswerOut:
+    """① 되묻기 답을 흐름에 반영. 답 순서가 달라도 결과가 같다(필름 답은 미확인 수지만 채우고, 수지 답이 수지를 정한다)."""
+    stream, corrections = apply_classify_answer(body.stream.model_dump(mode="json", by_alias=True, exclude_none=True),
+                                                body.question_id, body.answer, by=body.by)
+    return ClassifyAnswerOut(stream=Stream.model_validate(stream), corrections=[Correction.model_validate(c) for c in corrections])

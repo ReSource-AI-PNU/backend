@@ -63,11 +63,11 @@ def estimate_origin(name: str = "", process: str = "", material_doc_text: str = 
     origin = "PCR" if score > 0 else "PIR"
     confidence = round(min(0.95, 0.5 + abs(score) / 2), 2)
     out = {"origin": origin, "originSource": "ai", "confidence": confidence, "evidence": evidence}
-    if confidence < 0.7 or (text_pir and text_pcr):
-        out["question"] = {"step": "classify", "kind": "choice", "options": ["공정에서 나온 부산물 (PIR)", "입고 자재의 포장재 (PCR)"],
-                           "text": "이 흐름은 공정에서 나왔나요, 입고된 자재의 포장재인가요?",
-                           "why": "재생원료 사용 의무(국내 페트 고시, EU PPWR)는 PCR만 인정하므로 출처에 따라 갈 곳과 단가가 달라집니다.",
-                           "suggested": "입고 자재의 포장재 (PCR)" if origin == "PCR" else "공정에서 나온 부산물 (PIR)"}
+    # 출처는 AI 추정이므로 확신이 높아도 담당자 확인 질문을 항상 붙인다 (묶음 매각은 PCR 이 전제)
+    out["question"] = {"step": "classify", "kind": "choice", "options": ["공정에서 나온 부산물 (PIR)", "입고 자재의 포장재 (PCR)"],
+                       "text": "이 흐름은 공정에서 나왔나요, 입고된 자재의 포장재인가요?",
+                       "why": "재생원료 사용 의무(국내 페트 고시, EU PPWR)는 PCR만 인정하므로 출처에 따라 갈 곳과 단가가 달라집니다.",
+                       "suggested": "입고 자재의 포장재 (PCR)" if origin == "PCR" else "공정에서 나온 부산물 (PIR)"}
     return out
 
 

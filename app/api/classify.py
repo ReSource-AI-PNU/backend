@@ -8,7 +8,13 @@ from typing import Annotated
 
 from fastapi import APIRouter, File, Form, HTTPException, UploadFile
 
-from app.agents.classify import ClassifyOutput, classify_stream
+from app.agents.classify import (
+    ClassifyAnswerIn,
+    ClassifyAnswerOut,
+    ClassifyOutput,
+    answer_classify_question,
+    classify_stream,
+)
 from app.ml.detector import ModelUnavailable, get_detector
 
 router = APIRouter(tags=["classify"])
@@ -56,3 +62,12 @@ async def classify(
             raise HTTPException(503, f"식별 모델을 쓸 수 없습니다: {e}")
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
+
+
+@router.post("/classify/answer", response_model=ClassifyAnswerOut, response_model_exclude_none=True)
+def classify_answer(body: ClassifyAnswerIn) -> ClassifyAnswerOut:
+    """① 되묻기 답(필름·수지·품목·혼합·출처·월 발생량)을 흐름에 반영하고 Correction 초안을 돌려준다."""
+    try:
+        return answer_classify_question(body)
+    except ValueError as e:
+        raise HTTPException(422, str(e))

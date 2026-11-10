@@ -134,3 +134,84 @@ def test_film_detail_not_duplicated():
 
     out = to_stream_classify(_raw([("plastic_film", 0.6, 0.9)], "plastic_film"), stream_id="s", name="스트레치 필름")
     assert out["classify"]["detail"] == "LDPE 필름(추정)"
+
+
+
+def _stream(out, sid="s"):
+    return {"id": sid, "name": "x", "process": "y", "media": [], "classify": out["classify"], "origin": out["origin"],
+            "originSource": out["originSource"], "monthlyKg": 0, "monthlyKgConfirmed": False}
+
+
+def test_question_ids_are_stable_and_origin_always_asked():
+    from app.ml.contract import to_stream_classify
+
+    out = to_stream_classify(_raw([("plastic", 0.7, 0.9)], "plastic"), stream_id="st1", name="스프루·러너", process="사출 1라인")
+    ids = [q["id"] for q in out["questions"]]
+    assert "classify-origin:st1" in ids and "classify-kg:st1" in ids and "classify-resin:st1" in ids
+    assert len(ids) == len(set(ids))
+    for q in out["questions"]:
+        Question.model_validate(q)
+
+
+def test_scrap_names_never_become_film():
+    from app.ml.contract import to_stream_classify
+
+    # 프런트 목업에서 실제로 난 버그: '스크랩'의 '랩'이 필름으로 잡힘
+    for name, items, item in [("금속 스크랩", [("metal", 0.6, 0.9), ("plastic", 0.3, 0.8)], "금속 스크랩"),
+                              ("플라스틱 스크랩", [("plastic", 0.7, 0.9)], "폐플라스틱"),
+                              ("플라스틱 스크랩", [("plastic_film", 0.5, 0.6), ("plastic_rigid", 0.2, 0.9)], "포장재")]:
+        out = to_stream_classify(_raw(items, items[0][0]), stream_id="s", name=name)
+        assert out["classify"]["item"] == item, (name, items)
+        assert out["classify"]["material"] != "LDPE" and "LDPE" not in out["classify"]["detail"], (name, items)
+    # 반대로 '랩'이 단어로 오면 필름
+    out = to_stream_classify(_raw([("plastic", 0.7, 0.9)], "plastic"), stream_id="s", name="랩 필름")
+    assert out["classify"]["item"] == "포장재" and out["classify"]["material"] == "LDPE"
+
+
+def test_film_split_keeps_single_material_true():
+    from app.ml.contract import to_stream_classify
+
+    # 필름만: 수지 미확인이어도 singleMaterial=True (false 면 묶음이 아니라 열분해로 감)
+    out = to_stream_classify(_raw([("plastic_film", 0.8, 0.6)], "plastic_film"), stream_id="s", name="라인 폐기물")
+    assert out["classify"]["singleMaterial"] is True and out["classify"]["material"] == "미확인"
+    # v5 가 한 더미를 경질 0.3 + 필름 0.4 로 나눠도 플라스틱 하나로 센다
+    out = to_stream_classify(_raw([("plastic_film", 0.4, 0.6), ("plastic_rigid", 0.3, 0.8)], "plastic_film"), stream_id="s", name="라인 폐기물")
+    assert out["classify"]["singleMaterial"] is True
+    assert not any(q["id"].startswith("classify-mixed") for q in out["questions"])
+
+
+def test_answers_fill_film_resin_origin_in_any_order():
+    from app.ml.contract import apply_classify_answer, to_stream_classify
+
+    out = to_stream_classify(_raw([("plastic_film", 0.8, 0.6)], "plastic_film"), stream_id="s", name="라인 폐기물", process="출하")
+    st = _stream(out)
+    a, c1 = apply_classify_answer(st, "classify-film:s", "LDPE 필름·비닐")
+    a, _ = apply_classify_answer(a, "classify-origin:s", "입고 자재의 포장재 (PCR)")
+    a, _ = apply_classify_answer(a, "classify-kg:s", "400")
+    assert a["classify"]["item"] == "포장재" and a["classify"]["material"] == "LDPE"  # 매칭 정규식 /LDPE|PE/ 에 걸림
+    assert a["origin"] == "PCR" and a["originSource"] == "human" and a["monthlyKg"] == 400 and a["monthlyKgConfirmed"]
+    assert any(c["field"] == "classify.material" and c["after"] == "LDPE" for c in c1)
+    # 순서가 달라도 같은 결과: 수지 PP 를 먼저 답하면 필름 답이 덮어쓰지 않는다
+    b, _ = apply_classify_answer(st, "classify-resin:s", "PP")
+    b, _ = apply_classify_answer(b, "classify-film:s", "LDPE 필름·비닐")
+    c, _ = apply_classify_answer(st, "classify-film:s", "LDPE 필름·비닐")
+    c, _ = apply_classify_answer(c, "classify-resin:s", "PP")
+    assert b["classify"]["material"] == c["classify"]["material"] == "PP"
+    # PP 마대
+    d, _ = apply_classify_answer(st, "classify-film:s", "PP 마대·직조")
+    assert d["classify"]["item"] == "포장재" and d["classify"]["material"] == "PP"
+
+
+def test_classify_answer_api_validates_stream_and_corrections():
+    from app.ml.contract import to_stream_classify
+    from app.schemas import Correction, Stream
+
+    out = to_stream_classify(_raw([("plastic_film", 0.8, 0.6)], "plastic_film"), stream_id="s", name="라인 폐기물")
+    client = TestClient(app)
+    r = client.post("/api/v1/classify/answer", json={"stream": _stream(out), "questionId": "classify-film:s", "answer": "LDPE 필름·비닐"})
+    assert r.status_code == 200, r.text
+    body = r.json()
+    Stream.model_validate(body["stream"]); [Correction.model_validate(c) for c in body["corrections"]]
+    assert body["stream"]["classify"]["material"] == "LDPE"
+    r = client.post("/api/v1/classify/answer", json={"stream": _stream(out), "questionId": "classify-film:s", "answer": "모름"})
+    assert r.status_code == 422
