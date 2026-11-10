@@ -105,7 +105,9 @@ def test_v5_split_plastic_beats_paper_and_asks_film_confirmation():
     # 경질 0.25 + 필름 0.35 = 플라스틱 0.6 > 종이 0.4. 면적이 큰 필름이 1위, 이름에 단서가 없으니 확인 질문
     out = to_stream_classify(_raw([("paper", 0.4, 0.8), ("plastic_film", 0.35, 0.6), ("plastic_rigid", 0.25, 0.9)], "paper"), stream_id="s", name="라인 폐기물")
     assert out["classify"]["item"] == "포장재"
+    assert out["classify"]["material"] == "미확인" and "마대" in out["classify"]["detail"]  # 수지는 단정하지 않음
     assert any("필름·비닐로 보입니다" in t for t in _texts(out))
+    assert next(q for q in out["questions"] if "수지" in q["text"])["suggested"] == "LDPE"
     ClassifyResult.model_validate(out["classify"])
 
 

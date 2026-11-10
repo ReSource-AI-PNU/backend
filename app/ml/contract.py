@@ -84,12 +84,11 @@ def to_stream_classify(res: dict, *, stream_id: str, name: str = "", process: st
                     mat = v; break
             if mat:
                 break
-    if primary in ("plastic_film",):
-        mat = mat or "LDPE"
+    # 필름으로 보여도 수지는 단정하지 않는다: 현장 '필름' 중에는 PP 직조 마대·방수포도 많다(v5 표본 확인). 추천값만 LDPE
     material = mat or "미확인"
     if item in ("폐플라스틱", "포장재") and primary not in ("paper",):
         questions.append({"id": _qid(), "step": "classify", "streamId": stream_id, "kind": "choice", "options": MATERIAL_OPTIONS,
-                          "text": "이 흐름의 수지 종류는 무엇인가요?", "suggested": mat or "PP",
+                          "text": "이 흐름의 수지 종류는 무엇인가요?", "suggested": mat or ("LDPE" if primary == "plastic_film" else "PP"),
                           "why": "사진으로는 PP·PE·ABS를 가를 수 없습니다. 재투입·매각 단가가 수지에 따라 달라집니다. 원자재 구매 명세가 있으면 올려 주세요."})
     if model_primary == "plastic_film" and named_term not in ("plastic_film", "plastic_rigid"):
         questions.append({"id": _qid(), "step": "classify", "streamId": stream_id, "kind": "choice", "options": ["필름·비닐", "경질 플라스틱"],
@@ -113,7 +112,10 @@ def to_stream_classify(res: dict, *, stream_id: str, name: str = "", process: st
     conf = next((i["confidence"] for i in items if i["material"] == primary), None) if primary else None
     if conf is None:
         conf = max((i["confidence"] for i in items if i["material"] in PLASTICS), default=0.0) if primary in PLASTICS else 0.0
-    detail = f"{material if material != '미확인' else ''} {DETAIL_OF.get(primary, '')}".strip() or (name or "미확인")
+    if primary == "plastic_film" and material != "LDPE":
+        detail = f"{material + ' ' if material != '미확인' else ''}필름·비닐·마대(추정)"
+    else:
+        detail = f"{material if material != '미확인' else ''} {DETAIL_OF.get(primary, '')}".strip() or (name or "미확인")
     classify = {"item": item, "detail": detail, "material": material, "singleMaterial": single, "confidence": round(float(conf), 3),
                 "estimatedKg": round(float(est), 1), "frames": int(res.get("frames_analyzed", 0)), "detections": detections,
                 "model": {"name": res.get("backend", "trained"), "version": res.get("model_version", "")},
