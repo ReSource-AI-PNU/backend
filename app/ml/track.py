@@ -150,8 +150,9 @@ class Aggregator:
         self.photo_counts = defaultdict(int)
         self.n = 0; self.frame_area = 1
         self.rep = None  # 대표 프레임(재질 박스가 가장 많은 프레임)의 박스들 -> 프런트 detections[]
+        self.rep_img = None
 
-    def add(self, d, conds, frame_area, frame_wh=None, cond_det=None, frame_index=None):
+    def add(self, d, conds, frame_area, frame_wh=None, cond_det=None, frame_index=None, frame_img=None):
         self.n += 1; self.frame_area = frame_area
         if frame_wh is not None and (self.rep is None or len(d) > self.rep["n_items"]):
             W, H = frame_wh
@@ -164,6 +165,7 @@ class Aggregator:
                                   "confidence": float(s), "xyxy": [float(v) for v in b]})
             self.rep = {"frame_index": frame_index if frame_index is not None else self.n - 1, "width": W, "height": H,
                         "n_items": len(d), "items": items, "conditions": conts}
+            self.rep_img = frame_img  # 이물 이름 붙이기(OWLv2)용
         ids = d.tracker_id if (d.tracker_id is not None and not self.photo) else [f"{self.n}_{i}" for i in range(len(d))]
         if self.photo:
             for c, k in Counter(int(c) for c in d.class_id).items():
@@ -261,8 +263,9 @@ class Aggregator:
 
 
 def run(model, src, out=None, fps=4.0, conf=None, cond_model=None, save_vis=True, gate=None, batch_size=8, cond_every=2,
-        field_condition=None):
-    """field_condition: 현장 사진(aihub137_field)에도 상태 모델을 돌릴지. None 이면 모델 디렉터리에 field_ok.json 이 있을 때만(v3 이상)."""
+        field_condition=None, namer=None):
+    """field_condition: 현장 사진(aihub137_field)에도 상태 모델을 돌릴지. None 이면 모델 디렉터리에 field_ok.json 이 있을 때만(v3 이상).
+    namer: ContaminantNamer (선택). 있으면 대표 프레임의 이물 박스에 OWLv2 로 라벨·테이프·금속 인서트·탄화물 이름을 단다."""
     det = model if isinstance(model, Detector) else Detector(model)
     cdet = cond_model if (cond_model is None or isinstance(cond_model, Detector)) else Detector(cond_model)
     if field_condition is None:
@@ -307,7 +310,8 @@ def run(model, src, out=None, fps=4.0, conf=None, cond_model=None, save_vis=True
             conds = attach_conditions(d, cd, cnames)
             if cd is not None:
                 cd.data["names"] = {i_: n_ for i_, n_ in enumerate(cnames)}
-            agg.add(d, conds, fr.shape[0] * fr.shape[1], frame_wh=(fr.shape[1], fr.shape[0]), cond_det=cd, frame_index=k)
+            agg.add(d, conds, fr.shape[0] * fr.shape[1], frame_wh=(fr.shape[1], fr.shape[0]), cond_det=cd, frame_index=k,
+                    frame_img=fr if namer is not None else None)
             if out and save_vis:
                 tids = d.tracker_id if d.tracker_id is not None else [None] * len(d)
                 labels = []
@@ -325,6 +329,9 @@ def run(model, src, out=None, fps=4.0, conf=None, cond_model=None, save_vis=True
         writer.release()
     res = agg.result(f"trained:rtdetr_v2_r18{'+condition' if cdet else ''}", det.version, time.time() - t0, cdet_run is not None, domain,
                      cdet.field_note if cdet is not None else None)
+    if namer is not None and agg.rep_img is not None and res.get("detections"):
+        res["detections"] = namer.name(agg.rep_img, res["detections"])
+        res["latency_sec"] = round(time.time() - t0, 2)
     from app.ml.internal import ClassifyResult as InternalClassifyResult  # ml 내부 결과 검증
     res = InternalClassifyResult(**res).model_dump()
     if out:

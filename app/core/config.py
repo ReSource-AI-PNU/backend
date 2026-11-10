@@ -23,6 +23,7 @@ class Settings(BaseSettings):
     material_model_dir: str = "models/material"
     condition_model_dir: str = "models/condition"
     domain_clf_dir: str = "models/domain_clf"
+    contaminant_namer_dir: str = ""  # OWLv2 디렉터리. 비우면 이물 이름 붙이기 끔 (라벨·테이프·금속 인서트·탄화물)
     model_blob_url: str = ""  # 모델 tar.gz 의 Azure Blob SAS URL (또는 Azure ML 레지스트리 다운로드 URL)
     classify_fps: float = 4.0
 

@@ -45,7 +45,7 @@ class TrainedDetector(BaseDetector):
 
     name = "trained"
 
-    def __init__(self, material_dir: str, condition_dir: str | None, domain_clf_dir: str | None, fps: float = 4.0):
+    def __init__(self, material_dir: str, condition_dir: str | None, domain_clf_dir: str | None, fps: float = 4.0, namer_dir: str | None = None):
         from app.ml.track import Detector  # torch 는 여기서만 import (ml extra 없이도 서버는 뜨게)
 
         self.mat = Detector(material_dir)
@@ -53,7 +53,12 @@ class TrainedDetector(BaseDetector):
         if domain_clf_dir and (Path(domain_clf_dir) / "clf.pkl").exists():
             os.environ.setdefault("DOMAIN_CLF_DIR", domain_clf_dir)
         self.fps = fps
-        self.version = f"{self.mat.version}+{self.cond.version if self.cond else 'nocond'}"
+        self.namer = None
+        if namer_dir and (Path(namer_dir) / "config.json").exists():
+            from app.ml.contaminant_names import ContaminantNamer
+
+            self.namer = ContaminantNamer(namer_dir)
+        self.version = f"{self.mat.version}+{self.cond.version if self.cond else 'nocond'}{'+owlv2names' if self.namer else ''}"
 
     def classify(self, src, fps: float | None = None, out_dir: str | None = None) -> dict:
         from app.ml.track import run
@@ -68,13 +73,14 @@ class TrainedDetector(BaseDetector):
                     shutil.copy(p, tmp / f"{i:03d}{Path(p).suffix.lower()}")
                 src = str(tmp)
         try:
-            return run(self.mat, src, out_dir, fps or self.fps, None, self.cond, save_vis=out_dir is not None)
+            return run(self.mat, src, out_dir, fps or self.fps, None, self.cond, save_vis=out_dir is not None, namer=self.namer)
         finally:
             if tmp is not None:
                 shutil.rmtree(tmp, ignore_errors=True)
 
     def status(self) -> dict:
-        return {"backend": self.name, "version": self.version, "material_dir": str(self.mat.dir), "condition": self.cond is not None}
+        return {"backend": self.name, "version": self.version, "material_dir": str(self.mat.dir), "condition": self.cond is not None,
+                "contaminant_names": self.namer is not None}
 
 
 class ZeroShotDetector(BaseDetector):
@@ -166,7 +172,7 @@ def get_detector(backend: str | None = None) -> BaseDetector:
         mat = settings.material_model_dir
         if Path(mat).exists() and (Path(mat) / "config.json").exists():
             try:
-                det = TrainedDetector(mat, settings.condition_model_dir, settings.domain_clf_dir)
+                det = TrainedDetector(mat, settings.condition_model_dir, settings.domain_clf_dir, namer_dir=settings.contaminant_namer_dir)
                 _cache[backend] = det
                 return det
             except ImportError as e:  # torch 미설치

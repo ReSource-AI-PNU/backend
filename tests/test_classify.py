@@ -62,3 +62,17 @@ def test_classify_api_rejects_unknown_ext(monkeypatch):
     monkeypatch.setattr(agent, "get_detector", lambda: StubDetector())
     r = TestClient(app).post("/api/v1/classify", data={"stream_id": "s1"}, files=[("files", ("a.txt", io.BytesIO(b"x"), "text/plain"))])
     assert r.status_code == 415
+
+
+def test_contaminant_names_assigned_only_to_contaminants():
+    from app.ml.contaminant_names import assign_names
+
+    dets = [{"id": "d0", "kind": "item", "label": "plastic", "box": [0.1, 0.1, 0.5, 0.5]},
+            {"id": "c0", "kind": "contaminant", "label": "이물질", "box": [0.2, 0.2, 0.1, 0.1]},
+            {"id": "c1", "kind": "contaminant", "label": "이물질", "box": [0.8, 0.8, 0.1, 0.1]}]
+    preds = [{"name": "테이프", "score": 0.4, "xyxy": [200, 200, 300, 300]}, {"name": "라벨", "score": 0.6, "xyxy": [190, 190, 310, 310]},
+             {"name": "탄화물", "score": 0.9, "xyxy": [0, 0, 50, 50]}]
+    out = assign_names(preds, dets, 1000, 1000)
+    assert out[0]["label"] == "plastic" and "name_source" not in out[0]
+    assert out[1]["label"] == "라벨" and out[1]["name_source"] == "owlv2"  # 겹치는 것 중 점수 높은 이름
+    assert out[2]["label"] == "이물질"  # 안 겹치면 그대로

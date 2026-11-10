@@ -7,7 +7,7 @@ from typing import Literal
 
 from pydantic import BaseModel, Field
 
-Material = Literal["plastic", "metal", "wood", "paper", "other"]
+Material = Literal["plastic", "plastic_rigid", "plastic_film", "metal", "wood", "paper", "other"]  # v5 부터 rigid/film 분리
 
 
 class DetectedItem(BaseModel):
@@ -37,6 +37,8 @@ class DetectionOut(BaseModel):
     box: list[float] = Field(description="대표 프레임 기준 정규화 [x, y, w, h] (0~1)")
     ratio: float | None = Field(None, description="item: 프레임 대비 면적, contaminant: 들어 있는 재질 박스 대비 면적 (면적 기준 추정)")
     ratio_basis: str | None = None
+    name_source: str | None = Field(None, description="이물 이름 출처: owlv2 (라벨·테이프·금속 인서트·탄화물)")
+    name_confidence: float | None = None
     conds: list[str] | None = None
 
 
