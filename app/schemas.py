@@ -624,6 +624,124 @@ class Correction(Contract):
     knowledge_card_id: str | None = None
 
 
+# ── 차별화 기능: 실행 기록 · 협상 · 재생원료 여권 ───────────────────────
+
+AgentName = Literal[
+    "orchestrator",
+    "classify",
+    "feasibility",
+    "regulation",
+    "matching",
+    "cost-carbon",
+    "proposal",
+    "negotiation",
+    "passport",
+    "walkthrough",
+]
+
+
+class RunEvent(Contract):
+    """에이전트 실행 기록 한 줄. Agent Framework 실행 추적(OpenTelemetry)에서 만든다."""
+
+    id: str
+    at: str
+    agent: AgentName
+    actor: Literal["ai", "human"]
+    """사람이 한 일(확정·수정·승인·명령·회신)은 human"""
+    kind: Literal["start", "tool", "result", "ask", "decision", "command"]
+    title: str
+    detail: str | None = None
+    tool: str | None = None
+    refs: list[str] | None = None
+    """근거(인용 조항, 데이터 출처, 현장 지식 카드)"""
+    duration_ms: int | None = Field(default=None, ge=0)
+    step: FlowStep | None = None
+    stream_id: str | None = None
+
+
+class PickupTerms(Contract):
+    """순회 수거 조건: 요일·시간대·kg당 단가(수거 업체가 배출 기업에 주는 값)·월 수거 횟수"""
+
+    day: str
+    slot: Literal["오전", "오후"]
+    per_kg: Won
+    per_month: int = Field(ge=1)
+
+
+class Guardrails(Contract):
+    """사람이 정한 협상 범위. 에이전트는 이 안에서만 양보한다."""
+
+    min_per_kg: Won
+    days: list[str]
+    min_per_month: int = Field(ge=1)
+    max_rounds: int = Field(ge=1)
+
+
+class NegotiationRound(Contract):
+    by: Literal["ours", "theirs"]
+    at: str
+    terms: PickupTerms
+    message: str
+    within: bool
+    """이 제안이 우리 가드레일 안에 있는가"""
+    accept: bool | None = None
+
+
+class CompanyRef(Contract):
+    company_id: str
+    name: str
+
+
+class Negotiation(Contract):
+    """에이전트 간 협상(A2A). 합의안은 승인권자가 승인해야 확정된다."""
+
+    id: str
+    stream_id: str
+    counterparty: CompanyRef
+    guardrails: Guardrails
+    requested: PickupTerms
+    rounds: list[NegotiationRound]
+    status: Literal["agreed", "failed", "approved"]
+    agreed: PickupTerms | None = None
+    note: str | None = None
+    started_at: str
+    approved_by: str | None = None
+    approved_at: str | None = None
+
+
+class PassportEvidence(Contract):
+    label: str
+    value: str
+
+
+class MaterialPassport(Contract):
+    """재생원료 여권. 수거분 한 묶음의 출처·재질·중량·근거를 서명된 이력으로 남긴다.
+    hash는 여권 내용(키 순서 고정 JSON)과 앞 여권 hash로 만든 SHA-256이다."""
+
+    id: str
+    session_id: str
+    stream_id: str
+    issued_at: str
+    issuer: str
+    company: str
+    complex: str
+    stream: str
+    material: str
+    detail: str
+    origin: StreamOrigin
+    origin_basis: str
+    creditable: Literal["pcr", "pcr-unverified", "pir"]
+    """재생원료 사용 실적에 넣을 수 있는가"""
+    evidence: list[PassportEvidence]
+    weight_kg: float = Field(ge=0)
+    grade: str
+    collected_by: str
+    collected_at: str
+    route: StreamRoute
+    prev_hash: str | None = None
+    hash: str
+
+
 class Session(Contract):
     id: str
     org_id: str
@@ -649,6 +767,9 @@ class Session(Contract):
     outcomes: list[Outcome] | None = None
     """흐름별 실제 결과. 같은 흐름은 최신 기록 하나만 남긴다."""
     corrections: list[Correction]
+    run_log: list[RunEvent] | None = None
+    """에이전트 실행 기록(오래된 것부터)"""
+    negotiations: list[Negotiation] | None = None
 
 
 class MessageReply(Contract):

@@ -16,17 +16,26 @@ def load(name: str) -> dict:
     return json.loads((EXAMPLES / name).read_text(encoding="utf-8"))
 
 
+def strip_none(v):
+    """계약에서 null과 키 없음은 같은 뜻이다. API 응답은 null을 빼고 내보낸다."""
+    if isinstance(v, dict):
+        return {k: strip_none(x) for k, x in v.items() if x is not None}
+    if isinstance(v, list):
+        return [strip_none(x) for x in v]
+    return v
+
+
 def test_demo_session_round_trip() -> None:
     """프런트 시연 앱이 만든 세션을 그대로 읽고, 다시 내보내면 같은 JSON이 된다."""
     raw = load("demo_session.json")
     session = Session.model_validate(raw)
-    assert session.model_dump(mode="json", by_alias=True, exclude_none=True) == raw
+    assert session.model_dump(mode="json", by_alias=True, exclude_none=True) == strip_none(raw)
 
 
 def test_demo_collections_round_trip() -> None:
     raw = load("demo_collections.json")
     collections = DemoCollections.model_validate(raw)
-    assert collections.model_dump(mode="json", by_alias=True, exclude_none=True) == raw
+    assert collections.model_dump(mode="json", by_alias=True, exclude_none=True) == strip_none(raw)
 
 
 def test_demo_numbers_add_up() -> None:
@@ -126,4 +135,4 @@ def test_session_example_endpoint() -> None:
     body = res.json()
     assert body["status"] == "completed"
     assert body["streams"][0]["monthlyKgConfirmed"] is True
-    assert body == load("demo_session.json")
+    assert body == strip_none(load("demo_session.json"))

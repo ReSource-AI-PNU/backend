@@ -9,7 +9,7 @@
       "step": "feasibility",
       "author": "박기사",
       "orgName": "(주)녹산리사이클",
-      "createdAt": "2026-09-30T08:57:22.978Z",
+      "createdAt": "2026-10-01T15:17:50.122Z",
       "status": "adopted",
       "agrees": [
         "u1",
@@ -31,7 +31,7 @@
       "step": "classify",
       "author": "이대리",
       "orgName": "(주)세움플라텍",
-      "createdAt": "2026-10-29T08:57:22.978Z",
+      "createdAt": "2026-10-30T15:17:50.122Z",
       "status": "reviewing",
       "agrees": [
         "u2",
@@ -48,7 +48,7 @@
       "step": "feasibility",
       "author": "정과장",
       "orgName": "(주)단비화성",
-      "createdAt": "2026-10-14T08:57:22.978Z",
+      "createdAt": "2026-10-15T15:17:50.122Z",
       "status": "adopted",
       "agrees": [
         "u3",
@@ -66,7 +66,7 @@
       "step": "classify",
       "author": "최반장",
       "orgName": "(주)길벗필름",
-      "createdAt": "2026-11-04T08:57:22.978Z",
+      "createdAt": "2026-11-05T15:17:50.122Z",
       "status": "proposed",
       "agrees": [],
       "citedCount": 0
@@ -81,7 +81,7 @@
       "before": "x 0.40 y 0.54 · 20×15%",
       "after": "x 0.38 y 0.52 · 24×16%",
       "source": "현장 수정",
-      "createdAt": "2026-11-07T08:57:22.978Z",
+      "createdAt": "2026-11-08T15:17:50.123Z",
       "status": "pending"
     },
     {
@@ -92,7 +92,7 @@
       "before": "3%",
       "after": "8%",
       "source": "현장 수정",
-      "createdAt": "2026-11-08T08:57:22.978Z",
+      "createdAt": "2026-11-09T15:17:50.123Z",
       "status": "pending"
     },
     {
@@ -103,7 +103,7 @@
       "before": "예상 +300원/kg",
       "after": "실제 +270원/kg · B등급",
       "source": "업체 실제 결과",
-      "createdAt": "2026-11-08T08:57:22.978Z",
+      "createdAt": "2026-11-09T15:17:50.123Z",
       "status": "pending"
     },
     {
@@ -114,7 +114,7 @@
       "before": "공정 부산물 · PIR",
       "after": "사용 후 포장재 · PCR",
       "source": "현장 수정",
-      "createdAt": "2026-11-09T08:57:22.978Z",
+      "createdAt": "2026-11-10T15:17:50.123Z",
       "status": "pending"
     },
     {
@@ -125,7 +125,7 @@
       "before": "매각",
       "after": "열분해",
       "source": "현장 수정",
-      "createdAt": "2026-11-09T08:57:22.978Z",
+      "createdAt": "2026-11-10T15:17:50.123Z",
       "status": "pending"
     },
     {
@@ -136,41 +136,41 @@
       "before": "예상 재활용 가능",
       "after": "거절 · 이물질 15%",
       "source": "업체 실제 결과",
-      "createdAt": "2026-11-01T08:57:22.978Z",
+      "createdAt": "2026-11-02T15:17:50.123Z",
       "status": "accepted",
       "reviewer": "ML 담당"
     },
     {
-      "sessionId": "ses_2fcb93909bc9",
+      "sessionId": "ses_10ecdc65dccf",
       "kind": "outcome",
       "title": "불량 성형품 · 실제 매입 결과",
       "before": "예상 +300원/kg",
-      "after": "실제 +280원/kg · B등급",
+      "after": "실제 +290원/kg · A등급",
       "source": "업체 실제 결과",
-      "id": "lt_b0778680078f",
-      "createdAt": "2026-11-10T08:59:24.620Z",
+      "id": "lt_7f45e2c30978",
+      "createdAt": "2026-11-11T15:18:16.983Z",
       "status": "pending"
     },
     {
-      "sessionId": "ses_2fcb93909bc9",
+      "sessionId": "ses_10ecdc65dccf",
       "kind": "outcome",
       "title": "퍼지·색 혼합 · 실제 매입 결과",
       "before": "예상 -80원/kg",
-      "after": "실제 -70원/kg · B등급",
+      "after": "실제 -80원/kg · A등급",
       "source": "업체 실제 결과",
-      "id": "lt_aed19e9a5258",
-      "createdAt": "2026-11-10T08:59:27.126Z",
+      "id": "lt_e94c578739df",
+      "createdAt": "2026-11-11T15:18:19.491Z",
       "status": "pending"
     },
     {
-      "sessionId": "ses_2fcb93909bc9",
+      "sessionId": "ses_10ecdc65dccf",
       "kind": "outcome",
       "title": "원자재 포장 필름 · 실제 매입 결과",
       "before": "예상 +100원/kg",
-      "after": "실제 +110원/kg · B등급",
+      "after": "실제 +90원/kg · A등급",
       "source": "업체 실제 결과",
-      "id": "lt_33f4cdb12b35",
-      "createdAt": "2026-11-10T08:59:29.630Z",
+      "id": "lt_5dd76a9d8f86",
+      "createdAt": "2026-11-11T15:18:21.999Z",
       "status": "pending"
     }
   ],
@@ -179,7 +179,7 @@
       "id": "mdl-v3.1",
       "name": "rtdetr-waste",
       "version": "v3.1",
-      "createdAt": "2026-08-10T08:57:22.979Z",
+      "createdAt": "2026-08-11T15:17:50.123Z",
       "datasetVersion": "ds-v7",
       "status": "archived",
       "metrics": {
@@ -193,7 +193,7 @@
       "id": "mdl-v3.2",
       "name": "rtdetr-waste",
       "version": "v3.2",
-      "createdAt": "2026-09-11T08:57:22.979Z",
+      "createdAt": "2026-09-12T15:17:50.123Z",
       "datasetVersion": "ds-v8",
       "status": "production",
       "metrics": {
@@ -207,7 +207,7 @@
       "id": "mdl-v3.3-rc1",
       "name": "rtdetr-waste",
       "version": "v3.3-rc1",
-      "createdAt": "2026-10-21T08:57:22.979Z",
+      "createdAt": "2026-10-22T15:17:50.123Z",
       "datasetVersion": "ds-v9",
       "status": "candidate",
       "metrics": {
@@ -221,8 +221,8 @@
   "trainingRuns": [
     {
       "id": "tr-0907",
-      "startedAt": "2026-08-09T08:57:22.980Z",
-      "finishedAt": "2026-08-10T08:57:22.980Z",
+      "startedAt": "2026-08-10T15:17:50.124Z",
+      "finishedAt": "2026-08-11T15:17:50.124Z",
       "datasetVersion": "ds-v7",
       "baseModel": "v3.0",
       "status": "succeeded",
@@ -232,8 +232,8 @@
     },
     {
       "id": "tr-1009",
-      "startedAt": "2026-09-10T08:57:22.980Z",
-      "finishedAt": "2026-09-11T08:57:22.980Z",
+      "startedAt": "2026-09-11T15:17:50.124Z",
+      "finishedAt": "2026-09-12T15:17:50.124Z",
       "datasetVersion": "ds-v8",
       "baseModel": "v3.1",
       "status": "succeeded",
@@ -243,8 +243,8 @@
     },
     {
       "id": "tr-1019",
-      "startedAt": "2026-10-20T08:57:22.980Z",
-      "finishedAt": "2026-10-21T08:57:22.980Z",
+      "startedAt": "2026-10-21T15:17:50.124Z",
+      "finishedAt": "2026-10-22T15:17:50.124Z",
       "datasetVersion": "ds-v9",
       "baseModel": "v3.2",
       "status": "succeeded",
@@ -256,7 +256,7 @@
   "datasetVersions": [
     {
       "id": "ds-v7",
-      "createdAt": "2026-08-06T08:57:22.979Z",
+      "createdAt": "2026-08-07T15:17:50.123Z",
       "images": 3960,
       "newLabels": 210,
       "fromCorrections": 180,
@@ -267,7 +267,7 @@
     },
     {
       "id": "ds-v8",
-      "createdAt": "2026-09-07T08:57:22.979Z",
+      "createdAt": "2026-09-08T15:17:50.123Z",
       "images": 4480,
       "newLabels": 520,
       "fromCorrections": 410,
@@ -278,7 +278,7 @@
     },
     {
       "id": "ds-v9",
-      "createdAt": "2026-10-20T08:57:22.979Z",
+      "createdAt": "2026-10-21T15:17:50.123Z",
       "images": 4820,
       "newLabels": 340,
       "fromCorrections": 290,
@@ -290,79 +290,85 @@
   ],
   "outbox": [
     {
-      "id": "ob_278ca1588c70",
-      "sessionId": "ses_2fcb93909bc9",
-      "orgId": "org_99f61d8d68c0",
+      "id": "ob_342b75f82a25",
+      "sessionId": "ses_10ecdc65dccf",
+      "orgId": "org_36b164dc0dc8",
       "fromOrg": "(주)한빛정밀",
       "toCompanyId": "noksan-008",
       "toName": "(주)새길자원",
       "kind": "pickup",
       "subject": "[순회 수거 요청] LDPE 스트레치 필름 월 1,230kg · 3개 사업장",
-      "sentAt": "2026-11-10T08:57:47.023Z",
+      "sentAt": "2026-11-11T15:18:03.581Z",
       "status": "completed",
-      "streamId": "st_02955736f5d1"
+      "streamId": "st_6b9310c74503",
+      "reply": {
+        "decision": "accepted",
+        "at": "2026-11-11T15:18:16.726Z",
+        "by": "(주)새길자원 에이전트",
+        "reason": "목요일 오전 · 140원/kg · 월 2회"
+      }
     },
     {
-      "id": "ob_6f11a78d2694",
-      "sessionId": "ses_2fcb93909bc9",
-      "orgId": "org_99f61d8d68c0",
+      "id": "ob_3c2dc1b9e836",
+      "sessionId": "ses_10ecdc65dccf",
+      "orgId": "org_36b164dc0dc8",
       "fromOrg": "(주)한빛정밀",
       "toCompanyId": "noksan-017",
       "toName": "하늬로지스",
       "kind": "bundle-invite",
       "subject": "[묶음 수거 제안] 원자재 포장 필름 순회 수거 참여 요청",
-      "sentAt": "2026-11-10T08:57:47.023Z",
+      "sentAt": "2026-11-11T15:18:03.581Z",
       "status": "replied",
-      "streamId": "st_02955736f5d1",
+      "streamId": "st_6b9310c74503",
       "reply": {
         "decision": "accepted",
-        "at": "2026-11-10T08:57:57.070Z",
+        "at": "2026-11-11T15:18:05.612Z",
         "by": "하늬로지스 담당자"
       }
     },
     {
-      "id": "ob_4df5e950de11",
-      "sessionId": "ses_2fcb93909bc9",
-      "orgId": "org_99f61d8d68c0",
+      "id": "ob_de7cde96e1a9",
+      "sessionId": "ses_10ecdc65dccf",
+      "orgId": "org_36b164dc0dc8",
       "fromOrg": "(주)한빛정밀",
       "toCompanyId": "noksan-018",
       "toName": "아름푸드(주)",
       "kind": "bundle-invite",
       "subject": "[묶음 수거 제안] 원자재 포장 필름 순회 수거 참여 요청",
-      "sentAt": "2026-11-10T08:57:47.023Z",
+      "sentAt": "2026-11-11T15:18:03.581Z",
       "status": "replied",
-      "streamId": "st_02955736f5d1",
+      "streamId": "st_6b9310c74503",
       "reply": {
         "decision": "accepted",
-        "at": "2026-11-10T08:57:54.931Z",
+        "at": "2026-11-11T15:18:08.892Z",
         "by": "아름푸드(주) 담당자"
       }
     },
     {
-      "id": "ob_9ba7f7bb63ca",
-      "sessionId": "ses_2fcb93909bc9",
-      "orgId": "org_99f61d8d68c0",
+      "id": "ob_11a45fffcc1f",
+      "sessionId": "ses_10ecdc65dccf",
+      "orgId": "org_36b164dc0dc8",
       "fromOrg": "(주)한빛정밀",
       "toCompanyId": "noksan-008",
       "toName": "(주)새길자원",
       "kind": "quote",
       "subject": "[매각 견적 요청] PP 불량 하우징 월 400kg",
-      "sentAt": "2026-11-10T08:57:47.024Z",
+      "sentAt": "2026-11-11T15:18:03.582Z",
       "status": "completed",
-      "streamId": "st_b7b2281daa19"
+      "streamId": "st_b548298c885c"
     },
     {
-      "id": "ob_1f401dc5c7a4",
-      "sessionId": "ses_2fcb93909bc9",
-      "orgId": "org_99f61d8d68c0",
+      "id": "ob_af26ef33e330",
+      "sessionId": "ses_10ecdc65dccf",
+      "orgId": "org_36b164dc0dc8",
       "fromOrg": "(주)한빛정밀",
       "toCompanyId": "ext_namhae_pyro",
       "toName": "(주)남해열분해",
       "kind": "quote",
       "subject": "[열분해 위탁 요청] PP+ABS 퍼지 덩어리 월 250kg",
-      "sentAt": "2026-11-10T08:57:47.024Z",
+      "sentAt": "2026-11-11T15:18:03.582Z",
       "status": "completed",
-      "streamId": "st_a73222cadab6"
+      "streamId": "st_491e0024fb5a"
     }
   ],
   "organizations": [
@@ -380,21 +386,111 @@
           "storage": "야외·지붕"
         }
       ],
-      "id": "org_99f61d8d68c0",
+      "id": "org_36b164dc0dc8",
       "ownerId": "dev:kim@hanbit.example",
-      "createdAt": "2026-11-10T08:57:21.745Z",
-      "updatedAt": "2026-11-10T08:57:21.745Z"
+      "createdAt": "2026-11-11T15:17:48.894Z",
+      "updatedAt": "2026-11-11T15:17:48.894Z"
     }
   ],
   "members": [
     {
-      "id": "mem_owner_org_99f61d8d68c0",
-      "orgId": "org_99f61d8d68c0",
+      "id": "mem_owner_org_36b164dc0dc8",
+      "orgId": "org_36b164dc0dc8",
       "name": "김담당",
       "email": "kim@hanbit.example",
       "role": "관리자",
       "status": "active",
-      "invitedAt": "2026-11-10T08:57:21.745Z"
+      "invitedAt": "2026-11-11T15:17:48.894Z"
+    }
+  ],
+  "passports": [
+    {
+      "id": "RP-20261112-0001",
+      "sessionId": "ses_10ecdc65dccf",
+      "streamId": "st_b548298c885c",
+      "issuedAt": "2026-11-11T15:18:16.985Z",
+      "issuer": "Re:Source AI (시연)",
+      "company": "(주)한빛정밀",
+      "complex": "녹산국가산업단지",
+      "stream": "불량 성형품",
+      "material": "PP",
+      "detail": "PP 불량 하우징",
+      "origin": "PIR",
+      "originBasis": "AI 추정 · 공정 부산물(검사 공정)",
+      "creditable": "pir",
+      "evidence": [
+        {
+          "label": "식별 모델",
+          "value": "rtdetr-waste v3.2 · 신뢰도 0.93"
+        },
+        {
+          "label": "이물(면적 추정)",
+          "value": "6%"
+        },
+        {
+          "label": "원자재 입고 기록",
+          "value": "해당 없음(공정 부산물)"
+        },
+        {
+          "label": "수거 방식",
+          "value": "단독 매각"
+        },
+        {
+          "label": "계량",
+          "value": "담당자 기록 · 400kg"
+        }
+      ],
+      "weightKg": 400,
+      "grade": "A등급",
+      "collectedBy": "(주)새길자원",
+      "collectedAt": "2026-11-11T15:18:16.982Z",
+      "route": "sell",
+      "prevHash": null,
+      "hash": "0b2a99a935658029593290f633cd1dc6c7ed99c1663438e2889baa011611b01b"
+    },
+    {
+      "id": "RP-20261112-0002",
+      "sessionId": "ses_10ecdc65dccf",
+      "streamId": "st_6b9310c74503",
+      "issuedAt": "2026-11-11T15:18:22.000Z",
+      "issuer": "Re:Source AI (시연)",
+      "company": "(주)한빛정밀",
+      "complex": "녹산국가산업단지",
+      "stream": "원자재 포장 필름",
+      "material": "LDPE",
+      "detail": "LDPE 스트레치 필름",
+      "origin": "PCR",
+      "originBasis": "AI 추정 · 공장이 쓰고 버린 포장재 · 입고 기록 있음",
+      "creditable": "pcr",
+      "evidence": [
+        {
+          "label": "식별 모델",
+          "value": "rtdetr-waste v3.2 · 신뢰도 0.93"
+        },
+        {
+          "label": "이물(면적 추정)",
+          "value": "3%"
+        },
+        {
+          "label": "원자재 입고 기록",
+          "value": "있음"
+        },
+        {
+          "label": "수거 방식",
+          "value": "순회 수거 · 3개 사업장 · 사업장별 계량"
+        },
+        {
+          "label": "계량",
+          "value": "담당자 기록 · 300kg"
+        }
+      ],
+      "weightKg": 300,
+      "grade": "A등급",
+      "collectedBy": "(주)새길자원",
+      "collectedAt": "2026-11-11T15:18:21.998Z",
+      "route": "bundle",
+      "prevHash": "0b2a99a935658029593290f633cd1dc6c7ed99c1663438e2889baa011611b01b",
+      "hash": "314cc636894f082c912a274032ad7a6f0ad8f1e6d61e01954e6b240871922f9f"
     }
   ]
 }

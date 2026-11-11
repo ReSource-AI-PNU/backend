@@ -13,6 +13,7 @@ from app.schemas import (
     DatasetVersion,
     KnowledgeCard,
     LabelTask,
+    MaterialPassport,
     Member,
     ModelVersion,
     Organization,
@@ -37,6 +38,7 @@ class DemoCollections(Contract):
     outbox: list[OutboxMessage]
     organizations: list[Organization]
     members: list[Member]
+    passports: list[MaterialPassport] | None = None
 
 
 @lru_cache

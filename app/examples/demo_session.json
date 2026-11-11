@@ -1,16 +1,16 @@
 {
-  "id": "ses_2fcb93909bc9",
-  "orgId": "org_99f61d8d68c0",
+  "id": "ses_10ecdc65dccf",
+  "orgId": "org_36b164dc0dc8",
   "ownerId": "dev:kim@hanbit.example",
   "complexId": "noksan",
   "title": "(주)한빛정밀 폐플라스틱 진단 · 4개 흐름",
-  "createdAt": "2026-11-10T08:57:22.981Z",
-  "updatedAt": "2026-11-10T08:59:29.630Z",
+  "createdAt": "2026-11-11T15:17:50.124Z",
+  "updatedAt": "2026-11-11T15:18:22.003Z",
   "status": "completed",
   "step": "proposal",
   "streams": [
     {
-      "id": "st_e4bb22819f14",
+      "id": "st_d7ca23cd1c42",
       "name": "스프루·러너",
       "process": "사출 1·2라인",
       "media": [
@@ -31,7 +31,7 @@
         "frames": 24,
         "detections": [
           {
-            "id": "st_e4bb22819f14_main",
+            "id": "st_d7ca23cd1c42_main",
             "label": "PP 사출 스프루·러너",
             "kind": "item",
             "confidence": 0.93,
@@ -56,7 +56,7 @@
       "monthlyKgConfirmed": true
     },
     {
-      "id": "st_b7b2281daa19",
+      "id": "st_b548298c885c",
       "name": "불량 성형품",
       "process": "검사 공정",
       "media": [
@@ -77,7 +77,7 @@
         "frames": 24,
         "detections": [
           {
-            "id": "st_b7b2281daa19_main",
+            "id": "st_b548298c885c_main",
             "label": "PP 불량 하우징",
             "kind": "item",
             "confidence": 0.93,
@@ -90,7 +90,7 @@
             "source": "ai"
           },
           {
-            "id": "st_b7b2281daa19_c1",
+            "id": "st_b548298c885c_c1",
             "label": "종이 라벨",
             "kind": "contaminant",
             "confidence": 0.82,
@@ -104,7 +104,7 @@
             "source": "ai"
           },
           {
-            "id": "st_b7b2281daa19_c2",
+            "id": "st_b548298c885c_c2",
             "label": "금속 인서트",
             "kind": "contaminant",
             "confidence": 0.75,
@@ -130,7 +130,7 @@
       "monthlyKgConfirmed": true
     },
     {
-      "id": "st_a73222cadab6",
+      "id": "st_491e0024fb5a",
       "name": "퍼지·색 혼합",
       "process": "색 교체·금형 세척",
       "media": [
@@ -151,7 +151,7 @@
         "frames": 24,
         "detections": [
           {
-            "id": "st_a73222cadab6_main",
+            "id": "st_491e0024fb5a_main",
             "label": "PP+ABS 퍼지 덩어리",
             "kind": "item",
             "confidence": 0.81,
@@ -164,7 +164,7 @@
             "source": "ai"
           },
           {
-            "id": "st_a73222cadab6_c1",
+            "id": "st_491e0024fb5a_c1",
             "label": "ABS 혼입",
             "kind": "contaminant",
             "confidence": 0.82,
@@ -178,7 +178,7 @@
             "source": "ai"
           },
           {
-            "id": "st_a73222cadab6_c2",
+            "id": "st_491e0024fb5a_c2",
             "label": "탄화물",
             "kind": "contaminant",
             "confidence": 0.75,
@@ -204,7 +204,7 @@
       "monthlyKgConfirmed": true
     },
     {
-      "id": "st_02955736f5d1",
+      "id": "st_6b9310c74503",
       "name": "원자재 포장 필름",
       "process": "원료 입고",
       "media": [
@@ -225,7 +225,7 @@
         "frames": 24,
         "detections": [
           {
-            "id": "st_02955736f5d1_main",
+            "id": "st_6b9310c74503_main",
             "label": "LDPE 스트레치 필름",
             "kind": "item",
             "confidence": 0.93,
@@ -238,7 +238,7 @@
             "source": "ai"
           },
           {
-            "id": "st_02955736f5d1_c1",
+            "id": "st_6b9310c74503_c1",
             "label": "종이 태그",
             "kind": "contaminant",
             "confidence": 0.82,
@@ -252,7 +252,7 @@
             "source": "ai"
           },
           {
-            "id": "st_02955736f5d1_c2",
+            "id": "st_6b9310c74503_c2",
             "label": "테이프",
             "kind": "contaminant",
             "confidence": 0.75,
@@ -291,23 +291,776 @@
       ]
     },
     {
-      "id": "pcr-proof:st_02955736f5d1",
+      "id": "pcr-proof:st_6b9310c74503",
       "step": "regulation",
-      "streamId": "st_02955736f5d1",
+      "streamId": "st_6b9310c74503",
       "text": "원자재 포장 필름의 입고 기록(원자재 납품서·포장 사양)이 있나요?",
       "why": "공장이 쓰고 버린 포장재를 사용 후(PCR) 재생원료로 팔려면 출처를 증명해야 합니다.",
       "kind": "choice",
       "options": [
         "있음",
         "없음"
-      ]
+      ],
+      "answer": "있음"
     }
   ],
   "corrections": [],
+  "runLog": [
+    {
+      "agent": "orchestrator",
+      "actor": "ai",
+      "kind": "start",
+      "title": "진단 시작 · 흐름 4개",
+      "detail": "흐름마다 식별·분류 에이전트를 돌린 뒤 경로 판정부터 이행안까지 차례로 넘깁니다. 외부 발송은 사람이 승인하기 전까지 하지 않습니다.",
+      "durationMs": 300,
+      "id": "ev_55564d458ef1",
+      "at": "2026-11-11T15:17:50.124Z"
+    },
+    {
+      "agent": "classify",
+      "actor": "ai",
+      "kind": "start",
+      "title": "식별·분류 시작 · 사진·영상 4개",
+      "step": "classify",
+      "durationMs": 200,
+      "id": "ev_734d98d3529e",
+      "at": "2026-11-11T15:17:50.424Z"
+    },
+    {
+      "agent": "classify",
+      "actor": "ai",
+      "kind": "tool",
+      "tool": "rtdetr-waste v3.2 · 재질·이물 탐지",
+      "title": "스프루·러너 · PP 단일 · 이물 0%",
+      "detail": "PP 사출 스프루·러너. 박스 1개, 신뢰도 0.93. 사진으로는 부피만 보이므로 월 발생량은 담당자 확인이 필요합니다.",
+      "durationMs": 3600,
+      "step": "classify",
+      "streamId": "st_d7ca23cd1c42",
+      "id": "ev_38e42038e54b",
+      "at": "2026-11-11T15:17:55.762Z"
+    },
+    {
+      "agent": "classify",
+      "actor": "ai",
+      "kind": "result",
+      "tool": "출처 규칙(공정명·흐름 이름)",
+      "title": "스프루·러너 출처 추정 · 공정 부산물(PIR)",
+      "detail": "출처는 사진으로 가를 수 없어 공정명과 흐름 이름으로 추정합니다. 담당자가 확인해야 확정됩니다.",
+      "durationMs": 150,
+      "step": "classify",
+      "streamId": "st_d7ca23cd1c42",
+      "id": "ev_b8153edac636",
+      "at": "2026-11-11T15:17:59.362Z"
+    },
+    {
+      "agent": "classify",
+      "actor": "ai",
+      "kind": "tool",
+      "tool": "rtdetr-waste v3.2 · 재질·이물 탐지",
+      "title": "불량 성형품 · PP 단일 · 이물 6%",
+      "detail": "PP 불량 하우징. 박스 3개, 신뢰도 0.93. 사진으로는 부피만 보이므로 월 발생량은 담당자 확인이 필요합니다.",
+      "durationMs": 3600,
+      "step": "classify",
+      "streamId": "st_b548298c885c",
+      "id": "ev_52aed564d6c0",
+      "at": "2026-11-11T15:17:59.512Z"
+    },
+    {
+      "agent": "classify",
+      "actor": "ai",
+      "kind": "result",
+      "tool": "출처 규칙(공정명·흐름 이름)",
+      "title": "불량 성형품 출처 추정 · 공정 부산물(PIR)",
+      "detail": "출처는 사진으로 가를 수 없어 공정명과 흐름 이름으로 추정합니다. 담당자가 확인해야 확정됩니다.",
+      "durationMs": 150,
+      "step": "classify",
+      "streamId": "st_b548298c885c",
+      "id": "ev_c3bd6b05b43f",
+      "at": "2026-11-11T15:18:03.112Z"
+    },
+    {
+      "agent": "classify",
+      "actor": "ai",
+      "kind": "tool",
+      "tool": "rtdetr-waste v3.2 · 재질·이물 탐지",
+      "title": "퍼지·색 혼합 · PP+ABS 혼합 · 이물 40%",
+      "detail": "PP+ABS 퍼지 덩어리. 박스 3개, 신뢰도 0.81. 사진으로는 부피만 보이므로 월 발생량은 담당자 확인이 필요합니다.",
+      "durationMs": 3600,
+      "step": "classify",
+      "streamId": "st_491e0024fb5a",
+      "id": "ev_0b4f3235d577",
+      "at": "2026-11-11T15:18:03.262Z"
+    },
+    {
+      "agent": "classify",
+      "actor": "ai",
+      "kind": "result",
+      "tool": "출처 규칙(공정명·흐름 이름)",
+      "title": "퍼지·색 혼합 출처 추정 · 공정 부산물(PIR)",
+      "detail": "출처는 사진으로 가를 수 없어 공정명과 흐름 이름으로 추정합니다. 담당자가 확인해야 확정됩니다.",
+      "durationMs": 150,
+      "step": "classify",
+      "streamId": "st_491e0024fb5a",
+      "id": "ev_724a02259384",
+      "at": "2026-11-11T15:18:06.862Z"
+    },
+    {
+      "agent": "classify",
+      "actor": "ai",
+      "kind": "tool",
+      "tool": "rtdetr-waste v3.2 · 재질·이물 탐지",
+      "title": "원자재 포장 필름 · LDPE 단일 · 이물 3%",
+      "detail": "LDPE 스트레치 필름. 박스 3개, 신뢰도 0.93. 사진으로는 부피만 보이므로 월 발생량은 담당자 확인이 필요합니다.",
+      "durationMs": 3600,
+      "step": "classify",
+      "streamId": "st_6b9310c74503",
+      "id": "ev_381f30359154",
+      "at": "2026-11-11T15:18:07.012Z"
+    },
+    {
+      "agent": "classify",
+      "actor": "ai",
+      "kind": "result",
+      "tool": "출처 규칙(공정명·흐름 이름)",
+      "title": "원자재 포장 필름 출처 추정 · 사용 후 포장재(PCR)",
+      "detail": "출처는 사진으로 가를 수 없어 공정명과 흐름 이름으로 추정합니다. 담당자가 확인해야 확정됩니다.",
+      "durationMs": 150,
+      "step": "classify",
+      "streamId": "st_6b9310c74503",
+      "id": "ev_623705346a02",
+      "at": "2026-11-11T15:18:10.612Z"
+    },
+    {
+      "agent": "classify",
+      "actor": "ai",
+      "kind": "ask",
+      "title": "월 발생량 확인 요청 · 흐름 4개",
+      "detail": "사진 한 장의 양은 월 발생량이 아닙니다. 계량 기록이나 담당자 기억으로 확정해 주세요.",
+      "step": "classify",
+      "durationMs": 100,
+      "id": "ev_b45f1312f554",
+      "at": "2026-11-11T15:18:10.762Z"
+    },
+    {
+      "agent": "classify",
+      "actor": "human",
+      "kind": "decision",
+      "title": "월 발생량을 AI 추정값으로 확정 · 흐름 4개",
+      "step": "classify",
+      "id": "ev_c57d80b2133c",
+      "at": "2026-11-11T15:17:56.694Z"
+    },
+    {
+      "agent": "feasibility",
+      "actor": "ai",
+      "kind": "start",
+      "title": "경로 판정 시작 · 흐름 4개",
+      "step": "feasibility",
+      "durationMs": 200,
+      "id": "ev_d7a78d7bd80e",
+      "at": "2026-11-11T15:17:58.199Z"
+    },
+    {
+      "agent": "feasibility",
+      "actor": "ai",
+      "kind": "tool",
+      "tool": "가격 데이터 · 재활용가능자원 가격조사(가정값)",
+      "title": "PP 압축품·LDPE 필름 단가와 소각 위탁비 조회",
+      "refs": [
+        "부산권역 PP 압축품 300원/kg, LDPE 필름 150원/kg (재활용가능자원 가격조사(가정값))",
+        "혼합 사업장폐기물 소각 위탁 250원/kg(톤당 25만 원) (업체 인터뷰 평균(가정값))",
+        "공정 부산물은 재생원료 의무 실적에 들어가지 않습니다. 공장이 쓰고 버린 포장재는 사용 후 원료로 인정될 여지가 있습니다(해석 확인 필요). (재생원료 사용의무 고시 별표2 비고3, EU PPWR 제7조)"
+      ],
+      "durationMs": 700,
+      "step": "feasibility",
+      "id": "ev_90e1086d822a",
+      "at": "2026-11-11T15:17:58.399Z"
+    },
+    {
+      "agent": "feasibility",
+      "actor": "ai",
+      "kind": "tool",
+      "tool": "현장 지식 카드 검색",
+      "title": "채택된 현장 지식 2개 인용",
+      "refs": [
+        "비 온 다음 날, 야외에 둔 PP 베일 → 수분이 5% 넘는 것으로 보고 한 등급 낮춰 매입한다 ((주)녹산리사이클 · 동의 7명)",
+        "퍼지 덩어리에 검은 줄무늬가 섞여 있을 때 → ABS 혼입으로 보고 매각 대신 열분해로 보낸다 ((주)단비화성 · 동의 3명)"
+      ],
+      "durationMs": 400,
+      "step": "feasibility",
+      "id": "ev_fcd9117f0bf3",
+      "at": "2026-11-11T15:17:59.099Z"
+    },
+    {
+      "agent": "feasibility",
+      "actor": "ai",
+      "kind": "decision",
+      "title": "스프루·러너 → 공정 재투입 · 월 +510,000원",
+      "detail": "깨끗한 단일 PP라 분쇄해서 같은 공정에 다시 넣을 수 있습니다(신재 대비 10% 이내 혼합). 다른 경로: 매각 +300원/kg, 열분해 −80원/kg, 소각 −250원/kg.",
+      "durationMs": 350,
+      "step": "feasibility",
+      "streamId": "st_d7ca23cd1c42",
+      "id": "ev_85defca64b4b",
+      "at": "2026-11-11T15:17:59.499Z"
+    },
+    {
+      "agent": "feasibility",
+      "actor": "ai",
+      "kind": "decision",
+      "title": "불량 성형품 → 매각 · 월 +90,000원",
+      "detail": "단일 PP이고 이물이 6%라, 이물을 떼면 재생원료 업체에 팔 수 있습니다. 다른 경로: 공정 재투입 +900원/kg, 열분해 −80원/kg, 소각 −250원/kg.",
+      "durationMs": 350,
+      "step": "feasibility",
+      "streamId": "st_b548298c885c",
+      "id": "ev_b758b33a53ac",
+      "at": "2026-11-11T15:17:59.849Z"
+    },
+    {
+      "agent": "feasibility",
+      "actor": "ai",
+      "kind": "decision",
+      "title": "퍼지·색 혼합 → 열분해 · 월 −20,000원",
+      "detail": "PP+ABS 재질이 섞여 기계적 재활용이 어렵습니다. 소각보다 싼 열분해 위탁이 낫습니다. 다른 경로: 공정 재투입 +900원/kg, 매각 +300원/kg, 소각 −250원/kg.",
+      "durationMs": 350,
+      "step": "feasibility",
+      "streamId": "st_491e0024fb5a",
+      "id": "ev_71451dd603ca",
+      "at": "2026-11-11T15:18:00.199Z"
+    },
+    {
+      "agent": "feasibility",
+      "actor": "ai",
+      "kind": "decision",
+      "title": "원자재 포장 필름 → 단지 묶음 매각 · 월 +15,000원",
+      "detail": "공장이 쓰고 버린 LDPE 포장재라 사용 후(PCR) 원료가 됩니다. 월 300kg은 혼자 팔기엔 적어 같은 단지 기업과 묶습니다. 다른 경로: 매각 −40원/kg, 열분해 −80원/kg, 소각 −250원/kg.",
+      "durationMs": 350,
+      "step": "feasibility",
+      "streamId": "st_6b9310c74503",
+      "id": "ev_392862fa8313",
+      "at": "2026-11-11T15:18:00.549Z"
+    },
+    {
+      "agent": "feasibility",
+      "actor": "ai",
+      "kind": "result",
+      "title": "공장 월 손익 −387,500원 → +595,000원",
+      "detail": "월 +982,500원 개선, 탄소 +1.21 → −2.06 tCO₂e/월",
+      "step": "feasibility",
+      "durationMs": 100,
+      "id": "ev_d20577d7e1a6",
+      "at": "2026-11-11T15:18:00.899Z"
+    },
+    {
+      "agent": "regulation",
+      "actor": "ai",
+      "kind": "tool",
+      "tool": "Azure AI Search · 법령 조항 색인",
+      "title": "흐름별 경로에 맞는 조항 6건 검색",
+      "refs": [
+        "「폐기물관리법」 제2조(정의) 관련 해석 · 사업장 내 원료 재사용",
+        "「폐기물관리법」 제25조 폐기물처리업 허가 · 재활용 유형",
+        "「순환경제사회 전환 촉진법」 순환자원 인정 요건",
+        "「폐기물관리법 시행규칙」 재활용 유형(열분해유 생산)",
+        "재생원료 사용의무 고시(기후에너지환경부고시 제2025-165호) 별표2 비고3",
+        "「폐기물관리법」 제18조제5항, 시행규칙 제21조제1항제7호의2, 공동처리 업무처리지침"
+      ],
+      "durationMs": 1300,
+      "step": "regulation",
+      "id": "ev_9c74fbc59be0",
+      "at": "2026-11-11T15:17:58.455Z"
+    },
+    {
+      "agent": "regulation",
+      "actor": "ai",
+      "kind": "result",
+      "title": "충족 4건 · 확인 필요 2건",
+      "detail": "경로는 모두 가능하지만 확인할 정보가 2건 남았습니다. 답하지 않으면 보수적인 조건(일반 재생원료 매각)으로 계산합니다.",
+      "step": "regulation",
+      "durationMs": 200,
+      "id": "ev_007fb6f4094b",
+      "at": "2026-11-11T15:17:59.755Z"
+    },
+    {
+      "agent": "regulation",
+      "actor": "ai",
+      "kind": "ask",
+      "title": "되묻기 · 매각할 흐름의 성분분석표가 있나요?",
+      "detail": "순환자원 인정 신청과 일부 매입처는 유해물질 기준 충족 증빙을 요구합니다.",
+      "step": "regulation",
+      "durationMs": 80,
+      "id": "ev_f35962d77080",
+      "at": "2026-11-11T15:17:59.955Z"
+    },
+    {
+      "agent": "regulation",
+      "actor": "ai",
+      "kind": "ask",
+      "title": "되묻기 · 원자재 포장 필름의 입고 기록(원자재 납품서·포장 사양)이 있나요?",
+      "detail": "공장이 쓰고 버린 포장재를 사용 후(PCR) 재생원료로 팔려면 출처를 증명해야 합니다.",
+      "step": "regulation",
+      "streamId": "st_6b9310c74503",
+      "durationMs": 80,
+      "id": "ev_b3306d5070b1",
+      "at": "2026-11-11T15:18:00.035Z"
+    },
+    {
+      "agent": "regulation",
+      "actor": "human",
+      "kind": "decision",
+      "title": "답변 · 원자재 포장 필름의 입고 기록(원자재 납품서·포장 사양)이 있나요? → 있음",
+      "step": "regulation",
+      "id": "ev_ddddf7b09652",
+      "at": "2026-11-11T15:17:59.508Z"
+    },
+    {
+      "agent": "regulation",
+      "actor": "ai",
+      "kind": "tool",
+      "tool": "Azure AI Search · 법령 조항 색인",
+      "title": "흐름별 경로에 맞는 조항 6건 검색",
+      "refs": [
+        "「폐기물관리법」 제2조(정의) 관련 해석 · 사업장 내 원료 재사용",
+        "「폐기물관리법」 제25조 폐기물처리업 허가 · 재활용 유형",
+        "「순환경제사회 전환 촉진법」 순환자원 인정 요건",
+        "「폐기물관리법 시행규칙」 재활용 유형(열분해유 생산)",
+        "재생원료 사용의무 고시(기후에너지환경부고시 제2025-165호) 별표2 비고3",
+        "「폐기물관리법」 제18조제5항, 시행규칙 제21조제1항제7호의2, 공동처리 업무처리지침"
+      ],
+      "durationMs": 1300,
+      "step": "regulation",
+      "id": "ev_783ab863800a",
+      "at": "2026-11-11T15:17:59.510Z"
+    },
+    {
+      "agent": "regulation",
+      "actor": "ai",
+      "kind": "result",
+      "title": "충족 5건 · 확인 필요 1건",
+      "detail": "경로는 모두 가능하지만 확인할 정보가 1건 남았습니다. 답하지 않으면 보수적인 조건(일반 재생원료 매각)으로 계산합니다.",
+      "step": "regulation",
+      "durationMs": 200,
+      "id": "ev_ef601c0060d5",
+      "at": "2026-11-11T15:18:00.810Z"
+    },
+    {
+      "agent": "regulation",
+      "actor": "ai",
+      "kind": "ask",
+      "title": "되묻기 · 매각할 흐름의 성분분석표가 있나요?",
+      "detail": "순환자원 인정 신청과 일부 매입처는 유해물질 기준 충족 증빙을 요구합니다.",
+      "step": "regulation",
+      "durationMs": 80,
+      "id": "ev_dd7e837d8e6d",
+      "at": "2026-11-11T15:18:01.010Z"
+    },
+    {
+      "agent": "matching",
+      "actor": "ai",
+      "kind": "tool",
+      "tool": "PostGIS · 단지 기업 거리 계산",
+      "title": "같은 단지에서 같은 재질·출처 흐름을 내는 기업 찾기",
+      "durationMs": 600,
+      "step": "matching",
+      "id": "ev_91c7d3603ba5",
+      "at": "2026-11-11T15:18:02.016Z"
+    },
+    {
+      "agent": "matching",
+      "actor": "ai",
+      "kind": "tool",
+      "tool": "허가 품목 대조",
+      "title": "수거 업체 (주)새길자원 선택 · 제외 2곳",
+      "refs": [
+        "(주)미소환경: 폐플라스틱(필름) 허가 품목 없음",
+        "(주)동남환경: 폐플라스틱(필름) 허가 품목 없음"
+      ],
+      "durationMs": 400,
+      "step": "matching",
+      "streamId": "st_6b9310c74503",
+      "id": "ev_1fa7896d4c27",
+      "at": "2026-11-11T15:18:02.616Z"
+    },
+    {
+      "agent": "matching",
+      "actor": "ai",
+      "kind": "tool",
+      "tool": "OR-Tools · 순회 순서",
+      "title": "순회 순서 계산 · 약 8.7km",
+      "durationMs": 500,
+      "step": "matching",
+      "streamId": "st_6b9310c74503",
+      "id": "ev_5f04622b246c",
+      "at": "2026-11-11T15:18:03.016Z"
+    },
+    {
+      "agent": "matching",
+      "actor": "ai",
+      "kind": "result",
+      "title": "원자재 포장 필름 묶음 3개사 · 적재율 30% → 123%",
+      "detail": "월 합계 1,230kg. 다른 회사 물량은 배출 기업 화면에서 숨깁니다.",
+      "durationMs": 150,
+      "step": "matching",
+      "streamId": "st_6b9310c74503",
+      "id": "ev_31444ea91569",
+      "at": "2026-11-11T15:18:03.516Z"
+    },
+    {
+      "agent": "matching",
+      "actor": "ai",
+      "kind": "result",
+      "title": "불량 성형품 거래처 · (주)새길자원",
+      "detail": "PP 재생원료 매입 · 허가 품목 폐플라스틱·포장재",
+      "durationMs": 120,
+      "step": "matching",
+      "streamId": "st_b548298c885c",
+      "id": "ev_5ce6fb9abee3",
+      "at": "2026-11-11T15:18:03.666Z"
+    },
+    {
+      "agent": "matching",
+      "actor": "ai",
+      "kind": "result",
+      "title": "퍼지·색 혼합 거래처 · (주)남해열분해",
+      "detail": "혼합 플라스틱 열분해유 생산 · 반입비 80원/kg(가정)",
+      "durationMs": 120,
+      "step": "matching",
+      "streamId": "st_491e0024fb5a",
+      "id": "ev_aa9186951b68",
+      "at": "2026-11-11T15:18:03.786Z"
+    },
+    {
+      "agent": "cost-carbon",
+      "actor": "ai",
+      "kind": "tool",
+      "tool": "Azure Maps · 도로 거리",
+      "title": "순회 수거·매각 운송 거리 계산",
+      "durationMs": 800,
+      "step": "cost-carbon",
+      "id": "ev_ebf6f02ee99a",
+      "at": "2026-11-11T15:18:02.266Z"
+    },
+    {
+      "agent": "cost-carbon",
+      "actor": "ai",
+      "kind": "tool",
+      "tool": "배출계수·KAU 시세",
+      "title": "흐름별 순 탄소와 배출권 환산",
+      "refs": [
+        "탄소: 신재 대비 회피: 매각 −1.5, 재투입 −1.6, 열분해 −0.3 / 소각 +0.78, 매립 +0.51 tCO₂e/t",
+        "KAU: 2026-11 종가 9,000원/t(가정)"
+      ],
+      "durationMs": 500,
+      "step": "cost-carbon",
+      "id": "ev_fe1e5dde7cfd",
+      "at": "2026-11-11T15:18:03.066Z"
+    },
+    {
+      "agent": "cost-carbon",
+      "actor": "ai",
+      "kind": "result",
+      "title": "시나리오 4개 비교 · A +595,000원, C −387,500원",
+      "detail": "A 순 탄소 −2.06 tCO₂e/월, 배출권 환산 +18,540원/월",
+      "step": "cost-carbon",
+      "durationMs": 150,
+      "id": "ev_beca0b6d5362",
+      "at": "2026-11-11T15:18:03.566Z"
+    },
+    {
+      "agent": "proposal",
+      "actor": "ai",
+      "kind": "tool",
+      "tool": "Azure OpenAI · 서류 초안",
+      "title": "서류 초안 6종 작성",
+      "refs": [
+        "폐플라스틱 순환 이행 계획서 → (주)한빛정밀 내부 결재",
+        "지원사업 신청 초안 (스마트생태공장·순환경제 이행지원) → 기후에너지환경부 · 한국환경공단 (2027년 공고 예정)",
+        "순회 수거 요청서 → (주)새길자원",
+        "매각 견적 요청서 → (주)새길자원",
+        "열분해 위탁 요청서 → (주)남해열분해",
+        "공동처리 신고서 초안 (선택) → 부산 강서구청 환경과"
+      ],
+      "durationMs": 2400,
+      "step": "proposal",
+      "id": "ev_9ebd65728c03",
+      "at": "2026-11-11T15:18:02.521Z"
+    },
+    {
+      "agent": "proposal",
+      "actor": "ai",
+      "kind": "tool",
+      "tool": "Foundry 평가 · 근거 충실도",
+      "title": "서류의 숫자·조항 인용이 앞 단계 결과와 맞는지 검사",
+      "detail": "시연에서는 모의 평가입니다. 실제로는 검증 세트로 인용 정확도를 측정합니다.",
+      "durationMs": 900,
+      "step": "proposal",
+      "id": "ev_cb2865298a49",
+      "at": "2026-11-11T15:18:04.921Z"
+    },
+    {
+      "agent": "proposal",
+      "actor": "ai",
+      "kind": "ask",
+      "title": "사람 승인 대기 · 외부 발송 서류 3건",
+      "detail": "에이전트는 외부로 아무것도 보내지 않습니다. 승인권자가 발송 대상과 확인 항목을 체크한 뒤에만 나갑니다.",
+      "step": "proposal",
+      "durationMs": 80,
+      "id": "ev_03a9909dc26b",
+      "at": "2026-11-11T15:18:05.821Z"
+    },
+    {
+      "agent": "proposal",
+      "actor": "human",
+      "kind": "decision",
+      "title": "승인 · 김담당 · 시나리오 A",
+      "step": "proposal",
+      "detail": "승인권자가 발송 대상과 확인 항목을 체크했습니다.",
+      "id": "ev_88b83db26513",
+      "at": "2026-11-11T15:18:03.583Z"
+    },
+    {
+      "agent": "proposal",
+      "actor": "ai",
+      "kind": "tool",
+      "tool": "모의 메일함 발송",
+      "title": "4곳에 서류 5건 발송",
+      "refs": [
+        "(주)새길자원 · 순회 수거 요청서",
+        "하늬로지스 · 묶음 참여 제안",
+        "아름푸드(주) · 묶음 참여 제안",
+        "(주)새길자원 · 매각 견적 요청서",
+        "(주)남해열분해 · 열분해 위탁 요청서"
+      ],
+      "step": "proposal",
+      "durationMs": 600,
+      "id": "ev_be0aa18a2da7",
+      "at": "2026-11-11T15:18:03.703Z"
+    },
+    {
+      "agent": "matching",
+      "actor": "human",
+      "kind": "decision",
+      "title": "하늬로지스 묶음 참여 동의",
+      "step": "matching",
+      "streamId": "st_6b9310c74503",
+      "detail": "이웃 기업 담당자의 회신입니다.",
+      "id": "ev_c9da4410faa9",
+      "at": "2026-11-11T15:18:05.614Z"
+    },
+    {
+      "agent": "matching",
+      "actor": "human",
+      "kind": "decision",
+      "title": "아름푸드(주) 묶음 참여 동의",
+      "step": "matching",
+      "streamId": "st_6b9310c74503",
+      "detail": "이웃 기업 담당자의 회신입니다.",
+      "id": "ev_8d4ec14cf196",
+      "at": "2026-11-11T15:18:08.893Z"
+    },
+    {
+      "agent": "negotiation",
+      "actor": "human",
+      "kind": "decision",
+      "title": "협상 위임 · 하한 140원/kg, 화·목요일, 월 2회 이상",
+      "step": "proposal",
+      "streamId": "st_6b9310c74503",
+      "detail": "에이전트는 이 범위 안에서만 양보하고, 벗어나면 사람에게 넘깁니다.",
+      "id": "ev_37af5204d819",
+      "at": "2026-11-11T15:18:12.186Z"
+    },
+    {
+      "agent": "negotiation",
+      "actor": "ai",
+      "kind": "decision",
+      "tool": "A2A · 에이전트 간 메시지",
+      "title": "우리 에이전트 · 화요일 오전 · 150원/kg · 월 2회",
+      "detail": "순회 수거 요청서 조건입니다. 단지 3개사, 월 1,230kg을 사업장별로 순회합니다.",
+      "refs": [
+        "우리 가드레일 안"
+      ],
+      "step": "proposal",
+      "streamId": "st_6b9310c74503",
+      "durationMs": 1600,
+      "id": "ev_d9b13c919ce7",
+      "at": "2026-11-11T15:18:12.306Z"
+    },
+    {
+      "agent": "negotiation",
+      "actor": "ai",
+      "kind": "decision",
+      "tool": "A2A · 에이전트 간 메시지",
+      "title": "(주)새길자원 에이전트 · 목요일 오전 · 130원/kg · 월 2회",
+      "detail": "화요일은 다른 단지 순회가 있어 어렵습니다. 목요일 오전 · 130원/kg · 월 2회을 제안합니다.",
+      "refs": [
+        "우리 가드레일 밖"
+      ],
+      "step": "proposal",
+      "streamId": "st_6b9310c74503",
+      "durationMs": 1600,
+      "id": "ev_7c9deaf8581b",
+      "at": "2026-11-11T15:18:13.906Z"
+    },
+    {
+      "agent": "negotiation",
+      "actor": "ai",
+      "kind": "decision",
+      "tool": "A2A · 에이전트 간 메시지",
+      "title": "우리 에이전트 · 목요일 오전 · 145원/kg · 월 2회",
+      "detail": "목요일은 받아들입니다. 단가는 145원/kg을 제안합니다. 3개사 물량으로 트럭 한 대를 넘게 채우므로 운반 효율이 높습니다.",
+      "refs": [
+        "우리 가드레일 안"
+      ],
+      "step": "proposal",
+      "streamId": "st_6b9310c74503",
+      "durationMs": 1600,
+      "id": "ev_367cca95409c",
+      "at": "2026-11-11T15:18:15.506Z"
+    },
+    {
+      "agent": "negotiation",
+      "actor": "ai",
+      "kind": "decision",
+      "tool": "A2A · 에이전트 간 메시지",
+      "title": "(주)새길자원 에이전트 · 목요일 오전 · 140원/kg · 월 2회",
+      "detail": "145원은 어렵습니다. 140원/kg이면 목요일 오전 월 2회 순회가 가능합니다.",
+      "refs": [
+        "우리 가드레일 안"
+      ],
+      "step": "proposal",
+      "streamId": "st_6b9310c74503",
+      "durationMs": 1600,
+      "id": "ev_2e3f975f1b8d",
+      "at": "2026-11-11T15:18:17.106Z"
+    },
+    {
+      "agent": "negotiation",
+      "actor": "ai",
+      "kind": "decision",
+      "tool": "A2A · 에이전트 간 메시지",
+      "title": "우리 에이전트 · 목요일 오전 · 140원/kg · 월 2회 · 수락",
+      "detail": "제안을 받아들입니다. 합의안을 담당자에게 올려 승인을 받겠습니다.",
+      "refs": [
+        "우리 가드레일 안"
+      ],
+      "step": "proposal",
+      "streamId": "st_6b9310c74503",
+      "durationMs": 1600,
+      "id": "ev_fb4811ba8dae",
+      "at": "2026-11-11T15:18:18.706Z"
+    },
+    {
+      "agent": "negotiation",
+      "actor": "ai",
+      "kind": "ask",
+      "title": "합의안 · 목요일 오전 · 140원/kg · 월 2회 · 사람 승인 대기",
+      "step": "proposal",
+      "streamId": "st_6b9310c74503",
+      "durationMs": 100,
+      "id": "ev_2056248f93fe",
+      "at": "2026-11-11T15:18:20.306Z"
+    },
+    {
+      "agent": "negotiation",
+      "actor": "human",
+      "kind": "decision",
+      "title": "합의안 승인 · 목요일 오전 · 140원/kg · 월 2회",
+      "step": "proposal",
+      "streamId": "st_6b9310c74503",
+      "detail": "김담당이 승인했습니다.",
+      "id": "ev_e34fdd9772e3",
+      "at": "2026-11-11T15:18:16.725Z"
+    },
+    {
+      "agent": "orchestrator",
+      "actor": "ai",
+      "kind": "result",
+      "title": "순회 일정 확정 · 매월 둘째·넷째 주 목요일 오전, 사업장별 순회",
+      "detail": "(주)새길자원의 순회 수거 요청서에 수락 회신을 남기고, 이웃 기업 2곳에 확정 일정을 알렸습니다(모의).",
+      "durationMs": 300,
+      "id": "ev_73e37a480773",
+      "at": "2026-11-11T15:18:16.845Z"
+    },
+    {
+      "agent": "proposal",
+      "actor": "human",
+      "kind": "decision",
+      "title": "불량 성형품 실제 결과 기록 · +290원/kg, 400kg",
+      "step": "proposal",
+      "streamId": "st_b548298c885c",
+      "detail": "담당자가 기록했습니다. 예상과의 차이는 라벨 검수 대기열에 올라가 다음 학습에 쓰입니다.",
+      "id": "ev_11bc5944afb4",
+      "at": "2026-11-11T15:18:16.982Z"
+    },
+    {
+      "agent": "passport",
+      "actor": "ai",
+      "kind": "result",
+      "tool": "이력 원장 · SHA-256 해시 체인",
+      "title": "재생원료 여권 발급 · RP-20261112-0001 · PP PIR 400kg",
+      "detail": "AI 추정 · 공정 부산물(검사 공정). 마대 라벨의 QR로 매입처·원청이 출처와 재생원료 사용 실적 인정 여부를 확인합니다.",
+      "refs": [
+        "hash 0b2a99a935658029…",
+        "앞 여권 없음(첫 여권)"
+      ],
+      "step": "proposal",
+      "streamId": "st_b548298c885c",
+      "durationMs": 300,
+      "id": "ev_8eeabdb1a12b",
+      "at": "2026-11-11T15:18:16.986Z"
+    },
+    {
+      "agent": "proposal",
+      "actor": "human",
+      "kind": "decision",
+      "title": "퍼지·색 혼합 실제 결과 기록 · -80원/kg, 250kg",
+      "step": "proposal",
+      "streamId": "st_491e0024fb5a",
+      "detail": "담당자가 기록했습니다. 예상과의 차이는 라벨 검수 대기열에 올라가 다음 학습에 쓰입니다.",
+      "id": "ev_3eb6caf94082",
+      "at": "2026-11-11T15:18:19.490Z"
+    },
+    {
+      "agent": "proposal",
+      "actor": "human",
+      "kind": "decision",
+      "title": "원자재 포장 필름 실제 결과 기록 · +90원/kg, 300kg",
+      "step": "proposal",
+      "streamId": "st_6b9310c74503",
+      "detail": "담당자가 기록했습니다. 예상과의 차이는 라벨 검수 대기열에 올라가 다음 학습에 쓰입니다.",
+      "id": "ev_154e6501b2d4",
+      "at": "2026-11-11T15:18:21.998Z"
+    },
+    {
+      "agent": "orchestrator",
+      "actor": "ai",
+      "kind": "result",
+      "title": "모든 흐름의 결과가 모여 수거 완료로 바꿨습니다.",
+      "durationMs": 300,
+      "id": "ev_7429ca8ee9da",
+      "at": "2026-11-11T15:18:22.118Z"
+    },
+    {
+      "agent": "passport",
+      "actor": "ai",
+      "kind": "result",
+      "tool": "이력 원장 · SHA-256 해시 체인",
+      "title": "재생원료 여권 발급 · RP-20261112-0002 · LDPE PCR 300kg",
+      "detail": "AI 추정 · 공장이 쓰고 버린 포장재 · 입고 기록 있음. 마대 라벨의 QR로 매입처·원청이 출처와 재생원료 사용 실적 인정 여부를 확인합니다.",
+      "refs": [
+        "hash 314cc636894f082c…",
+        "앞 여권 0b2a99a935658029…"
+      ],
+      "step": "proposal",
+      "streamId": "st_6b9310c74503",
+      "durationMs": 300,
+      "id": "ev_b7b0cd069e35",
+      "at": "2026-11-11T15:18:22.003Z"
+    }
+  ],
   "feasibility": {
     "decisions": [
       {
-        "streamId": "st_e4bb22819f14",
+        "streamId": "st_d7ca23cd1c42",
         "route": "reuse",
         "reason": "깨끗한 단일 PP라 분쇄해서 같은 공정에 다시 넣을 수 있습니다(신재 대비 10% 이내 혼합).",
         "currentPerKg": -250,
@@ -354,7 +1107,7 @@
         ]
       },
       {
-        "streamId": "st_b7b2281daa19",
+        "streamId": "st_b548298c885c",
         "route": "sell",
         "reason": "단일 PP이고 이물이 6%라, 이물을 떼면 재생원료 업체에 팔 수 있습니다.",
         "currentPerKg": -250,
@@ -401,7 +1154,7 @@
         ]
       },
       {
-        "streamId": "st_a73222cadab6",
+        "streamId": "st_491e0024fb5a",
         "route": "pyrolysis",
         "reason": "PP+ABS 재질이 섞여 기계적 재활용이 어렵습니다. 소각보다 싼 열분해 위탁이 낫습니다.",
         "currentPerKg": -250,
@@ -439,7 +1192,7 @@
         ]
       },
       {
-        "streamId": "st_02955736f5d1",
+        "streamId": "st_6b9310c74503",
         "route": "bundle",
         "reason": "공장이 쓰고 버린 LDPE 포장재라 사용 후(PCR) 원료가 됩니다. 월 300kg은 혼자 팔기엔 적어 같은 단지 기업과 묶습니다.",
         "currentPerKg": -250,
@@ -519,8 +1272,8 @@
   "regulation": {
     "items": [
       {
-        "id": "reuse:st_e4bb22819f14",
-        "streamId": "st_e4bb22819f14",
+        "id": "reuse:st_d7ca23cd1c42",
+        "streamId": "st_d7ca23cd1c42",
         "label": "스프루·러너 · 공정 재투입",
         "status": "ok",
         "result": "가능",
@@ -528,8 +1281,8 @@
         "excerpt": "같은 사업장 공정에 원료로 다시 쓰는 부산물은 외부로 배출하지 않으므로 위탁 처리 대상이 아닙니다. 보관 기간과 장부 기록은 지킵니다."
       },
       {
-        "id": "sell:st_b7b2281daa19",
-        "streamId": "st_b7b2281daa19",
+        "id": "sell:st_b548298c885c",
+        "streamId": "st_b548298c885c",
         "label": "불량 성형품 · 매입처 허가 범위",
         "status": "ok",
         "result": "허가 품목 일치",
@@ -537,8 +1290,8 @@
         "excerpt": "매입처가 폐합성수지 재활용 허가를 갖고 있어 위탁할 수 있습니다. 인계는 올바로시스템 전자인계서로 합니다."
       },
       {
-        "id": "circular:st_b7b2281daa19",
-        "streamId": "st_b7b2281daa19",
+        "id": "circular:st_b548298c885c",
+        "streamId": "st_b548298c885c",
         "label": "불량 성형품 · 순환자원 인정",
         "status": "ask",
         "result": "성분분석표 필요",
@@ -546,8 +1299,8 @@
         "excerpt": "유해물질 기준, 경제성, 방치 우려가 없을 것 등을 충족하면 순환자원으로 인정받아 폐기물 규제에서 벗어납니다."
       },
       {
-        "id": "pyro:st_a73222cadab6",
-        "streamId": "st_a73222cadab6",
+        "id": "pyro:st_491e0024fb5a",
+        "streamId": "st_491e0024fb5a",
         "label": "퍼지·색 혼합 · 열분해 위탁",
         "status": "ok",
         "result": "가능",
@@ -555,17 +1308,17 @@
         "excerpt": "열분해 재활용 허가를 가진 업체에 위탁합니다. 혼합 재질도 받지만 염소계(PVC) 혼입은 피해야 합니다."
       },
       {
-        "id": "pcr:st_02955736f5d1",
-        "streamId": "st_02955736f5d1",
+        "id": "pcr:st_6b9310c74503",
+        "streamId": "st_6b9310c74503",
         "label": "원자재 포장 필름 · 사용 후(PCR) 출처 증빙",
-        "status": "ask",
-        "result": "정보 부족",
+        "status": "ok",
+        "result": "증빙 가능",
         "citation": "재생원료 사용의무 고시(기후에너지환경부고시 제2025-165호) 별표2 비고3",
         "excerpt": "재생원료 사용 실적은 최종 소비자가 쓴 뒤 나온 원료만 인정하고, 공정부산물은 제외합니다. 공장이 원자재 포장재로 쓰고 버린 필름은 사용 후 원료로 볼 여지가 있으나 해석 확인이 필요합니다."
       },
       {
-        "id": "bundle:st_02955736f5d1",
-        "streamId": "st_02955736f5d1",
+        "id": "bundle:st_6b9310c74503",
+        "streamId": "st_6b9310c74503",
         "label": "원자재 포장 필름 · 단지 내 순회 수거",
         "status": "ok",
         "result": "가능 (각사 개별 계약)",
@@ -575,7 +1328,7 @@
     ],
     "conclusion": {
       "tone": "warn",
-      "text": "경로는 모두 가능하지만 확인할 정보가 2건 남았습니다. 답하지 않으면 보수적인 조건(일반 재생원료 매각)으로 계산합니다."
+      "text": "경로는 모두 가능하지만 확인할 정보가 1건 남았습니다. 답하지 않으면 보수적인 조건(일반 재생원료 매각)으로 계산합니다."
     }
   },
   "matching": {
@@ -586,7 +1339,7 @@
     ],
     "bundles": [
       {
-        "streamId": "st_02955736f5d1",
+        "streamId": "st_6b9310c74503",
         "mode": "순회 수거",
         "item": "포장재",
         "minKg": 1000,
@@ -636,7 +1389,7 @@
             "reason": "폐플라스틱(필름) 허가 품목 없음"
           }
         ],
-        "schedule": "매월 둘째·넷째 주 화요일 오전, 사업장별 순회",
+        "schedule": "매월 둘째·넷째 주 목요일 오전, 사업장별 순회",
         "costShare": [
           {
             "companyId": "noksan-001",
@@ -664,7 +1417,7 @@
     ],
     "partners": [
       {
-        "streamId": "st_b7b2281daa19",
+        "streamId": "st_b548298c885c",
         "route": "sell",
         "companyId": "noksan-008",
         "name": "(주)새길자원",
@@ -673,7 +1426,7 @@
         "note": "PP 재생원료 매입 · 허가 품목 폐플라스틱·포장재"
       },
       {
-        "streamId": "st_a73222cadab6",
+        "streamId": "st_491e0024fb5a",
         "route": "pyrolysis",
         "companyId": "ext_namhae_pyro",
         "name": "(주)남해열분해",
@@ -697,25 +1450,25 @@
         "recommended": true,
         "breakdown": [
           {
-            "streamId": "st_e4bb22819f14",
+            "streamId": "st_d7ca23cd1c42",
             "route": "reuse",
             "monthlyKrw": 510000,
             "carbonT": -0.96
           },
           {
-            "streamId": "st_b7b2281daa19",
+            "streamId": "st_b548298c885c",
             "route": "sell",
             "monthlyKrw": 90000,
             "carbonT": -0.6
           },
           {
-            "streamId": "st_a73222cadab6",
+            "streamId": "st_491e0024fb5a",
             "route": "pyrolysis",
             "monthlyKrw": -20000,
             "carbonT": -0.07
           },
           {
-            "streamId": "st_02955736f5d1",
+            "streamId": "st_6b9310c74503",
             "route": "bundle",
             "monthlyKrw": 15000,
             "carbonT": -0.43
@@ -733,25 +1486,25 @@
         "recommended": false,
         "breakdown": [
           {
-            "streamId": "st_e4bb22819f14",
+            "streamId": "st_d7ca23cd1c42",
             "route": "reuse",
             "monthlyKrw": 510000,
             "carbonT": -0.96
           },
           {
-            "streamId": "st_b7b2281daa19",
+            "streamId": "st_b548298c885c",
             "route": "sell",
             "monthlyKrw": 90000,
             "carbonT": -0.6
           },
           {
-            "streamId": "st_a73222cadab6",
+            "streamId": "st_491e0024fb5a",
             "route": "pyrolysis",
             "monthlyKrw": -20000,
             "carbonT": -0.07
           },
           {
-            "streamId": "st_02955736f5d1",
+            "streamId": "st_6b9310c74503",
             "route": "incinerate",
             "monthlyKrw": -75000,
             "carbonT": 0.23
@@ -769,25 +1522,25 @@
         "recommended": false,
         "breakdown": [
           {
-            "streamId": "st_e4bb22819f14",
+            "streamId": "st_d7ca23cd1c42",
             "route": "incinerate",
             "monthlyKrw": -150000,
             "carbonT": 0.47
           },
           {
-            "streamId": "st_b7b2281daa19",
+            "streamId": "st_b548298c885c",
             "route": "incinerate",
             "monthlyKrw": -100000,
             "carbonT": 0.31
           },
           {
-            "streamId": "st_a73222cadab6",
+            "streamId": "st_491e0024fb5a",
             "route": "incinerate",
             "monthlyKrw": -62500,
             "carbonT": 0.2
           },
           {
-            "streamId": "st_02955736f5d1",
+            "streamId": "st_6b9310c74503",
             "route": "incinerate",
             "monthlyKrw": -75000,
             "carbonT": 0.23
@@ -805,25 +1558,25 @@
         "recommended": false,
         "breakdown": [
           {
-            "streamId": "st_e4bb22819f14",
+            "streamId": "st_d7ca23cd1c42",
             "route": "incinerate",
             "monthlyKrw": -138000,
             "carbonT": 0.31
           },
           {
-            "streamId": "st_b7b2281daa19",
+            "streamId": "st_b548298c885c",
             "route": "incinerate",
             "monthlyKrw": -92000,
             "carbonT": 0.2
           },
           {
-            "streamId": "st_a73222cadab6",
+            "streamId": "st_491e0024fb5a",
             "route": "incinerate",
             "monthlyKrw": -57500,
             "carbonT": 0.13
           },
           {
-            "streamId": "st_02955736f5d1",
+            "streamId": "st_6b9310c74503",
             "route": "incinerate",
             "monthlyKrw": -69000,
             "carbonT": 0.15
@@ -943,12 +1696,12 @@
         "body": "정부 사업장 폐플라스틱 기술진단(2026년 10곳)과 같은 항목(공정별 발생량, 종류·성상, 주변 재활용시설, 이행 방안)으로 작성한 신청 초안이다. 공고가 나오면 양식에 맞춰 옮긴다. 지원 금액과 자격 요건은 공고문으로 확인해야 한다."
       },
       {
-        "id": "pickup:st_02955736f5d1",
+        "id": "pickup:st_6b9310c74503",
         "kind": "pickup",
         "title": "순회 수거 요청서",
         "to": "(주)새길자원",
         "external": true,
-        "streamId": "st_02955736f5d1",
+        "streamId": "st_6b9310c74503",
         "fields": [
           {
             "label": "품목",
@@ -982,12 +1735,12 @@
         "body": "(주)새길자원 담당자님께. 녹산국가산업단지 내 3개 사업장이 원자재 포장 필름을 사업장별로 분리 보관하고 있습니다. 매월 정해진 날 한 번에 순회해 주실 수 있는지, 매입 단가와 사업장별 계량·인계 방식을 회신해 주시기 바랍니다."
       },
       {
-        "id": "quote:st_b7b2281daa19",
+        "id": "quote:st_b548298c885c",
         "kind": "quote",
         "title": "매각 견적 요청서",
         "to": "(주)새길자원",
         "external": true,
-        "streamId": "st_b7b2281daa19",
+        "streamId": "st_b548298c885c",
         "fields": [
           {
             "label": "품목",
@@ -1009,12 +1762,12 @@
         "body": "(주)새길자원 담당자님께. PP 불량 하우징을(를) 매월 400kg 내놓으려 합니다. 이물 제거 후 상태 기준 매입 단가와 수거 주기를 회신해 주시기 바랍니다."
       },
       {
-        "id": "pyro:st_a73222cadab6",
+        "id": "pyro:st_491e0024fb5a",
         "kind": "quote",
         "title": "열분해 위탁 요청서",
         "to": "(주)남해열분해",
         "external": true,
-        "streamId": "st_a73222cadab6",
+        "streamId": "st_491e0024fb5a",
         "fields": [
           {
             "label": "품목",
@@ -1046,7 +1799,7 @@
         "to": "부산 강서구청 환경과",
         "external": false,
         "optional": true,
-        "streamId": "st_02955736f5d1",
+        "streamId": "st_6b9310c74503",
         "fields": [
           {
             "label": "근거",
@@ -1072,7 +1825,7 @@
   "selectedRoute": "A",
   "approval": {
     "approvedBy": "김담당",
-    "approvedAt": "2026-11-10T08:57:47.025Z",
+    "approvedAt": "2026-11-11T15:18:03.583Z",
     "routeId": "A",
     "sentTo": [
       {
@@ -1097,48 +1850,146 @@
       }
     ]
   },
+  "negotiations": [
+    {
+      "id": "neg_c2e70569155c",
+      "streamId": "st_6b9310c74503",
+      "counterparty": {
+        "companyId": "noksan-008",
+        "name": "(주)새길자원"
+      },
+      "guardrails": {
+        "minPerKg": 140,
+        "minPerMonth": 2,
+        "days": [
+          "화",
+          "목"
+        ],
+        "maxRounds": 6
+      },
+      "requested": {
+        "day": "화",
+        "slot": "오전",
+        "perKg": 150,
+        "perMonth": 2
+      },
+      "startedAt": "2026-11-11T15:18:12.185Z",
+      "rounds": [
+        {
+          "by": "ours",
+          "terms": {
+            "day": "화",
+            "slot": "오전",
+            "perKg": 150,
+            "perMonth": 2
+          },
+          "message": "순회 수거 요청서 조건입니다. 단지 3개사, 월 1,230kg을 사업장별로 순회합니다.",
+          "at": "2026-11-11T15:18:13.785Z",
+          "within": true
+        },
+        {
+          "by": "theirs",
+          "terms": {
+            "day": "목",
+            "slot": "오전",
+            "perKg": 130,
+            "perMonth": 2
+          },
+          "message": "화요일은 다른 단지 순회가 있어 어렵습니다. 목요일 오전 · 130원/kg · 월 2회을 제안합니다.",
+          "at": "2026-11-11T15:18:15.385Z",
+          "within": false
+        },
+        {
+          "by": "ours",
+          "terms": {
+            "day": "목",
+            "slot": "오전",
+            "perKg": 145,
+            "perMonth": 2
+          },
+          "message": "목요일은 받아들입니다. 단가는 145원/kg을 제안합니다. 3개사 물량으로 트럭 한 대를 넘게 채우므로 운반 효율이 높습니다.",
+          "at": "2026-11-11T15:18:16.985Z",
+          "within": true
+        },
+        {
+          "by": "theirs",
+          "terms": {
+            "day": "목",
+            "slot": "오전",
+            "perKg": 140,
+            "perMonth": 2
+          },
+          "message": "145원은 어렵습니다. 140원/kg이면 목요일 오전 월 2회 순회가 가능합니다.",
+          "at": "2026-11-11T15:18:18.585Z",
+          "within": true
+        },
+        {
+          "by": "ours",
+          "terms": {
+            "day": "목",
+            "slot": "오전",
+            "perKg": 140,
+            "perMonth": 2
+          },
+          "message": "제안을 받아들입니다. 합의안을 담당자에게 올려 승인을 받겠습니다.",
+          "accept": true,
+          "at": "2026-11-11T15:18:20.185Z",
+          "within": true
+        }
+      ],
+      "status": "approved",
+      "agreed": {
+        "day": "목",
+        "slot": "오전",
+        "perKg": 140,
+        "perMonth": 2
+      },
+      "approvedBy": "김담당",
+      "approvedAt": "2026-11-11T15:18:16.725Z"
+    }
+  ],
   "outcome": {
-    "recordedAt": "2026-11-10T08:59:29.629Z",
+    "recordedAt": "2026-11-11T15:18:21.998Z",
     "recordedBy": "김담당",
     "recorderRole": "담당자",
-    "streamId": "st_02955736f5d1",
+    "streamId": "st_6b9310c74503",
     "accepted": true,
-    "actualGrade": "B등급",
-    "actualPerKg": 110,
+    "actualGrade": "A등급",
+    "actualPerKg": 90,
     "actualKg": 300,
     "reason": ""
   },
   "outcomes": [
     {
-      "recordedAt": "2026-11-10T08:59:24.619Z",
+      "recordedAt": "2026-11-11T15:18:16.982Z",
       "recordedBy": "김담당",
       "recorderRole": "담당자",
-      "streamId": "st_b7b2281daa19",
+      "streamId": "st_b548298c885c",
       "accepted": true,
-      "actualGrade": "B등급",
-      "actualPerKg": 280,
-      "actualKg": 390,
+      "actualGrade": "A등급",
+      "actualPerKg": 290,
+      "actualKg": 400,
       "reason": ""
     },
     {
-      "recordedAt": "2026-11-10T08:59:27.125Z",
+      "recordedAt": "2026-11-11T15:18:19.489Z",
       "recordedBy": "김담당",
       "recorderRole": "담당자",
-      "streamId": "st_a73222cadab6",
+      "streamId": "st_491e0024fb5a",
       "accepted": true,
-      "actualGrade": "B등급",
-      "actualPerKg": -70,
+      "actualGrade": "A등급",
+      "actualPerKg": -80,
       "actualKg": 250,
       "reason": ""
     },
     {
-      "recordedAt": "2026-11-10T08:59:29.629Z",
+      "recordedAt": "2026-11-11T15:18:21.998Z",
       "recordedBy": "김담당",
       "recorderRole": "담당자",
-      "streamId": "st_02955736f5d1",
+      "streamId": "st_6b9310c74503",
       "accepted": true,
-      "actualGrade": "B등급",
-      "actualPerKg": 110,
+      "actualGrade": "A등급",
+      "actualPerKg": 90,
       "actualKg": 300,
       "reason": ""
     }
