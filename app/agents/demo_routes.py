@@ -45,6 +45,13 @@ class DemoConfig:
 
 
 @dataclass(frozen=True)
+class FieldAction:
+    title: str
+    labor_hours: float
+    labor_cost: float
+
+
+@dataclass(frozen=True)
 class FlowResult:
     stream_id: str
     status: str
@@ -61,9 +68,10 @@ class FlowResult:
     disposal_cost: float | None = None
     transport_cost: float | None = None
     labor_cost: float | None = None
-    action: str | None = None
+    action: FieldAction | None = None
     bundle_status: str | None = None
     assumptions: tuple[str, ...] = ()
+    reason_code: str | None = None
 
 
 @dataclass(frozen=True)
@@ -93,7 +101,7 @@ def _config_value(mapping: dict[str, float], key: str, name: str) -> float | Non
     return _number(mapping[key], name)
 
 
-def _validate_config(config: DemoConfig) -> None:
+def validate_config(config: DemoConfig) -> None:
     for name in ("reuse_per_kg", "bundle_transport_per_kg", "labor_per_hour", "reuse_labor_hours",
                  "sell_labor_hours", "bundle_labor_hours"):
         _number(getattr(config, name), name, minimum=0)
@@ -117,7 +125,7 @@ def _is_film(material: str) -> bool:
 
 def evaluate_flow(flow: Flow, config: DemoConfig, override: Route | None = None) -> FlowResult:
     """Evaluate one demo flow. Missing information returns needs_information."""
-    _validate_config(config)
+    validate_config(config)
     if not isinstance(flow.id, str) or not flow.id.strip():
         raise ValueError("flow id is required")
     if override is not None and override not in ROUTES:
@@ -137,17 +145,17 @@ def evaluate_flow(flow: Flow, config: DemoConfig, override: Route | None = None)
             if detection.ratio is not None and _number(detection.ratio, "ratio", minimum=0) > 1:
                 raise ValueError("ratio must be at most 1")
     if not flow.item or not flow.material or flow.origin is None or flow.monthly_kg is None:
-        return FlowResult(flow.id, "needs_information", reason="품목, 재질, 출처와 월 발생량 확인 필요")
+        return FlowResult(flow.id, "needs_information", reason="품목, 재질, 출처와 월 발생량 확인 필요", reason_code="missing_information")
     if not isinstance(flow.item, str) or not isinstance(flow.material, str):
         raise ValueError("item and material must be strings")  # noqa: TRY004
     if flow.single_material is None or flow.detections is None:
-        return FlowResult(flow.id, "needs_information", reason="단일 재질과 이물 정보 확인 필요")
+        return FlowResult(flow.id, "needs_information", reason="단일 재질과 이물 정보 확인 필요", reason_code="missing_information")
     active = [d for d in flow.detections if not d.removed]
     if any(d.ratio is None for d in active):
-        return FlowResult(flow.id, "needs_information", reason="이물 비율 확인 필요")
+        return FlowResult(flow.id, "needs_information", reason="이물 비율 확인 필요", reason_code="missing_information")
     current = _config_value(config.current_per_kg, flow.item, "current_per_kg")
     if current is None:
-        return FlowResult(flow.id, "needs_information", reason="시연 현재 처리 단가 확인 필요")
+        return FlowResult(flow.id, "needs_information", reason="시연 현재 처리 단가 확인 필요", reason_code="missing_information")
     contamination = fsum(d.ratio for d in active if d.ratio is not None)
     if contamination > 1:
         raise ValueError("sum of contaminant ratios exceeds 1")
@@ -162,10 +170,10 @@ def evaluate_flow(flow: Flow, config: DemoConfig, override: Route | None = None)
     elif flow.origin == "PCR":
         # #10 specifies film resins by whole name. Other packaging has no supplied film rule.
         if flow.item == "포장재" and not _is_film(flow.material):
-            return FlowResult(flow.id, "needs_information", reason="LDPE·LLDPE 외 포장재의 시연 규칙 확인 필요")
+            return FlowResult(flow.id, "needs_information", reason="LDPE·LLDPE 외 포장재의 시연 규칙 확인 필요", reason_code="unsupported_combination")
         minimum = _config_value(config.minimum_kg, flow.item, "minimum_kg")
         if minimum is None:
-            return FlowResult(flow.id, "needs_information", reason="시연 최소 물량 확인 필요")
+            return FlowResult(flow.id, "needs_information", reason="시연 최소 물량 확인 필요", reason_code="missing_information")
         ai = "bundle" if flow.monthly_kg < minimum else "sell"
         reason = "시연 규칙: PCR 최소 물량 " + ("미만 묶음 후보" if ai == "bundle" else "이상 매각")
     elif flow.item == "폐플라스틱" and contamination < config.reuse_max_contamination:
@@ -183,18 +191,25 @@ def evaluate_flow(flow: Flow, config: DemoConfig, override: Route | None = None)
         return FlowResult(
             flow.id, "needs_information", route=route, ai_route=ai if route != ai else None,
             reason="해당 품목·재질·경로 조합의 시연 계산값이 없음 (실제 적합성 판단 아님)",
+            reason_code="unsupported_combination",
         )
 
     sale = _config_value(config.sale_per_kg, flow.item, "sale_per_kg") if route in ("sell", "bundle") else None
     if route in ("sell", "bundle") and sale is None:
         return FlowResult(flow.id, "needs_information", route=route, ai_route=ai if route != ai else None,
-                          reason="시연 매각 단가 확인 필요")
+                          reason="시연 매각 단가 확인 필요", reason_code="missing_information")
     # Zero action/transport is the explicit frontend demo assumption for other routes.
-    hours = (config.reuse_labor_hours if route == "reuse" else
-             config.bundle_labor_hours if route == "bundle" else
-             config.sell_labor_hours if route == "sell" and any(
-                 "혼입" not in d.label and "혼합" not in d.label for d in active) else 0)
+    removable = [d.label for d in active if "혼입" not in d.label and "혼합" not in d.label]
+    if route == "reuse":
+        title, hours = "색별로 분리해 분쇄기에 넣기", config.reuse_labor_hours
+    elif route == "bundle":
+        title, hours = "흐름을 마대에 따로 모으기", config.bundle_labor_hours
+    elif route == "sell" and removable:
+        title, hours = f"{'·'.join(removable)} 제거 후 따로 모으기", config.sell_labor_hours
+    else:
+        title, hours = None, 0
     labor = hours * config.labor_per_hour
+    action = FieldAction(title, hours, labor) if title is not None else None
     transport = flow.monthly_kg * config.bundle_transport_per_kg if route == "bundle" else 0
     after = {"reuse": config.reuse_per_kg, "pyrolysis": config.pyrolysis_per_kg,
              "incinerate": current, "sell": sale,
@@ -213,7 +228,7 @@ def evaluate_flow(flow: Flow, config: DemoConfig, override: Route | None = None)
         flow.id, "conditional" if route == "bundle" else "calculated", route,
         ai if route != ai else None, reason, current, after, now, monthly_after,
         monthly_after - now, cash, avoidance, disposal, transport, labor,
-        "시연 작업" if hours else None, "conditional" if route == "bundle" else None,
+        action, "conditional" if route == "bundle" else None,
         ("모든 단가와 규칙은 synthetic/demo", "재투입은 분쇄·관리비 포함 순효과; 매출이 아닌 구매비 회피",
          "묶음 운송비는 kg당 순효과에 포함; 인건비만 별도 차감",
          "기타 운송비와 작업 없는 경로의 인건비는 시연상 명시적으로 0",

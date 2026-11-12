@@ -35,6 +35,14 @@ LngLat = tuple[float, float]
 Won = int
 """원 단위 정수. 처리비처럼 나가는 돈은 음수다."""
 
+EconomicAmount = Annotated[float, Field(allow_inf_nan=False)]
+"""경제 효과 계산값. 원 또는 원/kg, 소수를 보존하고 비유한 값은 허용하지 않는다."""
+CalculationStatus = Literal["calculated", "conditional", "needs_information"]
+ReasonCode = Literal[
+    "missing_information", "unconfirmed_quantity", "zero_quantity",
+    "unsupported_combination", "invalid_input",
+]
+
 Ratio = Annotated[float, Field(ge=0, le=1)]
 Box = tuple[Ratio, Ratio, Ratio, Ratio]
 """사진 크기에 대한 비율(0~1): [x, y, w, h]"""
@@ -269,17 +277,17 @@ class FieldAction(Contract):
 
     title: str
     labor_hours: float = Field(ge=0)
-    labor_cost: Won
+    labor_cost: EconomicAmount
 
 
 class LadderStep(Contract):
     label: str
-    per_kg: Won
+    per_kg: EconomicAmount
 
 
 class RouteAlternative(Contract):
     route: StreamRoute
-    per_kg: Won
+    per_kg: EconomicAmount
     note: str
 
 
@@ -315,34 +323,48 @@ class StreamDecision(Contract):
     )
 
     stream_id: str
-    route: StreamRoute
+    route: StreamRoute | None
     reason: str
-    current_per_kg: Won
+    status: CalculationStatus = "calculated"
+    reason_code: ReasonCode | None = None
+    current_per_kg: EconomicAmount | None
     """현행(혼합 소각) kg당 손익. 처리비라 음수"""
-    after_per_kg: Won
+    after_per_kg: EconomicAmount | None
     """추천 경로 kg당 손익. 재투입이면 신재 대체 가치"""
-    monthly_now: Won
-    monthly_after: Won
+    monthly_now: EconomicAmount | None
+    monthly_after: EconomicAmount | None
     """after_per_kg × 월 발생량 − 현장 작업 인건비"""
-    carbon_now_t: float
-    carbon_after_t: float
+    monthly_difference: EconomicAmount | None = None
+    cash_sale_revenue: EconomicAmount | None = None
+    purchase_avoidance_net: EconomicAmount | None = None
+    disposal_cost: EconomicAmount | None = None
+    transport_cost: EconomicAmount | None = None
+    labor_cost: EconomicAmount | None = None
+    carbon_now_t: float | None
+    carbon_after_t: float | None
     action: FieldAction | None = None
-    ladder: list[LadderStep]
-    alternatives: list[RouteAlternative]
+    ladder: list[LadderStep] | None
+    alternatives: list[RouteAlternative] | None
     ai_route: StreamRoute | None = None
     """경로를 사람이 바꿨으면 AI 원래 경로"""
+    data_mode: Literal["synthetic_demo"] | None = None
+    assumptions: list[str] | None = None
 
 
 class FeasibilityResult(Contract):
     decisions: list[StreamDecision]
-    total_now: Won
+    status: CalculationStatus = "calculated"
+    total_now: EconomicAmount | None
     """공장 월 손익: 현행 전부 소각"""
-    total_after: Won
+    total_after: EconomicAmount | None
     """공장 월 손익: 흐름별 최적안"""
-    carbon_now_t: float
-    carbon_after_t: float
+    difference: EconomicAmount | None = None
+    carbon_now_t: float | None
+    carbon_after_t: float | None
     reasons: list[Reason]
     note: str
+    data_mode: Literal["synthetic_demo"] | None = None
+    assumptions: list[str] | None = None
 
 
 # ── ③ 규정 검토 ────────────────────────────────────────────────────────

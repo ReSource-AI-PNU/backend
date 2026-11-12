@@ -29,7 +29,7 @@ def test_demo_session_round_trip() -> None:
     """프런트 시연 앱이 만든 세션을 그대로 읽고, 다시 내보내면 같은 JSON이 된다."""
     raw = load("demo_session.json")
     session = Session.model_validate(raw)
-    assert session.model_dump(mode="json", by_alias=True, exclude_none=True) == strip_none(raw)
+    assert session.model_dump(mode="json", by_alias=True, exclude_unset=True) == raw
 
 
 def test_demo_collections_round_trip() -> None:
@@ -135,4 +135,5 @@ def test_session_example_endpoint() -> None:
     body = res.json()
     assert body["status"] == "completed"
     assert body["streams"][0]["monthlyKgConfirmed"] is True
-    assert body == strip_none(load("demo_session.json"))
+    assert body == load("demo_session.json")
+    assert body["feasibility"]["carbonNowT"] is None

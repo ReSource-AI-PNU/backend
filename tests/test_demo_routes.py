@@ -28,6 +28,30 @@ def test_frontend_demo_factory() -> None:
     assert bundle.bundle_status == "conditional"
 
 
+def test_structured_actions_follow_config_and_calculated_labor() -> None:
+    reuse, sell, pyrolysis, bundle = evaluate_factory(FLOWS, CONFIG).decisions
+    assert (reuse.action.title, reuse.action.labor_hours, reuse.action.labor_cost) == (
+        "색별로 분리해 분쇄기에 넣기", 2, 30000
+    )
+    assert (sell.action.title, sell.action.labor_hours, sell.action.labor_cost) == (
+        "종이 라벨·금속 인서트 제거 후 따로 모으기", 2, 30000
+    )
+    assert (bundle.action.title, bundle.action.labor_hours, bundle.action.labor_cost) == (
+        "흐름을 마대에 따로 모으기", 1, 15000
+    )
+    assert pyrolysis.action is None and pyrolysis.labor_cost == 0
+    for decision in (reuse, sell, bundle):
+        assert decision.action.labor_cost == decision.labor_cost
+        assert decision.action.labor_cost == decision.action.labor_hours * CONFIG.labor_per_hour
+
+    changed = replace(CONFIG, reuse_labor_hours=1.5, labor_per_hour=12000)
+    result = evaluate_flow(FLOWS[0], changed)
+    assert (result.action.labor_hours, result.action.labor_cost, result.labor_cost) == (1.5, 18000, 18000)
+    assert result.monthly_after == 522000
+    zero = evaluate_flow(FLOWS[0], replace(CONFIG, reuse_labor_hours=0))
+    assert zero.action is not None and zero.action.labor_cost == 0
+
+
 def test_route_priorities_and_thresholds() -> None:
     sprue = FLOWS[0]
     assert evaluate_flow(replace(sprue, item="금속 스크랩", material="Fe", single_material=False), CONFIG).route == "sell"
