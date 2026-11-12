@@ -1,0 +1,496 @@
+{
+  "knowledgeCards": [
+    {
+      "id": "kc_rain_pp",
+      "item": "폐플라스틱",
+      "condition": "비 온 다음 날, 야외에 둔 PP 베일",
+      "judgment": "수분이 5% 넘는 것으로 보고 한 등급 낮춰 매입한다",
+      "rationale": "수거 기사 경험. 지난 3개월 매입 기록 12건 중 10건이 수분 감량 정산이었다.",
+      "step": "feasibility",
+      "author": "박기사",
+      "orgName": "(주)녹산리사이클",
+      "createdAt": "2026-10-01T15:17:50.122Z",
+      "status": "adopted",
+      "agrees": [
+        "u1",
+        "u2",
+        "u3",
+        "u4",
+        "u5",
+        "u6",
+        "u7"
+      ],
+      "citedCount": 24
+    },
+    {
+      "id": "kc_clear_tape",
+      "item": "폐플라스틱",
+      "condition": "사진에서 베일 표면에 광택 나는 띠가 보일 때",
+      "judgment": "투명 테이프로 보고 이물질에 포함한다",
+      "rationale": "투명 테이프는 모델이 자주 놓친다. 현장 확인 9건 중 8건이 테이프였다.",
+      "step": "classify",
+      "author": "이대리",
+      "orgName": "(주)세움플라텍",
+      "createdAt": "2026-10-30T15:17:50.122Z",
+      "status": "reviewing",
+      "agrees": [
+        "u2",
+        "u8"
+      ],
+      "citedCount": 0
+    },
+    {
+      "id": "kc_purge_abs",
+      "item": "폐플라스틱",
+      "condition": "퍼지 덩어리에 검은 줄무늬가 섞여 있을 때",
+      "judgment": "ABS 혼입으로 보고 매각 대신 열분해로 보낸다",
+      "rationale": "PP 매입처 입고 검사에서 ABS 혼입으로 반송된 사례 5건.",
+      "step": "feasibility",
+      "author": "정과장",
+      "orgName": "(주)단비화성",
+      "createdAt": "2026-10-15T15:17:50.122Z",
+      "status": "adopted",
+      "agrees": [
+        "u3",
+        "u9",
+        "u10"
+      ],
+      "citedCount": 9
+    },
+    {
+      "id": "kc_film_label",
+      "item": "포장재",
+      "condition": "스트레치 필름에 종이 라벨이 붙은 채 모였을 때",
+      "judgment": "라벨 부분을 잘라 내고 필름만 마대에 모은다",
+      "rationale": "필름 매입처가 종이 혼입 2%를 넘으면 감량 정산했다. 지난달 2건.",
+      "step": "classify",
+      "author": "최반장",
+      "orgName": "(주)길벗필름",
+      "createdAt": "2026-11-05T15:17:50.122Z",
+      "status": "proposed",
+      "agrees": [],
+      "citedCount": 0
+    }
+  ],
+  "labelTasks": [
+    {
+      "id": "lt_seed1",
+      "sessionId": "seed",
+      "kind": "box",
+      "title": "테이프 박스 위치 수정",
+      "before": "x 0.40 y 0.54 · 20×15%",
+      "after": "x 0.38 y 0.52 · 24×16%",
+      "source": "현장 수정",
+      "createdAt": "2026-11-08T15:17:50.123Z",
+      "status": "pending"
+    },
+    {
+      "id": "lt_seed2",
+      "sessionId": "seed",
+      "kind": "ratio",
+      "title": "ABS 혼입 비율",
+      "before": "3%",
+      "after": "8%",
+      "source": "현장 수정",
+      "createdAt": "2026-11-09T15:17:50.123Z",
+      "status": "pending"
+    },
+    {
+      "id": "lt_seed3",
+      "sessionId": "seed",
+      "kind": "outcome",
+      "title": "실제 매입 결과",
+      "before": "예상 +300원/kg",
+      "after": "실제 +270원/kg · B등급",
+      "source": "업체 실제 결과",
+      "createdAt": "2026-11-09T15:17:50.123Z",
+      "status": "pending"
+    },
+    {
+      "id": "lt_seed4",
+      "sessionId": "seed",
+      "kind": "origin",
+      "title": "포장 필름 출처 변경",
+      "before": "공정 부산물 · PIR",
+      "after": "사용 후 포장재 · PCR",
+      "source": "현장 수정",
+      "createdAt": "2026-11-10T15:17:50.123Z",
+      "status": "pending"
+    },
+    {
+      "id": "lt_seed6",
+      "sessionId": "seed",
+      "kind": "route",
+      "title": "퍼지 경로 변경",
+      "before": "매각",
+      "after": "열분해",
+      "source": "현장 수정",
+      "createdAt": "2026-11-10T15:17:50.123Z",
+      "status": "pending"
+    },
+    {
+      "id": "lt_seed5",
+      "sessionId": "seed",
+      "kind": "outcome",
+      "title": "매입 거절",
+      "before": "예상 재활용 가능",
+      "after": "거절 · 이물질 15%",
+      "source": "업체 실제 결과",
+      "createdAt": "2026-11-02T15:17:50.123Z",
+      "status": "accepted",
+      "reviewer": "ML 담당"
+    },
+    {
+      "sessionId": "ses_10ecdc65dccf",
+      "kind": "outcome",
+      "title": "불량 성형품 · 실제 매입 결과",
+      "before": "예상 +300원/kg",
+      "after": "실제 +290원/kg · A등급",
+      "source": "업체 실제 결과",
+      "id": "lt_7f45e2c30978",
+      "createdAt": "2026-11-11T15:18:16.983Z",
+      "status": "pending"
+    },
+    {
+      "sessionId": "ses_10ecdc65dccf",
+      "kind": "outcome",
+      "title": "퍼지·색 혼합 · 실제 매입 결과",
+      "before": "예상 -80원/kg",
+      "after": "실제 -80원/kg · A등급",
+      "source": "업체 실제 결과",
+      "id": "lt_e94c578739df",
+      "createdAt": "2026-11-11T15:18:19.491Z",
+      "status": "pending"
+    },
+    {
+      "sessionId": "ses_10ecdc65dccf",
+      "kind": "outcome",
+      "title": "원자재 포장 필름 · 실제 매입 결과",
+      "before": "예상 +100원/kg",
+      "after": "실제 +90원/kg · A등급",
+      "source": "업체 실제 결과",
+      "id": "lt_5dd76a9d8f86",
+      "createdAt": "2026-11-11T15:18:21.999Z",
+      "status": "pending"
+    }
+  ],
+  "modelVersions": [
+    {
+      "id": "mdl-v3.1",
+      "name": "rtdetr-waste",
+      "version": "v3.1",
+      "createdAt": "2026-08-11T15:17:50.123Z",
+      "datasetVersion": "ds-v7",
+      "status": "archived",
+      "metrics": {
+        "mAP50": 0.802,
+        "contaminationMae": 0.036,
+        "verdictAgreement": 0.861,
+        "latencyMs": 112
+      }
+    },
+    {
+      "id": "mdl-v3.2",
+      "name": "rtdetr-waste",
+      "version": "v3.2",
+      "createdAt": "2026-09-12T15:17:50.123Z",
+      "datasetVersion": "ds-v8",
+      "status": "production",
+      "metrics": {
+        "mAP50": 0.824,
+        "contaminationMae": 0.031,
+        "verdictAgreement": 0.874,
+        "latencyMs": 108
+      }
+    },
+    {
+      "id": "mdl-v3.3-rc1",
+      "name": "rtdetr-waste",
+      "version": "v3.3-rc1",
+      "createdAt": "2026-10-22T15:17:50.123Z",
+      "datasetVersion": "ds-v9",
+      "status": "candidate",
+      "metrics": {
+        "mAP50": 0.836,
+        "contaminationMae": 0.029,
+        "verdictAgreement": 0.859,
+        "latencyMs": 111
+      }
+    }
+  ],
+  "trainingRuns": [
+    {
+      "id": "tr-0907",
+      "startedAt": "2026-08-10T15:17:50.124Z",
+      "finishedAt": "2026-08-11T15:17:50.124Z",
+      "datasetVersion": "ds-v7",
+      "baseModel": "v3.0",
+      "status": "succeeded",
+      "progress": 1,
+      "resultModelId": "mdl-v3.1",
+      "triggeredBy": "ML 담당"
+    },
+    {
+      "id": "tr-1009",
+      "startedAt": "2026-09-11T15:17:50.124Z",
+      "finishedAt": "2026-09-12T15:17:50.124Z",
+      "datasetVersion": "ds-v8",
+      "baseModel": "v3.1",
+      "status": "succeeded",
+      "progress": 1,
+      "resultModelId": "mdl-v3.2",
+      "triggeredBy": "ML 담당"
+    },
+    {
+      "id": "tr-1019",
+      "startedAt": "2026-10-21T15:17:50.124Z",
+      "finishedAt": "2026-10-22T15:17:50.124Z",
+      "datasetVersion": "ds-v9",
+      "baseModel": "v3.2",
+      "status": "succeeded",
+      "progress": 1,
+      "resultModelId": "mdl-v3.3-rc1",
+      "triggeredBy": "ML 담당"
+    }
+  ],
+  "datasetVersions": [
+    {
+      "id": "ds-v7",
+      "createdAt": "2026-08-07T15:17:50.123Z",
+      "images": 3960,
+      "newLabels": 210,
+      "fromCorrections": 180,
+      "fromOutcomes": 30,
+      "note": "녹산·사상 단지 시범 수집분",
+      "labelTaskIds": [],
+      "createdBy": "ML 담당"
+    },
+    {
+      "id": "ds-v8",
+      "createdAt": "2026-09-08T15:17:50.123Z",
+      "images": 4480,
+      "newLabels": 520,
+      "fromCorrections": 410,
+      "fromOutcomes": 110,
+      "note": "테이프·라벨 박스 보강",
+      "labelTaskIds": [],
+      "createdBy": "ML 담당"
+    },
+    {
+      "id": "ds-v9",
+      "createdAt": "2026-10-21T15:17:50.123Z",
+      "images": 4820,
+      "newLabels": 340,
+      "fromCorrections": 290,
+      "fromOutcomes": 50,
+      "note": "퍼지·포장 필름 흐름 이미지 추가",
+      "labelTaskIds": [],
+      "createdBy": "ML 담당"
+    }
+  ],
+  "outbox": [
+    {
+      "id": "ob_342b75f82a25",
+      "sessionId": "ses_10ecdc65dccf",
+      "orgId": "org_36b164dc0dc8",
+      "fromOrg": "(주)한빛정밀",
+      "toCompanyId": "noksan-008",
+      "toName": "(주)새길자원",
+      "kind": "pickup",
+      "subject": "[순회 수거 요청] LDPE 스트레치 필름 월 1,230kg · 3개 사업장",
+      "sentAt": "2026-11-11T15:18:03.581Z",
+      "status": "completed",
+      "streamId": "st_6b9310c74503",
+      "reply": {
+        "decision": "accepted",
+        "at": "2026-11-11T15:18:16.726Z",
+        "by": "(주)새길자원 에이전트",
+        "reason": "목요일 오전 · 140원/kg · 월 2회"
+      }
+    },
+    {
+      "id": "ob_3c2dc1b9e836",
+      "sessionId": "ses_10ecdc65dccf",
+      "orgId": "org_36b164dc0dc8",
+      "fromOrg": "(주)한빛정밀",
+      "toCompanyId": "noksan-017",
+      "toName": "하늬로지스",
+      "kind": "bundle-invite",
+      "subject": "[묶음 수거 제안] 원자재 포장 필름 순회 수거 참여 요청",
+      "sentAt": "2026-11-11T15:18:03.581Z",
+      "status": "replied",
+      "streamId": "st_6b9310c74503",
+      "reply": {
+        "decision": "accepted",
+        "at": "2026-11-11T15:18:05.612Z",
+        "by": "하늬로지스 담당자"
+      }
+    },
+    {
+      "id": "ob_de7cde96e1a9",
+      "sessionId": "ses_10ecdc65dccf",
+      "orgId": "org_36b164dc0dc8",
+      "fromOrg": "(주)한빛정밀",
+      "toCompanyId": "noksan-018",
+      "toName": "아름푸드(주)",
+      "kind": "bundle-invite",
+      "subject": "[묶음 수거 제안] 원자재 포장 필름 순회 수거 참여 요청",
+      "sentAt": "2026-11-11T15:18:03.581Z",
+      "status": "replied",
+      "streamId": "st_6b9310c74503",
+      "reply": {
+        "decision": "accepted",
+        "at": "2026-11-11T15:18:08.892Z",
+        "by": "아름푸드(주) 담당자"
+      }
+    },
+    {
+      "id": "ob_11a45fffcc1f",
+      "sessionId": "ses_10ecdc65dccf",
+      "orgId": "org_36b164dc0dc8",
+      "fromOrg": "(주)한빛정밀",
+      "toCompanyId": "noksan-008",
+      "toName": "(주)새길자원",
+      "kind": "quote",
+      "subject": "[매각 견적 요청] PP 불량 하우징 월 400kg",
+      "sentAt": "2026-11-11T15:18:03.582Z",
+      "status": "completed",
+      "streamId": "st_b548298c885c"
+    },
+    {
+      "id": "ob_af26ef33e330",
+      "sessionId": "ses_10ecdc65dccf",
+      "orgId": "org_36b164dc0dc8",
+      "fromOrg": "(주)한빛정밀",
+      "toCompanyId": "ext_namhae_pyro",
+      "toName": "(주)남해열분해",
+      "kind": "quote",
+      "subject": "[열분해 위탁 요청] PP+ABS 퍼지 덩어리 월 250kg",
+      "sentAt": "2026-11-11T15:18:03.582Z",
+      "status": "completed",
+      "streamId": "st_491e0024fb5a"
+    }
+  ],
+  "organizations": [
+    {
+      "name": "(주)한빛정밀",
+      "bizNo": "1234567891",
+      "industry": "플라스틱 제품 제조업",
+      "role": "배출",
+      "contactTitle": "",
+      "complexId": "noksan",
+      "wasteStreams": [
+        {
+          "item": "폐플라스틱",
+          "monthlyKg": 800,
+          "storage": "야외·지붕"
+        }
+      ],
+      "id": "org_36b164dc0dc8",
+      "ownerId": "dev:kim@hanbit.example",
+      "createdAt": "2026-11-11T15:17:48.894Z",
+      "updatedAt": "2026-11-11T15:17:48.894Z"
+    }
+  ],
+  "members": [
+    {
+      "id": "mem_owner_org_36b164dc0dc8",
+      "orgId": "org_36b164dc0dc8",
+      "name": "김담당",
+      "email": "kim@hanbit.example",
+      "role": "관리자",
+      "status": "active",
+      "invitedAt": "2026-11-11T15:17:48.894Z"
+    }
+  ],
+  "passports": [
+    {
+      "id": "RP-20261112-0001",
+      "sessionId": "ses_10ecdc65dccf",
+      "streamId": "st_b548298c885c",
+      "issuedAt": "2026-11-11T15:18:16.985Z",
+      "issuer": "Re:Source AI (시연)",
+      "company": "(주)한빛정밀",
+      "complex": "녹산국가산업단지",
+      "stream": "불량 성형품",
+      "material": "PP",
+      "detail": "PP 불량 하우징",
+      "origin": "PIR",
+      "originBasis": "AI 추정 · 공정 부산물(검사 공정)",
+      "creditable": "pir",
+      "evidence": [
+        {
+          "label": "식별 모델",
+          "value": "rtdetr-waste v3.2 · 신뢰도 0.93"
+        },
+        {
+          "label": "이물(면적 추정)",
+          "value": "6%"
+        },
+        {
+          "label": "원자재 입고 기록",
+          "value": "해당 없음(공정 부산물)"
+        },
+        {
+          "label": "수거 방식",
+          "value": "단독 매각"
+        },
+        {
+          "label": "계량",
+          "value": "담당자 기록 · 400kg"
+        }
+      ],
+      "weightKg": 400,
+      "grade": "A등급",
+      "collectedBy": "(주)새길자원",
+      "collectedAt": "2026-11-11T15:18:16.982Z",
+      "route": "sell",
+      "prevHash": null,
+      "hash": "0b2a99a935658029593290f633cd1dc6c7ed99c1663438e2889baa011611b01b"
+    },
+    {
+      "id": "RP-20261112-0002",
+      "sessionId": "ses_10ecdc65dccf",
+      "streamId": "st_6b9310c74503",
+      "issuedAt": "2026-11-11T15:18:22.000Z",
+      "issuer": "Re:Source AI (시연)",
+      "company": "(주)한빛정밀",
+      "complex": "녹산국가산업단지",
+      "stream": "원자재 포장 필름",
+      "material": "LDPE",
+      "detail": "LDPE 스트레치 필름",
+      "origin": "PCR",
+      "originBasis": "AI 추정 · 공장이 쓰고 버린 포장재 · 입고 기록 있음",
+      "creditable": "pcr",
+      "evidence": [
+        {
+          "label": "식별 모델",
+          "value": "rtdetr-waste v3.2 · 신뢰도 0.93"
+        },
+        {
+          "label": "이물(면적 추정)",
+          "value": "3%"
+        },
+        {
+          "label": "원자재 입고 기록",
+          "value": "있음"
+        },
+        {
+          "label": "수거 방식",
+          "value": "순회 수거 · 3개 사업장 · 사업장별 계량"
+        },
+        {
+          "label": "계량",
+          "value": "담당자 기록 · 300kg"
+        }
+      ],
+      "weightKg": 300,
+      "grade": "A등급",
+      "collectedBy": "(주)새길자원",
+      "collectedAt": "2026-11-11T15:18:21.998Z",
+      "route": "bundle",
+      "prevHash": "0b2a99a935658029593290f633cd1dc6c7ed99c1663438e2889baa011611b01b",
+      "hash": "314cc636894f082c912a274032ad7a6f0ad8f1e6d61e01954e6b240871922f9f"
+    }
+  ]
+}
