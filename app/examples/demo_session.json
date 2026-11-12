@@ -1062,212 +1062,156 @@
       {
         "streamId": "st_d7ca23cd1c42",
         "route": "reuse",
-        "reason": "깨끗한 단일 PP라 분쇄해서 같은 공정에 다시 넣을 수 있습니다(신재 대비 10% 이내 혼합).",
-        "currentPerKg": -250,
-        "afterPerKg": 900,
-        "monthlyNow": -150000,
-        "monthlyAfter": 510000,
-        "carbonNowT": 0.47,
-        "carbonAfterT": -0.96,
+        "reason": "시연 규칙: 이물이 적은 단일 PIR 플라스틱 재투입",
+        "status": "calculated",
+        "reasonCode": null,
+        "currentPerKg": -250.0,
+        "afterPerKg": 900.0,
+        "monthlyNow": -150000.0,
+        "monthlyAfter": 510000.0,
+        "monthlyDifference": 660000.0,
+        "cashSaleRevenue": 0.0,
+        "purchaseAvoidanceNet": 540000.0,
+        "disposalCost": 0.0,
+        "transportCost": 0.0,
+        "laborCost": 30000.0,
+        "carbonNowT": null,
+        "carbonAfterT": null,
         "action": {
-          "title": "색별로 분리해 분쇄기에 넣으세요",
-          "laborHours": 2,
-          "laborCost": 30000
+          "title": "색별로 분리해 분쇄기에 넣기",
+          "laborHours": 2.0,
+          "laborCost": 30000.0
         },
-        "ladder": [
-          {
-            "label": "현재(혼합 소각)",
-            "perKg": -250
-          },
-          {
-            "label": "분리해 매각",
-            "perKg": 300
-          },
-          {
-            "label": "분쇄 재투입",
-            "perKg": 900
-          }
-        ],
-        "alternatives": [
-          {
-            "route": "sell",
-            "perKg": 300,
-            "note": "이물을 떼야 매입 기준을 맞춥니다."
-          },
-          {
-            "route": "pyrolysis",
-            "perKg": -80,
-            "note": "재질이 섞인 흐름에 맞는 경로입니다."
-          },
-          {
-            "route": "incinerate",
-            "perKg": -250,
-            "note": "지금처럼 혼합 폐기물로 위탁합니다."
-          }
+        "ladder": null,
+        "alternatives": null,
+        "aiRoute": null,
+        "dataMode": "synthetic_demo",
+        "assumptions": [
+          "모든 단가와 규칙은 synthetic/demo",
+          "재투입은 분쇄·관리비 포함 순효과; 매출이 아닌 구매비 회피",
+          "묶음 운송비는 kg당 순효과에 포함; 인건비만 별도 차감",
+          "기타 운송비와 작업 없는 경로의 인건비는 시연상 명시적으로 0",
+          "회수율·신재 대체율을 추정하지 않음; 실제 적합성·수용·거래 미확정"
         ]
       },
       {
         "streamId": "st_b548298c885c",
         "route": "sell",
-        "reason": "단일 PP이고 이물이 6%라, 이물을 떼면 재생원료 업체에 팔 수 있습니다.",
-        "currentPerKg": -250,
-        "afterPerKg": 300,
-        "monthlyNow": -100000,
-        "monthlyAfter": 90000,
-        "carbonNowT": 0.31,
-        "carbonAfterT": -0.6,
+        "reason": "시연 규칙: 이물 기준 미만 매각",
+        "status": "calculated",
+        "reasonCode": null,
+        "currentPerKg": -250.0,
+        "afterPerKg": 300.0,
+        "monthlyNow": -100000.0,
+        "monthlyAfter": 90000.0,
+        "monthlyDifference": 190000.0,
+        "cashSaleRevenue": 120000.0,
+        "purchaseAvoidanceNet": 0.0,
+        "disposalCost": 0.0,
+        "transportCost": 0.0,
+        "laborCost": 30000.0,
+        "carbonNowT": null,
+        "carbonAfterT": null,
         "action": {
-          "title": "종이 라벨·금속 인서트을 떼고 따로 모으세요",
-          "laborHours": 2,
-          "laborCost": 30000
+          "title": "종이 라벨·금속 인서트 제거 후 따로 모으기",
+          "laborHours": 2.0,
+          "laborCost": 30000.0
         },
-        "ladder": [
-          {
-            "label": "현재(혼합 소각)",
-            "perKg": -250
-          },
-          {
-            "label": "이물 일부 제거",
-            "perKg": 150
-          },
-          {
-            "label": "이물 제거 후 매각",
-            "perKg": 300
-          }
-        ],
-        "alternatives": [
-          {
-            "route": "reuse",
-            "perKg": 900,
-            "note": "같은 공정에 다시 넣으려면 단일 재질·무오염이어야 합니다."
-          },
-          {
-            "route": "pyrolysis",
-            "perKg": -80,
-            "note": "재질이 섞인 흐름에 맞는 경로입니다."
-          },
-          {
-            "route": "incinerate",
-            "perKg": -250,
-            "note": "지금처럼 혼합 폐기물로 위탁합니다."
-          }
+        "ladder": null,
+        "alternatives": null,
+        "aiRoute": null,
+        "dataMode": "synthetic_demo",
+        "assumptions": [
+          "모든 단가와 규칙은 synthetic/demo",
+          "재투입은 분쇄·관리비 포함 순효과; 매출이 아닌 구매비 회피",
+          "묶음 운송비는 kg당 순효과에 포함; 인건비만 별도 차감",
+          "기타 운송비와 작업 없는 경로의 인건비는 시연상 명시적으로 0",
+          "회수율·신재 대체율을 추정하지 않음; 실제 적합성·수용·거래 미확정"
         ]
       },
       {
         "streamId": "st_491e0024fb5a",
         "route": "pyrolysis",
-        "reason": "PP+ABS 재질이 섞여 기계적 재활용이 어렵습니다. 소각보다 싼 열분해 위탁이 낫습니다.",
-        "currentPerKg": -250,
-        "afterPerKg": -80,
-        "monthlyNow": -62500,
-        "monthlyAfter": -20000,
-        "carbonNowT": 0.2,
-        "carbonAfterT": -0.07,
-        "ladder": [
-          {
-            "label": "현재(혼합 소각)",
-            "perKg": -250
-          },
-          {
-            "label": "열분해 위탁",
-            "perKg": -80
-          }
-        ],
-        "alternatives": [
-          {
-            "route": "reuse",
-            "perKg": 900,
-            "note": "같은 공정에 다시 넣으려면 단일 재질·무오염이어야 합니다."
-          },
-          {
-            "route": "sell",
-            "perKg": 300,
-            "note": "재질이 섞여 매입처가 받지 않습니다."
-          },
-          {
-            "route": "incinerate",
-            "perKg": -250,
-            "note": "지금처럼 혼합 폐기물로 위탁합니다."
-          }
+        "reason": "시연 규칙: 혼합 재질 열분해",
+        "status": "calculated",
+        "reasonCode": null,
+        "currentPerKg": -250.0,
+        "afterPerKg": -80.0,
+        "monthlyNow": -62500.0,
+        "monthlyAfter": -20000.0,
+        "monthlyDifference": 42500.0,
+        "cashSaleRevenue": 0.0,
+        "purchaseAvoidanceNet": 0.0,
+        "disposalCost": 20000.0,
+        "transportCost": 0.0,
+        "laborCost": 0.0,
+        "carbonNowT": null,
+        "carbonAfterT": null,
+        "action": null,
+        "ladder": null,
+        "alternatives": null,
+        "aiRoute": null,
+        "dataMode": "synthetic_demo",
+        "assumptions": [
+          "모든 단가와 규칙은 synthetic/demo",
+          "재투입은 분쇄·관리비 포함 순효과; 매출이 아닌 구매비 회피",
+          "묶음 운송비는 kg당 순효과에 포함; 인건비만 별도 차감",
+          "기타 운송비와 작업 없는 경로의 인건비는 시연상 명시적으로 0",
+          "회수율·신재 대체율을 추정하지 않음; 실제 적합성·수용·거래 미확정"
         ]
       },
       {
         "streamId": "st_6b9310c74503",
         "route": "bundle",
-        "reason": "공장이 쓰고 버린 LDPE 포장재라 사용 후(PCR) 원료가 됩니다. 월 300kg은 혼자 팔기엔 적어 같은 단지 기업과 묶습니다.",
-        "currentPerKg": -250,
-        "afterPerKg": 100,
-        "monthlyNow": -75000,
-        "monthlyAfter": 15000,
-        "carbonNowT": 0.23,
-        "carbonAfterT": -0.43,
+        "reason": "시연 규칙: PCR 최소 물량 미만 묶음 후보",
+        "status": "conditional",
+        "reasonCode": null,
+        "currentPerKg": -250.0,
+        "afterPerKg": 100.0,
+        "monthlyNow": -75000.0,
+        "monthlyAfter": 15000.0,
+        "monthlyDifference": 90000.0,
+        "cashSaleRevenue": 45000.0,
+        "purchaseAvoidanceNet": 0.0,
+        "disposalCost": 0.0,
+        "transportCost": 15000.0,
+        "laborCost": 15000.0,
+        "carbonNowT": null,
+        "carbonAfterT": null,
         "action": {
-          "title": "원자재 포장 필름을 마대에 따로 모으세요",
-          "laborHours": 1,
-          "laborCost": 15000
+          "title": "흐름을 마대에 따로 모으기",
+          "laborHours": 1.0,
+          "laborCost": 15000.0
         },
-        "ladder": [
-          {
-            "label": "현재(혼합 소각)",
-            "perKg": -250
-          },
-          {
-            "label": "분리해 단독 매각",
-            "perKg": -40
-          },
-          {
-            "label": "단지 묶음 매각",
-            "perKg": 100
-          }
-        ],
-        "alternatives": [
-          {
-            "route": "sell",
-            "perKg": -40,
-            "note": "혼자 팔면 출장비 때문에 단가가 깎입니다."
-          },
-          {
-            "route": "pyrolysis",
-            "perKg": -80,
-            "note": "재질이 섞인 흐름에 맞는 경로입니다."
-          },
-          {
-            "route": "incinerate",
-            "perKg": -250,
-            "note": "지금처럼 혼합 폐기물로 위탁합니다."
-          }
+        "ladder": null,
+        "alternatives": null,
+        "aiRoute": null,
+        "dataMode": "synthetic_demo",
+        "assumptions": [
+          "모든 단가와 규칙은 synthetic/demo",
+          "재투입은 분쇄·관리비 포함 순효과; 매출이 아닌 구매비 회피",
+          "묶음 운송비는 kg당 순효과에 포함; 인건비만 별도 차감",
+          "기타 운송비와 작업 없는 경로의 인건비는 시연상 명시적으로 0",
+          "회수율·신재 대체율을 추정하지 않음; 실제 적합성·수용·거래 미확정"
         ]
       }
     ],
-    "totalNow": -387500,
-    "totalAfter": 595000,
-    "carbonNowT": 1.21,
-    "carbonAfterT": -2.06,
-    "reasons": [
-      {
-        "text": "부산권역 PP 압축품 300원/kg, LDPE 필름 150원/kg",
-        "source": "재활용가능자원 가격조사(가정값)"
-      },
-      {
-        "text": "혼합 사업장폐기물 소각 위탁 250원/kg(톤당 25만 원)",
-        "source": "업체 인터뷰 평균(가정값)"
-      },
-      {
-        "text": "공정 부산물은 재생원료 의무 실적에 들어가지 않습니다. 공장이 쓰고 버린 포장재는 사용 후 원료로 인정될 여지가 있습니다(해석 확인 필요).",
-        "source": "재생원료 사용의무 고시 별표2 비고3, EU PPWR 제7조"
-      },
-      {
-        "text": "비 온 다음 날, 야외에 둔 PP 베일 → 수분이 5% 넘는 것으로 보고 한 등급 낮춰 매입한다",
-        "source": "(주)녹산리사이클 · 동의 7명",
-        "knowledgeCardId": "kc_rain_pp"
-      },
-      {
-        "text": "퍼지 덩어리에 검은 줄무늬가 섞여 있을 때 → ABS 혼입으로 보고 매각 대신 열분해로 보낸다",
-        "source": "(주)단비화성 · 동의 3명",
-        "knowledgeCardId": "kc_purge_abs"
-      }
-    ],
-    "note": "재투입은 신재 대비 10% 이내로 섞는다고 가정했습니다. 그 이상은 물성 시험이 필요합니다."
+    "status": "conditional",
+    "totalNow": -387500.0,
+    "totalAfter": 595000.0,
+    "difference": 982500.0,
+    "carbonNowT": null,
+    "carbonAfterT": null,
+    "reasons": [],
+    "note": "시연용 가상 계산이며 실제 거래나 적합성을 확정하지 않습니다.",
+    "dataMode": "synthetic_demo",
+    "assumptions": [
+      "모든 단가와 규칙은 synthetic/demo",
+      "재투입은 분쇄·관리비 포함 순효과; 매출이 아닌 구매비 회피",
+      "묶음 운송비는 kg당 순효과에 포함; 인건비만 별도 차감",
+      "기타 운송비와 작업 없는 경로의 인건비는 시연상 명시적으로 0",
+      "회수율·신재 대체율을 추정하지 않음; 실제 적합성·수용·거래 미확정"
+    ]
   },
   "regulation": {
     "items": [

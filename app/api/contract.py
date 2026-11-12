@@ -52,7 +52,7 @@ def demo_collections() -> DemoCollections:
     return DemoCollections.model_validate_json(text)
 
 
-@router.get("/session-example", response_model=Session, response_model_exclude_none=True)
+@router.get("/session-example", response_model=Session, response_model_exclude_unset=True)
 def session_example() -> Session:
     """승인과 실제 결과 기록까지 끝난 시연 진단 한 건"""
     return demo_session()
