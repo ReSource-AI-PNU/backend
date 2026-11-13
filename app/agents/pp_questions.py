@@ -24,6 +24,14 @@ FieldId = Literal[
 Status = Literal["unanswered", "unknown", "value", "conflict"]
 
 
+class QuestionInputError(ValueError):
+    """질문 선택이나 답변의 형식·허용값 오류."""
+
+
+class QuestionConflictError(ValueError):
+    """현재 질문 상태와 전이 요청이 충돌한다."""
+
+
 class InputField(Contract):
     status: Status = "unanswered"
     value: str | None = None
@@ -319,20 +327,20 @@ def validate_selection(allowed: tuple[Candidate, ...], selected: tuple[Selection
     """모델 결과를 검증한다. 오류는 호출자에게 전달하며 폴백하지 않는다."""
     selected = tuple(Selection.model_validate(item.model_dump()) for item in selected)
     if len({c.id for c in allowed}) != len(allowed):
-        raise ValueError("허용 후보 ID는 중복될 수 없습니다")
+        raise QuestionInputError("허용 후보 ID는 중복될 수 없습니다")
     by_id = {c.id: c for c in allowed}
     ids = [s.id for s in selected]
     if not ids or len(ids) > 3 or len(ids) != len(set(ids)):
-        raise ValueError("선택은 중복 없이 1~3개여야 합니다")
+        raise QuestionInputError("선택은 중복 없이 1~3개여야 합니다")
     # 미해결 재질은 지원 범위 확인의 선행 조건이다. 근거도 후보이면 함께 선택한다.
     if "material" in by_id and "material" not in ids:
-        raise ValueError("재질 확인을 먼저 선택해야 합니다")
+        raise QuestionInputError("재질 확인을 먼저 선택해야 합니다")
     if "material_basis" in by_id and "material_basis" not in ids:
-        raise ValueError("재질 판단 근거를 먼저 선택해야 합니다")
+        raise QuestionInputError("재질 판단 근거를 먼저 선택해야 합니다")
     for item in selected:
         candidate = by_id.get(item.id)
         if candidate is None or item.kind != candidate.kind or item.options != candidate.options:
-            raise ValueError("허용되지 않은 ID 또는 변조된 응답 형식입니다")
+            raise QuestionInputError("허용되지 않은 ID 또는 변조된 응답 형식입니다")
 
 
 def record_display(
@@ -342,20 +350,20 @@ def record_display(
     state = ReviewState.model_validate(state.model_dump())
     selected = tuple(Selection.model_validate(item.model_dump()) for item in selected)
     if not batch_id.strip():
-        raise ValueError("묶음 ID가 필요합니다")
+        raise QuestionInputError("묶음 ID가 필요합니다")
     for batch in state.batches:
         if batch.id == batch_id:
             if (
                 batch.snapshot_id != snapshot_id
                 or tuple(q.selection for q in batch.questions) != selected
             ):
-                raise ValueError("같은 묶음 ID에 다른 요청을 사용할 수 없습니다")
+                raise QuestionConflictError("같은 묶음 ID에 다른 요청을 사용할 수 없습니다")
             return state
     result = evaluate(state)
     if result.status != "questions":
-        raise ValueError("표시할 질문 묶음이 없습니다")
+        raise QuestionConflictError("표시할 질문 묶음이 없습니다")
     if snapshot_id != result.snapshot_id:
-        raise ValueError("오래된 후보 스냅샷입니다")
+        raise QuestionConflictError("오래된 후보 스냅샷입니다")
     validate_selection(result.candidates, selected)
     by_id = {c.id: c for c in result.candidates}
     batch = DisplayedBatch(
@@ -379,18 +387,18 @@ def resolve_question(
     """질문별 답변 또는 건너뛰기를 반영한다. 모든 질문 처리 후 다음 묶음으로 간다."""
     state = ReviewState.model_validate(state.model_dump())
     if not state.batches or state.batches[-1].id != batch_id:
-        raise ValueError("현재 대기 묶음이 아닙니다")
+        raise QuestionConflictError("현재 대기 묶음이 아닙니다")
     batch = state.batches[-1]
     matches = [q for q in batch.questions if q.selection.id == question_id]
     if len(matches) != 1 or matches[0].outcome != "pending":
-        raise ValueError("대기 중인 질문이 아닙니다")
+        raise QuestionConflictError("대기 중인 질문이 아닙니다")
     question = matches[0]
     current = getattr(state, question_id)
     if not skip and current.revision != question.revision:
-        raise ValueError("표시 후 대상 항목이 변경됐습니다")
+        raise QuestionConflictError("표시 후 대상 항목이 변경됐습니다")
     if skip:
         if answer is not None:
-            raise ValueError("건너뛰기에는 답변을 지정할 수 없습니다")
+            raise QuestionInputError("건너뛰기에는 답변을 지정할 수 없습니다")
         answer = current
     else:
         expected = (
@@ -405,12 +413,12 @@ def resolve_question(
             "unknown",
             "conflict",
         ):
-            raise ValueError("해당 항목에 맞는 답변이 필요합니다")
+            raise QuestionInputError("해당 항목에 맞는 답변이 필요합니다")
         answer = (FormField if question_id == "form" else expected).model_validate(
             answer.model_dump()
         )
         if answer.revision != question.revision:
-            raise ValueError("답변의 대상 버전이 다릅니다")
+            raise QuestionConflictError("답변의 대상 버전이 다릅니다")
         answer = answer.model_copy(update={"answered_revision": question.revision})
     questions = tuple(
         q.model_copy(update={"outcome": "skipped" if skip else "answered"})
