@@ -23,6 +23,28 @@ uv run uvicorn app.main:app --reload
 - API 문서: http://localhost:8000/docs
 - 헬스 체크: http://localhost:8000/api/v1/health
 
+### 경제 효과 미리보기 API
+
+`POST /api/v1/feasibility/preview`는 공통 `Stream` 목록과 선택적인 `overrides`를
+받아 저장 없이 가상 경제 효과를 계산한다. 단가와 규칙은 서버의
+`app.demo.synthetic.CONFIG`를 사용하며 요청으로 바꿀 수 없다. 탄소와 미계산
+항목은 `null`, 묶음은 조건부로 반환한다. 수치는 synthetic/demo 가정이며 실제
+거래 가능성이나 절감액을 확정하지 않는다.
+
+직접 확인하려면 위 실행 명령으로 서버를 시작한 후:
+
+1. http://localhost:8000/docs 에서 `POST /api/v1/feasibility/preview`를 연다.
+2. **Try it out**을 누르고 제공된 가상 공장 네 흐름 예시를 확인한다.
+3. **Execute**를 누르면 응답의 `totalNow`, `totalAfter`, `decisions`를 확인할 수 있다.
+4. 경로 변경을 시험하려면 `overrides`에 예시 흐름의 `id`를 키로 넣는다. 예를 들어
+   첫 흐름의 ID가 `st_d7ca23cd1c42`이면 `{"st_d7ca23cd1c42": "sell"}`을 전달한다.
+   해당 결과의 `route`와 `aiRoute`를 비교한다.
+
+흐름 ID 중복, 빈 목록 또는 입력에 없는 ID에 대한 override는 422를 반환한다.
+0kg, 미확인 발생량 및 지원하지 않는 계산 조합은 정상 응답의 계산 보류 상태로
+표시한다. 이 API는 세션을 만들거나 저장하지 않으며, 기존 계약 예시 조회 API와
+별개다.
+
 ## 검사
 
 ```bash
