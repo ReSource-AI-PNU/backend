@@ -12,6 +12,7 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+foundry-check = ["openai>=3.50,<4"]
 dev = [
     "pytest>=8",
     "ruff>=0.6",

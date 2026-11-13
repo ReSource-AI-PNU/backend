@@ -112,3 +112,32 @@ PCR 포장재에 동일 규칙을 적용하는 프런트 mock과의 차이로, b
 ## 배포
 
 `Dockerfile`로 컨테이너를 빌드해 Azure Container Apps에 올린다. GitHub Actions 워크플로와 Bicep은 이후 추가한다.
+
+### Foundry 수동 연결 확인
+
+`backend/.env`에 `.env.example`의 `OPENAI_ENDPOINT`, `CHAT_DEPLOYMENT`,
+`FOUNDRY_KEY`를 추가하고 키를 직접 입력한다. 기존 `.env`를 덮어쓰지 않는다.
+운영체제 환경변수에 같은 이름이 있으면 `.env`보다 우선한다.
+
+```bash
+uv sync --extra dev --extra foundry-check
+uv run --extra foundry-check python scripts/check_foundry.py
+```
+
+이 명령은 실제 Foundry API에 한 번 요청하며 비용이 발생할 수 있다. 성공하면 모델
+응답만 출력한다. 자동 재시도는 없고 타임아웃 설정은 20초다. 일반 테스트는 실제
+서비스에 요청하지 않는다.
+
+### PP 질문 선택 수동 확인
+
+Foundry 연결 설정을 마친 뒤 아래 명령으로 가상 PP 입력의 모델 선택 결과를 확인한다.
+실제 Azure 요청이 발생하며, `source`가 `azure`면 모델 선택, `rule_fallback`이면
+고정 사유 코드와 규칙 기반 선택이다. 이 실행은 질문 표시나 묶음 횟수를 기록하지 않는다.
+
+```bash
+uv run --extra foundry-check python -m scripts.check_pp_selector
+```
+
+모델에는 입력 상태와 허용 후보가 전달되므로 수동 확인은 가상 입력만 사용한다.
+질문 선택의 무결성은 코드가 검증하지만 모델이 작성한 문구의 사실성과 적절성까지
+자동 보장하지는 않는다.
