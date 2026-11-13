@@ -9,6 +9,10 @@ class Settings(BaseSettings):
     app_env: str = "local"
     cors_origins: list[str] = ["http://localhost:3000"]
 
+    openai_endpoint: str = ""
+    chat_deployment: str = ""
+    foundry_key: str = ""
+
     azure_openai_endpoint: str = ""
     azure_openai_api_key: str = ""
     azure_openai_deployment: str = ""

@@ -141,3 +141,84 @@ uv run --extra foundry-check python -m scripts.check_pp_selector
 모델에는 입력 상태와 허용 후보가 전달되므로 수동 확인은 가상 입력만 사용한다.
 질문 선택의 무결성은 코드가 검증하지만 모델이 작성한 문구의 사실성과 적절성까지
 자동 보장하지는 않는다.
+
+### C 질문 상태 전이 API (저장 없음)
+
+`POST /api/v1/c/questions/evaluate`, `/select`, `/display`, `/answer`는 호출자가
+제공한 C 상태를 검증하고 각각 평가, 선택, 표시 기록, 답변 전이를 수행한다.
+표시·답변 성공 응답은 새 `state`와 다음 `evaluation`을 함께 반환한다. 선택은
+표시 횟수를 늘리지 않는다. 상태 충돌은 409, 잘못된 입력·선택은 422다.
+선택 호출은 서버의 `OPENAI_ENDPOINT`, `CHAT_DEPLOYMENT`, `FOUNDRY_KEY`를 사용한다.
+
+서버는 이 API의 상태를 저장하지 않는다. 전달된 이력의 진실성, 여러 요청에 걸친
+두 묶음 한도, 답변 재전송 멱등성 및 동시 저장은 보장하지 않는다. 같은 상태와
+같은 내용의 표시 재처리 등 순수 함수가 제공하는 범위만 유효하다. `complete`는
+질문 종료이며 사실 검증이 아니다. 아래 값은 실제 업체 정보가 아닌 가상 예시다.
+
+Swagger(`/docs`)에서 각 요청의 **Try it out**을 사용한다.
+
+1. `/evaluate` 또는 `/select`에 `{"state":{"material":{"status":"value","value":"PP"}}}`를 입력한다. `/select`는 서버 설정이 있으면 실제 모델을 호출한다.
+2. `/select` 결과의 `selected`, `snapshotId`와 1의 `state`를 `/display`에 다음 형식으로 전달한다: `{"state": {...}, "batchId": "demo-1", "selected": [...], "snapshotId": "..."}`.
+3. `/display`가 반환한 `state`를 사용해 `/answer`에 `{"state": {...}, "batchId": "demo-1", "questionId": "material_basis", "answer": {"status": "unknown"}, "skip": false}`를 보낸다. 각 질문에 대해 반환된 최신 `state`로 답변하거나 `answer` 없이 `"skip": true`로 건너뛴다.
+4. 응답의 `evaluation`을 확인한다. 질문이 남으면 최신 `state`로 다시 `/select`하고, 종료 상태라면 `unconfirmed`를 확인한다.
+
+#### 복사해서 실행하는 전체 흐름
+
+아래 예시는 가상 PP 입력을 사용한다. 첫 번째 터미널에서 `backend`를 작업
+디렉터리로 서버를 시작한다. 빈 환경변수를 명시해 이 예시에서는 `.env`의 Azure
+설정을 사용하지 않으며 `/select`가 규칙 기반 결과를 반환한다.
+
+```bash
+uv sync --extra dev
+OPENAI_ENDPOINT= CHAT_DEPLOYMENT= FOUNDRY_KEY= uv run uvicorn app.main:app --reload
+```
+
+서버의 `Settings`는 프로세스 시작 시 **현재 작업 디렉터리의 `.env`**를 읽는다.
+운영체제 환경변수는 `.env` 값보다 우선한다. 위 빈 환경변수 없이 서버를 실행하고
+세 설정이 준비돼 있으면 `/select`는 실제 Azure를 호출한다. `.env`를 편집한 뒤에는
+서버를 재시작한다.
+
+두 번째 터미널에서 아래를 실행한다. 각 전이는 바로 이전 응답의 `state`를 사용한다.
+첫 묶음의 재질 근거에는 모름을 답하고 나머지는 건너뛴다. 두 번째 묶음의 질문도
+건너뛰고 종료 상태와 미확인 항목을 출력한다.
+
+```bash
+python3 - <<'PY'
+import json
+import urllib.request
+
+base = "http://127.0.0.1:8000/api/v1/c/questions"
+
+def post(action, payload):
+    request = urllib.request.Request(
+        f"{base}/{action}", data=json.dumps(payload).encode(),
+        headers={"Content-Type": "application/json"}, method="POST",
+    )
+    with urllib.request.urlopen(request) as response:
+        return json.load(response)
+
+state = {"material": {"status": "value", "value": "PP"}}
+for batch_id in ("demo-1", "demo-2"):
+    selection = post("select", {"state": state})
+    print(batch_id, "선택 출처:", selection["source"])
+    if selection["evaluation"]["status"] != "questions":
+        break
+    displayed = post("display", {
+        "state": state, "batchId": batch_id,
+        "selected": selection["selected"], "snapshotId": selection["snapshotId"],
+    })
+    state = displayed["state"]
+    for question in selection["selected"]:
+        answer = {"state": state, "batchId": batch_id, "questionId": question["id"]}
+        if batch_id == "demo-1" and question["id"] == "material_basis":
+            answer["answer"] = {"status": "unknown"}
+        else:
+            answer["skip"] = True
+        state = post("answer", answer)["state"]
+result = post("evaluate", {"state": state})
+print("종료 상태:", result["status"], "/ 미확인:", result["unconfirmed"])
+PY
+```
+
+일반 pytest는 Azure 호출을 모의 처리하며 실제 연결 성공 여부를 뜻하지 않는다.
+별도의 Foundry 수동 검증은 앞 절의 실행 명령을 사용한다.
