@@ -9,9 +9,11 @@ dependencies = [
     "pydantic-settings>=2.4",
     "python-multipart>=0.0.9",
     "httpx>=0.27",
+    "openai>=3.50,<4",
 ]
 
 [project.optional-dependencies]
+foundry-check = ["openai>=3.50,<4"]
 dev = [
     "pytest>=8",
     "ruff>=0.6",
