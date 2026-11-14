@@ -33,8 +33,15 @@ def test_fixture_totals_and_action(streams):
     assert bundle.status == "conditional" and bundle.transport_cost == 15000
     body = result.model_dump(mode="json", by_alias=True)
     assert body["carbonNowT"] is None
-    assert all(d["carbonAfterT"] is None and d["ladder"] is None and d["alternatives"] is None
-               for d in body["decisions"])
+    assert all(d["carbonAfterT"] is None for d in body["decisions"])
+    assert body["decisions"][0]["ladder"] == [
+        {"label": "현재(혼합 소각)", "perKg": -250},
+        {"label": "분리해 매각", "perKg": 300},
+        {"label": "분쇄 재투입", "perKg": 900},
+    ]
+    assert [(a["route"], a["perKg"]) for a in body["decisions"][3]["alternatives"]] == [
+        ("sell", -40), ("pyrolysis", -80), ("incinerate", -250)
+    ]
     assert all(d["dataMode"] == "synthetic_demo" for d in body["decisions"])
     assert result.total_now == sum(d.monthly_now for d in result.decisions)
 
@@ -97,8 +104,11 @@ def test_fractional_values_and_finite_validation(streams):
 
 
 def test_calculated_empty_lists_are_distinct_from_uncomputed(streams):
+    pending = streams[0].model_copy(update={"monthly_kg_confirmed": False})
+    held = evaluate_streams([pending], CONFIG).decisions[0]
+    assert held.ladder is None and held.alternatives is None
     result = evaluate_streams([streams[0]], CONFIG)
-    assert result.decisions[0].ladder is None
+    assert result.decisions[0].ladder and result.decisions[0].alternatives
     result.decisions[0].ladder = []
     assert result.model_dump(mode="json", by_alias=True)["decisions"][0]["ladder"] == []
 
@@ -109,5 +119,7 @@ def test_contract_api_example_and_identification_compatibility(streams):
     body = response.json()
     assert body["streams"][0]["classify"]["material"] == "PP"
     assert body["feasibility"]["carbonNowT"] is None
-    assert body["feasibility"]["decisions"][0]["ladder"] is None
+    assert body["feasibility"]["decisions"][0]["ladder"][-1] == {
+        "label": "분쇄 재투입", "perKg": 900
+    }
     assert Session.model_validate(body).streams[0].classify == streams[0].classify

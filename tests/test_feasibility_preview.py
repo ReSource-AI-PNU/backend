@@ -32,8 +32,8 @@ def test_preview_demo_calculates_and_keeps_nulls(client, request_body):
     assert result["decisions"][3]["status"] == "conditional"
     assert result["carbonNowT"] is None and result["carbonAfterT"] is None
     assert result["dataMode"] == "synthetic_demo" and result["assumptions"]
-    assert all(d["carbonAfterT"] is None and d["ladder"] is None and d["alternatives"] is None
-               for d in result["decisions"])
+    assert all(d["carbonAfterT"] is None for d in result["decisions"])
+    assert all(d["ladder"] and d["alternatives"] for d in result["decisions"])
 
 
 def test_override_recalculates_and_preserves_ai_route(client, request_body):

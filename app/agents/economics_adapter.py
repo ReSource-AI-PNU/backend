@@ -11,7 +11,15 @@ from app.agents.demo_routes import (
     evaluate_flow,
     validate_config,
 )
-from app.schemas import FeasibilityResult, FieldAction, Stream, StreamDecision, StreamRoute
+from app.schemas import (
+    FeasibilityResult,
+    FieldAction,
+    LadderStep,
+    RouteAlternative,
+    Stream,
+    StreamDecision,
+    StreamRoute,
+)
 
 DEMO_ASSUMPTIONS = [
     "모든 단가와 규칙은 synthetic/demo",
@@ -79,7 +87,15 @@ def evaluate_streams(
             monthly_difference=result.monthly_difference, cash_sale_revenue=result.cash_sale_revenue,
             purchase_avoidance_net=result.purchase_avoidance_net, disposal_cost=result.disposal_cost,
             transport_cost=result.transport_cost, labor_cost=result.labor_cost,
-            carbon_now_t=None, carbon_after_t=None, ladder=None, alternatives=None,
+            carbon_now_t=None, carbon_after_t=None,
+            # None은 미계산(보류), 목록은 계산됨. 코어가 계산한 경우에만 채운다.
+            ladder=None if result.ladder is None else [
+                LadderStep(label=step.label, per_kg=step.per_kg) for step in result.ladder
+            ],
+            alternatives=None if result.alternatives is None else [
+                RouteAlternative(route=alt.route, per_kg=alt.per_kg, note=alt.note)
+                for alt in result.alternatives
+            ],
             action=FieldAction(title=action.title, labor_hours=action.labor_hours,
                                labor_cost=action.labor_cost) if action is not None else None,
             data_mode="synthetic_demo", assumptions=DEMO_ASSUMPTIONS.copy(),
