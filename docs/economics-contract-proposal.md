@@ -18,6 +18,7 @@ PR #29는 `extra="forbid"`, camelCase JSON 별칭과 정수 `Won`을 사용한�
 | `StreamDecision`·`FeasibilityResult`의 `carbonNowT`, `carbonAfterT`: 필수 실수 | 미계산 시 `null` 허용 | 탄소 미계산을 배출량 0으로 오인하지 않음 | null을 미계산으로 표시 |
 | `action`: `FieldAction` 또는 생략. `title`, `laborHours`, 정수 `laborCost` | 구조 유지, `laborCost` 소수 보존. 코어가 이름·시간·비용을 직접 제공 | 어댑터가 작업 시간이나 이름을 추정하지 않음 | 소수 금액 표시. `action: null` 의미는 아래 참조 |
 | `ladder`, `alternatives`: 필수 배열 | 배열 또는 `null`. `null`은 미계산, `[]`는 계산했으나 항목 없음 | 숫자나 대안을 임의로 채우지 않음 | null과 빈 배열을 구분 |
+| (위와 같음, #10 후속) | 계산된 흐름(`calculated`·`conditional`)은 코어가 `ladder`와 `alternatives`를 채운다. 보류 흐름은 `null` 유지 | 프런트 mock의 단계별 손익·대안 표시를 백엔드 값으로 대체 | `alternatives[].perKg`는 그 경로가 적용된다고 가정한 값이며 가능 여부가 아님. `note`와 함께 표시 |
 | 경제 효과 세부 항목 없음 | `cashSaleRevenue`, `purchaseAvoidanceNet`, `disposalCost`, `transportCost`, `laborCost`: 소수 또는 `null` | 현금 수입과 분쇄·관리비 포함 구매 회피 순효과, 별도 비용을 구분 | 각 항목의 단위·부호·포함 관계 표시 |
 | `FeasibilityResult.reasons`, `note`; 별도의 시연 표시 없음 | 결과에 `dataMode: "synthetic_demo"`, 구조화된 `assumptions` 추가 | 시연값과 가정의 출처·범위를 명확히 함 | 시연 표시와 가정 영역 추가 |
 
@@ -59,8 +60,16 @@ PR #29는 `extra="forbid"`, camelCase JSON 별칭과 정수 `Won`을 사용한�
   "action": {"title": "색별로 분리해 분쇄기에 넣기", "laborHours": 2.0, "laborCost": 30000.0},
   "carbonNowT": null,
   "carbonAfterT": null,
-  "ladder": null,
-  "alternatives": null,
+  "ladder": [
+    {"label": "현재(혼합 소각)", "perKg": -250.0},
+    {"label": "분리해 매각", "perKg": 300.0},
+    {"label": "분쇄 재투입", "perKg": 900.0}
+  ],
+  "alternatives": [
+    {"route": "sell", "perKg": 300.0, "note": "이물을 떼야 매입 기준을 맞춥니다."},
+    {"route": "pyrolysis", "perKg": -80.0, "note": "재질이 섞인 흐름에 맞는 경로입니다."},
+    {"route": "incinerate", "perKg": -250.0, "note": "지금처럼 혼합 폐기물로 위탁합니다."}
+  ],
   "dataMode": "synthetic_demo",
   "assumptions": ["재투입 순효과는 분쇄·관리비 포함", "별도 작업 인건비 차감"]
 }
@@ -89,8 +98,16 @@ PR #29는 `extra="forbid"`, camelCase JSON 별칭과 정수 `Won`을 사용한�
   "action": {"title": "흐름을 마대에 따로 모으기", "laborHours": 1.0, "laborCost": 15000.0},
   "carbonNowT": null,
   "carbonAfterT": null,
-  "ladder": null,
-  "alternatives": null,
+  "ladder": [
+    {"label": "현재(혼합 소각)", "perKg": -250.0},
+    {"label": "분리해 단독 매각", "perKg": -40.0},
+    {"label": "단지 묶음 매각", "perKg": 100.0}
+  ],
+  "alternatives": [
+    {"route": "sell", "perKg": -40.0, "note": "혼자 팔면 출장비 때문에 단가가 깎입니다."},
+    {"route": "pyrolysis", "perKg": -80.0, "note": "재질이 섞인 흐름에 맞는 경로입니다."},
+    {"route": "incinerate", "perKg": -250.0, "note": "지금처럼 혼합 폐기물로 위탁합니다."}
+  ],
   "dataMode": "synthetic_demo",
   "assumptions": ["묶음 운송비 50원/kg은 afterPerKg에 포함", "가상 조건부 후보이며 거래 미확정"]
 }
@@ -137,6 +154,11 @@ PR #29는 `extra="forbid"`, camelCase JSON 별칭과 정수 `Won`을 사용한�
   "assumptions": ["미확인 흐름이 있어 공장 전체 합계 계산 보류"]
 }
 ```
+
+계산된 흐름의 `ladder`·`alternatives`는 backend #10 후속 작업에서 채웠다. 아래 두 가지는 프런트 mock에서 그대로 온 것으로, 아직 합의가 필요하다.
+
+- 최소 물량 미만 PCR 흐름의 대안 "단독 매각"은 출장비 가정 190원/kg을 깎아 −40원/kg으로 표시하지만, 경로를 실제로 `sell`로 바꾸면 본 계산은 출장비를 차감하지 않아 150원/kg이 된다. 표시와 계산이 어긋난다.
+- `alternatives`는 품목을 가리지 않고 경로를 나열한다. 예를 들어 금속 스크랩에도 열분해가 대안으로 나온다.
 
 미지원 조합은 같은 `needs_information` 상태에 `reasonCode: "unsupported_combination"`을 사용한다. 0kg은 `zero_quantity`를 사용하며 코어의 정보 부족·미지원 사유도 구조화된 코드로 전달한다.
 

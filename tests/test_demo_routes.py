@@ -223,3 +223,17 @@ def test_pending_flow_has_no_ladder_or_alternatives() -> None:
 def test_solo_sale_penalty_is_validated() -> None:
     with pytest.raises(ValueError):
         evaluate_flow(FLOWS[0], replace(CONFIG, solo_sale_penalty_per_kg=-1))
+
+
+def test_sell_ladder_has_removal_steps_only_when_something_is_removed() -> None:
+    # 이물이 없는 흐름에는 "이물 일부 제거" 칸을 만들지 않는다.
+    clean = evaluate_flow(FLOWS[0], CONFIG, "sell")
+    assert clean.action is None
+    assert [(s.label, s.per_kg) for s in clean.ladder] == [
+        ("현재(혼합 소각)", -250), ("분리해 매각", 300)
+    ]
+    metal = evaluate_flow(replace(FLOWS[0], item="금속 스크랩", material="Fe"), CONFIG)
+    assert [(s.label, s.per_kg) for s in metal.ladder] == [
+        ("현재(혼합 소각)", -250), ("분리해 매각", 260)
+    ]
+    assert metal.ladder[-1].per_kg == metal.after_per_kg

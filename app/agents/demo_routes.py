@@ -139,16 +139,21 @@ def _is_film(material: str) -> bool:
     return material.strip().upper() in {"LDPE", "LLDPE"}
 
 
-def _ladder(route: Route, current: float, sale: float | None,
+def _ladder(route: Route, current: float, sale: float | None, has_removal: bool,
             config: DemoConfig) -> tuple[LadderStep, ...]:
-    """Per-kg steps from the current route up to the chosen one (frontend mock ladderFor)."""
+    """Per-kg steps from the current route up to the chosen one (frontend mock ladderFor).
+
+    Unlike the mock, the "partial removal" step appears only when there is something to remove.
+    """
     steps = [LadderStep("현재(혼합 소각)", current)]
     if route == "reuse":
         if sale is not None:
             steps.append(LadderStep("분리해 매각", sale))
         steps.append(LadderStep("분쇄 재투입", config.reuse_per_kg))
-    elif route == "sell" and sale is not None:
+    elif route == "sell" and sale is not None and has_removal:
         steps += [LadderStep("이물 일부 제거", sale / 2), LadderStep("이물 제거 후 매각", sale)]
+    elif route == "sell" and sale is not None:
+        steps.append(LadderStep("분리해 매각", sale))
     elif route == "bundle" and sale is not None:
         steps += [LadderStep("분리해 단독 매각", sale - config.solo_sale_penalty_per_kg),
                   LadderStep("단지 묶음 매각", sale - config.bundle_transport_per_kg)]
@@ -292,7 +297,7 @@ def evaluate_flow(flow: Flow, config: DemoConfig, override: Route | None = None)
     disposal = -after * quantity if route in ("pyrolysis", "incinerate") else 0
     # The chosen route's own sale price was checked above; other routes may lack one.
     item_sale = _config_value(config.sale_per_kg, flow.item, "sale_per_kg")
-    ladder = _ladder(route, current, item_sale, config)
+    ladder = _ladder(route, current, item_sale, bool(removable), config)
     alternatives = _alternatives(route, flow, current, item_sale, mixed, config)
     if not all(isfinite(x) for x in (
         now, monthly_after, monthly_after - now, cash, avoidance, disposal, transport, labor,
