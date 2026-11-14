@@ -21,3 +21,5 @@ data/processed/
 .vscode/
 .idea/
 .DS_Store
+*.safetensors
+mlflow.db
