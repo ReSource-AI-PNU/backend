@@ -237,3 +237,28 @@ def test_sell_ladder_has_removal_steps_only_when_something_is_removed() -> None:
         ("현재(혼합 소각)", -250), ("분리해 매각", 260)
     ]
     assert metal.ladder[-1].per_kg == metal.after_per_kg
+
+
+def test_small_pcr_sold_alone_pays_the_same_trip_penalty_as_shown() -> None:
+    # 대안에 보인 단독 매각 값(-40원/kg)과 실제로 그 경로를 골랐을 때의 값이 같아야 한다.
+    shown = {a.route: a.per_kg for a in evaluate_flow(FLOWS[3], CONFIG).alternatives}["sell"]
+    solo = evaluate_flow(FLOWS[3], CONFIG, "sell")
+    assert solo.status == "calculated"
+    assert solo.after_per_kg == shown == 150 - 190
+    assert (solo.cash_sale_revenue, solo.transport_cost, solo.labor_cost) == (45000, 57000, 30000)
+    assert solo.monthly_after == -40 * 300 - 30000
+    assert [(s.label, s.per_kg) for s in solo.ladder] == [
+        ("현재(혼합 소각)", -250), ("분리해 단독 매각", -40)
+    ]
+    # 최소 물량 이상이면 출장비가 붙지 않는다.
+    big = evaluate_flow(replace(FLOWS[3], monthly_kg=1200), CONFIG)
+    assert (big.route, big.after_per_kg, big.transport_cost) == ("sell", 150, 0)
+
+
+def test_pyrolysis_is_offered_only_for_plastic_flows() -> None:
+    metal = evaluate_flow(replace(FLOWS[0], item="금속 스크랩", material="Fe"), CONFIG)
+    assert [a.route for a in metal.alternatives] == ["incinerate"]
+    wood = evaluate_flow(replace(FLOWS[0], item="폐목재", material="목재"), CONFIG)
+    assert wood.route == "sell" and [a.route for a in wood.alternatives] == ["incinerate"]
+    film = evaluate_flow(FLOWS[3], CONFIG)
+    assert "pyrolysis" in [a.route for a in film.alternatives]

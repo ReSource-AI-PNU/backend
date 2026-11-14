@@ -139,17 +139,31 @@ def _is_film(material: str) -> bool:
     return material.strip().upper() in {"LDPE", "LLDPE"}
 
 
-def _ladder(route: Route, current: float, sale: float | None, has_removal: bool,
+def _small_pcr(flow: Flow, config: DemoConfig) -> bool:
+    """PCR flow under the item's minimum pickup quantity, too small to sell alone."""
+    minimum = _config_value(config.minimum_kg, flow.item, "minimum_kg")
+    return flow.origin == "PCR" and minimum is not None and flow.monthly_kg < minimum
+
+
+def _is_plastic(flow: Flow) -> bool:
+    """Plastic flows: waste plastic, or packaging whose resin is LDPE·LLDPE film."""
+    return flow.item == "폐플라스틱" or (flow.item == "포장재" and _is_film(flow.material))
+
+
+def _ladder(route: Route, current: float, sale: float | None, has_removal: bool, solo: bool,
             config: DemoConfig) -> tuple[LadderStep, ...]:
     """Per-kg steps from the current route up to the chosen one (frontend mock ladderFor).
 
-    Unlike the mock, the "partial removal" step appears only when there is something to remove.
+    Unlike the mock, the "partial removal" step appears only when there is something to remove,
+    and a small PCR flow sold alone ends at the sale price minus the solo trip penalty.
     """
     steps = [LadderStep("현재(혼합 소각)", current)]
     if route == "reuse":
         if sale is not None:
             steps.append(LadderStep("분리해 매각", sale))
         steps.append(LadderStep("분쇄 재투입", config.reuse_per_kg))
+    elif route == "sell" and sale is not None and solo:
+        steps.append(LadderStep("분리해 단독 매각", sale - config.solo_sale_penalty_per_kg))
     elif route == "sell" and sale is not None and has_removal:
         steps += [LadderStep("이물 일부 제거", sale / 2), LadderStep("이물 제거 후 매각", sale)]
     elif route == "sell" and sale is not None:
@@ -169,8 +183,7 @@ def _alternatives(route: Route, flow: Flow, current: float, sale: float | None, 
     The per-kg value is what the route would be worth if it applied; the note says why it
     was not chosen. It is not a claim that the route is available for this flow.
     """
-    minimum = _config_value(config.minimum_kg, flow.item, "minimum_kg")
-    small_pcr = flow.origin == "PCR" and minimum is not None and flow.monthly_kg < minimum
+    small_pcr = _small_pcr(flow, config)
     out = []
     for other in ROUTES:
         if other == route:
@@ -191,6 +204,9 @@ def _alternatives(route: Route, flow: Flow, current: float, sale: float | None, 
                 continue
             per_kg, note = sale - config.bundle_transport_per_kg, "같은 단지 기업과 순회 수거로 묶습니다."
         elif other == "pyrolysis":
+            # 열분해는 플라스틱 흐름의 경로다. 금속·목재 등에는 대안으로 내지 않는다.
+            if not _is_plastic(flow):
+                continue
             per_kg, note = config.pyrolysis_per_kg, "재질이 섞인 흐름에 맞는 경로입니다."
         else:
             per_kg, note = current, "지금처럼 혼합 폐기물로 위탁합니다."
@@ -285,9 +301,15 @@ def evaluate_flow(flow: Flow, config: DemoConfig, override: Route | None = None)
         title, hours = None, 0
     labor = hours * config.labor_per_hour
     action = FieldAction(title, hours, labor) if title is not None else None
-    transport = flow.monthly_kg * config.bundle_transport_per_kg if route == "bundle" else 0
+    # 최소 물량 미만 PCR 흐름을 혼자 팔면 출장비가 붙는다. 대안 표시(_alternatives)와 같은 규칙이다.
+    solo = route == "sell" and _small_pcr(flow, config)
+    solo_penalty = config.solo_sale_penalty_per_kg if solo else 0
+    if route == "bundle":
+        transport = flow.monthly_kg * config.bundle_transport_per_kg
+    else:
+        transport = flow.monthly_kg * solo_penalty
     after = {"reuse": config.reuse_per_kg, "pyrolysis": config.pyrolysis_per_kg,
-             "incinerate": current, "sell": sale,
+             "incinerate": current, "sell": sale - solo_penalty if sale is not None else None,
              "bundle": sale - config.bundle_transport_per_kg if sale is not None else None}[route]
     quantity = flow.monthly_kg
     now = current * quantity
@@ -297,7 +319,7 @@ def evaluate_flow(flow: Flow, config: DemoConfig, override: Route | None = None)
     disposal = -after * quantity if route in ("pyrolysis", "incinerate") else 0
     # The chosen route's own sale price was checked above; other routes may lack one.
     item_sale = _config_value(config.sale_per_kg, flow.item, "sale_per_kg")
-    ladder = _ladder(route, current, item_sale, bool(removable), config)
+    ladder = _ladder(route, current, item_sale, bool(removable), solo, config)
     alternatives = _alternatives(route, flow, current, item_sale, mixed, config)
     if not all(isfinite(x) for x in (
         now, monthly_after, monthly_after - now, cash, avoidance, disposal, transport, labor,
@@ -310,7 +332,7 @@ def evaluate_flow(flow: Flow, config: DemoConfig, override: Route | None = None)
         monthly_after - now, cash, avoidance, disposal, transport, labor,
         action, "conditional" if route == "bundle" else None,
         ("모든 단가와 규칙은 synthetic/demo", "재투입은 분쇄·관리비 포함 순효과; 매출이 아닌 구매비 회피",
-         "묶음 운송비는 kg당 순효과에 포함; 인건비만 별도 차감",
+         "묶음 운송비와 소량 PCR 단독 매각 출장비는 kg당 순효과에 포함; 인건비만 별도 차감",
          "기타 운송비와 작업 없는 경로의 인건비는 시연상 명시적으로 0",
          "회수율·신재 대체율을 추정하지 않음; 실제 적합성·수용·거래 미확정"),
         ladder=ladder, alternatives=alternatives,
