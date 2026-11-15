@@ -243,3 +243,16 @@ PY
 
 일반 pytest는 Azure 호출을 모의 처리하며 실제 연결 성공 여부를 뜻하지 않는다.
 별도의 Foundry 수동 검증은 앞 절의 실행 명령을 사용한다.
+
+### C PP 근거 비교 API (저장 없음)
+
+`POST /api/v1/c/evidence/compare`는 기존 `ReviewState`를 받아 선정된 2026년 9월
+공식 문서의 근거와 항목별 비교 결과를 반환한다. 상태 저장이나 Azure 호출은 없다.
+`unsupported`와 `insufficient_information`도 정상 결과이며, 가격 적용·수익·법적 적합성
+판정이 아니다. 아래는 가상의 요청이다.
+
+```bash
+curl -X POST http://127.0.0.1:8000/api/v1/c/evidence/compare \
+  -H 'Content-Type: application/json' \
+  -d '{"state":{"material":{"status":"value","value":"PP"},"form":{"status":"value","value":"가공 전"},"region":{"status":"value","value":"부산"}}}'
+```
