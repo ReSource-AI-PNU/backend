@@ -1,0 +1,21 @@
+{
+  "kind": "laws",
+  "source_url": "https://example.invalid/replace-with-public-catalog",
+  "endpoint_env": "PUBLIC_LAWS_URL",
+  "license": "원문 이용조건 확인 후 기입",
+  "format": "json",
+  "records_path": "data",
+  "id_field": "id",
+  "fields": {
+    "title": "title",
+    "article": "article",
+    "text": "text",
+    "effective_date": "effective_date"
+  },
+  "params": {},
+  "secret_params": {},
+  "page_param": "page",
+  "page_size_param": "perPage",
+  "page_size": 100,
+  "max_pages": 100
+}

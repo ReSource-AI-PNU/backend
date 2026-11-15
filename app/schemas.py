@@ -48,7 +48,7 @@ Box = tuple[Ratio, Ratio, Ratio, Ratio]
 """사진 크기에 대한 비율(0~1): [x, y, w, h]"""
 
 FlowStep = Literal["classify", "feasibility", "regulation", "matching", "cost-carbon", "proposal"]
-SessionStatus = Literal["analyzing", "in-progress", "awaiting-approval", "sent", "completed"]
+SessionStatus = Literal["analyzing", "in-progress", "awaiting-approval", "approved", "sent", "completed"]
 Mark = Literal["ai", "human"]
 """형광펜(ai) / 먹(human). AI 원래 값은 지우지 않는다."""
 
@@ -397,7 +397,7 @@ class RegulationResult(Contract):
 class MatchingMember(Contract):
     company_id: str
     name: str
-    kg: float = Field(ge=0)
+    kg: float | None = Field(ge=0)
     """다른 회사의 물량은 배출 기업 화면에서 숨긴다(분담 비율만 공개)."""
     distance_m: float = Field(ge=0)
     is_self: bool | None = None
@@ -519,7 +519,7 @@ class ScenarioLine(Contract):
     stream_id: str
     route: StreamRoute
     monthly_krw: Won
-    carbon_t: float
+    carbon_t: float | None
 
 
 class Route(Contract):
@@ -554,8 +554,8 @@ class Route(Contract):
     name: str
     description: str
     monthly_krw: Won
-    carbon_t: float
-    kau_krw: Won
+    carbon_t: float | None
+    kau_krw: Won | None
     """줄인 탄소를 배출권 가격으로 바꾼 참고값"""
     condition: str
     recommended: bool | None = None

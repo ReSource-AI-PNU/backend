@@ -1,3 +1,4 @@
+from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -17,6 +18,14 @@ class Settings(BaseSettings):
     azure_maps_key: str = ""
     azure_storage_connection_string: str = ""
     database_url: str = ""
+    platform_service_key: str = ""
+    platform_demo: bool = False
+    platform_stage_endpoints: dict[str, str] = {}
+    platform_stage_token: str = ""
+    platform_a2a_peers: dict[str, dict[str, str]] = {}
+    platform_adapter_timeout: float = Field(default=15, ge=1, le=60)
+    platform_road_matrix_url: str = ""
+    platform_road_matrix_token: str = ""
 
 
 settings = Settings()
