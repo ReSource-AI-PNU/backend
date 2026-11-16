@@ -12,7 +12,7 @@ import re
 from collections.abc import Callable, Iterable
 from typing import Any
 
-from app.v3.evidence.model import Evidence
+from app.v3.evidence.model import PUBLIC, Evidence
 from app.v3.evidence.registry import EvidenceForbidden, EvidenceNotFound, EvidenceRegistry
 
 logger = logging.getLogger(__name__)
@@ -81,10 +81,10 @@ def search_evidence(
     if limit <= 0:
         return []
     if not query.strip():
-        return [{"evidence": e.to_dict(), "score": 0.0} for e in items[:limit]]
+        return [{"evidence": shown(e, org_id), "score": 0.0} for e in items[:limit]]
     scored = [(score(e, query), e) for e in items]
     ranked = sorted((pair for pair in scored if pair[0] > 0), key=lambda p: (-p[0], p[1].id))
-    return [{"evidence": e.to_dict(), "score": s} for s, e in ranked[:limit]]
+    return [{"evidence": shown(e, org_id), "score": s} for s, e in ranked[:limit]]
 
 
 def use_backend(backend: SearchBackend | None, name: str = "azure") -> None:
@@ -124,15 +124,33 @@ def _from_backend(
             continue  # 색인에만 남은 근거나 볼 수 없는 근거는 내보내지 않는다
         if kinds is not None and current.kind not in kinds:
             continue
-        results.append({"evidence": current.to_dict(), "score": float(hit.get("score") or 0.0)})
+        results.append({"evidence": shown(current, org_id), "score": float(hit.get("score") or 0.0)})
     return results[:limit]
+
+
+def shown(evidence: Evidence, org_id: str | None) -> dict[str, Any]:
+    """org_id에게 보여 줄 근거. 누구와 나눴는지(access)는 보는 조직과 근거를 가진 조직만 남긴다.
+
+    업체의 매입 기준 근거는 그 업체와 대화한 배출 기업 모두에게 열려 있다. 목록을 그대로 내면
+    한 배출 기업이 같은 업체와 거래하는 다른 배출 기업을 알게 된다. org_id가 None이면(시스템 내부)
+    그대로 준다.
+    """
+    data = evidence.to_dict()
+    if org_id is None:
+        return data
+    if PUBLIC in evidence.access:
+        data["access"] = [PUBLIC]
+        return data
+    owner = str((evidence.meta or {}).get("ownerOrgId") or "")
+    data["access"] = [o for o in evidence.access if o in (org_id, owner)]
+    return data
 
 
 def get_evidence(
     registry: EvidenceRegistry, evidence_id: str, org_id: str | None
 ) -> dict[str, Any]:
     """없으면 EvidenceNotFound, 볼 수 없으면 EvidenceForbidden."""
-    return registry.get(evidence_id, org_id).to_dict()
+    return shown(registry.get(evidence_id, org_id), org_id)
 
 
 def evidence_chain(
@@ -160,7 +178,7 @@ def evidence_chain(
             except EvidenceNotFound:
                 chain.append({"id": child_id, "missing": True, "depth": depth})
                 continue
-            chain.append({**child.to_dict(), "depth": depth})
+            chain.append({**shown(child, org_id), "depth": depth})
             walk(child, depth + 1)
 
     walk(root, 1)
