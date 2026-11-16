@@ -83,7 +83,8 @@ Agent Framework를 쓸 때도 고리는 같다. 모델은 JSON만 내고, 판단
 | 경우 | 메시지 | 스레드 상태 |
 |---|---|---|
 | 허가 품목이 맞지 않음(열기 전) | 없음 | `not_opened` |
-| 허가 품목이 맞지 않음을 연 뒤에 알게 됨 | `decline` (근거 포함. 아래 "허가 품목을 다시 대조하는 곳") | `declined` |
+| 허가 품목이 맞는 흐름이 하나도 남지 않음을 연 뒤에 알게 됨 | `decline` (근거 포함. 아래 "허가 품목을 다시 대조하는 곳") | `declined` |
+| 일부 흐름만 허가 품목이 맞지 않음을 연 뒤에 알게 됨 | 코드가 쓴 `answer`나 `question`(그 흐름만 뺀다) | 그대로(`open`, `agreed`) |
 | 업체 가드레일의 자동 거절 조건에 해당 | `decline` | `declined` |
 | 12턴 초과 | `handoff` | `handoff` |
 | 검증기 두 번 거부 | `handoff` | `handoff` |
@@ -101,13 +102,22 @@ Agent Framework를 쓸 때도 고리는 같다. 모델은 JSON만 내고, 판단
 
 **허가 품목을 다시 대조하는 곳.** 대화를 연 뒤에도 코드가 `match_permit`으로 다시 대조한다(모델이 대조를 건너뛰거나 맞지 않는 흐름을 받겠다고 해도 결과가 같다). 흐름의 품목·재질과 허가 품목이 지난 대조와 같으면 다시 부르지 않는다.
 
-1. 업체 측: 조건(`offer`, `counter`, `conditional`)을 내는 흐름마다 대조한다. 맞지 않으면 `PERMIT_MISMATCH`로 거부하고, 두 번 거부되면 `handoff`가 아니라 코드가 쓴 `decline`으로 닫는다(`reasonEvidence`에 허가증 근거).
-2. 회사 측: 업체가 조건을 보내오면 그 흐름을 다시 대조한다. 맞지 않으면 그 답은 대화에 붙이지 않고 회사 측이 `decline`으로 닫는다(별도 서비스로 뜬 업체 측이 검사를 건너뛴 경우, 답을 보낸 뒤 허가 품목이 바뀐 경우).
-3. 최적안을 내기 전(`_propose`)과 승인할 때(`approve`): 합의한 대화의 허가 품목이 맞지 않게 됐으면 확정하지 않고 `decline`으로 닫는다. 승인 요청은 409 `PERMIT_MISMATCH`로 답하고, 풀려난 흐름은 `_reassign`과 같은 순서로 다시 계산한다(결과 한 장의 `handoff` 검사 문구에 허가 품목 때문이라고 적힌다).
+이 대화에 허가 품목이 맞는 흐름이 하나도 남지 않을 때만 닫는다. 일부만 맞지 않으면 그 흐름만 빼고 나머지는 유지한다(`_drop_for_permit`. 나머지 흐름도 같은 때에 다시 대조한다). 뺀 흐름은 `work.excluded`에 허가증 근거와 함께 남고 그 흐름에 받은 제안은 지운다.
+
+1. 업체 측: 조건(`offer`, `counter`, `conditional`)을 내는 흐름마다 대조한다. 맞지 않으면 `PERMIT_MISMATCH`로 거부한다. 두 번 거부되면 `handoff`가 아니라 코드가 답한다: 맞는 흐름이 없으면 `decline`(`reasonEvidence`에 허가증 근거), 일부만 맞지 않으면 그 흐름을 받지 않는다는 `answer`(`meta.excluded`)를 보내고 대화는 이어진다. 그렇게 알린 뒤에도 같은 초안이 두 번 거부되면 `handoff`다.
+2. 회사 측: 업체가 조건을 보내오면 그 흐름을 다시 대조한다. 맞지 않으면 그 답은 대화에 붙이지 않는다(별도 서비스로 뜬 업체 측이 검사를 건너뛴 경우, 답을 보낸 뒤 허가 품목이 바뀐 경우). 맞는 흐름이 없으면 회사 측이 `decline`으로 닫고, 일부만 맞지 않으면 코드가 쓴 `question`으로 남은 흐름의 조건을 다시 묻는다.
+3. 최적안을 내기 전(`_propose`): 제안을 받은 흐름을 다시 대조해 맞지 않는 흐름의 제안만 지운다. 남는 제안이 없으면 그 대화는 최적안에서 빠진다.
+4. 승인할 때(`approve`): 합의한 대화의 허가 품목이 맞지 않게 됐으면 확정하지 않고 409 `PERMIT_MISMATCH`로 답한다. 맞는 흐름이 없으면 `decline`으로 닫고, 일부만 맞지 않으면 그 흐름만 배정에서 빼고 양쪽 승인을 지운다(대화는 `agreed` 그대로, 남은 조건으로 다시 승인한다). 풀려난 흐름은 `_reassign`과 같은 순서로 다시 계산한다(결과 한 장의 `handoff` 검사 문구에 허가 품목 때문이라고 적힌다).
 
 업체 측 에이전트는 가드레일(하한 단가, 가능 요일, 월 최소 횟수, 자동 거절 조건) 밖의 조건을 내지 못한다. 가드레일 검사는 검증기와 별도로, 메시지가 나가기 전에 코드가 한다. 조건(`terms`)이 없는 `answer`·`question`·`decline`에도 건다: kg당 금액으로 읽히는 claim은 하한·상한 안이어야 하고, `회/월` claim은 월 최소 횟수 이상이어야 하며, 글에 적은 요일("일요일")은 가능 요일 안이고 `terms.days`와 같아야 한다. 조건을 내는 메시지에서 kg당 금액 claim은 풀의 표시와 관계없이 모두 `terms.items`에 있어야 한다.
 
 근거 확인 실패와 승인: 합의한 스레드의 메시지는 승인 직전에 다시 검증한다. 검증에 실패하거나, 메시지가 인용한 근거가 대화 뒤에 바뀌었거나(`EVIDENCE_CHANGED`), 합의한 뒤에 배정된 흐름의 자료가 바뀌었으면(`STREAM_CHANGED`. 합의할 때 흐름 자료와 받은 조건의 지문을 `work.agreedBasis`에 남겨 견준다. 현행 처리 단가는 넣지 않는다) `block_approval`로 승인을 막고 이유를 남긴다. 막을 때 앞서 한 승인은 저장소와 스레드 양쪽에서 지운다(한쪽이 승인한 뒤 내용이 바뀌었다가 되돌아와도 그 승인으로 확정되지 않는다). 근거가 다시 맞으면 풀리고 양쪽이 다시 승인한다. 흐름 자료가 바뀐 진단은 새로 진행한다.
+
+**숫자 없는 조건 낱말(`UNBACKED_TERM`).** 근거 검증기는 숫자와 조항 인용을 본다. "무상으로 수거", "주말에도 수거", "전량 매입"처럼 숫자 없이 조건을 뜻하는 낱말은 `guardrails.check_term_words`가 본다. 낱말 표는 `a2a/term_words.py`(상수)에 있고, 그에 해당하는 terms 항목이나 claim이 없으면 거부한다: "무상·무료"는 값이 0인 금액 claim이나 terms의 단가 0, "주말"은 `terms.days`의 토·일, "매일"은 `terms.days`의 일곱 요일, "전량"은 물량 claim이 있어야 하고, "반값", "공휴일", "무제한"은 해당하는 조건 항목이 없어 늘 거부한다. 업체 측과 회사 측의 초안 검사에 모두 걸고, 회사 측이 받은 답을 다시 검사할 때도 건다. 조직·흐름 이름에 든 낱말은 보지 않는다. 낱말은 보수적으로 골랐고 부정문도 거부한다(요일과 단가는 terms와 claim으로 적는다).
+
+**합의 뒤 업체 조건 변경(`VENDOR_TERMS_CHANGED`).** 합의할 때 업체 쪽 설정의 지문을 `work.agreedTerms`에 남긴다(`_vendor_terms`. 배정된 흐름마다 허가 여부, 골라지는 매입 기준과 그 값, 합의한 단가·요일의 가드레일 위반 여부, 자동 거절 여부. 여기에 월 최소 횟수와 차량 용량). 합의한 때의 흐름 자료로 다시 계산해 견주므로 흐름 쪽 변경과 섞이지 않는다. 달라졌으면 승인을 지우고 막는다. `run`을 다시 부르면 `_renegotiate`가 그 대화를 회사 측의 `counter`로 다시 열고(`work.reopened`에 그 seq), 대화·최적안 단계를 다시 돈다. 최적안 단계는 이미 합의·확정한 배정을 지키는 `_reassign`으로 끝난다. 다시 연 뒤에는 두 에이전트 모두 그 `counter` 앞의 제안과 질문을 세지 않는다.
+
+**승인 전 재확인(`recheck`).** 승인을 기다리는 진단의 합의한 대화는 자료를 바꾼 때(흐름·업체 프로필 수정, CSV·사진 업로드, 문서 추출값 확정)와 뷰를 만들 때 모두 다시 확인한다. 막는 이유가 그대로면 아무것도 쓰지 않는다.
 
 업체 측 에이전트는 여러 배출 기업의 물량을 자기 노선에 묶어 계산할 수 있지만, 한 배출 기업에게 다른 배출 기업의 이름이나 물량을 알려 주지 않는다. `policy.check_disclosure`가 나가는 메시지를 검사한다.
 
@@ -215,7 +225,7 @@ def register_model_run(app, run, viewer) -> dict                    # 재학습 
 
 ## 8. 로컬 서버
 
-`python3 -m app.v3.devserver --port 8000 [--store 경로.json] [--reset] [--llm rule|foundry] [--demo-closed]`
+`python3 -m app.v3.devserver --port 8000 [--store 경로.json] [--reset] [--llm rule|foundry] [--demo-closed] [--auth header|token --org-tokens 토큰.json]`
 
 - 표준 라이브러리 `http.server`로 계약 8장의 API를 모두 제공한다. 더한 주소는 `GET /health`와 `POST /intake/documents/confirm`이다.
 - 시작할 때 가정값, 근거 시드, 시연 데이터를 올린다.
@@ -223,7 +233,8 @@ def register_model_run(app, run, viewer) -> dict                    # 재학습 
 - 이어 갈 때는 근거 시드(법령·기준값)를 다시 올리지 않는다. 시드 파일을 바꿨으면 `--reset`으로 다시 시작한다.
 - `/admin/*`은 운영 조직(`org_admin`)으로 부른다. 시연 되돌리기는 누구나 부를 수 있고(`demo_open`), `--demo-closed`를 주면 관리자만 부른다.
 - 기본은 `--llm rule`이다. `--llm foundry`일 때만 `FOUNDRY_ENDPOINT`, `FOUNDRY_DEPLOYMENT`, `FOUNDRY_API_KEY`를 읽는다. 업체가 ollama를 골랐으면 `OLLAMA_BASE_URL`이 있을 때만 그 모델을 쓰고, 없으면 그 업체는 규칙 정책으로 돈다.
-- CORS는 `http://localhost:3000`과 `http://127.0.0.1:3000`만 허용한다(`X-Org-Id`, `Content-Type` 헤더, `OPTIONS` 처리).
+- CORS는 `http://localhost:3000`과 `http://127.0.0.1:3000`만 허용한다(`X-Org-Id`, `Authorization`, `Content-Type` 헤더, `OPTIONS` 처리).
+- 요청한 조직은 기본으로 `X-Org-Id` 헤더에서 읽는다(`--auth header`). header 모드는 시연 전용이며 공개 주소에 그대로 두면 조직 경계가 지켜지지 않는다. `--auth token --org-tokens <JSON 파일>`을 주면 조직별 서비스 토큰(`Authorization: Bearer`)으로 정하고 `X-Org-Id`는 무시한다(계약 8장 "요청한 조직").
 - 업로드는 `multipart/form-data`(`file`, `orgId`, 문서는 `kind`)로 받는다.
 
 ## 9. 평가 (8단계)

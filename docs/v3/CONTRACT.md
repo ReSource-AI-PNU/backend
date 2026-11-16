@@ -23,6 +23,9 @@
 | `app/v3/judge/` | 판단 도구 ①~⑥과 도구 등록부 `toolbox.py` |
 | `app/v3/a2a/message.py` | A2A 메시지와 claim (작성됨) |
 | `app/v3/a2a/thread.py`, `guardrails.py`, `policy.py` | 스레드 상태와 12턴 상한, 업체 가드레일, 질문 정책과 대화 개설 조건 |
+| `app/v3/a2a/term_words.py` | 숫자 없이 조건을 뜻하는 낱말 표(상수). `guardrails.check_term_words`가 쓴다 |
+| `app/v3/textutil.py` | 한국어 조사(`josa`, `particle`). 코드가 만드는 문장에서 이름 뒤 조사를 받침에 맞게 붙인다 |
+| `app/v3/httpio.py` | 두 서버가 같이 쓰는 요청 읽기, 요청 오류, 요청한 조직 정하기(`Auth`) |
 | `app/v3/agents/` | LLM 클라이언트, 회사 측 에이전트, 업체 측 에이전트, 진행기 |
 | `app/v3/intake/` | 측정값 CSV, 등급 모델, 문서 추출, Prompt Shields, 사진·영상 탐지(`detector.py`) |
 | `app/v3/demo/` | 시연 데이터 (모두 가상) |
@@ -43,6 +46,8 @@
 - 수치 근거는 `value`(숫자)와 `unit`을 가진다.
 - 조항 근거(`law`, 그리고 원문을 가진 `doc`·`ref`)는 `excerpt`에 원문을 글자 그대로 담는다. 인용 대조는 이 원문의 부분 문자열로 한다.
 - `calc` 근거의 `meta`는 `{"tool": 이름, "inputs": 입력, "formula": 계산식 설명, "inputEvidence": [근거 ID]}`를 담는다. 화면의 "계산 사슬"은 `inputEvidence`를 따라간다.
+- 합계 계산 근거(`calc:optimize_assignment:…:totalNow`, `totalAfter`, `totalDifference`, `totalCarbon`)의 `inputEvidence`는 흐름별 계산 근거(`s0MonthlyNow` 등)다. 사슬이 합계 → 흐름별 계산 → 원 근거(문서, 가정값)로 이어진다. 합계 claim의 `evidence`도 `[합계 근거, 흐름별 근거…]`다.
+- **근거 목록에는 같은 ID가 두 번 실리지 않는다.** claim의 `evidence`, 그래프 엣지와 검사의 `evidence`는 처음 나온 순서를 지킨 채 중복을 뺀다. number claim의 첫 번째 근거가 값의 출처라는 규칙은 그대로다.
 - `access`는 볼 수 있는 조직 ID 목록이고 `"*"`는 공개다. 조직에게 근거를 내보낼 때(`search.get_evidence`, `search_evidence`, `evidence_chain`)는 이 목록에서 보는 조직과 근거를 가진 조직(`meta.ownerOrgId`)만 남긴다. 업체의 매입 기준 근거는 그 업체와 대화한 배출 기업 모두에게 열려 있어, 목록을 그대로 내면 한 배출 기업이 같은 업체와 거래하는 다른 배출 기업을 알게 된다.
 - 판단 도구는 호출마다 호출 기록을 calc 근거로 남긴다: `calc:<도구>:<입력 지문>:call`. 값은 없고 `excerpt`에 판정과 검사 결과, `meta`에 `{"tool", "inputs", "status", "checks": [{key, status}], "inputEvidence", "call": true}`가 있다. 숫자를 내지 않는 호출(`match_permit`, `check_requirements`)도 근거 저장소에 남는다. 도구 결과의 `evidence` 마지막 항목이 이 기록이다.
 
@@ -312,13 +317,44 @@ VendorProfile {"orgId": "org_saegil",
 - `session.phase`, `session.today`
 - `streams[]`: `orgId`, `process`, `wasteItem`, `lot`, `contaminants`, `monthlyKgBasis`, `contamination`·`photoContamination`·`moisture`(claim), `unknownFields`, `grade.label`. 업체가 보는 뷰에서는 `currentTreatment`가 `null`이다.
 - `threads[]`: `emitterOrgId`, `assignedStreamIds`(최적안에서 이 업체에 배정된 흐름), `agreedSeq`, `vendorModel.configured`·`vendorModel.used`. `messages[]`에는 `model`과 `meta`(`asks`, `excluded`, `reason`, `terms`의 `items[{streamId, claimId}]`·`days`·`conditions`)가 붙는다. 조건의 값은 `claims`에만 있다.
-- `graph.edges[]`: `kind`(`permit | criterion | assignment | excluded | regulation | document`)
+- `graph.edges[]`: `kind`(`permit | criterion | assignment | excluded | regulation | document`). `excluded` 엣지의 `evidence`에는 허가 품목 때문에 뺀 경우 허가증 근거가 실린다.
+- **업체가 보는 뷰의 `graph`.** 자기 매입 기준 노드(`type: "criterion"`)와, 흐름을 그 기준과 대조한 엣지(`kind: "criterion"`, 흐름 → 기준은 `met | conditional | unmet`과 첫 번째 확인할 것, 기준 → 업체는 "매입 기준표"), 최적안 배정 엣지(`kind: "assignment"`)가 들어간다. 같은 판단 도구(`judge_route`)의 결과에서 업체의 매입 기준·허가 품목과, 대화에서 업체에 열린 흐름 자료(오염도, 수분, 형태, 혼입물, 물량의 근거)를 대조한 검사만 쓴다. 배출 기업의 현행 처리와 비용·탄소에 관한 검사, 규정 엣지(`regulation`), 다른 업체의 기준은 넣지 않는다. 엣지의 `evidence`는 업체가 열 수 있는 근거뿐이다.
 - `result`: `referencePrices[{key, material, form, label, asOf, price: claim, note}]`(가격조사 참고 시세. 손익 계산에는 쓰지 않는다), `carbonInObjective`, `evidence`. `assignments[]`에는 `vendorName`, `threadId`, `carbonValue`(claim, KAU 환산), `currentAssumed`가 붙고, `checks[]`는 `{key, status, text, evidence}`에 업체가 내건 조건이면 `claims`가 붙는다(`text`의 자리표시자를 그 claims로 그린다). `alternatives[]`에는 `vendorName`, `unitPrice`(claim)가 붙는다. `sensitivity[]`는 흐름별이고 `streamId`가 붙는다.
 - `result.assignments[].checks[]`의 `key`: 경로 판단에서 온 `contaminationPct`, `moisturePct`, `contamination_basis`, `moisture_basis`, `form`, `monthly_kg_basis`, `material_basis`, `mixture`, `permit`, `current_assumed`, 비용·탄소에서 온 `transport`, `carbon`, 업체가 내건 조건 `vendor_condition`, 그리고 `price_differs`, `unresolved`, `skipped`, `handoff`, 적재 검사 `min_volume`, `loading`, `loading_volume`이다.
   - **적재 검사(`check_loading`)는 업체가 정해진 배정마다 늘 들어간다.** `min_volume`(최소 물량)과 `loading`(무게·부피 적재), 밀도나 부피 용량을 몰라 부피를 확인하지 못했으면 `loading_volume`. 다른 검사와 달리 충족(`met`)한 것도 나간다. `claims`에 합친 월 물량·최소 물량(`min_volume`), 월 수거 횟수·한 번 수거량·차량 적재 한도(`loading`)가 붙는다. 그 업체에 실제로 배정된 흐름만 합친 값이다. 충족하지 못한 적재 검사가 있으면 그 배정은 `calculated`가 아니다.
   - `contamination_basis`, `moisture_basis`: 값은 매입 기준 상한 안이지만 측정값이 아니라 사진 추정이나 담당자 답이다(조건부. "반입 검수에서 확인").
   - `handoff`: 이 흐름을 맡기로 합의한 대화가 담당자에게 넘어가 배정을 뺐다(`status`는 `needs_information`, `vendorOrgId`는 `null`).
 - `approvals[]`에는 승인할 수 있는 대화(`agreed`, `confirmed`)만 있다. 담당자에게 넘어간(`handoff`) 대화의 승인 칸은 나가지 않는다. 합의한 뒤에 배정된 흐름의 자료(재질, 물량, 측정값 등)가 바뀌면 `blocked`가 되고 `blockedReason`에 `STREAM_CHANGED`가 적힌다. 막힐 때 앞서 한 승인은 양쪽 모두 지워진다.
+- `approvals[].blockedCodes`(배열, 새 항목): 막힌 사유 코드다. `blockedReason`(한국어 문장)에 들어 있는 코드를 처음 나온 순서대로 뽑은 것이고, 막히지 않았으면 빈 배열이다. 값은 8장 "승인을 막는 사유 코드"의 `EVIDENCE_CHANGED`, `STREAM_CHANGED`, `VENDOR_TERMS_CHANGED`와 근거 검증기의 거부 코드다. 화면은 문장을 뜯어 읽지 말고 이 배열을 본다.
+- **막힘은 관련된 모든 대화에, 승인을 누르기 전에 걸린다.** 근거나 흐름 자료가 바뀌면(측정값 CSV를 같은 측정일로 다시 올림, 흐름 수정, 업체 프로필 수정, 사진 업로드, 문서 추출값 확정) 그 조직이 들어간 승인 대기 진단의 합의한 대화를 모두 다시 확인하고, 뷰를 만들 때(`GET /sessions/{id}`)도 다시 확인한다. 그 근거를 메시지에 인용한 대화는 배정과 관계없이 모두 막힌다. 바뀐 것이 없으면 뷰를 여러 번 읽어도 저장소와 실행 기록은 그대로다.
+
+### 합의 뒤 업체 조건 변경 (`VENDOR_TERMS_CHANGED`)
+
+합의(`agreed`) 뒤에 업체가 매입 기준표·허가 품목·가드레일을 바꿔 그 대화의 합의 조건에 영향을 주면:
+
+1. 그 대화의 승인을 양쪽 모두 지우고 `blocked`로 둔다. `blockedCodes`에 `VENDOR_TERMS_CHANGED`가 실린다. 고친 때(`PUT /vendors/{orgId}`)와 뷰를 만들 때 확인한다. 이 상태에서 승인하면 409 `APPROVAL_BLOCKED`다.
+2. `POST /sessions/{id}/run`을 다시 부르면 그 대화를 다시 연다. 회사 측이 코드가 쓴 `counter`를 보내고(스레드는 `open`으로 돌아간다) 업체 측이 지금 조건으로 다시 답한다. 같은 스레드에서 이어지고 턴 상한(12)은 그대로다. 상한에 닿으면 `handoff`다.
+3. 대화가 끝나면 이미 합의했거나 확정한 다른 대화의 배정은 그대로 둔 채 최적안과 결과 한 장을 다시 만든다. 새 조건이 최적안에 들어가면 그 대화는 다시 `agreed`가 되고 승인을 새로 받는다. 단가가 내려 다른 업체의 제안이 더 나으면 그 흐름은 그쪽으로 옮겨 가고, 옮겨 받은 대화도 승인을 다시 받는다.
+4. 다시 연 대화가 합의에 이르지 못하고 닫히면(가드레일 밖이라 조건을 내지 못함, 턴 상한) 앞서 합의했던 흐름은 다른 제안으로 옮겨 가거나 `needs_information`과 `handoff` 검사로 나간다.
+
+무엇이 "영향을 주는가": 배정된 흐름마다 지금 프로필로 다시 본 것이 합의한 때와 다르면 영향을 준 것이다. 보는 것은 허가 품목이 맞는지, 골라지는 매입 기준과 그 단가·최소 물량·오염도 상한·수분 상한, 합의한 단가와 요일이 가드레일(하한·상한 단가, 가능 요일) 안인지, 자동 거절 조건에 걸리는지, 그리고 수거 횟수를 정하는 값(월 최소 횟수, 차량 적재 중량·부피)이다. 합의 조건과 관계없는 변경(쓰이지 않은 다른 기준, 가능 요일 추가, 합의 단가보다 낮은 하한, 모델 선택, km당 운송비)은 막지 않는다.
+
+- 다시 여는 것은 `VENDOR_TERMS_CHANGED`뿐이다. `STREAM_CHANGED`가 함께 걸린 대화는 다시 열지 않는다(흐름 자료가 바뀌면 진단을 새로 한다).
+- 다시 연 뒤에는 그 `counter` 앞에 업체가 낸 답을 승인 전 재검증에서 보지 않는다(지난 조건의 기록이다. 업체가 기준표 값을 고치면 그 답의 근거도 함께 바뀐다). 회사 측 메시지와 `counter` 뒤의 메시지는 그대로 본다.
+- 허가 품목만 일부 빠진 경우는 아래 "허가 품목이 일부만 맞지 않을 때"를 따른다(대화를 다시 열지 않고 그 흐름만 뺀다).
+
+### 허가 품목이 일부만 맞지 않을 때
+
+한 대화의 흐름 가운데 일부만 허가 품목이 맞지 않으면 대화 전체를 닫지 않는다. 그 흐름만 빼고 나머지는 유지한다. 모델이 무엇을 내든 코드가 그렇게 한다.
+
+- 뺀 흐름은 `graph.edges[]`에 `kind: "excluded"`(이유 "허가 품목이 맞지 않습니다.", `evidence`에 허가증 근거)로 나가고, 그 흐름에 받은 제안은 지워져 배정에도 대안에도 쓰이지 않는다. 실행 기록에 `kind: "thread"` 한 줄이 남는다(`detail.excludedStreamIds`, `detail.reasonEvidence`).
+- 업체 측에서 알았을 때: 코드가 쓴 `answer`(`meta.excluded`)가 대화에 붙고 나머지 흐름은 이어진다. 회사 측에서 알았을 때(받은 조건에 그 흐름이 있음): 그 답은 붙이지 않고 코드가 쓴 `question`으로 남은 흐름의 조건을 다시 묻는다.
+- 합의한 뒤에 알았을 때(승인 시점): 승인 요청은 409 `PERMIT_MISMATCH`로 답하고, 그 흐름만 배정에서 뺀 뒤 양쪽 승인을 지운다. 대화는 `agreed` 그대로이고 `approvals[].streamIds`가 줄어든다. 풀려난 흐름은 다른 제안으로 옮겨 가거나 `needs_information`과 `handoff` 검사로 나간다.
+- 그 대화에 허가 품목이 맞는 흐름이 하나도 남지 않을 때만 근거와 함께 `decline`으로 닫는다.
+
+### 닫는 이유 (`threads[].statusReason`)
+
+여러 흐름을 거절한 `decline`이면 거절한 흐름을 이유와 함께 모두 적는다: `"받지 않는 흐름: <이유 문장> / <흐름 이름들>: <이유>."`. 이유가 같은 흐름은 한데 묶고, 메시지의 `meta.reason`이 그 이유들과 다른 문장이면 맨 앞에 둔다. 흐름 하나만 거절했으면 이전처럼 `meta.reason` 그대로다. 메시지의 `meta.reason`과 `meta.excluded`는 바뀌지 않는다.
 - `events[].detail.reportedBy`: 값이 `"vendor"`이면 업체 측 에이전트가 답과 함께 보낸 기록(도구 호출, 검증)이다. 회사 측은 정해 둔 항목만 옮기고 요약을 다시 쓴다. 실행됐다는 도구 호출은 그 도구의 calc 근거가 근거 저장소에 있을 때만 옮긴다.
 - `events[].detail.arguments`(도구 호출): 흐름 ID(`streamId`, `streamIds`), `route`, `transportPaidBy`, 숫자가 없는 검색어(`query`)만 남는다. 모델이 덧붙인 다른 인자는 싣지 않는다.
 - `session.status`: 합의한 대화가 모두 담당자에게 넘어가 승인할 대화가 남지 않으면 `awaiting_approval`에서 `idle`(`phase`는 `done`)로 바뀐다. 합의 없이 끝난 진단과 같은 상태다.
@@ -326,6 +362,8 @@ VendorProfile {"orgId": "org_saegil",
 - `unresolved[{streamId, field}]`: 질문 한도를 다 쓰고도 모르는 값
 - `approvals[]`: `streamIds`
 - `documents[]`: `threadId`, `streamIds`, `rendered`(자리표시자를 값으로 바꾼 글), `createdAt`
+- **문서는 양쪽이 함께 본다. 배출 기업의 현행 처리 방법이나 그것에서 나온 값은 문서에 없다.** 이행 계획서에 있던 "탄소 변화(현행 혼합 소각 대비…)" 줄은 뺐고, 현행 처리에 관한 검사(`current_cost`, `current_assumed`)는 "반입 전 확인"에 넣지 않는다. 탄소 변화와 그 환산액은 배출 기업만 보는 `result.assignments[].carbon`, `carbonValue`에 있다.
+- **업체가 보는 뷰 전체에 현행 처리 방법·현행 단가·그것에서 나온 값이 없다**(`tests/v3/test_fix2_vendor_view_current.py`). 업체 쪽 판단 도구가 현행 처리를 모른 채 가정값으로 낸 계산 근거의 ID(`calc:…:currentUnitCost`, `monthlyNow`, `difference`, `sensitivity*`, `carbonDifference`, `kauValue`, `assumption:current.*`)도 업체 뷰의 실행 기록에서 빼고 `hiddenEvidenceCount`에 센다. 두 에이전트의 claim 풀에도 이 값들은 들어가지 않는다(상대에게 인용할 수 없다).
 - `events[].kind`: `thread`, `question`, `document`, `stage`를 더했다
 - `events[].detail.hiddenEvidenceCount`: 실행 기록에 실린 근거 ID 가운데 보는 조직이 열 수 없는 것은 뷰를 만들 때 뺀다(상대 쪽 도구 호출의 `detail.evidence` 같은 곳). 뺀 것이 있을 때만 그 개수(정수)가 붙는다. 배출 기업이 보는 뷰와 업체가 보는 뷰 모두 같다. 저장된 기록은 바뀌지 않는다. 진단 뷰 전체에 보는 조직이 열 수 없는 근거 ID는 실리지 않는다(`tests/v3/test_view_evidence_scope.py`).
 
@@ -514,4 +552,4 @@ HTTP 오류 코드가 아니라 `approvals[].blockedCodes`(배열)와 `blockedRe
 - 테스트 실행: `PYTHONPATH=<pydeps>:. python3 -m pytest -q tests/v3` 와 `python3 -m ruff check app/v3 tests/v3` (줄 길이 100).
 - 자기 담당 경로 밖의 파일은 고치지 않는다. 계약을 바꿔야 하면 이 문서에 적고 보고한다.
 - 비밀값을 코드, 테스트, 문서에 넣지 않는다. 시연 데이터의 회사와 수치는 모두 가상이라고 표시한다.
-- 화면과 메시지 문구는 한국어로 쓴다.
+- 화면과 메시지 문구는 한국어로 쓴다. 이름 뒤 조사는 `app/v3/textutil.py`의 `josa(word, "은는")`(`"이가"`, `"을를"`, `"와과"`, `"으로"`)로 붙인다. "은(는)", "이(가)" 같은 표기를 쓰지 않는다.
