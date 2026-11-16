@@ -27,6 +27,8 @@
 | `app/v3/intake/` | 측정값 CSV, 등급 모델, 문서 추출, Prompt Shields |
 | `app/v3/demo/` | 시연 데이터 (모두 가상) |
 | `app/v3/store.py`, `service.py`, `devserver.py` | 저장소 인터페이스와 메모리 구현, 서비스 함수, 표준 라이브러리 HTTP 서버 |
+| `app/v3/feedback.py` | 재학습 데이터 수집(7단계): 교정, 확정 뒤 실제 결과, 내보내기, 배포 게이트, 기준값 보정 후보 |
+| `app/v3/eval/` | 평가(8단계): 사례 세트 `cases/*.json`, 실행기, 형식 준수 시험, Foundry 평가 입력, 리포트 |
 | `app/v3/api.py`, `sql.py`, `mcp_server.py`, `vendor_service.py` | 프레임워크 가장자리 |
 | `tests/v3/` | 테스트. 가장자리 테스트는 `pytest.importorskip`으로 시작한다 |
 
@@ -223,6 +225,34 @@ VendorProfile {"orgId": "org_saegil",
 - `documents[]`: `threadId`, `streamIds`, `rendered`(자리표시자를 값으로 바꾼 글), `createdAt`
 - `events[].kind`: `thread`, `question`, `document`, `stage`를 더했다
 
+재학습 데이터 수집(7단계)에서 더한 항목:
+
+- `feedback`: `{"corrections": [...], "outcomes": [...]}`. 이 진단에 쌓인 교정과 실제 결과다. 교정은 배출 기업만 보고, 실제 결과는 그 스레드의 업체와 배출 기업만 본다.
+  - 교정: `{"type": "correction", "id": 근거 ID, "sessionId", "orgId", "streamId", "field", "before", "after", "note", "seq", "target": "detector | grade", "photoEvidence": [사진 근거 ID], "recordedOn"}`
+  - 실제 결과: `{"type": "outcome", "id", "sessionId", "threadId", "vendorOrgId", "emitterOrgId", "streamId", "inspectedOn", "actualGrade", "actualUnitPriceKrwPerKg", "actualKg", "note", "evidenceKind": "human | doc", "evidence": {"grade", "unitPrice", "kg"}, "features": {"material", "contaminationPct", "moisturePct", "basis"}, "criterionId", "tablePrice": claim, "offeredPrice": claim, "deviation": claim | null, "recordedOn"}`. `deviation`은 실제 단가에서 매입 기준표 단가를 뺀 값이고 calc 근거(`calc:price_deviation:...`)에 연결된다.
+- `events[].kind`: `feedback`(교정이나 실제 결과를 기록함)을 더했다. 업체가 보는 뷰에는 나가지 않는다.
+- `result.assignments[]`: 모르는 값 때문에 업체를 정하지 못한 흐름은 `status`가 `needs_information`이고 `checks`에 `unresolved`가 붙는다(현행 유지를 "확정"으로 보이지 않게 한다).
+
+관리자 화면(`GET /admin/status`)의 `retrain`(재학습 표):
+
+```json
+{"gradeLabels": {"count": 0, "usable": 0, "incomplete": 0, "note": "..."},
+ "outcomes": {"count": 0},
+ "corrections": {"count": 0, "byField": {"material": 1}, "detectorCandidates": 0},
+ "gate": {"allowed": false, "reason": "...", "minRealLabels": 30, "minAccuracy": 0.9, "realLabelCount": 0,
+          "evaluated": {"model": "등급 기준값 규칙 v1", "n": 0, "accuracy": null, "label": "실제 등급 기준"}},
+ "calibration": {"count": 0, "autoApply": false, "note": "...",
+                 "groups": [{"streamId", "vendorOrgId", "criterionId", "count",
+                             "items": [{"inspectedOn", "sessionId", "tablePrice": {"claim"}, "actualPrice": {"claim"}, "difference": {"claim"}}]}]},
+ "modelVersions": [{"model", "version", "runId", "trainedOn", "dataBasis", "realLabelCount", "syntheticCount",
+                    "metrics": {}, "baseline": {}, "gate": {"allowed", "reason"}, "deployed", "registeredOn"}]}
+```
+
+- 건수(`gradeLabels`, `corrections`)는 전체이고, `calibration.groups`의 건별 목록은 요청한 조직이 당사자인 것만 나간다(관리자는 전부).
+- `calibration`은 평균을 내지 않고 건별 목록과 건수만 준다. 기준값을 자동으로 바꾸지 않는다(`autoApply`는 늘 `false`).
+- `modelVersions`는 `POST /admin/retrain/runs`로 등록된 실행만 담는다. 등록된 것이 없으면 빈 목록이다.
+- `gate`는 실제 등급 행(재질·오염도·수분이 모두 있는 기록)으로 지금 기준값 규칙을 평가해 `intake.grade_model.deploy_gate`에 넣은 결과다.
+
 ## 8. HTTP API
 
 접두어는 `/api/v3`이고, 요청하는 조직은 `X-Org-Id` 헤더로 밝힌다(시연용. 실제 인증은 기존 Entra 설정에 연결한다).
@@ -242,9 +272,20 @@ VendorProfile {"orgId": "org_saegil",
 | `GET /evidence?q=&kind=` | 근거 검색 |
 | `GET /intake/csv/template`, `POST /intake/csv` | 측정값 CSV 양식과 업로드 |
 | `POST /intake/documents` | 문서 업로드와 추출 |
-| `GET /admin/status`, `POST /admin/eval` | 색인·기준값 상태, 사례 시험 실행 |
+| `GET /admin/status`, `POST /admin/eval` | 색인·기준값 상태와 재학습 표, 사례 시험 실행 |
+| `POST /sessions/{id}/corrections` | `{streamId, field, before, after, note}`. 배출 기업 담당자가 고친 값을 기록한다 |
+| `POST /sessions/{id}/outcomes` | `{threadId, streamId, actualGrade, actualUnitPriceKrwPerKg, actualKg, inspectedOn, note, documentName?}`. 업체가 확정 뒤 실제 결과를 기록한다 |
+| `GET /admin/retrain/export`, `POST /admin/retrain/runs` | 재학습 행 내보내기, 재학습 실행 결과 등록(관리자만) |
 
 오류는 `{"error": {"code": "...", "message": "한국어 문장"}}`과 맞는 상태 코드로 낸다.
+
+재학습 데이터 수집(7단계) 주소의 규칙:
+
+- `POST /sessions/{id}/corrections`: 그 진단의 배출 기업만 부를 수 있다(업체는 403, 당사자가 아니면 404). `field`는 `box | material | origin | form | contaminant | grade | contaminationPct | moisturePct`다. human 근거(`human:<조직>:교정-<흐름>-<항목>-<순번>`)로 등록하고, 앞의 다섯 항목은 탐지 모델 재학습 데이터 후보가 된다. 기록만 남기며 흐름의 값은 바꾸지 않는다(흐름은 `PUT /orgs/{orgId}/streams/{streamId}`로 고친다). 응답은 `{"correction": 기록, "evidence": [근거 ID]}`.
+- `POST /sessions/{id}/outcomes`: 그 스레드의 업체만, 스레드가 `confirmed`일 때만 받는다(아니면 `THREAD_NOT_CONFIRMED` 409). `streamId`는 그 스레드에서 확정된 흐름이어야 하고, 실제 등급이나 실제 단가 가운데 하나는 있어야 한다. `documentName`을 주면 doc 근거, 없으면 human 근거로 등록한다. 소유는 업체이고 배출 기업과 나눈다. 같은 흐름과 검수일로 다시 보내면 같은 근거의 새 판이 된다. 응답은 `{"outcome": 기록, "evidence": [근거 ID]}`.
+- `GET /admin/retrain/export`: `{"gradeLabels": [등급 모델 학습 행, synthetic=false], "detectionCorrections": [탐지 교정], "gate": 게이트}`. 여러 조직의 기록이 섞여 있어 `role`이 `admin`인 조직만 받는다.
+- `POST /admin/retrain/runs`: Azure ML 재학습 작업(`scripts/v3/ml/compare_and_gate.py`)이 낸 `gate.json`을 그대로 받는다. 받은 값을 적을 뿐 점수나 판정을 만들지 않는다. 관리자만.
+- `POST /admin/eval`의 응답: 맨 위(`scenario`, `sessionStatus`, `checked`, `passed`, `validatorPassRate`, `rewritten`, `threads`, `resultStatus`)는 시연 시나리오 한 건의 결과이고, `cases`가 사례 세트(50건)의 결과다: `{"model", "summary": {caseCount, draftCount, reviewCounts, verdictMatched, verdictMatchRate, openCount, openCases, validatorChecked, validatorPassed, validatorPassRate, forbiddenViolationCount, forbiddenClean, ...}, "results": [{id, title, review, open, verdictMatch, mismatches, forbiddenViolations, validator}]}`.
 
 구현하면서 더한 주소: `GET /health`, `POST /intake/documents/confirm`(`{orgId, documentName, fields}`. 담당자가 확인한 추출값만 doc 근거로 등록한다). 업로드는 `multipart/form-data`의 `file`, `orgId`, (문서는) `kind`로 받는다. `kind`는 `permit | purchase_criteria | material_spec | msds | contract`다.
 

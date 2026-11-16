@@ -131,8 +131,12 @@ def csv_template(app) -> bytes
 def upload_csv(app, org_id, filename, data, viewer) -> dict
 def upload_document(app, org_id, kind, filename, data, viewer) -> dict
 def confirm_document(app, org_id, document_name, fields, viewer) -> dict   # 확인한 추출값만 doc 근거로
-def admin_status(app, viewer) -> dict
-def run_eval(app, viewer) -> dict
+def admin_status(app, viewer) -> dict                               # 재학습 표(retrain) 포함
+def run_eval(app, viewer) -> dict                                   # 사례 세트 + 시연 시나리오
+def record_correction(app, session_id, body, viewer) -> dict        # 배출 기업 담당자가 고친 값
+def record_outcome(app, session_id, body, viewer) -> dict           # 업체가 확정 뒤 기록하는 실제 결과
+def export_retraining(app, viewer) -> dict                          # 재학습 행(관리자만)
+def register_model_run(app, run, viewer) -> dict                    # 재학습 실행 결과 등록(관리자만)
 ```
 
 `viewer`는 요청한 조직 ID다. 권한이 없으면 `ServiceError(code, message, status)`를 낸다. 업체가 보는 진단 뷰에는 자기 스레드와 그 스레드의 흐름만 들어간다.
@@ -154,7 +158,24 @@ def run_eval(app, viewer) -> dict
 - `upload_document`는 Document Intelligence가 설정돼 있으면 그것으로, 없으면 UTF-8 글 파일만 읽는다(`extraction: "text_only"`). Prompt Shields가 설정되지 않았으면 `shieldUnavailable: true`를 그대로 돌려준다. 주입이 탐지되면 문서를 쓰지 않고 올린 조직의 진행 중인 스레드를 모두 `handoff`로 넘긴다.
 - 뽑은 값은 `confirm_document`로 담당자가 확인한 것만 doc 근거가 된다.
 
-`run_eval`은 시연 시나리오를 따로 만든 저장소에서 처음부터 끝까지 돌리고, 나간 메시지와 문서를 다시 검증해 통과율을 낸다. 지금 연결된 모델 설정을 그대로 쓰므로 규칙 정책으로 돌았으면 결과에 그렇게 적힌다.
+`run_eval`은 평가 사례 세트(`app/v3/eval/cases`, 50건, 모두 가상 수치)를 `eval.runner.run_cases`로 돌리고, 시연 시나리오도 따로 만든 저장소에서 처음부터 끝까지 돌린다. 사례마다 새 저장소를 만들므로 운영 데이터는 바뀌지 않는다. 지금 연결된 모델 설정과 공개 근거를 그대로 쓰므로 규칙 정책으로 돌았으면 결과에 그렇게 적힌다.
+
+재학습 데이터 수집(`app/v3/feedback.py`):
+
+- 교정과 실제 결과는 따로 표를 두지 않고 근거 레지스트리에 근거로 쌓는다(기록 전체가 `meta.feedback`에 실린다). 메모리 레지스트리와 SQL 레지스트리에서 똑같이 돌고, `POST /demo/reset`으로 레지스트리를 비우면 함께 지워진다.
+- `feedback.export_grade_labels(app)`은 실제 등급이 있고 재질·오염도·수분이 모두 있는 기록만 학습 행으로 낸다(합성 데이터와 같은 열, `synthetic`은 늘 `False`). 오염도와 수분은 실제 결과를 기록할 때의 흐름 값(측정값 우선, 없으면 사진 추정과 담당자 답)을 붙여 둔 것이다.
+- `feedback.export_detection_corrections(app)`은 박스·재질·출처·형태·혼입물 교정을 낸다. `photoEvidence`로 원본 사진을 찾고, 사진이 없는 흐름의 교정은 `hasPhoto: false`로 표시한다.
+- `feedback.gate_status(app)`는 실제 등급 행으로 지금 기준값 규칙을 평가해 `deploy_gate`에 넣는다. 재학습한 후보 모델의 점수는 Azure ML 작업이 내고, 등록된 실행만 모델 버전 표에 나온다.
+- `feedback.calibration_candidates(app, viewer)`는 실제 단가와 매입 기준표 단가의 차이를 흐름·업체별로 건별로 늘어놓는다. 평균을 내지 않고 기준값을 바꾸지 않는다.
+- 관리자 조직(`role: admin`)은 시연 데이터에 없다. 내보내기와 실행 등록은 관리자 조직을 만든 환경에서만 쓸 수 있다.
+
+진행기에서 평가하며 고친 것:
+
+- 형태를 모르는데 형태에 따라 매입 기준이 갈리면 판단 도구가 어느 기준도 고르지 않는다(`judge_route`는 조건부와 질문만 내고 단가를 내지 않는다).
+- 모르는 값 때문에 업체를 정하지 못한 흐름은 결과 한 장에서 `needs_information`으로 나간다.
+- 측정값과 사진 추정이 함께 있으면 `identify_stream`이 측정 수분으로 사진 추정 등급을 내어 견준다(다르면 로트 확인 질문).
+- 대화 도중 담당자 답으로 흐름이 바뀌면 최적안을 내기 전에 `judge_route`를 다시 한다(결과 한 장의 확인할 것과 민감도가 여기서 나온다).
+- 조직과 흐름의 이름에 든 숫자는 자리표시자 밖 숫자로 세지 않는다. 이름은 코드가 저장소에서 읽어 검증기에 넘기고(`validate_message(..., names=...)`), 숫자만으로 된 이름은 허용하지 않는다.
 
 ## 7. 실행 기록
 
@@ -169,3 +190,20 @@ def run_eval(app, viewer) -> dict
 - 기본은 `--llm rule`이다. `--llm foundry`일 때만 `FOUNDRY_ENDPOINT`, `FOUNDRY_DEPLOYMENT`, `FOUNDRY_API_KEY`를 읽는다. 업체가 ollama를 골랐으면 `OLLAMA_BASE_URL`이 있을 때만 그 모델을 쓰고, 없으면 그 업체는 규칙 정책으로 돈다.
 - CORS는 `http://localhost:3000`과 `http://127.0.0.1:3000`만 허용한다(`X-Org-Id`, `Content-Type` 헤더, `OPTIONS` 처리).
 - 업로드는 `multipart/form-data`(`file`, `orgId`, 문서는 `kind`)로 받는다.
+
+## 9. 평가 (8단계)
+
+| 모듈 | 하는 일 |
+|---|---|
+| `app/v3/eval/cases/*.json` | 사례 50건. C01~C10은 `docs/c-track/pp-validation-cases.md`를 옮긴 것(`review: 제품 정책 초안`), C11~C50은 새로 만든 것(`review: 초안`, 전문가 검토 전). 수치는 모두 가상이다. 형식은 `cases/README.md` |
+| `app/v3/eval/loader.py` | 사례 불러오기와 형식 검사 |
+| `app/v3/eval/world.py` | 사례의 가상 세계(저장소, 근거)를 만든다 |
+| `app/v3/eval/runner.py` | `run_cases(app 또는 registry 또는 None, cases)`. 사례별로 판정 일치, 금지 위반, 검증기 통과를 보고 집계한다. 결정적이다 |
+| `app/v3/eval/format_compliance.py` | 모델 형식 준수 시험. `python3 -m app.v3.eval.format_compliance --provider rule\|scripted\|foundry\|ollama` |
+| `app/v3/eval/foundry_eval.py` | Foundry 평가(근거 충실도) 입력 JSONL(`query`, `response`, `context`)을 실행 기록에서 만든다 |
+| `app/v3/eval/report.py` | `docs/v3/eval-report.md`를 만든다. 숫자는 실행 결과에서만 나오고, 테스트가 저장된 파일과 지금 결과를 견준다 |
+| `scripts/v3/eval/run_foundry_eval.py` | Azure AI Evaluation SDK로 근거 충실도를 잰다(미실행) |
+
+- 설계 판단이 필요한 사례는 `"status": "open"`과 `openNote`를 붙여 남긴다. open이 아닌 사례는 기대와 모두 맞아야 테스트가 통과하고, open 사례가 기대와 같아지면 표시를 지우라고 테스트가 알려 준다.
+- 금지 위반은 사례의 `forbidden`과, 모든 사례에 걸리는 공통 규칙(가드레일, 허가 품목, 승인 전 확정, 턴 상한, 질문 한도, 조직 경계, 검증 없이 나간 메시지)을 함께 센다.
+- 실제 모델의 형식 준수율과 Foundry 근거 충실도는 재지 않았다. 리포트에 "미측정"으로 적힌다.
