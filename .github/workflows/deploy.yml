@@ -1,0 +1,78 @@
+# 미실행·미검증: 이 워크플로는 한 번도 돌려 보지 못했다. infra/deploy.sh 도 마찬가지다.
+#
+# main에 병합된 커밋이 CI를 통과하면 백엔드 이미지를 쓰는 세 앱(API, 업체 측 에이전트, MCP)을 배포한다.
+# 프런트는 프런트 저장소에서 따로 배포한다(이 저장소에는 프런트 코드가 없다).
+#
+# 인증은 OIDC 페더레이션이다(비밀번호나 클라이언트 비밀을 저장하지 않는다). 먼저 해 둘 것:
+#   1) Entra 앱 등록(또는 사용자 할당 관리 ID)에 페더레이션 자격 증명을 더한다
+#      issuer  https://token.actions.githubusercontent.com
+#      subject repo:ReSource-AI-PNU/backend:ref:refs/heads/main
+#   2) 그 주체에 리소스 그룹 Contributor 역할과 Key Vault 접근 정책(secrets get, set)을 준다
+#      (조 계정에는 역할 할당 권한이 없어 구독 관리자가 해 줘야 한다. 그 전에는 infra/deploy.sh 를 손으로 돌린다)
+#   3) 저장소 비밀(Settings > Secrets and variables > Actions)에 이름만 맞춰 넣는다
+#      AZURE_CLIENT_ID, AZURE_TENANT_ID, AZURE_SUBSCRIPTION_ID   (세 값 모두 비밀값은 아니고 식별자다)
+#   4) 선택: 저장소 변수 AZURE_RESOURCE_GROUP (없으면 deploy.sh 의 기본값), DEPLOY_PLATFORM (auto)
+name: Deploy
+
+on:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      target:
+        description: 배포할 대상
+        type: choice
+        default: backend
+        options: [backend, vendor-agent, mcp]
+
+# 배포는 겹쳐 돌리지 않는다. 진행 중인 배포를 끊지도 않는다.
+concurrency:
+  group: deploy
+  cancel-in-progress: false
+
+permissions:
+  id-token: write # OIDC 토큰
+  contents: read
+
+jobs:
+  deploy:
+    name: deploy
+    # CI가 main push에서 성공했을 때만. PR에서 돈 CI로는 배포하지 않는다.
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'push')
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    env:
+      RG: ${{ vars.AZURE_RESOURCE_GROUP || 'team_AIBIC2026_03_RG_EUS2' }}
+      PLATFORM: ${{ vars.DEPLOY_PLATFORM || 'auto' }}
+      MIGRATE_MODE: acr
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          # CI가 통과한 바로 그 커밋을 배포한다
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
+
+      - uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      # containerapp 같은 az 확장이 필요하면 묻지 않고 설치한다(러너는 한 번 쓰고 버린다).
+      - run: az config set extension.use_dynamic_install=yes_without_prompt
+
+      # deploy.sh 가 빌드 → 마이그레이션 → 앱 바꾸기 → 상태 확인 순서로 하고, 마이그레이션이 실패하면 앱을 바꾸지 않는다.
+      - name: API 배포
+        if: github.event_name != 'workflow_dispatch' || inputs.target == 'backend'
+        run: bash infra/deploy.sh backend
+
+      - name: 업체 측 에이전트 배포
+        if: github.event_name != 'workflow_dispatch' || inputs.target == 'vendor-agent'
+        run: bash infra/deploy.sh vendor-agent
+
+      - name: MCP 서버 배포
+        if: github.event_name != 'workflow_dispatch' || inputs.target == 'mcp'
+        run: bash infra/deploy.sh mcp
