@@ -35,6 +35,7 @@ from app.v3.evidence.validator import (
 )
 from app.v3.judge.common import permit_match
 from app.v3.judge.toolbox import call_tool
+from app.v3.textutil import josa
 
 MONEY_UNITS = ("원", "원/월", "원/kg", "원/t", "원/회")
 MAX_ANSWER_ROUNDS = 6
@@ -412,10 +413,10 @@ def _compare_tools(
             diff.same(f"{path}.money", [], money)
         for needle in spec.get("askContains") or []:
             if not any(needle in ask for ask in seen["asks"]):
-                diff.same(f"{path}.asks", f"'{needle}'가 든 질문", seen["asks"])
+                diff.same(f"{path}.asks", josa(f"'{needle}'", "이가") + " 든 질문", seen["asks"])
         for needle in spec.get("textContains") or []:
             if not any(needle in text for text in seen["texts"]):
-                diff.same(f"{path}.texts", f"'{needle}'가 든 설명", seen["texts"])
+                diff.same(f"{path}.texts", josa(f"'{needle}'", "이가") + " 든 설명", seen["texts"])
         if spec.get("noAsks"):
             diff.same(f"{path}.asks", [], seen["asks"])
         diff.same(f"{path}.grounded", True, seen["grounded"])

@@ -26,6 +26,14 @@ def sensitivity_scenarios() -> list[dict[str, str]]:
     return list(load()["sensitivity"])
 
 
+def _meta(item: dict[str, Any], registered_on: str) -> dict[str, Any]:
+    """화면 글(excerpt, source)에는 파일 경로를 두지 않고, 어디서 온 값인지는 여기에 남긴다."""
+    meta = {"key": item["key"], "registeredOn": registered_on, "file": f"app/v3/judge/{PATH.name}"}
+    if item.get("origin"):
+        meta["origin"] = item["origin"]  # 옮겨 온 값이면 그 원래 자리
+    return meta
+
+
 def register_defaults(registry, today: str | None = None) -> list[str]:
     """기본 가정값을 레지스트리에 넣고 근거 ID 목록을 돌려준다. 여러 번 불러도 결과가 같다."""
     doc = load()
@@ -40,7 +48,7 @@ def register_defaults(registry, today: str | None = None) -> list[str]:
             excerpt=item["excerpt"],
             source=doc["source"],
             as_of=doc["asOf"],
-            meta={"key": item["key"], "registeredOn": today or doc["asOf"]},
+            meta=_meta(item, today or doc["asOf"]),
         )
         out.append(registry.put(evidence).id)
     return out

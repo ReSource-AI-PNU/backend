@@ -42,14 +42,34 @@ def thresholds_evidence() -> Evidence:
         id=ids.assumption_id("등급기준", data["version"]),
         kind="assumption",
         label="재질별 등급 기준값",
-        excerpt=json.dumps(
-            {"default": data["default"], "materials": data["materials"]},
-            ensure_ascii=False,
-            sort_keys=True,
-        ),
-        source=f"app/v3/intake/{_THRESHOLD_FILE.name} ({data['note']})",
+        excerpt=_thresholds_text(data),
+        source=f"Re:Source AI 등급 기준 {data['version']} · {data['note']}",
         as_of=data["asOf"],
-        meta={"version": data["version"], "file": _THRESHOLD_FILE.name},
+        meta={
+            "version": data["version"],
+            "file": _THRESHOLD_FILE.name,
+            "origin": f"app/v3/intake/{_THRESHOLD_FILE.name}",
+        },
+    )
+
+
+def _thresholds_text(data: dict[str, Any]) -> str:
+    """기준값 표를 사람이 읽는 글로 편다. 근거 패널에 그대로 보인다."""
+
+    def row(name: str, table: dict[str, Any]) -> str:
+        cells = [
+            f"{grade} {_fmt(table[grade]['maxContaminationPct'])}%·"
+            f"{_fmt(table[grade]['maxMoisturePct'])}%"
+            for grade in data["grades"]
+            if grade in table
+        ]
+        return f"{name}: {', '.join(cells)}"
+
+    rows = [row(name, table) for name, table in sorted(data["materials"].items())]
+    rows.append(row("그 밖의 재질", data["default"]))
+    return (
+        "등급별 상한(오염도·수분). 둘 다 상한 이하인 가장 높은 등급을 주고, "
+        f"C등급 상한을 넘으면 등외다. {' / '.join(rows)}"
     )
 
 
@@ -380,12 +400,14 @@ def deploy_gate(
     """배포 게이트. 실제 등급이 쌓이기 전에는 합성 점수가 아무리 좋아도 통과시키지 않는다."""
     base = {"minRealLabels": min_real_labels, "minAccuracy": min_accuracy}
     if real_label_count < min_real_labels:
+        have = (
+            f"실제 등급 기록이 {real_label_count}건뿐입니다."
+            if real_label_count > 0
+            else "실제 등급 기록이 아직 없습니다."
+        )
         return {
             "allowed": False,
-            "reason": (
-                f"실제 등급 기록이 {real_label_count}건뿐입니다. {min_real_labels}건 이상 쌓인 뒤에 "
-                "실제 등급 기준으로 다시 평가합니다."
-            ),
+            "reason": f"{have} {min_real_labels}건 이상 쌓인 뒤에 실제 등급 기준으로 다시 평가합니다.",
             **base,
         }
     if metrics.get("synthetic"):
