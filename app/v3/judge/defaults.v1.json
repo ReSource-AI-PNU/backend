@@ -14,6 +14,24 @@
   "refs": {
     "kau.price": [
       "ref:KAU:KAU26-종가@2026-11-16"
+    ],
+    "reference.price.PP.압축": [
+      "ref:가격조사:PP-압축-경남@2026-10"
+    ],
+    "reference.price.PP.플레이크": [
+      "ref:가격조사:PP-플레이크-경남@2026-10"
+    ],
+    "reference.price.PP.펠렛": [
+      "ref:가격조사:PP-펠렛-경남@2026-10"
+    ],
+    "reference.price.PE.압축": [
+      "ref:가격조사:PE-압축-경남@2026-10"
+    ],
+    "reference.price.PE.플레이크": [
+      "ref:가격조사:PE-플레이크-경남@2026-10"
+    ],
+    "reference.price.PE.펠렛": [
+      "ref:가격조사:PE-펠렛-경남@2026-10"
     ]
   },
   "items": [
@@ -108,5 +126,6 @@
       "label": "재활용 회피 배출계수 (폐플라스틱)",
       "excerpt": "팀 가정값(가상 시연용). 실제 시세·법정 기준이 아니다. app/schemas.py StreamDecision 예시(월 600kg, -0.96t)에서 역산했다."
     }
-  ]
+  ],
+  "referenceNote": "reference.price.* 는 가격조사 참고 시세다. 업체 매입 단가가 아니므로 손익 계산에는 쓰지 않는다."
 }

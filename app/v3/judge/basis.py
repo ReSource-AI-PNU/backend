@@ -45,3 +45,29 @@ def resolve(registry, org_id: str | None, key: str) -> Evidence | None:
         except (EvidenceNotFound, EvidenceForbidden):
             continue
     return None
+
+
+REFERENCE_PRICE_PREFIX = "reference.price."
+REFERENCE_PRICE_NOTE = (
+    "가격조사 참고 시세입니다. 업체 매입 단가가 아니며 손익 계산에는 쓰지 않았습니다."
+)
+
+
+def reference_prices(registry, org_id: str | None, materials=None) -> list[dict]:
+    """참고 시세(`reference.price.<재질>.<형태>`). 화면에 보여 주기만 하고 손익 계산에는 쓰지 않는다.
+
+    materials를 주면 그 재질만 돌려준다. 근거가 레지스트리에 없으면 그 항목은 빠진다.
+    """
+    wanted = None if materials is None else {str(m) for m in materials}
+    out = []
+    for key in keys():
+        if not key.startswith(REFERENCE_PRICE_PREFIX):
+            continue
+        material, _, form = key[len(REFERENCE_PRICE_PREFIX) :].partition(".")
+        if wanted is not None and material not in wanted:
+            continue
+        evidence = resolve(registry, org_id, key)
+        if evidence is None or evidence.kind != "ref":
+            continue
+        out.append({"key": key, "material": material, "form": form, "evidence": evidence})
+    return out

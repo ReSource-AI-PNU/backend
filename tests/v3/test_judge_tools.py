@@ -439,3 +439,28 @@ def test_every_tool_output_passes_the_validator():
     assert {name for _, name, _ in calls} == set(TOOLS)
     for org, name, args in calls:
         assert_grounded(reg, run(reg, name, org=org, **args), org)
+
+
+def test_reference_prices_are_shown_but_never_used_in_profit():
+    from app.v3.evidence.seeds import load_seed_dir
+
+    reg = registry()
+    assert basis.reference_prices(reg, EMITTER) == []  # 근거 시드가 없으면 비어 있다
+    load_seed_dir(reg)
+    prices = basis.reference_prices(reg, EMITTER, ["PP"])
+    assert [p["form"] for p in prices] == ["압축", "펠렛", "플레이크"]
+    assert all(p["evidence"].kind == "ref" and p["evidence"].unit == "원/kg" for p in prices)
+    assert basis.resolve(reg, EMITTER, "reference.price.PP.펠렛").id.startswith(
+        "ref:가격조사:PP-펠렛"
+    )
+    assert len(basis.reference_prices(reg, EMITTER)) == 6
+    # 손익을 내는 도구의 계산 사슬에 참고 시세가 들어가지 않는다
+    for name, args in (
+        ("judge_route", {"stream": stream(), "vendor": vendor()}),
+        ("cost_carbon", {"stream": stream(), "vendor": vendor(), "origin": ORIGIN}),
+        ("optimize_assignment", {"streams": [stream()], "vendors": [vendor()]}),
+    ):
+        r = run(reg, name, **args)
+        used = {e for c in r["claims"] for e in c["evidence"]}
+        used |= {i for e in r["evidence"] for i in reg.get(e).meta["inputEvidence"]}
+        assert not [e for e in used if e.startswith("ref:가격조사")]
