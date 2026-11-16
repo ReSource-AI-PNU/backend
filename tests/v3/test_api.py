@@ -9,7 +9,7 @@ pytest.importorskip("sqlalchemy")
 
 from fastapi.testclient import TestClient
 
-from app.core.config import settings
+from app.core.config import Settings, settings
 from app.main import app
 from app.v3 import api
 from app.v3.agents.llm import FoundryChat, OllamaChat
@@ -219,3 +219,14 @@ def test_llm_factory_never_swaps_models():
     chosen = with_ollama("vendor", "org_namhae", ollama)
     assert isinstance(chosen, OllamaChat) and chosen.model == "open-model"
     assert isinstance(with_ollama("vendor", "org_saegil", {"provider": "foundry"}), FoundryChat)
+
+
+def test_database_url_uses_installed_driver():
+    """Key Vault의 database-url(postgresql://)을 그대로 넣어도 psycopg 3로 붙는다."""
+    plain = Settings(database_url="postgresql://user:pw@db.invalid:5432/app?sslmode=require")
+    assert plain.database_url == (
+        "postgresql+psycopg://user:pw@db.invalid:5432/app?sslmode=require"
+    )
+    kept = "postgresql+psycopg://user:pw@db.invalid:5432/app"
+    assert Settings(database_url=kept).database_url == kept
+    assert Settings(database_url="sqlite:///./x.db").database_url == "sqlite:///./x.db"

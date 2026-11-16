@@ -1,4 +1,4 @@
-from pydantic import Field
+from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -49,6 +49,15 @@ class Settings(BaseSettings):
     contaminant_namer_dir: str = ""  # OWLv2 디렉터리. 비우면 이물 이름 붙이기 끔 (라벨·테이프·금속 인서트·탄화물)
     model_blob_url: str = ""  # 모델 tar.gz 의 Azure Blob SAS URL (또는 Azure ML 레지스트리 다운로드 URL)
     classify_fps: float = 4.0
+
+    @field_validator("database_url")
+    @classmethod
+    def _use_installed_driver(cls, value: str) -> str:
+        """Key Vault의 database-url은 postgresql:// 꼴이다. 설치된 드라이버(psycopg 3)로 붙게 고친다."""
+        for prefix in ("postgresql://", "postgres://"):
+            if value.startswith(prefix):
+                return "postgresql+psycopg://" + value[len(prefix) :]
+        return value
 
 
 settings = Settings()
