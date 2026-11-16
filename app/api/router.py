@@ -1,10 +1,11 @@
 from fastapi import APIRouter
 
-from app.api import c_questions, classify, contract, feasibility
+from app.api import c_questions, classify, contract, cost_carbon, feasibility
 
 router = APIRouter(prefix="/api/v1")
 router.include_router(contract.router)
 router.include_router(feasibility.router)
+router.include_router(cost_carbon.router)
 router.include_router(c_questions.router)
 router.include_router(classify.router)
 

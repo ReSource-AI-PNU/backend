@@ -517,9 +517,12 @@ class ScenarioLine(Contract):
     """시나리오 안의 흐름별 내역"""
 
     stream_id: str
-    route: StreamRoute
-    monthly_krw: Won
-    carbon_t: float
+    route: StreamRoute | None
+    """이 시나리오에서 흐름이 가는 경로. 시나리오 D(전부 매립)는 경로 목록에 매립이 없어
+    프런트 mock과 같이 incinerate로 둔다. 경로 판정이 보류된 흐름은 None."""
+    monthly_krw: EconomicAmount | None
+    """None은 미계산(보류). 0과 구별한다"""
+    carbon_t: float | None
 
 
 class Route(Contract):
@@ -553,12 +556,15 @@ class Route(Contract):
     id: ScenarioId
     name: str
     description: str
-    monthly_krw: Won
-    carbon_t: float
-    kau_krw: Won
-    """줄인 탄소를 배출권 가격으로 바꾼 참고값"""
+    monthly_krw: EconomicAmount | None
+    """흐름별 월 손익의 합(반올림하지 않음). 보류 흐름이 하나라도 있으면 None"""
+    carbon_t: float | None
+    """순 탄소 tCO₂e/월(반올림하지 않음). 보류 흐름이 하나라도 있으면 None"""
+    kau_krw: EconomicAmount | None
+    """줄인 탄소를 배출권 가격으로 바꾼 참고값(−carbon_t × KAU 시세, 반올림하지 않음)"""
     condition: str
     recommended: bool | None = None
+    status: CalculationStatus = "calculated"
     breakdown: list[ScenarioLine]
 
 
@@ -567,10 +573,14 @@ class Assumption(Contract):
     value: str
 
 
+CarbonBaseline = Literal["신재 대비", "매립 대비"]
+
+
 class CostCarbonResult(Contract):
     routes: list[Route]
     assumptions: list[Assumption]
-    baseline: Literal["신재 대비", "매립 대비"]
+    baseline: CarbonBaseline
+    data_mode: Literal["synthetic_demo"] | None = None
 
 
 # ── ⑥ 이행안·승인 ──────────────────────────────────────────────────────

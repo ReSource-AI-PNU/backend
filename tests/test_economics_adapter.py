@@ -22,9 +22,9 @@ def test_fixture_totals_and_action(streams):
     result = evaluate_streams(streams, CONFIG)
     assert result.status == "conditional"
     assert [(d.monthly_now, d.monthly_after) for d in result.decisions] == [
-        (-150000, 510000), (-100000, 90000), (-62500, -20000), (-75000, 15000)
+        (-119280, 510000), (-79520, 90000), (-49700, -20000), (-59640, 15000)
     ]
-    assert (result.total_now, result.total_after, result.difference) == (-387500, 595000, 982500)
+    assert (result.total_now, result.total_after, result.difference) == (-308140, 595000, 903140)
     reuse, sell, pyro, bundle = result.decisions
     assert (reuse.cash_sale_revenue, reuse.purchase_avoidance_net) == (0, 540000)
     assert (sell.cash_sale_revenue, sell.purchase_avoidance_net) == (120000, 0)
@@ -35,12 +35,12 @@ def test_fixture_totals_and_action(streams):
     assert body["carbonNowT"] is None
     assert all(d["carbonAfterT"] is None for d in body["decisions"])
     assert body["decisions"][0]["ladder"] == [
-        {"label": "현재(혼합 소각)", "perKg": -250},
+        {"label": "현재(혼합 소각)", "perKg": -198.8},
         {"label": "분리해 매각", "perKg": 300},
         {"label": "분쇄 재투입", "perKg": 900},
     ]
     assert [(a["route"], a["perKg"]) for a in body["decisions"][3]["alternatives"]] == [
-        ("sell", -40), ("pyrolysis", -80), ("incinerate", -250)
+        ("sell", -40), ("pyrolysis", -80), ("incinerate", -198.8)
     ]
     assert all(d["dataMode"] == "synthetic_demo" for d in body["decisions"])
     assert result.total_now == sum(d.monthly_now for d in result.decisions)
@@ -88,10 +88,10 @@ def test_invalid_configuration_is_not_treated_as_a_stream_input_error(streams):
 def test_fractional_values_and_finite_validation(streams):
     streams[0].monthly_kg = 0.125
     result = evaluate_streams([streams[0]], CONFIG)
-    assert result.total_now == -31.25
+    assert result.total_now == -24.85
     assert result.total_after == -29887.5
     raw = result.model_dump(mode="json", by_alias=True)
-    assert raw["totalNow"] == -31.25
+    assert raw["totalNow"] == -24.85
     assert result.model_validate(json.loads(json.dumps(raw))) == result
     for value in (float("inf"), float("-inf"), float("nan")):
         changed = dict(raw, totalNow=value)

@@ -13,9 +13,9 @@ def test_frontend_demo_factory() -> None:
     result = evaluate_factory(FLOWS, CONFIG)
     assert [d.route for d in result.decisions] == ["reuse", "sell", "pyrolysis", "bundle"]
     assert [(d.monthly_now, d.monthly_after) for d in result.decisions] == [
-        (-150000, 510000), (-100000, 90000), (-62500, -20000), (-75000, 15000)
+        (-119280, 510000), (-79520, 90000), (-49700, -20000), (-59640, 15000)
     ]
-    assert (result.total_now, result.total_after, result.difference) == (-387500, 595000, 982500)
+    assert (result.total_now, result.total_after, result.difference) == (-308140, 595000, 903140)
     assert result.total_now == sum(d.monthly_now for d in result.decisions)
     assert result.total_after == sum(d.monthly_after for d in result.decisions)
     assert result.status == "conditional"
@@ -84,12 +84,12 @@ def test_recalculate_quantity_and_unit_price() -> None:
     flow = replace(FLOWS[1], monthly_kg=500)
     changed = replace(CONFIG, sale_per_kg={**CONFIG.sale_per_kg, "폐플라스틱": 400})
     result = evaluate_flow(flow, changed)
-    assert (result.monthly_now, result.monthly_after, result.monthly_difference) == (-125000, 170000, 295000)
+    assert (result.monthly_now, result.monthly_after, result.monthly_difference) == (-99400, 170000, 269400)
 
 
 def test_override_keeps_original_route() -> None:
     result = evaluate_flow(FLOWS[0], CONFIG, "incinerate")
-    assert (result.route, result.ai_route, result.monthly_after) == ("incinerate", "reuse", -150000)
+    assert (result.route, result.ai_route, result.monthly_after) == ("incinerate", "reuse", -119280)
     assert evaluate_flow(FLOWS[0], CONFIG, "reuse").ai_route is None
 
 
@@ -161,16 +161,16 @@ def test_supported_override_retains_ai_route() -> None:
 def test_ladder_matches_frontend_demo() -> None:
     reuse, sell, pyrolysis, bundle = evaluate_factory(FLOWS, CONFIG).decisions
     assert [(s.label, s.per_kg) for s in reuse.ladder] == [
-        ("현재(혼합 소각)", -250), ("분리해 매각", 300), ("분쇄 재투입", 900)
+        ("현재(혼합 소각)", -198.8), ("분리해 매각", 300), ("분쇄 재투입", 900)
     ]
     assert [(s.label, s.per_kg) for s in sell.ladder] == [
-        ("현재(혼합 소각)", -250), ("이물 일부 제거", 150), ("이물 제거 후 매각", 300)
+        ("현재(혼합 소각)", -198.8), ("이물 일부 제거", 150), ("이물 제거 후 매각", 300)
     ]
     assert [(s.label, s.per_kg) for s in pyrolysis.ladder] == [
-        ("현재(혼합 소각)", -250), ("열분해 위탁", -80)
+        ("현재(혼합 소각)", -198.8), ("열분해 위탁", -80)
     ]
     assert [(s.label, s.per_kg) for s in bundle.ladder] == [
-        ("현재(혼합 소각)", -250), ("분리해 단독 매각", -40), ("단지 묶음 매각", 100)
+        ("현재(혼합 소각)", -198.8), ("분리해 단독 매각", -40), ("단지 묶음 매각", 100)
     ]
     # 사다리의 마지막 칸은 고른 경로의 kg당 값과 같다.
     for decision in (reuse, sell, pyrolysis, bundle):
@@ -185,10 +185,10 @@ def test_alternatives_match_frontend_demo() -> None:
         return [(a.route, a.per_kg) for a in decision.alternatives]
 
     # PIR 흐름에는 묶음이 없고, 포장재(PCR)에는 재투입이 없다.
-    assert pairs(reuse) == [("sell", 300), ("pyrolysis", -80), ("incinerate", -250)]
-    assert pairs(sell) == [("reuse", 900), ("pyrolysis", -80), ("incinerate", -250)]
-    assert pairs(pyrolysis) == [("reuse", 900), ("sell", 300), ("incinerate", -250)]
-    assert pairs(bundle) == [("sell", -40), ("pyrolysis", -80), ("incinerate", -250)]
+    assert pairs(reuse) == [("sell", 300), ("pyrolysis", -80), ("incinerate", -198.8)]
+    assert pairs(sell) == [("reuse", 900), ("pyrolysis", -80), ("incinerate", -198.8)]
+    assert pairs(pyrolysis) == [("reuse", 900), ("sell", 300), ("incinerate", -198.8)]
+    assert pairs(bundle) == [("sell", -40), ("pyrolysis", -80), ("incinerate", -198.8)]
     notes = {d.route: {a.route: a.note for a in d.alternatives} for d in (pyrolysis, bundle)}
     assert notes["pyrolysis"]["sell"] == "재질이 섞여 매입처가 받지 않습니다."
     assert notes["bundle"]["sell"] == "혼자 팔면 출장비 때문에 단가가 깎입니다."
@@ -199,7 +199,7 @@ def test_alternatives_match_frontend_demo() -> None:
 
 def test_override_ladder_and_alternatives_follow_the_chosen_route() -> None:
     changed = evaluate_flow(FLOWS[0], CONFIG, "incinerate")
-    assert [(s.label, s.per_kg) for s in changed.ladder] == [("현재(혼합 소각)", -250)]
+    assert [(s.label, s.per_kg) for s in changed.ladder] == [("현재(혼합 소각)", -198.8)]
     assert [(a.route, a.per_kg) for a in changed.alternatives] == [
         ("reuse", 900), ("sell", 300), ("pyrolysis", -80)
     ]
@@ -207,7 +207,7 @@ def test_override_ladder_and_alternatives_follow_the_chosen_route() -> None:
     big_film = evaluate_flow(replace(FLOWS[3], monthly_kg=1200), CONFIG)
     assert big_film.route == "sell"
     assert [(a.route, a.per_kg) for a in big_film.alternatives] == [
-        ("bundle", 100), ("pyrolysis", -80), ("incinerate", -250)
+        ("bundle", 100), ("pyrolysis", -80), ("incinerate", -198.8)
     ]
 
 
@@ -230,11 +230,11 @@ def test_sell_ladder_has_removal_steps_only_when_something_is_removed() -> None:
     clean = evaluate_flow(FLOWS[0], CONFIG, "sell")
     assert clean.action is None
     assert [(s.label, s.per_kg) for s in clean.ladder] == [
-        ("현재(혼합 소각)", -250), ("분리해 매각", 300)
+        ("현재(혼합 소각)", -198.8), ("분리해 매각", 300)
     ]
     metal = evaluate_flow(replace(FLOWS[0], item="금속 스크랩", material="Fe"), CONFIG)
     assert [(s.label, s.per_kg) for s in metal.ladder] == [
-        ("현재(혼합 소각)", -250), ("분리해 매각", 260)
+        ("현재(혼합 소각)", -260), ("분리해 매각", 260)
     ]
     assert metal.ladder[-1].per_kg == metal.after_per_kg
 
@@ -248,7 +248,7 @@ def test_small_pcr_sold_alone_pays_the_same_trip_penalty_as_shown() -> None:
     assert (solo.cash_sale_revenue, solo.transport_cost, solo.labor_cost) == (45000, 57000, 30000)
     assert solo.monthly_after == -40 * 300 - 30000
     assert [(s.label, s.per_kg) for s in solo.ladder] == [
-        ("현재(혼합 소각)", -250), ("분리해 단독 매각", -40)
+        ("현재(혼합 소각)", -198.8), ("분리해 단독 매각", -40)
     ]
     # 최소 물량 이상이면 출장비가 붙지 않는다.
     big = evaluate_flow(replace(FLOWS[3], monthly_kg=1200), CONFIG)
@@ -262,3 +262,15 @@ def test_pyrolysis_is_offered_only_for_plastic_flows() -> None:
     assert wood.route == "sell" and [a.route for a in wood.alternatives] == ["incinerate"]
     film = evaluate_flow(FLOWS[3], CONFIG)
     assert "pyrolysis" in [a.route for a in film.alternatives]
+
+
+def test_incineration_adds_disposal_levy_to_consignment() -> None:
+    sprue = evaluate_flow(FLOWS[0], CONFIG)
+    assert sprue.current_per_kg == CONFIG.current_per_kg["폐플라스틱"] - CONFIG.incinerate_levy_per_kg
+    assert sprue.current_per_kg == -198.8
+    # 재활용 경로에는 부담금이 없다.
+    assert sprue.after_per_kg == 900
+    burned = evaluate_flow(FLOWS[0], CONFIG, "incinerate")
+    assert (burned.after_per_kg, burned.disposal_cost) == (-198.8, 119280)
+    with pytest.raises(ValueError):
+        evaluate_flow(FLOWS[0], replace(CONFIG, incinerate_levy_per_kg=-1))

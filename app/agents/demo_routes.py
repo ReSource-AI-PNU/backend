@@ -36,6 +36,8 @@ class DemoConfig:
     pyrolysis_per_kg: float
     bundle_transport_per_kg: float
     solo_sale_penalty_per_kg: float
+    incinerate_levy_per_kg: float
+    """소각 처분 시 배출자가 내는 폐기물처분부담금(원/kg, 0 이상). current_per_kg(위탁비)에 더해 뺀다"""
     labor_per_hour: float
     reuse_labor_hours: float
     sell_labor_hours: float
@@ -119,7 +121,7 @@ def _config_value(mapping: dict[str, float], key: str, name: str) -> float | Non
 
 def validate_config(config: DemoConfig) -> None:
     for name in ("reuse_per_kg", "bundle_transport_per_kg", "solo_sale_penalty_per_kg",
-                 "labor_per_hour", "reuse_labor_hours", "sell_labor_hours", "bundle_labor_hours"):
+                 "incinerate_levy_per_kg", "labor_per_hour", "reuse_labor_hours", "sell_labor_hours", "bundle_labor_hours"):
         _number(getattr(config, name), name, minimum=0)
     if _number(config.pyrolysis_per_kg, "pyrolysis_per_kg") > 0:
         raise ValueError("pyrolysis_per_kg must be nonpositive")
@@ -244,9 +246,11 @@ def evaluate_flow(flow: Flow, config: DemoConfig, override: Route | None = None)
     active = [d for d in flow.detections if not d.removed]
     if any(d.ratio is None for d in active):
         return FlowResult(flow.id, "needs_information", reason="이물 비율 확인 필요", reason_code="missing_information")
-    current = _config_value(config.current_per_kg, flow.item, "current_per_kg")
-    if current is None:
+    consignment = _config_value(config.current_per_kg, flow.item, "current_per_kg")
+    if consignment is None:
         return FlowResult(flow.id, "needs_information", reason="시연 현재 처리 단가 확인 필요", reason_code="missing_information")
+    # 현행(혼합 소각)의 kg당 값 = 소각 위탁비 + 폐기물처분부담금(둘 다 나가는 돈).
+    current = consignment - config.incinerate_levy_per_kg
     contamination = fsum(d.ratio for d in active if d.ratio is not None)
     if contamination > 1:
         raise ValueError("sum of contaminant ratios exceeds 1")
@@ -334,6 +338,7 @@ def evaluate_flow(flow: Flow, config: DemoConfig, override: Route | None = None)
         ("모든 단가와 규칙은 synthetic/demo", "재투입은 분쇄·관리비 포함 순효과; 매출이 아닌 구매비 회피",
          "묶음 운송비와 소량 PCR 단독 매각 출장비는 kg당 순효과에 포함; 인건비만 별도 차감",
          "기타 운송비와 작업 없는 경로의 인건비는 시연상 명시적으로 0",
+         "소각에는 위탁비와 별도로 폐기물처분부담금 10원/kg(산정지수 1, 중소기업 감면 미반영)을 더함",
          "회수율·신재 대체율을 추정하지 않음; 실제 적합성·수용·거래 미확정"),
         ladder=ladder, alternatives=alternatives,
     )

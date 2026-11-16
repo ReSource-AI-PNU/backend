@@ -25,7 +25,7 @@ def test_preview_demo_calculates_and_keeps_nulls(client, request_body):
     assert response.status_code == 200
     result = response.json()
     assert (result["totalNow"], result["totalAfter"], result["difference"]) == (
-        -387500, 595000, 982500
+        -308140, 595000, 903140
     )
     assert result["status"] == "conditional"
     assert [d["route"] for d in result["decisions"]] == ["reuse", "sell", "pyrolysis", "bundle"]
@@ -58,7 +58,7 @@ def test_pending_and_fractional_amounts(client, request_body):
     request_body["streams"] = [deepcopy(DEMO_REQUEST["streams"][0])]
     request_body["streams"][0]["monthlyKg"] = 0.125
     result = client.post("/api/v1/feasibility/preview", json=request_body).json()
-    assert (result["totalNow"], result["totalAfter"]) == (-31.25, -29887.5)
+    assert (result["totalNow"], result["totalAfter"]) == (-24.85, -29887.5)
 
 
 @pytest.mark.parametrize("case", ["empty", "duplicate", "unknown_id", "bad_route", "missing", "extra"])
