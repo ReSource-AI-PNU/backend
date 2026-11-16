@@ -709,6 +709,8 @@ class Orchestrator:
     def _append(self, session, thread: Thread, message: Message, actor: str) -> None:
         message.meta["evidenceMarks"] = self._fingerprints(message)
         thread.append(message, now=self.store.now())
+        if message.type == "decline":
+            thread.status_reason = self._decline_reason(thread, message)
         self._share_claims(message, thread.counterpart(message.sender))
         self.store.put_thread(thread)
         validation = message.meta.get("validation") or {}
@@ -735,6 +737,38 @@ class Orchestrator:
             state[thread.id] = "awaiting_vendor"
         else:
             state[thread.id] = "awaiting_company"
+
+    def _decline_reason(self, thread: Thread, message: Message) -> str:
+        """닫는 이유. 여러 흐름을 거절했으면 거절한 흐름을 이유와 함께 모두 적는다.
+
+        모델이 고른 한 문장(meta.reason)에는 흐름 하나의 이유만 있기 쉽다. 흐름 이름은 저장소에서
+        읽고 이유는 검증을 거친 meta.excluded의 문장을 쓴다. 이유가 같은 흐름은 한데 묶는다.
+        """
+        base = str(message.meta.get("reason") or message.text)
+        groups: dict[str, list[str]] = {}
+        for item in message.meta.get("excluded") or []:
+            if not isinstance(item, dict) or item.get("streamId") not in thread.stream_ids:
+                continue
+            reason = str(item.get("reason") or "").strip()
+            if not reason:
+                continue
+            try:
+                name = self.store.get_stream(item["streamId"]).get("name") or item["streamId"]
+            except KeyError:
+                name = item["streamId"]
+            if name not in groups.setdefault(reason, []):
+                groups[reason].append(str(name))
+        if sum(len(names) for names in groups.values()) < 2:
+            return base
+        listed = " / ".join(
+            # 이유 문장이 흐름 이름으로 시작하면 이름을 한 번 더 적지 않는다
+            reason.rstrip(".")
+            if len(names) == 1 and reason.startswith(names[0])
+            else f"{', '.join(names)}: {reason.rstrip('.')}"
+            for reason, names in groups.items()
+        )
+        head = "" if base in groups else f"{base.rstrip('.')}. "
+        return f"{head}받지 않는 흐름: {listed}."
 
     def _handoff(
         self,
