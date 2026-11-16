@@ -230,3 +230,17 @@ def test_database_url_uses_installed_driver():
     kept = "postgresql+psycopg://user:pw@db.invalid:5432/app"
     assert Settings(database_url=kept).database_url == kept
     assert Settings(database_url="sqlite:///./x.db").database_url == "sqlite:///./x.db"
+
+
+def test_remote_vendor_agents_need_a_service_key(monkeypatch):
+    monkeypatch.setattr(settings, "vendor_org_id", "")
+    monkeypatch.setattr(settings, "vendor_service_key", "")
+    monkeypatch.setattr(settings, "v3_vendor_agents", {})
+    assert api.make_vendor_gateway() is None  # 기본은 같은 프로세스
+    monkeypatch.setattr(settings, "v3_vendor_agents", {"org_saegil": "https://vendor.invalid"})
+    with pytest.raises(RuntimeError, match="VENDOR_SERVICE_KEY"):
+        api.make_vendor_gateway()
+    monkeypatch.setattr(settings, "vendor_service_key", "test-key")
+    assert api.make_vendor_gateway() is not None
+    monkeypatch.setattr(settings, "vendor_org_id", "org_saegil")
+    assert api.make_vendor_gateway() is None  # 업체 측 서비스 자신은 다시 넘기지 않는다

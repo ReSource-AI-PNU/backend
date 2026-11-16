@@ -326,6 +326,7 @@ MCP 도구의 입력은 `{"org_id", "today", "arguments"}`이고 `arguments`가 
 | `FOUNDRY_ENDPOINT`, `FOUNDRY_DEPLOYMENT`, `FOUNDRY_API_KEY` | `V3_LLM=foundry`일 때 쓴다. 주소는 리소스 주소까지만 적는다. 셋 중 하나라도 비면 규칙 정책으로 돈다 |
 | `OLLAMA_BASE_URL` | 업체가 오픈 모델을 고른 경우의 Ollama 주소(VNet 안). 비어 있으면 그 업체는 규칙 정책으로 돌고, 다른 모델로 바꿔 부르지 않는다 |
 | `VENDOR_ORG_ID`, `VENDOR_SERVICE_KEY` | 업체 측 에이전트 서비스가 대변하는 업체와 Bearer 서비스 키. 키가 없으면 모든 메시지를 거절한다 |
+| `V3_VENDOR_AGENTS` | 따로 띄운 업체 측 에이전트의 주소 `{"업체 조직 ID": "https://..."}`. 비어 있으면(기본) API 프로세스 안에서 부른다. 값을 주면 모든 업체 메시지가 HTTP로 가므로 업체마다 서비스가 있거나 `"*"` 주소가 있어야 하고, `VENDOR_SERVICE_KEY`가 같아야 한다 |
 | `MCP_SERVICE_KEY`, `MCP_HOST`, `MCP_PORT` | MCP 서버의 Bearer 서비스 키와 주소 |
 | `APP_ROLE` | 컨테이너에서 띄울 서비스: `api`(기본), `vendor-agent`, `mcp`, `migrate` |
 

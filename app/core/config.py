@@ -40,6 +40,9 @@ class Settings(BaseSettings):
     # 업체 측 에이전트 서비스 (app/v3/vendor_service.py)
     vendor_org_id: str = ""
     vendor_service_key: str = ""
+    # 따로 띄운 업체 측 에이전트의 주소 {"업체 조직 ID": "https://..."}. "*"는 나머지 모든 업체.
+    # 비어 있으면 API 프로세스 안에서 업체 측 에이전트를 부른다. 값을 주면 모든 업체 메시지가 HTTP로 간다.
+    v3_vendor_agents: dict[str, str] = {}
 
     # ① 식별 모델 (backend#8). 가중치는 git 에 없다 -> scripts/fetch_models.py 가 MODEL_BLOB_URL 에서 받는다.
     classifier_backend: str = "auto"  # auto | trained | zeroshot

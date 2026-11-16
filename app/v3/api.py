@@ -83,6 +83,20 @@ def make_llm_factory(
     return factory
 
 
+def make_vendor_gateway() -> Any:
+    """V3_VENDOR_AGENTS가 있으면 HTTP 게이트웨이, 없으면 None(service가 같은 프로세스에서 부른다).
+
+    업체 측 에이전트 서비스 자신(VENDOR_ORG_ID가 있는 프로세스)은 다시 HTTP로 넘기지 않는다.
+    """
+    if not settings.v3_vendor_agents or settings.vendor_org_id:
+        return None
+    if not settings.vendor_service_key:
+        raise RuntimeError("V3_VENDOR_AGENTS를 쓰려면 VENDOR_SERVICE_KEY가 있어야 한다")
+    from app.v3.agents.gateway import HttpVendorGateway
+
+    return HttpVendorGateway(dict(settings.v3_vendor_agents), settings.vendor_service_key)
+
+
 def build_app() -> service.App:
     """설정에 따라 service.App을 만든다. DATABASE_URL이 있으면 SQL 저장, 없으면 메모리."""
     if settings.database_url:
@@ -103,7 +117,7 @@ def build_app() -> service.App:
         api_key=settings.foundry_api_key,
         ollama_base_url=settings.ollama_base_url,
     )
-    return service.App(store, registry, llm_factory=factory)
+    return service.App(store, registry, llm_factory=factory, vendor_gateway=make_vendor_gateway())
 
 
 _state: service.App | None = None

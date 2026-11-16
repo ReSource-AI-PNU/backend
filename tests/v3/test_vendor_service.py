@@ -63,7 +63,8 @@ def test_healthz(client):
 
 
 def test_message_is_passed_to_vendor_agent(client, calls):
-    body = {"message": MESSAGE, "context": {"sessionId": "ses_1"}}
+    # HttpVendorGateway는 vendorOrgId도 함께 보낸다. 받는 쪽은 message.to로 확인한다.
+    body = {"vendorOrgId": VENDOR, "message": MESSAGE, "context": {"sessionId": "ses_1"}}
     response = client.post("/a2a/messages", headers=KEY, json=body)
     assert response.status_code == 200, response.text
     reply = response.json()
