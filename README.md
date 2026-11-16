@@ -256,3 +256,16 @@ curl -X POST http://127.0.0.1:8000/api/v1/c/evidence/compare \
   -H 'Content-Type: application/json' \
   -d '{"state":{"material":{"status":"value","value":"PP"},"form":{"status":"value","value":"가공 전"},"region":{"status":"value","value":"부산"}}}'
 ```
+
+### C 자원 명세 초안 API (저장 없음)
+
+`POST /api/v1/c/resource-spec/draft`는 기존 `ReviewState`를 받아 사용자 제공 정보와
+미확인 사항, 관련 공식 자료를 구분한 Markdown을 `{"markdown": "..."}`으로 반환한다.
+상태를 저장하거나 외부 호출하지 않으며, 결과는 품질 인증·견적·법적 판정이 아니다.
+다음은 가상의 요청이다.
+
+```bash
+curl -X POST http://127.0.0.1:8000/api/v1/c/resource-spec/draft \
+  -H 'Content-Type: application/json' \
+  -d '{"state":{"material":{"status":"value","value":"PP"},"form":{"status":"value","value":"압축"},"region":{"status":"value","value":"부산"}}}'
+```
