@@ -51,6 +51,7 @@ STREAM_FIELDS = (
 )
 MODEL_PROVIDERS = ("foundry", "ollama")
 VENDOR_EVENT_KINDS = ("message", "handoff", "approval", "thread", "document")
+VENDOR_CHECK_KEYS = ("vendor_condition", "min_volume", "loading", "loading_volume")
 
 
 class ServiceError(Exception):
@@ -841,7 +842,8 @@ def _result_view(session: dict[str, Any], viewer: str, owner: bool) -> dict[str,
                 "difference": None,
                 "carbon": None,
                 "carbonValue": None,
-                "checks": [c for c in item["checks"] if c["key"] == "vendor_condition"],
+                # 업체가 내건 조건과 최소 물량·적재 검사만 남긴다(나머지는 배출 기업의 판단이다)
+                "checks": [c for c in item["checks"] if c["key"] in VENDOR_CHECK_KEYS],
                 "alternatives": [],
             }
         )
@@ -866,6 +868,7 @@ def get_view(app: App, session_id: str, viewer: str) -> dict[str, Any]:
     work = session["work"]
     threads = _visible_threads(app, session, viewer)
     thread_ids = {t["id"] for t in threads}
+    approvable = {t["id"] for t in threads if t["status"] in ("agreed", "confirmed")}
     if owner:
         streams = app.store.list_streams(session["emitterOrgId"])
     else:
@@ -926,7 +929,8 @@ def get_view(app: App, session_id: str, viewer: str) -> dict[str, Any]:
         "approvals": [
             {**a, "streamIds": list(work["assigned"].get(a["threadId"]) or [])}
             for a in app.store.list_approvals(session_id)
-            if a["threadId"] in thread_ids
+            # 승인할 수 있는 대화만 낸다. 담당자에게 넘어간 대화의 승인 칸은 보이지 않는다
+            if a["threadId"] in approvable
         ],
         "documents": [
             d for d in app.store.list_documents(session_id) if d.get("threadId") in thread_ids

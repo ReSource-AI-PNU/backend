@@ -43,6 +43,13 @@ TERMS_TYPES = ("offer", "counter", "conditional")
 MAX_STEPS = 400  # 대화 고리의 안전 상한. 스레드마다 12턴 상한이 먼저 걸린다
 STAGE_KEYS = ("1", "2", "3", "4", "5", "6")
 WORST = {"calculated": 0, "conditional": 1, "needs_information": 2}
+# check_loading의 검사 키 → 함께 보여 줄 값(claim 키)
+LOADING_CLAIMS = {
+    "min_volume": ("totalKg", "minMonthlyKg"),
+    "loading": ("pickupsPerMonth", "perPickupKg", "capacityKg", "perPickupM3", "capacityM3"),
+    "loading_volume": ("pickupsPerMonth", "perPickupKg", "capacityKg"),
+    "monthly_kg": (),
+}
 
 
 class OrchestratorError(RuntimeError):
@@ -67,6 +74,7 @@ def new_work() -> dict[str, Any]:
         "assigned": {},
         "vendorModels": {},
         "cannotAsk": {},
+        "handedOff": [],
         "unresolved": [],
         "optimize": None,
         "result": None,
@@ -599,10 +607,23 @@ class Orchestrator:
             state[thread.id] = "awaiting_company"
 
     def _handoff(
-        self, session, thread: Thread, sender: str, reason: str, *, stage=4, outcome=None
-    ) -> None:
+        self,
+        session,
+        thread: Thread,
+        sender: str,
+        reason: str,
+        *,
+        stage=4,
+        outcome=None,
+        reassign: bool = True,
+    ) -> bool:
+        """대화를 담당자에게 넘긴다. 합의한 대화였으면 True(최적안을 다시 계산해야 한다).
+
+        reassign이 참이면 여기서 바로 다시 계산한다. 여러 대화를 한꺼번에 넘길 때는 거짓으로 주고
+        마지막에 _reassign을 한 번 부른다.
+        """
         if thread.closed or thread.blocked:
-            return
+            return False
         message = make_handoff(
             thread_id=thread.id,
             sender=sender,
@@ -618,7 +639,146 @@ class Orchestrator:
             self.store.block_approval(session["id"], thread.id, None)
             for side in ("emitter", "vendor"):
                 self.store.set_approval(session["id"], thread.id, side, False)
-        session["work"]["assigned"].pop(thread.id, None)
+        work = session["work"]
+        freed = work["assigned"].pop(thread.id, None)
+        if not freed or work.get("result") is None:
+            return False
+        # 합의한 대화가 넘어갔다. 그 배정은 결과 한 장에서 빠지고 흐름은 "확인 필요"가 된다
+        handed = work.setdefault("handedOff", [])
+        for sid in freed:
+            entry = {"streamId": sid, "vendorOrgId": thread.vendor_org, "threadId": thread.id}
+            if entry not in handed:
+                handed.append(entry)
+        if reassign:
+            self._reassign(session)
+        return True
+
+    def _reassign(self, session: dict[str, Any]) -> None:
+        """합의한 대화가 담당자에게 넘어간 뒤: 그 업체를 빼고 최적안과 결과 한 장을 다시 만든다.
+
+        - 넘어간 대화의 업체는 후보에서 뺀다. 이미 합의했거나 확정한 다른 대화의 배정은 그대로 둔다.
+        - 풀려난 흐름을 받을 다른 제안이 있으면 그 대화가 새로 합의 상태가 되고(양쪽 승인을 새로 받는다),
+          없으면 그 흐름은 결과 한 장에서 "확인 필요"로 나간다.
+        - 승인을 기다리는 대화가 하나도 남지 않으면 진단은 승인 대기에서 벗어난다.
+        """
+        work, org_id = session["work"], session["emitterOrgId"]
+        streams = self.store.list_streams(org_id)
+        profiles = {p["orgId"]: p for p in self.store.list_vendor_profiles()}
+        live = [
+            t
+            for t in self._threads(session["id"])
+            if t.status in ("open", "agreed", "confirmed") and work["offers"].get(t.id)
+        ]
+        held = {
+            sid: t.vendor_org
+            for t in live
+            if t.status in ("agreed", "confirmed")
+            for sid in work["assigned"].get(t.id) or []
+        }
+        exclude = []
+        for thread in live:
+            for stream in streams:
+                sid = stream["id"]
+                keeps = held.get(sid) == thread.vendor_org
+                if (
+                    sid not in work["offers"][thread.id]
+                    or (sid in held and not keeps)  # 이미 합의한 배정은 옮기지 않는다
+                    or (thread.status == "confirmed" and not keeps)  # 확정한 대화에는 더하지 않는다
+                ):
+                    exclude.append({"streamId": sid, "vendorOrgId": thread.vendor_org})
+        vendors = [public_profile(profiles[t.vendor_org], fleet_cost=False) for t in live]
+        arguments: dict[str, Any] = {"streams": streams, "vendors": vendors}
+        if exclude:
+            arguments["exclude"] = exclude
+        optimized = self._tool(
+            session,
+            "optimize_assignment",
+            arguments,
+            summary_ids={
+                "streamIds": [s["id"] for s in streams],
+                "vendorOrgIds": [v["orgId"] for v in vendors],
+                "reason": "handoff",
+            },
+        )
+        work["optimize"] = optimized
+        thread_of = {t.vendor_org: t for t in live}
+        chosen: dict[str, list[str]] = {}
+        for item in optimized["output"].get("assignments") or []:
+            thread = thread_of.get(item.get("vendorOrgId"))
+            if thread is not None:
+                chosen.setdefault(thread.id, []).append(item["streamId"])
+        for thread in live:
+            old = list(work["assigned"].get(thread.id) or [])
+            new = list(dict.fromkeys([*old, *chosen.get(thread.id, [])]))
+            if thread.status == "confirmed" or not new:
+                continue
+            if thread.status == "open":
+                thread.mark_agreed()
+                self.store.put_thread(thread)
+                self.store.block_approval(session["id"], thread.id, None)
+                self._event(
+                    session["id"],
+                    "system",
+                    "thread",
+                    "다른 대화가 담당자에게 넘어가 최적안을 다시 계산했습니다. "
+                    "이 조건이 최적안에 들어갔고 양쪽 담당자의 승인을 기다립니다.",
+                    thread.id,
+                    status="agreed",
+                    streamIds=new,
+                    agreedSeq=thread.agreed_seq,
+                )
+            elif sorted(new) != sorted(old):
+                # 배정된 흐름이 늘었다. 앞서 한 승인은 이전 조건에 대한 것이므로 다시 받는다
+                for side in ("emitter", "vendor"):
+                    thread.approvals[side] = False
+                    self.store.set_approval(session["id"], thread.id, side, False)
+                self.store.put_thread(thread)
+                self._event(
+                    session["id"],
+                    "system",
+                    "thread",
+                    "최적안을 다시 계산해 이 대화에 배정된 흐름이 바뀌었습니다. 승인을 다시 받습니다.",
+                    thread.id,
+                    status="agreed",
+                    streamIds=new,
+                )
+            work["assigned"][thread.id] = new
+            if sorted(new) != sorted(old):
+                self._loading_for(session, thread, new, streams, profiles)
+                self._verify(session, thread)
+        work["result"] = self._result(session, streams)
+        work["stages"]["4"] = "needs_check"
+        work["stages"]["6"] = (
+            "needs_check" if work["result"]["status"] == "needs_information" else "done"
+        )
+        pending = [t for t in self._threads(session["id"]) if t.id in work["assigned"]]
+        if pending and all(t.status == "confirmed" for t in pending):
+            session["status"], session["phase"] = "confirmed", "done"
+        elif not pending:
+            # 승인할 대화가 남지 않았다. 합의 없이 끝난 진단과 같은 상태로 둔다
+            session["status"], session["phase"] = "idle", "done"
+        else:
+            session["status"], session["phase"] = "awaiting_approval", "approval"
+        self._event(
+            session["id"],
+            "system",
+            "stage",
+            "합의한 대화가 담당자에게 넘어가 그 업체를 빼고 최적안을 다시 계산했습니다.",
+            status=session["status"],
+            resultStatus=work["result"]["status"],
+            orgId=org_id,
+        )
+
+    def _loading_for(self, session, thread: Thread, assigned, streams, profiles) -> None:
+        """실제로 배정된 흐름만 합쳐 최소 물량과 적재를 검사한다(결과 한 장의 checks, 이행 계획서)."""
+        by_id = {s["id"]: s for s in streams}
+        _, trace = self._company(session).run_tools(
+            [("check_loading", {"streamIds": sorted(assigned)})],
+            streams=[by_id[s] for s in thread.stream_ids if s in by_id],
+            vendor=public_profile(profiles[thread.vendor_org], fleet_cost=False),
+            memo=session["work"]["threadTools"].setdefault(thread.id, []),
+        )
+        self._flush(session["id"], trace, thread.id, session["emitterOrgId"])
 
     def _send(self, session, thread: Thread, outcome: Outcome, trace: Trace, *, stage: int) -> None:
         """회사 측이 쓴 결과를 스레드에 붙인다. 두 번 거부됐으면 handoff로 넘긴다."""
@@ -951,6 +1111,7 @@ class Orchestrator:
                 streamIds=assigned[thread.id],
                 agreedSeq=thread.agreed_seq,
             )
+            self._loading_for(session, thread, assigned[thread.id], streams, profiles)
             self._verify(session, thread)
         work["result"] = self._result(session, streams)
         work["stages"]["6"] = (
@@ -998,10 +1159,16 @@ class Orchestrator:
         """결과 한 장(계약 7장 result). 숫자는 모두 도구가 낸 claim이다."""
         work, org_id = session["work"], session["emitterOrgId"]
         optimized = work["optimize"]
-        threads = {t.vendor_org: t for t in self._threads(session["id"]) if not t.blocked}
+        # 담당자에게 넘어갔거나 거절로 닫힌 대화의 제안은 배정에도 대안에도 쓰지 않는다
+        threads = {
+            t.vendor_org: t
+            for t in self._threads(session["id"])
+            if t.status in ("open", "agreed", "confirmed")
+        }
         names = {o["id"]: o.get("name") for o in self.store.list_orgs()}
         by_id = {s["id"]: s for s in streams}
         assignments, sensitivity, used = [], [], []
+        handed = {h["streamId"]: h for h in work.get("handedOff") or []}
 
         def offer_of(vendor_id: str | None, sid: str) -> dict[str, Any] | None:
             thread = threads.get(vendor_id)
@@ -1067,6 +1234,45 @@ class Orchestrator:
                 for u in work.get("unresolved") or []
                 if u["streamId"] == sid and u["field"] in questions.FIELDS
             ]
+            thread = threads.get(vendor_id)
+            if thread is not None:
+                # 최소 물량과 무게·부피 적재(check_loading). 실제로 배정된 흐름을 합친 값이 있으면 그것을,
+                # 없으면 업체가 낸 제안 전체를 합친 값을 쓴다. 충족한 검사도 함께 보여 준다
+                together = sorted(work["assigned"].get(thread.id) or [])
+                loading = tool_of(vendor_id, "check_loading", streamIds=together) or tool_of(
+                    vendor_id,
+                    "check_loading",
+                    streamIds=sorted(work["offers"].get(thread.id) or {}),
+                )
+                for check in (loading or {}).get("checks") or []:
+                    cited = [
+                        claim_in(loading, key, f"{tag}_load_{key}")
+                        for key in LOADING_CLAIMS.get(check["key"], ())
+                    ]
+                    checks.append(
+                        {
+                            "key": check["key"],
+                            "status": check["status"],
+                            "text": check["text"],
+                            "claims": [c for c in cited if c],
+                            "evidence": list(check.get("evidence") or []),
+                        }
+                    )
+                    if check["status"] != "met" and status == "calculated":
+                        status = "conditional"
+                used.append(loading)
+            if vendor_id is None and sid in handed:
+                # 이 흐름을 맡기로 합의한 대화가 담당자에게 넘어갔다. 현행 유지를 "확정"으로 보이지 않게 한다
+                status = "needs_information"
+                checks.append(
+                    {
+                        "key": "handoff",
+                        "status": "conditional",
+                        "text": f"{names.get(handed[sid]['vendorOrgId']) or '업체'}와 합의한 대화가 "
+                        "담당자에게 넘어가 이 흐름의 배정을 뺐습니다. 확인 필요.",
+                        "evidence": [],
+                    }
+                )
             if vendor_id is None and pending:
                 # 모르는 값 때문에 업체를 정하지 못한 흐름을 "확정(현행 유지)"으로 보이지 않게 한다
                 status = "needs_information"
@@ -1500,7 +1706,8 @@ class Orchestrator:
     # ── 업로드 문서의 지시문 주입 ─────────────────────────────────────
     def handoff_for_injection(self, org_id: str, filename: str) -> list[str]:
         """주입이 탐지된 문서를 올린 조직의 진행 중인 대화를 모두 담당자에게 넘긴다."""
-        closed = []
+        closed: list[str] = []
+        again: list[str] = []
         for raw in self.store.list_threads(org_id=org_id):
             thread = Thread.from_dict(raw)
             if thread.status not in ("open", "agreed"):
@@ -1515,15 +1722,21 @@ class Orchestrator:
                 orgId=org_id,
                 file=filename,
             )
-            self._handoff(
+            if self._handoff(
                 session,
                 thread,
                 org_id,
                 "업로드한 문서에서 지시문 주입이 탐지되어 이 대화를 담당자에게 넘깁니다.",
                 stage=4,
-            )
+                reassign=False,
+            ):
+                again.append(session["id"])
             self._save(session)
             closed.append(thread.id)
+        for session_id in dict.fromkeys(again):  # 진단마다 한 번만 다시 계산한다
+            session = self.store.get_session(session_id)
+            self._reassign(session)
+            self._save(session)
         return closed
 
 

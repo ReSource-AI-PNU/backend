@@ -166,15 +166,22 @@ def quality(stream: dict) -> dict:
     cont, basis_name, evidence = num(measure.get("contaminationPct")), "measured", measure
     if cont is None:
         cont, basis_name, evidence = num(photo.get("contaminationPct")), "photo_estimate", photo
-    moist = num(measure.get("moisturePct"))
+    moist, moist_basis = num(measure.get("moisturePct")), "measured"
     if moist is None:
-        moist = num(answers.get("moisturePct"))
+        moist, moist_basis = num(answers.get("moisturePct")), "answered"
     return {
         "contaminationPct": cont,
         "moisturePct": moist,
         "basis": basis_name if cont is not None else None,
+        # 값마다의 출처. 측정값이 아니면 매입 기준을 충족해도 "확정"이 아니다(criterion_checks)
+        "contaminationBasis": basis_name if cont is not None else None,
+        "moistureBasis": moist_basis if moist is not None else None,
         "evidence": list(evidence.get("evidence") or []) + list(answers.get("evidence") or []),
     }
+
+
+# 측정값이 아닌 출처의 이름. 이 출처의 값은 매입 기준 안이어도 조건부다
+_ESTIMATED = {"photo_estimate": "사진 추정값", "answered": "담당자가 답한 값"}
 
 
 def permit_match(stream: dict, vendor: dict):
@@ -195,9 +202,15 @@ def permit_match(stream: dict, vendor: dict):
 def criterion_checks(stream: dict, criterion: dict, q: dict) -> list[tuple]:
     """매입 기준 하나와 흐름을 대조한다. (key, status, text, ask) 목록. 본문에 숫자를 넣지 않는다."""
     out = []
-    for field, key, name in (
-        ("contaminationPct", "maxContaminationPct", "오염도"),
-        ("moisturePct", "maxMoisturePct", "수분"),
+    for field, key, name, basis_key, basis_check in (
+        (
+            "contaminationPct",
+            "maxContaminationPct",
+            "오염도",
+            "contaminationBasis",
+            "contamination_basis",
+        ),
+        ("moisturePct", "maxMoisturePct", "수분", "moistureBasis", "moisture_basis"),
     ):
         limit, value = num(criterion.get(key)), q[field]
         if limit is None:
@@ -213,6 +226,21 @@ def criterion_checks(stream: dict, criterion: dict, q: dict) -> list[tuple]:
             )
         elif value <= limit:
             out.append((field, "met", f"{name}가 매입 기준 상한 안에 있습니다.", None))
+            source = _ESTIMATED.get(q.get(basis_key))
+            if source:
+                # 사진 추정이나 담당자 답만으로는 충족을 확정하지 않는다(추정 물량과 같은 원칙).
+                # 값은 상한 안이지만 측정값이 없으므로 반입 검수에서 확인하는 조건을 붙인다
+                out.append(
+                    (
+                        basis_check,
+                        "conditional",
+                        f"{name}가 측정값이 아니라 {source}입니다. 반입 검수에서 확인합니다.",
+                        (
+                            f"{name}가 {source}입니다. 반입 검수에서 매입 기준 상한 안으로 "
+                            "확인되면 같은 조건으로 받을 수 있는지 알려 주세요."
+                        ),
+                    )
+                )
         else:
             out.append((field, "unmet", f"{name}가 매입 기준 상한을 넘습니다.", None))
     want, have = criterion.get("form"), stream.get("form")

@@ -55,7 +55,7 @@
           }
         ]
       },
-      "note": "업체는 기존 노선에 묶어 수거하는 조건으로 제안을 내고, 그 제안은 대안으로만 남는다.",
+      "note": "설계 판단(확정): 최소 물량에 못 미쳐 '기존 노선에 묶어 수거'하는 조건이 붙는 답은 offer가 아니라 conditional로 온다. 그 제안은 배정되지 않고 대안으로만 남는다.",
       "expect": {
         "tools": [
           {
@@ -80,7 +80,13 @@
         "threads": [
           {
             "vendor": "org_v1",
-            "status": "open"
+            "status": "open",
+            "hasTypes": [
+              "conditional"
+            ],
+            "noTypes": [
+              "offer"
+            ]
           }
         ],
         "assignments": {

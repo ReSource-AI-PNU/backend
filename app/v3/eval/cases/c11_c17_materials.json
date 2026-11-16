@@ -170,8 +170,6 @@
       "answers": {
         "st_a.moisturePct": 2.0
       },
-      "status": "open",
-      "openNote": "사진 추정 오염 비율과 담당자가 답한 수분만으로 매입 기준을 대조한 결과를 '확정'으로 둘지 정해야 한다. 지금 구현은 값이 상한 안이면 출처(측정·사진 추정·담당자 답)와 관계없이 충족으로 보아 확정(calculated)을 낸다. 사례는 추정 물량(monthly_kg_basis)과 같은 원칙으로 조건부를 기대한다. 설계안에는 '사진 추정'이라고 표시하라는 규칙만 있어 어느 쪽이 맞는지 설계 판단이 필요하다.",
       "expect": {
         "tools": [
           {
@@ -206,9 +204,29 @@
             "vendor": "org_v1",
             "route": "sell",
             "status": "conditional",
-            "unitPrice": 150
+            "unitPrice": 150,
+            "checks": [
+              "contamination_basis",
+              "moisture_basis",
+              "vendor_condition"
+            ]
           }
-        }
+        },
+        "result": {
+          "status": "conditional"
+        },
+        "threads": [
+          {
+            "vendor": "org_v1",
+            "status": "agreed",
+            "hasTypes": [
+              "conditional"
+            ],
+            "noTypes": [
+              "offer"
+            ]
+          }
+        ]
       },
       "forbidden": [
         {
@@ -223,7 +241,8 @@
           "why": "담당자가 답한 수분을 측정값이라고 하지 않는다"
         }
       ],
-      "synthetic": true
+      "synthetic": true,
+      "note": "설계 판단(확정): 사진 추정 오염 비율과 담당자가 답한 수분은 매입 기준 상한 안이어도 충족을 '확정'으로 두지 않는다. 측정값이 없으면 조건부이고 '반입 검수에서 확인' 조건이 붙는다(추정 물량과 같은 원칙)."
     },
     {
       "id": "C13",

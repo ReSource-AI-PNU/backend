@@ -13,6 +13,7 @@ from typing import Any
 PROVIDER = "rule"
 MODEL_NAME = "규칙 정책(모델 미연결)"
 _QUALITY_FIELDS = {"contaminationPct": "오염도", "moisturePct": "수분", "form": "형태"}
+_BASIS_KEYS = {"moisture_basis": "moisturePct", "contamination_basis": "contaminationPct"}
 _SUBJECT = {"contaminationPct": "오염도가", "moisturePct": "수분이"}
 
 
@@ -383,8 +384,9 @@ class _Vendor(_Base):
         for check in route.get("checks") or []:
             if check.get("status") != "conditional":
                 continue
-            key = check.get("key")
+            key = _BASIS_KEYS.get(check.get("key"), check.get("key"))
             if key in ("moisturePct", "contaminationPct"):
+                # 값이 없을 때와, 값은 상한 안이지만 측정값이 아닐 때(…_basis) 모두 검수 조건이다
                 limit = self.use(
                     criterion.get(
                         "maxMoisturePct" if key == "moisturePct" else "maxContaminationPct"
@@ -441,11 +443,6 @@ class _Vendor(_Base):
                     f"- {self.name(sid)}: 아래 조건이 확인되면 받습니다. {note} {price}입니다."
                 )
                 lines += [f"  · {c}" for c in found]
-        head = (
-            "다음 흐름은 지금 조건으로 받을 수 있습니다."
-            if kind == "offer"
-            else "다음 흐름은 조건부로 받을 수 있습니다."
-        )
         loading = self.result("check_loading", streamIds=acceptable) or {}
         load_claims = loading.get("claims") or {}
         checks = {c.get("key"): c.get("status") for c in loading.get("checks") or []}
@@ -474,6 +471,22 @@ class _Vendor(_Base):
                     "기존 노선에 묶어 수거하는 조건입니다."
                 )
                 conditions.append("최소 물량에 못 미쳐 기존 노선에 묶어 수거할 것")
+        if checks.get("loading") not in (None, "met"):
+            tail_lines.append(
+                "한 번 수거량이 차량 용량을 넘어, 수거 횟수를 늘려 나눠 싣는 조건입니다."
+            )
+            conditions.append("한 번 수거량이 차량 용량을 넘어 수거 횟수를 늘려 나눠 실을 것")
+        if checks.get("loading_volume") not in (None, "met"):
+            tail_lines.append("부피 적재는 겉보기 밀도를 확인한 뒤에 정하는 조건입니다.")
+            conditions.append("겉보기 밀도를 확인해 부피 적재가 가능한지 반입 전에 확인할 것")
+        if kind == "offer" and conditions:
+            # 노선 묶음처럼 조건이 붙는 답은 그대로 받을 수 있는 제안(offer)이 아니다
+            kind = "conditional"
+        head = (
+            "다음 흐름은 지금 조건으로 받을 수 있습니다."
+            if kind == "offer"
+            else "다음 흐름은 조건부로 받을 수 있습니다."
+        )
         first = not ((self.b.get("state") or {}).get("offered"))
         for item in excluded if first else []:  # 받지 않는 흐름은 첫 조건 메시지에서 한 번만 알린다
             tail_lines.append(f"받지 않는 흐름: {self.name(item['streamId'])}. {item['reason']}")
