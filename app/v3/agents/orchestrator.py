@@ -61,6 +61,8 @@ TERMS_TYPES = ("offer", "counter", "conditional")
 MAX_STEPS = 400  # 대화 고리의 안전 상한. 스레드마다 12턴 상한이 먼저 걸린다
 STAGE_KEYS = ("1", "2", "3", "4", "5", "6")
 WORST = {"calculated": 0, "conditional": 1, "needs_information": 2}
+# 배출 기업의 현행 처리에 관한 검사(judge_route). 업체와 함께 보는 문서와 업체 뷰에는 싣지 않는다
+CURRENT_CHECKS = ("current_cost", "current_assumed")
 # check_loading의 검사 키 → 함께 보여 줄 값(claim 키)
 LOADING_CLAIMS = {
     "min_volume": ("totalKg", "minMonthlyKg"),
@@ -2496,13 +2498,11 @@ class Orchestrator:
                     if kg
                     else f"{number}. {stream.get('name')}: 반출 물량 확인 필요"
                 )
-                cost = memo_result(memo, "cost_carbon", streamId=sid)
-                carbon = use(claim_in(cost, "carbonDifference", "x"), f"{tag}_carbon")
-                if carbon:
-                    lines.append(f"   탄소 변화(현행 혼합 소각 대비, 배출계수는 가정값): {carbon}")
+                # 문서는 업체와 함께 본다. 배출 기업의 현행 처리 방법이나 그것에 견준 값(탄소 변화,
+                # 현행 대비 차이)은 싣지 않는다. 그 값은 배출 기업만 보는 결과 한 장에 있다
                 route = memo_result(memo, "judge_route", streamId=sid)
                 for check in (route or {}).get("checks") or []:
-                    if check["status"] == "conditional":
+                    if check["status"] == "conditional" and check["key"] not in CURRENT_CHECKS:
                         lines.append(f"   반입 전 확인: {check['text']}")
             lines.append("반입 검수 결과가 조건과 다르면 앱에서 다시 협의합니다.")
             return lines

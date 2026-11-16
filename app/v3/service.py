@@ -25,7 +25,7 @@ from app.v3.agents.orchestrator import (
     vendor_model,
 )
 from app.v3.agents.policy_rule import RulePolicy
-from app.v3.agents.pool import ClaimPool
+from app.v3.agents.pool import ClaimPool, is_private
 from app.v3.agents.vendor import VendorAgent
 from app.v3.demo.seed import EMITTER, seed_demo
 from app.v3.evidence import search
@@ -792,15 +792,28 @@ def _is_evidence_id(value: Any) -> bool:
     return head in KINDS and bool(rest) and not any(c.isspace() for c in value)
 
 
-def _event_view(app: App, event: dict[str, Any], viewer: str, seen: dict[str, bool]) -> dict:
+def _from_current(evidence_id: str) -> bool:
+    """배출 기업의 현행 처리(입력이 없으면 혼합 소각 가정)에서 나온 근거인지: 가정 단가와 그 계산값."""
+    if evidence_id.startswith("assumption:current."):
+        return True
+    return evidence_id.startswith("calc:") and is_private(evidence_id.rsplit(":", 1)[-1])
+
+
+def _event_view(
+    app: App, event: dict[str, Any], viewer: str, seen: dict[str, bool], owner: bool = True
+) -> dict:
     """실행 기록 한 줄에서 보는 조직이 열 수 없는 근거 ID를 뺀다.
 
     상대 쪽 도구 호출의 detail.evidence 같은 곳에는 상대만 볼 수 있는 계산 근거의 ID가 실린다.
     ID에는 도구 이름과 값의 종류가 드러나므로 빼고, 뺀 개수만 detail.hiddenEvidenceCount에 남긴다.
+    업체가 보는 뷰에서는 현행 처리에서 나온 계산 근거의 ID도 뺀다(업체 쪽 도구가 현행 처리를 모른 채
+    가정값으로 낸 것이라, 배출 기업의 현행 처리로 읽히지 않게 한다).
     """
     hidden: set[str] = set()
 
     def can_open(evidence_id: str) -> bool:
+        if not owner and _from_current(evidence_id):
+            return False
         if evidence_id not in seen:
             try:
                 app.registry.get(evidence_id, viewer)
@@ -873,9 +886,11 @@ def _result_view(session: dict[str, Any], viewer: str, owner: bool) -> dict[str,
     }
 
 
-def _events_view(app: App, events: list[dict[str, Any]], viewer: str) -> list[dict[str, Any]]:
+def _events_view(
+    app: App, events: list[dict[str, Any]], viewer: str, owner: bool = True
+) -> list[dict[str, Any]]:
     seen: dict[str, bool] = {}
-    return [_event_view(app, event, viewer, seen) for event in events]
+    return [_event_view(app, event, viewer, seen, owner) for event in events]
 
 
 def _recheck(app: App, org_id: str) -> None:
@@ -968,7 +983,7 @@ def get_view(app: App, session_id: str, viewer: str) -> dict[str, Any]:
         "documents": [
             d for d in app.store.list_documents(session_id) if d.get("threadId") in thread_ids
         ],
-        "events": _events_view(app, events, viewer),
+        "events": _events_view(app, events, viewer, owner),
         "feedback": _feedback_view(app, session, viewer, owner),
     }
 
