@@ -300,12 +300,14 @@ def optimize_assignment(
 
     now_total = after_total = carbon_total = 0.0
     carbon_known = True
+    # 합계 계산 근거가 흐름별 계산 근거를 입력으로 잇게 한다(계산 사슬: 합계 → 흐름별 → 원 근거)
+    parts: dict[str, list[str]] = {"now": [], "after": [], "difference": [], "carbon": []}
     for i, (item, choice) in enumerate(zip(usable, best, strict=True)):
         stream, kg = item["stream"], item["kg"]
         now = -item["cost"] * kg
         tag = f"s{i}"
         who = stream.get("name") or None  # calc 근거의 이름에 흐름 이름을 붙인다
-        rec.number(
+        made = rec.number(
             f"{tag}MonthlyNow",
             now,
             "원/월",
@@ -313,7 +315,8 @@ def optimize_assignment(
             item["cost_ev"],
             label=names.calc_label("monthlyNow", who),
         )
-        rec.number(
+        parts["now"].append(made["evidence"][0])
+        made = rec.number(
             f"{tag}MonthlyAfter",
             choice["value"],
             "원/월",
@@ -321,7 +324,8 @@ def optimize_assignment(
             choice["ev"],
             label=names.calc_label("monthlyAfter", who),
         )
-        rec.number(
+        parts["after"].append(made["evidence"][0])
+        made = rec.number(
             f"{tag}Difference",
             choice["value"] - now,
             "원/월",
@@ -329,6 +333,7 @@ def optimize_assignment(
             [*choice["ev"], *item["cost_ev"]],
             label=names.calc_label("difference", who),
         )
+        parts["difference"].append(made["evidence"][0])
         entry = {
             "streamId": stream.get("id"),
             "vendorOrgId": choice["vendor"].get("orgId") if choice["vendor"] else None,
@@ -345,22 +350,30 @@ def optimize_assignment(
         }
         if choice["vendor"] is not None:
             if item["carbon_ev"]:
-                entry["carbon"] = rec.number(
+                made = rec.number(
                     f"{tag}Carbon",
                     choice["carbon"],
                     "tCO2e/월",
                     "(재활용 계수 − 소각 계수) × 월 발생량",
                     item["carbon_ev"],
                     label=names.calc_label("carbon", who),
-                )["id"]
+                )
+                entry["carbon"] = made["id"]
+                parts["carbon"].append(made["evidence"][0])
                 carbon_total += choice["carbon"]
             else:
                 carbon_known = False
         output["assignments"].append(entry)
         now_total, after_total = now_total + now, after_total + choice["value"]
-    rec.number("totalNow", now_total, "원/월", "흐름별 현행 월 손익의 합")
-    rec.number("totalAfter", after_total, "원/월", "흐름별 배정 뒤 월 손익의 합")
-    rec.number("totalDifference", after_total - now_total, "원/월", "배정 뒤 합 − 현행 합")
+    rec.number("totalNow", now_total, "원/월", "흐름별 현행 월 손익의 합", parts["now"])
+    rec.number("totalAfter", after_total, "원/월", "흐름별 배정 뒤 월 손익의 합", parts["after"])
+    rec.number(
+        "totalDifference",
+        after_total - now_total,
+        "원/월",
+        "배정 뒤 합 − 현행 합",
+        parts["difference"],
+    )
     output["totals"] = {
         "monthlyNow": "totalNow",
         "monthlyAfter": "totalAfter",
@@ -369,7 +382,7 @@ def optimize_assignment(
     }
     if carbon_known and any(a["carbon"] for a in output["assignments"]):
         output["totals"]["carbon"] = rec.number(
-            "totalCarbon", carbon_total, "tCO2e/월", "흐름별 탄소 차이의 합"
+            "totalCarbon", carbon_total, "tCO2e/월", "흐름별 탄소 차이의 합", parts["carbon"]
         )["id"]
     elif not carbon_known:
         rec.check(
