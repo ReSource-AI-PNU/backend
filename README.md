@@ -269,3 +269,15 @@ curl -X POST http://127.0.0.1:8000/api/v1/c/resource-spec/draft \
   -H 'Content-Type: application/json' \
   -d '{"state":{"material":{"status":"value","value":"PP"},"form":{"status":"value","value":"압축"},"region":{"status":"value","value":"부산"}}}'
 ```
+
+### C 업체 문의서 초안 API (저장·발송 없음)
+
+`POST /api/v1/c/vendor-inquiry/draft`는 기존 `ReviewState`로 검토용 문의서
+Markdown을 생성해 `{"markdown": "..."}`으로 반환한다. 상태를 저장하거나
+문의를 발송하지 않는다. 다음은 가상의 요청이다.
+
+```bash
+curl -X POST http://127.0.0.1:8000/api/v1/c/vendor-inquiry/draft \
+  -H 'Content-Type: application/json' \
+  -d '{"state":{"material":{"status":"value","value":"PP"},"form":{"status":"value","value":"압축"},"region":{"status":"value","value":"부산"}}}'
+```
