@@ -11,12 +11,20 @@ from app.agents.demo_routes import (
     evaluate_flow,
     validate_config,
 )
-from app.schemas import FeasibilityResult, FieldAction, Stream, StreamDecision, StreamRoute
+from app.schemas import (
+    FeasibilityResult,
+    FieldAction,
+    LadderStep,
+    RouteAlternative,
+    Stream,
+    StreamDecision,
+    StreamRoute,
+)
 
 DEMO_ASSUMPTIONS = [
     "모든 단가와 규칙은 synthetic/demo",
     "재투입은 분쇄·관리비 포함 순효과; 매출이 아닌 구매비 회피",
-    "묶음 운송비는 kg당 순효과에 포함; 인건비만 별도 차감",
+    "묶음 운송비와 소량 PCR 단독 매각 출장비는 kg당 순효과에 포함; 인건비만 별도 차감",
     "기타 운송비와 작업 없는 경로의 인건비는 시연상 명시적으로 0",
     "회수율·신재 대체율을 추정하지 않음; 실제 적합성·수용·거래 미확정",
 ]
@@ -79,7 +87,15 @@ def evaluate_streams(
             monthly_difference=result.monthly_difference, cash_sale_revenue=result.cash_sale_revenue,
             purchase_avoidance_net=result.purchase_avoidance_net, disposal_cost=result.disposal_cost,
             transport_cost=result.transport_cost, labor_cost=result.labor_cost,
-            carbon_now_t=None, carbon_after_t=None, ladder=None, alternatives=None,
+            carbon_now_t=None, carbon_after_t=None,
+            # None은 미계산(보류), 목록은 계산됨. 코어가 계산한 경우에만 채운다.
+            ladder=None if result.ladder is None else [
+                LadderStep(label=step.label, per_kg=step.per_kg) for step in result.ladder
+            ],
+            alternatives=None if result.alternatives is None else [
+                RouteAlternative(route=alt.route, per_kg=alt.per_kg, note=alt.note)
+                for alt in result.alternatives
+            ],
             action=FieldAction(title=action.title, labor_hours=action.labor_hours,
                                labor_cost=action.labor_cost) if action is not None else None,
             data_mode="synthetic_demo", assumptions=DEMO_ASSUMPTIONS.copy(),

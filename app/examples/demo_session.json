@@ -1082,14 +1082,43 @@
           "laborHours": 2.0,
           "laborCost": 30000.0
         },
-        "ladder": null,
-        "alternatives": null,
+        "ladder": [
+          {
+            "label": "현재(혼합 소각)",
+            "perKg": -250.0
+          },
+          {
+            "label": "분리해 매각",
+            "perKg": 300.0
+          },
+          {
+            "label": "분쇄 재투입",
+            "perKg": 900.0
+          }
+        ],
+        "alternatives": [
+          {
+            "route": "sell",
+            "perKg": 300.0,
+            "note": "이물을 떼야 매입 기준을 맞춥니다."
+          },
+          {
+            "route": "pyrolysis",
+            "perKg": -80.0,
+            "note": "재질이 섞인 흐름에 맞는 경로입니다."
+          },
+          {
+            "route": "incinerate",
+            "perKg": -250.0,
+            "note": "지금처럼 혼합 폐기물로 위탁합니다."
+          }
+        ],
         "aiRoute": null,
         "dataMode": "synthetic_demo",
         "assumptions": [
           "모든 단가와 규칙은 synthetic/demo",
           "재투입은 분쇄·관리비 포함 순효과; 매출이 아닌 구매비 회피",
-          "묶음 운송비는 kg당 순효과에 포함; 인건비만 별도 차감",
+          "묶음 운송비와 소량 PCR 단독 매각 출장비는 kg당 순효과에 포함; 인건비만 별도 차감",
           "기타 운송비와 작업 없는 경로의 인건비는 시연상 명시적으로 0",
           "회수율·신재 대체율을 추정하지 않음; 실제 적합성·수용·거래 미확정"
         ]
@@ -1117,14 +1146,43 @@
           "laborHours": 2.0,
           "laborCost": 30000.0
         },
-        "ladder": null,
-        "alternatives": null,
+        "ladder": [
+          {
+            "label": "현재(혼합 소각)",
+            "perKg": -250.0
+          },
+          {
+            "label": "이물 일부 제거",
+            "perKg": 150.0
+          },
+          {
+            "label": "이물 제거 후 매각",
+            "perKg": 300.0
+          }
+        ],
+        "alternatives": [
+          {
+            "route": "reuse",
+            "perKg": 900.0,
+            "note": "같은 공정에 다시 넣으려면 단일 재질·무오염이어야 합니다."
+          },
+          {
+            "route": "pyrolysis",
+            "perKg": -80.0,
+            "note": "재질이 섞인 흐름에 맞는 경로입니다."
+          },
+          {
+            "route": "incinerate",
+            "perKg": -250.0,
+            "note": "지금처럼 혼합 폐기물로 위탁합니다."
+          }
+        ],
         "aiRoute": null,
         "dataMode": "synthetic_demo",
         "assumptions": [
           "모든 단가와 규칙은 synthetic/demo",
           "재투입은 분쇄·관리비 포함 순효과; 매출이 아닌 구매비 회피",
-          "묶음 운송비는 kg당 순효과에 포함; 인건비만 별도 차감",
+          "묶음 운송비와 소량 PCR 단독 매각 출장비는 kg당 순효과에 포함; 인건비만 별도 차감",
           "기타 운송비와 작업 없는 경로의 인건비는 시연상 명시적으로 0",
           "회수율·신재 대체율을 추정하지 않음; 실제 적합성·수용·거래 미확정"
         ]
@@ -1148,14 +1206,39 @@
         "carbonNowT": null,
         "carbonAfterT": null,
         "action": null,
-        "ladder": null,
-        "alternatives": null,
+        "ladder": [
+          {
+            "label": "현재(혼합 소각)",
+            "perKg": -250.0
+          },
+          {
+            "label": "열분해 위탁",
+            "perKg": -80.0
+          }
+        ],
+        "alternatives": [
+          {
+            "route": "reuse",
+            "perKg": 900.0,
+            "note": "같은 공정에 다시 넣으려면 단일 재질·무오염이어야 합니다."
+          },
+          {
+            "route": "sell",
+            "perKg": 300.0,
+            "note": "재질이 섞여 매입처가 받지 않습니다."
+          },
+          {
+            "route": "incinerate",
+            "perKg": -250.0,
+            "note": "지금처럼 혼합 폐기물로 위탁합니다."
+          }
+        ],
         "aiRoute": null,
         "dataMode": "synthetic_demo",
         "assumptions": [
           "모든 단가와 규칙은 synthetic/demo",
           "재투입은 분쇄·관리비 포함 순효과; 매출이 아닌 구매비 회피",
-          "묶음 운송비는 kg당 순효과에 포함; 인건비만 별도 차감",
+          "묶음 운송비와 소량 PCR 단독 매각 출장비는 kg당 순효과에 포함; 인건비만 별도 차감",
           "기타 운송비와 작업 없는 경로의 인건비는 시연상 명시적으로 0",
           "회수율·신재 대체율을 추정하지 않음; 실제 적합성·수용·거래 미확정"
         ]
@@ -1183,14 +1266,43 @@
           "laborHours": 1.0,
           "laborCost": 15000.0
         },
-        "ladder": null,
-        "alternatives": null,
+        "ladder": [
+          {
+            "label": "현재(혼합 소각)",
+            "perKg": -250.0
+          },
+          {
+            "label": "분리해 단독 매각",
+            "perKg": -40.0
+          },
+          {
+            "label": "단지 묶음 매각",
+            "perKg": 100.0
+          }
+        ],
+        "alternatives": [
+          {
+            "route": "sell",
+            "perKg": -40.0,
+            "note": "혼자 팔면 출장비 때문에 단가가 깎입니다."
+          },
+          {
+            "route": "pyrolysis",
+            "perKg": -80.0,
+            "note": "재질이 섞인 흐름에 맞는 경로입니다."
+          },
+          {
+            "route": "incinerate",
+            "perKg": -250.0,
+            "note": "지금처럼 혼합 폐기물로 위탁합니다."
+          }
+        ],
         "aiRoute": null,
         "dataMode": "synthetic_demo",
         "assumptions": [
           "모든 단가와 규칙은 synthetic/demo",
           "재투입은 분쇄·관리비 포함 순효과; 매출이 아닌 구매비 회피",
-          "묶음 운송비는 kg당 순효과에 포함; 인건비만 별도 차감",
+          "묶음 운송비와 소량 PCR 단독 매각 출장비는 kg당 순효과에 포함; 인건비만 별도 차감",
           "기타 운송비와 작업 없는 경로의 인건비는 시연상 명시적으로 0",
           "회수율·신재 대체율을 추정하지 않음; 실제 적합성·수용·거래 미확정"
         ]
@@ -1208,7 +1320,7 @@
     "assumptions": [
       "모든 단가와 규칙은 synthetic/demo",
       "재투입은 분쇄·관리비 포함 순효과; 매출이 아닌 구매비 회피",
-      "묶음 운송비는 kg당 순효과에 포함; 인건비만 별도 차감",
+      "묶음 운송비와 소량 PCR 단독 매각 출장비는 kg당 순효과에 포함; 인건비만 별도 차감",
       "기타 운송비와 작업 없는 경로의 인건비는 시연상 명시적으로 0",
       "회수율·신재 대체율을 추정하지 않음; 실제 적합성·수용·거래 미확정"
     ]

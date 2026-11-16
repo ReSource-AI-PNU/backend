@@ -17,6 +17,8 @@ CONFIG = DemoConfig(
     reuse_per_kg=900,
     pyrolysis_per_kg=-80,
     bundle_transport_per_kg=50,
+    # 소량을 혼자 팔 때 출장비로 깎이는 단가 (frontend mock SOLO_PENALTY_PER_KG)
+    solo_sale_penalty_per_kg=190,
     labor_per_hour=15000,
     reuse_labor_hours=2,
     sell_labor_hours=2,
