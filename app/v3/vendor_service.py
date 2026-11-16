@@ -55,7 +55,7 @@ async def messages(request: Request):
     if context is None:
         context = {}
     if not isinstance(message, dict) or not isinstance(context, dict):
-        raise ApiError("INVALID_REQUEST", "message와 context는 JSON 객체여야 합니다.")
+        raise ApiError("INVALID_BODY", "message와 context는 JSON 객체여야 합니다.", 422)
     if message.get("to") != vendor_org_id:
         raise ApiError(
             "WRONG_RECIPIENT", "이 서비스가 대변하는 업체에게 온 메시지가 아닙니다.", 403

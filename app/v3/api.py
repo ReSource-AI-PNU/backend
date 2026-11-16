@@ -11,7 +11,6 @@ tests/v3/test_api.py가 CI에서 확인한다.
 """
 
 import functools
-import json
 import logging
 import threading
 from collections.abc import Callable
@@ -22,14 +21,13 @@ from fastapi.responses import JSONResponse, Response
 from starlette.concurrency import run_in_threadpool
 
 from app.core.config import settings
-from app.v3 import service
+from app.v3 import httpio, service
 from app.v3.agents.llm import FoundryChat, OllamaChat
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/v3", tags=["v3"])
 
-MAX_UPLOAD_BYTES = 20 * 1024 * 1024  # 업로드 크기 상한(운영 한도)
 CSV_TEMPLATE_NAME = "resource-ai-measure-template.csv"
 
 
@@ -225,29 +223,23 @@ def viewer_of(request: Request) -> str:
 
 
 async def json_object(request: Request) -> dict[str, Any]:
-    raw = await request.body()
-    try:
-        data = json.loads(raw.decode("utf-8")) if raw else {}
-    except (UnicodeDecodeError, ValueError):
-        raise ApiError("INVALID_REQUEST", "본문이 JSON이 아닙니다.") from None
-    if not isinstance(data, dict):
-        raise ApiError("INVALID_REQUEST", "본문은 JSON 객체여야 합니다.")
-    return data
+    """본문을 JSON 객체로 읽는다. JSON이 아니면 400 INVALID_JSON, 객체가 아니면 422 INVALID_BODY."""
+    return httpio.parse_object(await request.body())
 
 
 def required(body: dict[str, Any], key: str) -> Any:
-    if key not in body or body[key] in (None, ""):
-        raise ApiError("INVALID_REQUEST", f"필수 항목이 없습니다: {key}")
-    return body[key]
+    return httpio.required(body, key)
 
 
-async def read_upload(request: Request) -> tuple[dict[str, str], str, bytes]:
+async def read_upload(request: Request, default_name: str) -> tuple[dict[str, str], str, bytes]:
     """(필드, 파일 이름, 내용). multipart/form-data의 file 필드나, 본문 그대로(필드는 질의 문자열)."""
     if request.headers.get("content-type", "").lower().startswith("multipart/form-data"):
         form = await request.form()
         upload = form.get("file")
         if upload is None or isinstance(upload, str):
-            raise ApiError("INVALID_REQUEST", "file 필드에 파일을 넣어야 합니다.")
+            upload = next((value for value in form.values() if not isinstance(value, str)), None)
+        if upload is None:
+            raise httpio.file_required()
         fields = {key: value for key, value in form.items() if isinstance(value, str)}
         filename = upload.filename or fields.get("filename", "")
         data = await upload.read()
@@ -255,14 +247,16 @@ async def read_upload(request: Request) -> tuple[dict[str, str], str, bytes]:
         fields = dict(request.query_params)
         filename = fields.get("filename", "")
         data = await request.body()
-    if not data:
-        raise ApiError("INVALID_REQUEST", "빈 파일입니다.")
-    if len(data) > MAX_UPLOAD_BYTES:
-        raise ApiError("FILE_TOO_LARGE", "파일이 너무 큽니다.", 413)
-    return fields, filename, data
+    return fields, filename or default_name, httpio.check_upload(data)
 
 
 # ── 시연, 조직, 흐름, 업체 ───────────────────────────────────────────
+@router.get("/health")
+@guarded
+async def health(request: Request):
+    return {"ok": True}
+
+
 @router.post("/demo/reset")
 @guarded
 async def demo_reset(request: Request):
@@ -309,7 +303,7 @@ async def put_vendor(org_id: str, request: Request):
 async def create_session(request: Request):
     viewer = viewer_of(request)
     body = await json_object(request)
-    return await call(service.create_session, str(required(body, "emitterOrgId")), viewer)
+    return await call(service.create_session, str(body.get("emitterOrgId") or viewer), viewer)
 
 
 @router.get("/sessions/{session_id}")
@@ -329,10 +323,8 @@ async def run_session(session_id: str, request: Request):
 async def answer(session_id: str, request: Request):
     viewer = viewer_of(request)
     body = await json_object(request)
-    question_id = str(required(body, "questionId"))
-    if "value" not in body or body["value"] is None:
-        raise ApiError("INVALID_REQUEST", '필수 항목이 없습니다: value (모르면 "unknown")')
-    return await call(service.answer_question, session_id, question_id, body["value"], viewer)
+    question_id, value = httpio.answer_body(body)
+    return await call(service.answer_question, session_id, question_id, value, viewer)
 
 
 @router.post("/sessions/{session_id}/approvals")
@@ -397,7 +389,7 @@ async def csv_template(request: Request):
 @guarded
 async def upload_csv(request: Request):
     viewer = viewer_of(request)
-    fields, filename, data = await read_upload(request)
+    fields, filename, data = await read_upload(request, "측정값.csv")
     org_id = fields.get("orgId") or viewer
     return await call(service.upload_csv, org_id, filename, data, viewer)
 
@@ -406,12 +398,23 @@ async def upload_csv(request: Request):
 @guarded
 async def upload_document(request: Request):
     viewer = viewer_of(request)
-    fields, filename, data = await read_upload(request)
+    fields, filename, data = await read_upload(request, "문서")
     org_id = fields.get("orgId") or viewer
-    kind = fields.get("kind") or ""
-    if not kind:
-        raise ApiError("INVALID_REQUEST", "필수 항목이 없습니다: kind")
+    kind = fields.get("kind") or ""  # 종류가 없거나 틀리면 서비스가 INVALID_KIND로 답한다
     return await call(service.upload_document, org_id, kind, filename, data, viewer)
+
+
+@router.post("/intake/documents/confirm")
+@guarded
+async def confirm_document(request: Request):
+    viewer = viewer_of(request)
+    body = await json_object(request)
+    fields = body.get("fields") or []
+    if not isinstance(fields, list):
+        raise httpio.invalid_body("fields는 배열이어야 합니다.")
+    org_id = str(body.get("orgId") or viewer)
+    name = str(body.get("documentName") or "")
+    return await call(service.confirm_document, org_id, name, fields, viewer)
 
 
 # ── 관리자 ───────────────────────────────────────────────────────────

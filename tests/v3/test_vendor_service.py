@@ -93,11 +93,11 @@ def test_rejects_wrong_recipient_and_bad_body(client, calls, monkeypatch):
     )
     for body in ({}, {"message": "문의"}, {"message": MESSAGE, "context": []}):
         response = client.post("/a2a/messages", headers=KEY, json=body)
-        assert error_code(response, 400) == "INVALID_REQUEST"
+        assert error_code(response, 422) == "INVALID_BODY"
     not_json = client.post(
         "/a2a/messages", headers={**KEY, "Content-Type": "application/json"}, content=b"{"
     )
-    assert error_code(not_json, 400) == "INVALID_REQUEST"
+    assert error_code(not_json, 400) == "INVALID_JSON"
     monkeypatch.setattr(settings, "vendor_org_id", "")
     unset = client.post("/a2a/messages", headers=KEY, json={"message": MESSAGE, "context": {}})
     assert error_code(unset, 503) == "VENDOR_NOT_SET"

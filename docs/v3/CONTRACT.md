@@ -268,11 +268,12 @@ VendorProfile {"orgId": "org_saegil",
 
 | 메서드와 경로 | 내용 |
 |---|---|
+| `GET /health` | `{"ok": true}`. 조직 헤더 없이 부른다 |
 | `POST /demo/reset` | 시연 데이터를 처음 상태로 되돌린다 |
 | `GET /orgs` | 조직 목록 |
 | `GET /orgs/{orgId}/streams`, `PUT /orgs/{orgId}/streams/{streamId}` | 흐름 조회와 수정(현행 처리 입력 포함) |
 | `GET /vendors/{orgId}`, `PUT /vendors/{orgId}` | 업체 프로필(허가, 매입 기준, 노선·차량, 가드레일, 모델 선택) |
-| `POST /sessions` | `{emitterOrgId}`로 진단을 만든다 |
+| `POST /sessions` | `{emitterOrgId}`로 진단을 만든다. `emitterOrgId`가 없으면 요청한 조직이다 |
 | `GET /sessions/{id}` | 진단 뷰 |
 | `POST /sessions/{id}/run` | 에이전트를 다음 멈춤 지점까지 돌린다. 진단 뷰를 돌려준다 |
 | `POST /sessions/{id}/answers` | `{questionId, value | "unknown"}` |
@@ -281,12 +282,29 @@ VendorProfile {"orgId": "org_saegil",
 | `GET /evidence?q=&kind=` | 근거 검색 |
 | `GET /intake/csv/template`, `POST /intake/csv` | 측정값 CSV 양식과 업로드 |
 | `POST /intake/documents` | 문서 업로드와 추출 |
+| `POST /intake/documents/confirm` | `{orgId, documentName, fields}`. 담당자가 확인한 추출값(`confirmed: true`)만 doc 근거로 등록한다. 응답은 `{"evidence": [근거 ID]}` |
 | `GET /admin/status`, `POST /admin/eval` | 색인·기준값 상태와 재학습 표, 사례 시험 실행 |
 | `POST /sessions/{id}/corrections` | `{streamId, field, before, after, note}`. 배출 기업 담당자가 고친 값을 기록한다 |
 | `POST /sessions/{id}/outcomes` | `{threadId, streamId, actualGrade, actualUnitPriceKrwPerKg, actualKg, inspectedOn, note, documentName?}`. 업체가 확정 뒤 실제 결과를 기록한다 |
 | `GET /admin/retrain/export`, `POST /admin/retrain/runs` | 재학습 행 내보내기, 재학습 실행 결과 등록(관리자만) |
 
 오류는 `{"error": {"code": "...", "message": "한국어 문장"}}`과 맞는 상태 코드로 낸다.
+
+요청을 읽다가 나는 오류는 두 서버(`api.py`, `devserver.py`)가 `app/v3/httpio.py`의 같은 함수로 낸다. 코드와 상태 코드가 서버에 따라 달라지지 않는다.
+
+| 코드 | 상태 | 조건 |
+|---|---|---|
+| `INVALID_JSON` | 400 | 본문이 JSON이 아니다 |
+| `INVALID_BODY` | 422 | 본문이 JSON 객체가 아니거나 필수 항목(`questionId`·`value`, `threadId` 등)이 없다 |
+| `FILE_REQUIRED` | 422 | 올릴 파일이 없거나 비어 있다 |
+| `TOO_LARGE` | 413 | 본문이 20MB를 넘는다 |
+| `ORG_REQUIRED`, `UNKNOWN_ORG` | 401 | `X-Org-Id` 헤더가 없거나 모르는 조직이다 |
+| `FORBIDDEN`, `WRONG_ROLE` | 403 | 그 조직이 할 수 없는 일이다 |
+| `*_NOT_FOUND` | 404 | 없거나 볼 수 없다(볼 수 없는 것은 있는지도 알려 주지 않는다) |
+| `INVALID_VALUE`, `INVALID_KIND`, `INVALID_ANSWER` | 422 | 값이 틀렸다 |
+| `NOT_AGREED`, `APPROVAL_BLOCKED`, `THREAD_NOT_CONFIRMED` | 409 | 지금 상태에서는 할 수 없다 |
+
+이전에 `api.py`만 쓰던 `INVALID_REQUEST`(400)와 `FILE_TOO_LARGE`는 없어졌다. 업체 측 에이전트 서비스(`vendor_service.py`)도 같은 코드를 쓴다.
 
 재학습 데이터 수집(7단계) 주소의 규칙:
 
@@ -296,7 +314,7 @@ VendorProfile {"orgId": "org_saegil",
 - `POST /admin/retrain/runs`: Azure ML 재학습 작업(`scripts/v3/ml/compare_and_gate.py`)이 낸 `gate.json`을 그대로 받는다. 받은 값을 적을 뿐 점수나 판정을 만들지 않는다. 관리자만.
 - `POST /admin/eval`의 응답: 맨 위(`scenario`, `sessionStatus`, `checked`, `passed`, `validatorPassRate`, `rewritten`, `threads`, `resultStatus`)는 시연 시나리오 한 건의 결과이고, `cases`가 사례 세트(50건)의 결과다: `{"model", "summary": {caseCount, draftCount, reviewCounts, verdictMatched, verdictMatchRate, openCount, openCases, validatorChecked, validatorPassed, validatorPassRate, forbiddenViolationCount, forbiddenClean, ...}, "results": [{id, title, review, open, verdictMatch, mismatches, forbiddenViolations, validator}]}`.
 
-구현하면서 더한 주소: `GET /health`, `POST /intake/documents/confirm`(`{orgId, documentName, fields}`. 담당자가 확인한 추출값만 doc 근거로 등록한다). 업로드는 `multipart/form-data`의 `file`, `orgId`, (문서는) `kind`로 받는다. `kind`는 `permit | purchase_criteria | material_spec | msds | contract`다.
+업로드는 `multipart/form-data`의 `file`, `orgId`, (문서는) `kind`로 받는다. `kind`는 `permit | purchase_criteria | material_spec | msds | contract`다.
 
 ## 9. 작업 규칙
 

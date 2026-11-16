@@ -72,6 +72,21 @@ def test_orgs_and_streams_after_reset(client):
     assert all(s["orgId"] == EMITTER for s in streams.json())
 
 
+def test_health_and_document_confirm(client):
+    assert client.get("/api/v3/health").json() == {"ok": True}
+    confirmed = client.post(
+        "/api/v3/intake/documents/confirm",
+        headers=org(EMITTER),
+        json={"orgId": EMITTER, "documentName": "성적서.txt", "fields": []},
+    )
+    assert confirmed.status_code == 200, confirmed.text
+    assert confirmed.json() == {"evidence": []}
+    wrong = client.post(
+        "/api/v3/intake/documents/confirm", headers=org(EMITTER), json={"fields": "x"}
+    )
+    assert assert_error(wrong, 422)["code"] == "INVALID_BODY"
+
+
 def test_error_shape(client):
     missing = assert_error(client.get(f"/api/v3/orgs/{EMITTER}/streams"), 401)
     assert missing["code"] == "ORG_REQUIRED"
@@ -80,11 +95,17 @@ def test_error_shape(client):
         headers={**org(EMITTER), "Content-Type": "application/json"},
         content=b"{not json",
     )
-    assert assert_error(not_json, 400)["code"] == "INVALID_REQUEST"
+    assert assert_error(not_json, 400)["code"] == "INVALID_JSON"
     not_object = client.post("/api/v3/sessions", headers=org(EMITTER), json=["org_hanbit"])
-    assert assert_error(not_object, 400)["code"] == "INVALID_REQUEST"
-    no_field = client.post("/api/v3/sessions", headers=org(EMITTER), json={})
-    assert assert_error(no_field, 400)["code"] == "INVALID_REQUEST"
+    assert assert_error(not_object, 422)["code"] == "INVALID_BODY"
+    no_field = client.post(
+        "/api/v3/sessions/ses_1/answers", headers=org(EMITTER), json={"value": 1}
+    )
+    assert assert_error(no_field, 422)["code"] == "INVALID_BODY"
+    no_thread = client.post("/api/v3/sessions/ses_1/approvals", headers=org(EMITTER), json={})
+    assert assert_error(no_thread, 422)["code"] == "INVALID_BODY"
+    no_file = client.post("/api/v3/intake/csv", headers=org(EMITTER), content=b"")
+    assert assert_error(no_file, 422)["code"] == "FILE_REQUIRED"
     assert_error(client.get("/api/v3/sessions/ses_없는것", headers=org(EMITTER)), *HIDDEN)
     assert_error(client.get("/api/v3/evidence/measure:없는:것", headers=org(EMITTER)), *HIDDEN)
 

@@ -24,7 +24,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import Any
 from urllib.parse import parse_qs, unquote, urlsplit
 
-from app.v3 import service
+from app.v3 import httpio, service
 from app.v3.agents.llm import FoundryChat, OllamaChat
 from app.v3.evidence.registry import InMemoryRegistry
 from app.v3.store import InMemoryStore, JsonFileStore
@@ -33,7 +33,6 @@ PREFIX = "/api/v3"
 ALLOWED_ORIGINS = ("http://localhost:3000", "http://127.0.0.1:3000")
 ALLOWED_HEADERS = "X-Org-Id, Content-Type"
 ALLOWED_METHODS = "GET, POST, PUT, OPTIONS"
-MAX_BODY = 20 * 1024 * 1024
 FOUNDRY_ENV = ("FOUNDRY_ENDPOINT", "FOUNDRY_DEPLOYMENT", "FOUNDRY_API_KEY")
 
 
@@ -55,15 +54,8 @@ class Request:
         return (self.headers.get("X-Org-Id") or "").strip()
 
     def json(self) -> dict[str, Any]:
-        if not self.body.strip():
-            return {}
-        try:
-            data = json.loads(self.body.decode("utf-8"))
-        except (UnicodeDecodeError, json.JSONDecodeError):
-            raise service.ServiceError("INVALID_JSON", "본문이 JSON이 아닙니다.", 400) from None
-        if not isinstance(data, dict):
-            raise service.ServiceError("INVALID_JSON", "본문은 JSON 객체여야 합니다.", 400)
-        return data
+        """JSON이 아니면 400 INVALID_JSON, 객체가 아니면 422 INVALID_BODY(api.py와 같다)."""
+        return httpio.parse_object(self.body)
 
     def form(self) -> tuple[dict[str, str], dict[str, tuple[str, bytes]]]:
         if self._form is None:
@@ -76,13 +68,11 @@ class Request:
         if content_type.startswith("multipart/form-data"):
             fields, files = self.form()
             if not files:
-                raise service.ServiceError("FILE_REQUIRED", "올릴 파일이 없습니다.", 422)
+                raise httpio.file_required()
             filename, data = files.get("file") or next(iter(files.values()))
-            return fields, filename or default_name, data
-        if not self.body:
-            raise service.ServiceError("FILE_REQUIRED", "올릴 파일이 없습니다.", 422)
+            return fields, filename or default_name, httpio.check_upload(data)
         fields = {k: v[0] for k, v in self.query.items()}
-        return fields, fields.get("filename") or default_name, self.body
+        return fields, fields.get("filename") or default_name, httpio.check_upload(self.body)
 
 
 def _disposition(value: str) -> dict[str, str]:
@@ -187,17 +177,11 @@ def route(app: service.App, request: Request) -> Any:
         case ("POST", ["sessions", session_id, "run"]):
             return service.run_session(app, session_id, viewer)
         case ("POST", ["sessions", session_id, "answers"]):
-            body = request.json()
-            if "questionId" not in body or "value" not in body:
-                raise service.ServiceError("INVALID_BODY", "questionId와 value를 보내 주세요.", 422)
-            return service.answer_question(
-                app, session_id, str(body["questionId"]), body["value"], viewer
-            )
+            question_id, value = httpio.answer_body(request.json())
+            return service.answer_question(app, session_id, question_id, value, viewer)
         case ("POST", ["sessions", session_id, "approvals"]):
-            body = request.json()
-            if not body.get("threadId"):
-                raise service.ServiceError("INVALID_BODY", "threadId를 보내 주세요.", 422)
-            return service.approve(app, session_id, str(body["threadId"]), viewer)
+            thread_id = str(httpio.required(request.json(), "threadId"))
+            return service.approve(app, session_id, thread_id, viewer)
         case ("POST", ["sessions", session_id, "corrections"]):
             return service.record_correction(app, session_id, request.json(), viewer)
         case ("POST", ["sessions", session_id, "outcomes"]):
@@ -221,11 +205,14 @@ def route(app: service.App, request: Request) -> Any:
             )
         case ("POST", ["intake", "documents", "confirm"]):
             body = request.json()
+            fields = body.get("fields") or []
+            if not isinstance(fields, list):
+                raise httpio.invalid_body("fields는 배열이어야 합니다.")
             return service.confirm_document(
                 app,
                 str(body.get("orgId") or viewer),
                 str(body.get("documentName") or ""),
-                list(body.get("fields") or []),
+                fields,
                 viewer,
             )
         case ("GET", ["admin", "status"]):
@@ -283,8 +270,8 @@ def make_handler(app: service.App, lock: threading.Lock | None = None, quiet: bo
         def _handle(self) -> None:
             try:
                 length = int(self.headers.get("Content-Length") or 0)
-                if length > MAX_BODY:
-                    raise service.ServiceError("TOO_LARGE", "본문이 너무 큽니다.", 413)
+                if length > httpio.MAX_BODY_BYTES:
+                    raise httpio.too_large()
                 body = self.rfile.read(length) if length > 0 else b""
                 url = urlsplit(self.path)
                 request = Request(self.command, url.path, parse_qs(url.query), self.headers, body)

@@ -23,9 +23,8 @@ EDGES = (
     "scripts/v3/ingest_laws.py",
     "scripts/v3/index_evidence.py",
 )
-# 계약 8장에는 있는데 api.py(FastAPI)에 아직 없는 경로. devserver에는 있다.
-# api.py는 다른 작업이 고치고 있어 여기서는 적어만 둔다. 경로가 생기면 이 목록에서 지운다.
-KNOWN_API_GAPS = {("GET", "/health"), ("POST", "/intake/documents/confirm")}
+# 계약 8장에는 있는데 api.py(FastAPI)에 아직 없는 경로. 지금은 없다(두 서버의 경로가 같다).
+KNOWN_API_GAPS: set[tuple[str, str]] = set()
 # 경로가 부르지 않는 서비스 함수: 시드는 서버가 뜰 때, 업체 진입점은 vendor_service가 부른다.
 NOT_ROUTED = {"seed", "handle_vendor_message"}
 
@@ -97,8 +96,7 @@ def test_api_and_devserver_call_the_same_service_functions():
     public = public_service_functions()
     assert api <= public and dev <= public
     assert dev == public - NOT_ROUTED  # devserver는 서비스 함수를 모두 잇는다
-    # api.py에 아직 없는 경로가 부를 함수만 빠져 있어야 한다
-    assert dev - api == ({"confirm_document"} if KNOWN_API_GAPS else set())
+    assert dev == api  # 두 서버가 같은 서비스 함수를 잇는다
 
 
 def test_vendor_service_and_mcp_server_call_their_entry_points():
@@ -134,10 +132,52 @@ def test_devserver_routes_equal_the_contract():
     assert wiring.match_routes("app/v3/devserver.py") == wiring.contract_routes()
 
 
-def test_api_routes_equal_the_contract_except_known_gaps():
+def test_api_routes_equal_the_contract():
     contract, api = wiring.contract_routes(), wiring.fastapi_routes("app/v3/api.py")
+    assert KNOWN_API_GAPS == set()
     assert api - contract == set(), "계약에 없는 경로가 api.py에 있다(계약 8장에 적는다)"
-    assert contract - api <= KNOWN_API_GAPS, "계약의 경로가 api.py에 없다"
+    assert contract - api == set(), "계약의 경로가 api.py에 없다"
+
+
+# ── 요청 오류 코드 ───────────────────────────────────────────────────
+REQUEST_EDGES = ("app/v3/api.py", "app/v3/devserver.py", "app/v3/vendor_service.py")
+OLD_CODES = {"INVALID_REQUEST", "FILE_TOO_LARGE"}
+
+
+def string_constants(path):
+    import ast
+
+    return {
+        node.value
+        for node in ast.walk(wiring.parse(path))
+        if isinstance(node, ast.Constant) and isinstance(node.value, str)
+    }
+
+
+@pytest.mark.parametrize("path", REQUEST_EDGES)
+def test_edges_do_not_use_the_old_request_error_codes(path):
+    assert string_constants(path) & OLD_CODES == set()
+
+
+@pytest.mark.parametrize("path", REQUEST_EDGES[:2])
+def test_request_errors_come_from_one_place(path):
+    """요청 오류(JSON, 본문 모양, 파일, 크기)는 두 서버가 httpio의 같은 함수로 낸다."""
+    from app.v3 import httpio
+
+    # JSON·파일·크기 오류 코드를 가장자리에서 글자로 다시 적지 않는다
+    own = string_constants(path) & (set(httpio.REQUEST_ERRORS) - {httpio.INVALID_BODY})
+    assert own == set(), own
+    used = {c.target.rsplit(".", 1)[1] for c in wiring.calls_in(path) if ".httpio." in c.target}
+    assert {"parse_object", "answer_body", "required", "check_upload", "file_required"} <= used
+
+
+def test_contract_lists_the_request_error_codes():
+    from app.v3 import httpio
+
+    text = (wiring.ROOT / "docs/v3/CONTRACT.md").read_text(encoding="utf-8")
+    section = text[text.index("## 8. HTTP API") :]
+    for code, status in httpio.REQUEST_ERRORS.items():
+        assert f"| `{code}` | {status} |" in section, code
 
 
 def test_api_prefix_matches_devserver():

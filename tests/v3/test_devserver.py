@@ -138,6 +138,21 @@ def test_errors_use_the_contract_shape(base):
         base, "POST", "/sessions", raw=b"{not json", headers={"Content-Type": "application/json"}
     )
     assert status == 400 and json.loads(raw)["error"]["code"] == "INVALID_JSON"
+    status, _, raw = call(
+        base,
+        "POST",
+        "/sessions",
+        raw=b'["org_hanbit"]',
+        headers={"Content-Type": "application/json"},
+    )
+    assert status == 422 and json.loads(raw)["error"]["code"] == "INVALID_BODY"
+    for path, body in (
+        ("/sessions/ses_1/approvals", {}),
+        ("/sessions/ses_1/answers", {"questionId": "q_1", "value": None}),
+        ("/intake/documents/confirm", {"fields": "x"}),
+    ):
+        error = api(base, "POST", path, body, HANBIT, expect=422)["error"]
+        assert error["code"] == "INVALID_BODY", path
 
 
 def test_cors_allows_only_the_local_frontend(base):
