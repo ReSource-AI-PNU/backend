@@ -62,6 +62,24 @@ FIELDS: dict[str, dict[str, Any]] = {
         "text": "{name}의 월 발생량은 대략 몇 kg인가요? 모르면 '모름'으로 답해 주세요.",
     },
 }
+
+# 메시지 meta.asks[].field에 올 수 있는 값(계약 7장). 업체가 배출 기업에 묻는 흐름 항목과,
+# 회사 측이 업체에 조건을 달라고 할 때의 "terms"다. 이 밖의 값은 메시지에 싣지 않는다.
+ASK_FIELDS = (*FIELDS, "terms")
+
+
+def clean_asks(items: Any) -> list[dict[str, str]]:
+    """모델이 낸 asks에서 {streamId, field}만, field가 ASK_FIELDS에 있는 것만 남긴다."""
+    out: list[dict[str, str]] = []
+    for item in items or []:
+        if not isinstance(item, dict) or item.get("field") not in ASK_FIELDS:
+            continue
+        entry = {"streamId": str(item.get("streamId")), "field": str(item["field"])}
+        if entry not in out:
+            out.append(entry)
+    return out
+
+
 _EVIDENCE_LABEL = {"moisturePct": "수분", "contaminationPct": "오염도", "monthlyKg": "월발생량"}
 # identify_stream의 check 키 → 물을 항목
 _CHECK_FIELDS = {

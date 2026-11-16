@@ -43,7 +43,10 @@ def format_value(value: Any, unit: str | None = None) -> str:
 
 def format_claim(claim: Claim | dict[str, Any]) -> str:
     item = _as_claim(claim)
-    return format_value(item.value, item.unit if item.kind == "number" else None)
+    value = item.value
+    if item.role == "treatmentFee" and isinstance(value, (int, float)) and value < 0:
+        value = -value  # 처리비는 "처리비 80원/kg"처럼 크기로 적는다(값 자체는 음수 그대로다)
+    return format_value(value, item.unit if item.kind == "number" else None)
 
 
 def render_text(text: str, claims: Sequence[Claim | dict[str, Any]]) -> str:

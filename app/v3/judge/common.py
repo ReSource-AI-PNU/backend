@@ -6,7 +6,7 @@ import math
 from collections.abc import Iterable
 from typing import Any
 
-from app.v3 import ids
+from app.v3 import ids, names
 from app.v3.evidence.model import Evidence
 from app.v3.evidence.registry import EvidenceForbidden, EvidenceNotFound
 from app.v3.intake import grade_model
@@ -40,6 +40,11 @@ class Recorder:
         self.claims: list[dict] = []
         self.checks: list[dict] = []
         self.created: list[str] = []
+        # calc 근거의 이름에 붙일 흐름 이름(흐름 하나를 다루는 도구일 때)
+        stream = arguments.get("stream") if isinstance(arguments, dict) else None
+        self.subject = (
+            str(stream.get("name")) if isinstance(stream, dict) and stream.get("name") else None
+        )
 
     def visible(self, evidence_ids: Iterable[str] | None) -> list[str]:
         """레지스트리에 있고 이 조직이 볼 수 있는 근거 ID만 남긴다."""
@@ -68,7 +73,7 @@ class Recorder:
                 kind="calc",
                 value=value,
                 unit=unit,
-                label=label or key,
+                label=label or names.calc_label(key, self.subject, value),
                 excerpt=formula,
                 source=f"판단 도구 {self.tool}",
                 as_of=self.today,

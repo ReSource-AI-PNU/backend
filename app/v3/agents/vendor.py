@@ -16,6 +16,7 @@ from app.v3.a2a import guardrails as rails
 from app.v3.a2a.message import Message
 from app.v3.a2a.policy import check_disclosure
 from app.v3.a2a.thread import Thread, ThreadError
+from app.v3.agents import questions
 from app.v3.agents.draft import (
     RULES,
     TOOL_HINT,
@@ -505,10 +506,12 @@ class VendorAgent:
                 allowed_types=allowed,
                 stream_ids=thread.stream_ids,
             )
-            for key in ("asks", "excluded"):
-                items = [dict(x) for x in output.get(key) or [] if isinstance(x, dict)]
-                if items:
-                    reply.meta[key] = items
+            asks = questions.clean_asks(output.get("asks"))
+            if asks:
+                reply.meta["asks"] = asks
+            excluded = [dict(x) for x in output.get("excluded") or [] if isinstance(x, dict)]
+            if excluded:
+                reply.meta["excluded"] = excluded
             if isinstance(output.get("reason"), str) and output["reason"].strip():
                 reply.meta["reason"] = output["reason"].strip()
             return reply

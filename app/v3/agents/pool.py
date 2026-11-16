@@ -11,6 +11,7 @@ from collections.abc import Iterable
 from dataclasses import dataclass, field
 from typing import Any
 
+from app.v3 import names
 from app.v3.a2a.message import Claim, Message
 from app.v3.evidence.registry import EvidenceForbidden, EvidenceNotFound
 from app.v3.evidence.units import UnitError, same_value
@@ -161,10 +162,12 @@ class ClaimPool:
         visible = self._visible(wanted)
         if value is None or not wanted or not visible or visible[0] != wanted[0]:
             return None
+        # 사람이 읽는 이름과 구실은 코드가 키에서 정한다(상대가 보낸 이름은 쓰지 않는다)
+        named, role = names.describe(tags.get("field") or tags.get("key") or claim_id, value, kind)
         base = safe_id(claim_id)
         claim_id, number = base, 1
         while True:
-            claim = Claim(claim_id, kind, value, tuple(visible), unit)
+            claim = Claim(claim_id, kind, value, tuple(visible), unit, label=named, role=role)
             old = self._entries.get(claim_id)
             if old is None or old.claim == claim:
                 break

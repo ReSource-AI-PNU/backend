@@ -10,6 +10,7 @@ from __future__ import annotations
 from typing import Any
 
 from app.v3 import ids
+from app.v3 import names as naming
 from app.v3.a2a.message import PLACEHOLDER, Message
 from app.v3.a2a.policy import (
     QuestionPolicy,
@@ -88,7 +89,8 @@ def claim_in(result: dict[str, Any] | None, key: str | None, new_id: str) -> dic
         return None
     for claim in result.get("claims") or []:
         if claim["id"] == key:
-            return {**claim, "id": new_id}
+            # 사람이 읽는 이름과 구실은 도구의 claim 키에서 정한다
+            return naming.annotate({**claim, "id": new_id}, key)
     return None
 
 
@@ -657,7 +659,11 @@ class Orchestrator:
         problems: list[dict[str, Any]] = []
         message: Message | None = None
         try:
-            message = Message.from_dict({**reply, "meta": meta, "seq": 0, "createdAt": ""})
+            # 상대가 보낸 claim의 이름(label)과 구실(role)은 믿지 않고 코드가 다시 정한다
+            claims = [naming.trusted(c) for c in reply.get("claims") or [] if isinstance(c, dict)]
+            message = Message.from_dict(
+                {**reply, "claims": claims, "meta": meta, "seq": 0, "createdAt": ""}
+            )
             if message.sender != thread.vendor_org or message.thread_id != thread.id:
                 raise ThreadError("보낸 조직이나 스레드가 이 대화와 다르다")
             thread.check(message)
@@ -1177,13 +1183,16 @@ class Orchestrator:
                 "form": found["form"],
                 "label": found["evidence"].label,
                 "asOf": found["evidence"].as_of,
-                "price": {
-                    "id": f"referencePrice{index}",
-                    "kind": "number",
-                    "value": found["evidence"].value,
-                    "unit": found["evidence"].unit,
-                    "evidence": [found["evidence"].id],
-                },
+                "price": naming.annotate(
+                    {
+                        "id": f"referencePrice{index}",
+                        "kind": "number",
+                        "value": found["evidence"].value,
+                        "unit": found["evidence"].unit,
+                        "evidence": [found["evidence"].id],
+                    },
+                    "referencePrice",
+                ),
                 "note": basis.REFERENCE_PRICE_NOTE,
             }
             for index, found in enumerate(
@@ -1198,12 +1207,33 @@ class Orchestrator:
                 key: claim_in(optimized, totals.get(key), f"total_{key}")
                 for key in ("monthlyNow", "monthlyAfter", "difference", "carbon")
             },
-            "assumptions": sorted(dict.fromkeys(assumptions)),
+            "assumptions": self._assumptions(sorted(dict.fromkeys(assumptions)), org_id),
             "sensitivity": sensitivity,
             "referencePrices": reference,
             "carbonInObjective": bool(optimized["output"].get("carbonInObjective")),
             "evidence": list(optimized.get("evidence") or []),
         }
+
+    def _assumptions(self, evidence_ids: list[str], org_id: str) -> list[dict[str, Any]]:
+        """결과에 쓰인 가정값. 화면이 ID 대신 이름과 값을 보여 주게 {id, label, value, unit}로 준다."""
+        items = []
+        for evidence_id in evidence_ids:
+            try:
+                found = self.registry.get(evidence_id, org_id)
+            except (EvidenceNotFound, EvidenceForbidden):
+                continue
+            value = found.value
+            if isinstance(value, bool) or not isinstance(value, (int, float)):
+                value = None  # 등급 기준표처럼 값 하나로 적을 수 없는 가정
+            items.append(
+                {
+                    "id": found.id,
+                    "label": found.label or found.id,
+                    "value": value,
+                    "unit": found.unit if value is not None else None,
+                }
+            )
+        return items
 
     @staticmethod
     def _thread_claims(thread: Thread) -> list[dict[str, Any]]:
@@ -1381,13 +1411,16 @@ class Orchestrator:
             evidence = list(stream.get("monthlyKgEvidence") or [])
             kg = None
             if stream.get("monthlyKg") is not None and evidence:
-                kg = {
-                    "id": "kg",
-                    "kind": "number",
-                    "value": stream["monthlyKg"],
-                    "unit": "kg/월",
-                    "evidence": evidence,
-                }
+                kg = naming.annotate(
+                    {
+                        "id": "kg",
+                        "kind": "number",
+                        "value": stream["monthlyKg"],
+                        "unit": "kg/월",
+                        "evidence": evidence,
+                    },
+                    "monthlyKg",
+                )
             return {"stream": stream, "kg": kg, "offer": offers.get(sid)}
 
         def request_lines(use) -> list[str]:
@@ -1401,7 +1434,9 @@ class Orchestrator:
                 kg = use(facts["kg"], f"{tag}_monthlyKg")
                 parts.append(f"월 발생량 {kg}" if kg else "월 발생량 확인 필요")
                 price = use(offer["claim"], f"{tag}_unitPrice") if offer else None
-                parts.append(f"합의 단가 {price}" if price else "단가 확인 필요")
+                fee = bool(offer) and offer["unitPriceKrwPerKg"] < 0
+                agreed = "합의 처리비" if fee else "합의 단가"  # 처리비는 크기로 적힌다(render)
+                parts.append(f"{agreed} {price}" if price else "단가 확인 필요")
                 route = memo_result(memo, "judge_route", streamId=sid)
                 after = use(claim_in(route, "monthlyAfter", "x"), f"{tag}_monthlyAfter")
                 if after:

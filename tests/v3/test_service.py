@@ -231,6 +231,8 @@ def test_stream_and_vendor_updates_are_grounded():
             "value": 90,
             "unit": "원/kg",
             "evidence": evidence,
+            "label": "현행 처리 단가",
+            "role": "currentUnitCost",
         },
         "assumed": False,
     }

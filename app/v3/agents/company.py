@@ -310,11 +310,7 @@ class CompanyAgent:
                 allowed_types=allowed,
                 stream_ids=thread.stream_ids,
             )
-            asks = [
-                {"streamId": str(a.get("streamId")), "field": str(a.get("field"))}
-                for a in output.get("asks") or []
-                if isinstance(a, dict)
-            ]
+            asks = questions.clean_asks(output.get("asks"))
             if asks:
                 message.meta["asks"] = asks
             if isinstance(output.get("reason"), str) and output["reason"].strip():

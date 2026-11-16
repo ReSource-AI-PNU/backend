@@ -210,7 +210,7 @@ VendorProfile {"orgId": "org_saegil",
                               "unitPrice": {"claim"}, "monthlyAfter": {"claim"}, "monthlyNow": {"claim"}, "difference": {"claim"},
                               "carbon": {"claim"}, "checks": [], "alternatives": [{"vendorOrgId": "...", "route": "...", "monthlyAfter": {"claim"}, "note": "..."}]}],
              "totals": {"monthlyNow": {"claim"}, "monthlyAfter": {"claim"}, "difference": {"claim"}, "carbon": {"claim"}},
-             "assumptions": ["assumption:..."], "sensitivity": [{"label": "현행이 위탁 재활용일 때", "difference": {"claim"}}]},
+             "assumptions": [{"id": "assumption:...", "label": "현행 혼합 소각 처리비 (폐플라스틱)", "value": 250, "unit": "원/kg"}], "sensitivity": [{"label": "현행이 위탁 재활용일 때", "difference": {"claim"}}]},
   "questions": [{"id": "q_1", "batch": 1, "streamId": "st_film", "field": "moisturePct", "text": "...", "answered": false}],
   "approvals": [{"threadId": "th_1", "emitter": false, "vendor": false, "blocked": false, "blockedReason": null}],
   "documents": [{"id": "doc_1", "kind": "request | plan", "title": "...", "text": "... {{c1}} ...", "claims": [{"claim"}], "validation": {"ok": true}}],
@@ -220,6 +220,62 @@ VendorProfile {"orgId": "org_saegil",
 ```
 
 `{"claim"}`은 `{"id", "kind", "value", "unit", "evidence"}` 객체다. 값이 없으면 `null`을 넣고 화면은 "확인 필요"를 보여 준다.
+
+### 사람이 읽는 이름
+
+화면이 내부 키(`s0Difference`, `pc_pp_a`, `assumption:...`)를 그대로 보여 주지 않도록 이름을 함께 준다. 이름은 모두 코드(`app/v3/names.py`)가 정한다.
+
+- **claim의 `label`과 `role`(선택 필드).** `{"id", "kind", "value", "unit", "evidence", "label": "매입 단가", "role": "unitPrice"}`. 이름을 정하지 못한 claim에는 두 필드가 없다. 근거 검증기는 이 두 필드를 보지 않는다. 상대 조직이 보낸 `label`은 쓰지 않고 받는 쪽에서 `role`과 키로 다시 만든다(이름 칸에 숫자를 실어 보내지 못한다).
+
+  | `role` | `label` | 비고 |
+  |---|---|---|
+  | `unitPrice` | 매입 단가 | 값이 0 이상인 단가 |
+  | `treatmentFee` | 처리비 | 값이 음수인 단가. **값은 음수 그대로다.** 화면은 크기로 보여 준다 |
+  | `currentUnitCost` | 현행 처리 단가 | |
+  | `referencePrice` | 참고 시세 | |
+  | `monthlyKg` | 월 발생량 | |
+  | `totalKg`, `totalM3` | 합친 월 물량, 합친 월 부피 | |
+  | `monthlyAfter` | 변경 뒤 월 손익 | 합계는 "변경 뒤 월 손익 합계" |
+  | `monthlyNow` | 현행 월 손익 | 합계는 "현행 월 손익 합계" |
+  | `difference` | 현행 대비 차이 | 합계는 "현행 대비 차이 합계" |
+  | `sensitivity` | 현행 가정이 다를 때의 차이 | |
+  | `carbon` | 탄소 변화 | 합계는 "탄소 변화 합계" |
+  | `carbonValue` | 탄소 감축 환산액 | |
+  | `monthlyRevenue`, `transport`, `extraCost` | 월 매입액, 월 운송비(또는 "km당 운송비"), 추가 운송비 | |
+  | `distance` | 왕복 거리 등 | |
+  | `pickups`, `perPickup`, `trips` | 월 수거 횟수, 한 번 수거량(부피는 "한 번 수거 부피"), 회차 수 | |
+  | `capacity` | 차량 적재 중량, 차량 적재 부피 | |
+  | `threshold` | 최소 물량, 오염도 상한, 수분 상한 | 업체 기준값 |
+  | `contamination` | 오염도(측정), 사진 추정 오염 비율 | |
+  | `moisture` | 수분 | |
+  | `priceDeviation` | 기준표 대비 단가 차이 | |
+  | `clause` | 조항 인용 | `kind`가 `clause`인 claim |
+
+- **처리비 문장.** 메시지 본문에 부호를 설명하는 문구("(음수는 배출 기업이 내는 처리비)")는 쓰지 않는다. 매입이면 "매입 단가는 {{…}}입니다", 처리비면 "처리비는 {{…}}입니다"로 쓰고, claim 값은 음수 그대로 두며 `role`이 `treatmentFee`다. 문서의 `rendered`와 `render.render_text`는 `treatmentFee`를 크기로 적는다("합의 처리비 80원/kg").
+- **calc 근거의 `label`.** 내부 키가 아니라 한국어다. 흐름 하나를 다루는 계산이면 흐름 이름이 앞에 붙는다(예: "스프루·런너 현행 대비 차이 계산", "합친 월 물량 계산").
+- **판단 그래프의 기준 노드.** `type`이 `criterion`인 노드의 `label`은 재질·등급·형태다(예: "PP · A등급 · 분쇄", 형태가 없는 기준은 "PP · B등급", 등외는 "PP+ABS · 등외"). `id`는 그대로 기준 ID다.
+- **`result.assumptions`의 모양이 바뀌었다.** 이전에는 근거 ID 문자열의 배열(`["assumption:..."]`)이었고, 지금은 `[{"id", "label", "value", "unit"}]`이다. `id`는 근거 ID(눌러서 근거 패널을 연다), `label`은 근거의 이름, `value`·`unit`은 근거의 값이다. 값 하나로 적을 수 없는 가정(등급 기준표)은 `value`와 `unit`이 `null`이다.
+- **`messages[].meta.asks[].field`에 올 수 있는 값.** `material | origin | form | contaminationPct | moisturePct | lotSame | monthlyKg | terms`. 앞의 일곱은 업체가 배출 기업에 묻는 흐름 항목이고(`questions[].field`와 같은 낱말이다), `terms`는 회사 측이 업체에 조건을 달라고 할 때다. 이 밖의 값은 메시지에 실리지 않는다(`agents/questions.py`의 `ASK_FIELDS`).
+
+### 업체가 보는 뷰의 result
+
+업체(`viewer.role`이 `vendor`)가 보는 `result`는 다음 모양이다. 배출 기업의 현행 대비 손익과 다른 업체의 제안은 나가지 않는다.
+
+```json
+{"status": "calculated | conditional | needs_information",
+ "assignments": [{"streamId", "vendorOrgId", "vendorName", "threadId", "route", "status", "unitPrice": {"claim"},
+                  "currentAssumed", "checks": [],
+                  "monthlyAfter": null, "monthlyNow": null, "difference": null, "carbon": null, "carbonValue": null,
+                  "alternatives": []}],
+ "totals": {"monthlyNow": null, "monthlyAfter": null, "difference": null, "carbon": null},
+ "assumptions": [], "sensitivity": [], "referencePrices": []}
+```
+
+- `assignments`에는 자기에게 배정된 흐름만 있고, 하나도 없으면 `status`는 `needs_information`이다.
+- `monthlyAfter`, `monthlyNow`, `difference`, `carbon`, `carbonValue`는 늘 `null`, `alternatives`는 늘 빈 배열이다.
+- `checks`에는 업체가 내건 조건(`vendor_condition`)과 적재 검사(`min_volume`, `loading`)만 남는다.
+- `totals`의 네 값은 모두 `null`, `assumptions`와 `sensitivity`는 빈 배열이다. `carbonInObjective`와 `evidence`는 없다.
+- `result`가 아직 없으면(`null`) 그대로 `null`이다.
 
 구현하면서 더한 항목(있던 항목의 모양은 그대로다):
 

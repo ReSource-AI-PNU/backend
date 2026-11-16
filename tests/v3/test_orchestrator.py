@@ -158,8 +158,12 @@ def test_result_sheet_assigns_every_stream(demo):
     assert totals["carbon"] is None  # 포장재 배출계수가 없어 합계는 확인 필요로 둔다
     assert by_stream["st_film"]["carbon"] is None and by_stream["st_sprue"]["carbon"] is not None
     assert by_stream["st_purge"]["currentAssumed"] is True
-    assert "assumption:등급기준@v1" in result["assumptions"]
-    assert any(a.startswith("assumption:current.cost.") for a in result["assumptions"])
+    assumed = {a["id"]: a for a in result["assumptions"]}
+    assert all(set(a) == {"id", "label", "value", "unit"} for a in result["assumptions"])
+    assert "assumption:등급기준@v1" in assumed
+    cost = next(a for key, a in assumed.items() if key.startswith("assumption:current.cost."))
+    assert cost["label"] and cost["unit"] == "원/kg" and cost["value"] > 0
+    assert cost["value"] == app.registry.get(cost["id"], HANBIT).value
     assert {s["streamId"] for s in result["sensitivity"]} == {"st_film", "st_purge"}
     # 참고 시세는 보여 주기만 한다
     assert [p["form"] for p in result["referencePrices"]] == ["압축", "펠렛", "플레이크"]

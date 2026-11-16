@@ -39,6 +39,10 @@ class Claim:
     value: float | str
     evidence: tuple[str, ...]
     unit: str | None = None
+    # 사람이 읽는 이름과 값의 구실(app/v3/names.py). 선택 필드이고 근거 검증기는 보지 않는다.
+    # 같은 값인지 견줄 때도 보지 않는다(이름만 다른 claim은 같은 claim이다).
+    label: str | None = field(default=None, compare=False)
+    role: str | None = field(default=None, compare=False)
 
     def __post_init__(self) -> None:
         if self.kind not in CLAIM_KINDS:
@@ -46,13 +50,18 @@ class Claim:
         object.__setattr__(self, "evidence", tuple(self.evidence))
 
     def to_dict(self) -> dict[str, Any]:
-        return {
+        out: dict[str, Any] = {
             "id": self.id,
             "kind": self.kind,
             "value": self.value,
             "unit": self.unit,
             "evidence": list(self.evidence),
         }
+        if self.label:
+            out["label"] = self.label
+        if self.role:
+            out["role"] = self.role
+        return out
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> Claim:
@@ -62,6 +71,8 @@ class Claim:
             value=data["value"],
             unit=data.get("unit"),
             evidence=tuple(data.get("evidence") or ()),
+            label=str(data["label"]) if data.get("label") else None,
+            role=str(data["role"]) if data.get("role") else None,
         )
 
 

@@ -248,7 +248,9 @@ class _Company(_Base):
             parts = []
             price = self.use(item.get("unitPrice"))
             if price:
-                parts.append(f"단가 {price}")
+                value = (self.pool.get(str(item.get("unitPrice"))) or {}).get("value")
+                paid = isinstance(value, (int, float)) and value < 0
+                parts.append(f"{'처리비' if paid else '단가'} {price}")
             kg = self.use(item.get("monthlyKg"))
             if kg:
                 parts.append(f"월 발생량 {kg}")
@@ -428,17 +430,15 @@ class _Vendor(_Base):
             items.append({"streamId": sid, "unitPriceRef": str(price_id)})
             value = (self.pool.get(str(price_id)) or {}).get("value")
             paid = isinstance(value, (int, float)) and value < 0
-            note = "처리비를 받는 조건이며 단가는" if paid else "매입 단가는"
-            tail = "(음수는 배출 기업이 내는 처리비)" if paid else ""
+            # 값은 음수 그대로 두고 문장으로 구분한다(claim의 role이 treatmentFee다)
+            note = "처리비는" if paid else "매입 단가는"
             if kind == "offer":
-                lines.append(
-                    f"- {self.name(sid)}: 매입 기준을 충족합니다. {note} {price}입니다{tail}."
-                )
+                lines.append(f"- {self.name(sid)}: 매입 기준을 충족합니다. {note} {price}입니다.")
             else:
                 found = self._conditions(sid)
                 conditions += [f"{self.name(sid)}: {c}" for c in found]
                 lines.append(
-                    f"- {self.name(sid)}: 아래 조건이 확인되면 받습니다. {note} {price}입니다{tail}."
+                    f"- {self.name(sid)}: 아래 조건이 확인되면 받습니다. {note} {price}입니다."
                 )
                 lines += [f"  · {c}" for c in found]
         head = (

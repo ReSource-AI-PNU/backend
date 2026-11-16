@@ -11,6 +11,7 @@ from datetime import datetime
 from typing import Any
 
 from app.v3 import feedback, ids
+from app.v3 import names as naming
 from app.v3.a2a.message import STAGES
 from app.v3.a2a.thread import Thread
 from app.v3.agents.draft import model_label
@@ -555,13 +556,16 @@ def _stream_view(
         if assumed:
             found = basis.resolve(app.registry, viewer, f"current.cost.{stream.get('wasteItem')}")
             if found is not None:
-                cost = {
-                    "id": f"{stream['id']}_currentUnitCost",
-                    "kind": "number",
-                    "value": found.value,
-                    "unit": found.unit,
-                    "evidence": [found.id],
-                }
+                cost = naming.annotate(
+                    {
+                        "id": f"{stream['id']}_currentUnitCost",
+                        "kind": "number",
+                        "value": found.value,
+                        "unit": found.unit,
+                        "evidence": [found.id],
+                    },
+                    "currentUnitCost",
+                )
         view["currentTreatment"] = {
             "method": "혼합 소각" if assumed else current.get("method"),
             "unitCost": cost,
@@ -662,12 +666,16 @@ def _graph(
         node(evidence_id, "evidence", found.label or evidence_id)
         return True
 
-    names = {o["id"]: o.get("name") for o in app.store.list_orgs()}
+    org_names = {o["id"]: o.get("name") for o in app.store.list_orgs()}
+    criteria: dict[tuple[str, str], dict[str, Any]] = {}
+    for profile in app.store.list_vendor_profiles():
+        for item in profile.get("criteria") or []:
+            criteria[(profile["orgId"], str(item.get("id")))] = item
     for stream in streams:
         node(stream["id"], "stream", stream.get("name") or stream["id"])
     vendors = {t["vendorOrgId"] for t in threads}
     for vendor in sorted(vendors):
-        node(vendor, "vendor", names.get(vendor) or vendor)
+        node(vendor, "vendor", org_names.get(vendor) or vendor)
     for item in work["permits"]:
         if item["streamId"] not in stream_ids or item["vendorOrgId"] not in vendors:
             continue
@@ -712,7 +720,12 @@ def _graph(
             evidence = [e for c in checks for e in c.get("evidence") or []]
             criterion = route["output"].get("criterionId")
             if criterion:
-                node(criterion, "criterion", f"{names.get(vendor) or vendor} 매입 기준 {criterion}")
+                # 기준 노드의 이름은 ID가 아니라 재질·등급·형태다(예: "PP · A등급 · 분쇄")
+                label_text = naming.criterion_label(
+                    criteria.get((vendor, str(criterion))),
+                    f"{org_names.get(vendor) or vendor} 매입 기준",
+                )
+                node(criterion, "criterion", label_text)
                 edge(sid, criterion, status, label, evidence, kind="criterion")
                 edge(criterion, vendor, "met", "매입 기준표", [], kind="criterion")
             else:

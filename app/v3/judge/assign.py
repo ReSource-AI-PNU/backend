@@ -6,6 +6,7 @@ import itertools
 import logging
 import math
 
+from app.v3 import names
 from app.v3.judge.common import Recorder, best_criterion, num, permit_match, quality
 from app.v3.judge.route import current_cost
 
@@ -303,9 +304,22 @@ def optimize_assignment(
         stream, kg = item["stream"], item["kg"]
         now = -item["cost"] * kg
         tag = f"s{i}"
-        rec.number(f"{tag}MonthlyNow", now, "원/월", "−현행 처리비 × 월 발생량", item["cost_ev"])
+        who = stream.get("name") or None  # calc 근거의 이름에 흐름 이름을 붙인다
         rec.number(
-            f"{tag}MonthlyAfter", choice["value"], "원/월", "배정한 경로의 월 손익", choice["ev"]
+            f"{tag}MonthlyNow",
+            now,
+            "원/월",
+            "−현행 처리비 × 월 발생량",
+            item["cost_ev"],
+            label=names.calc_label("monthlyNow", who),
+        )
+        rec.number(
+            f"{tag}MonthlyAfter",
+            choice["value"],
+            "원/월",
+            "배정한 경로의 월 손익",
+            choice["ev"],
+            label=names.calc_label("monthlyAfter", who),
         )
         rec.number(
             f"{tag}Difference",
@@ -313,6 +327,7 @@ def optimize_assignment(
             "원/월",
             "배정 뒤 월 손익 − 현행 월 손익",
             [*choice["ev"], *item["cost_ev"]],
+            label=names.calc_label("difference", who),
         )
         entry = {
             "streamId": stream.get("id"),
@@ -336,6 +351,7 @@ def optimize_assignment(
                     "tCO2e/월",
                     "(재활용 계수 − 소각 계수) × 월 발생량",
                     item["carbon_ev"],
+                    label=names.calc_label("carbon", who),
                 )["id"]
                 carbon_total += choice["carbon"]
             else:
