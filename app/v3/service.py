@@ -15,7 +15,13 @@ from app.v3.a2a.message import STAGES
 from app.v3.a2a.thread import Thread
 from app.v3.agents.draft import model_label
 from app.v3.agents.gateway import LocalVendorGateway
-from app.v3.agents.orchestrator import Orchestrator, OrchestratorError, memo_result, vendor_model
+from app.v3.agents.orchestrator import (
+    Orchestrator,
+    OrchestratorError,
+    memo_result,
+    thread_names,
+    vendor_model,
+)
 from app.v3.agents.policy_rule import RulePolicy
 from app.v3.agents.pool import ClaimPool
 from app.v3.agents.vendor import VendorAgent
@@ -1134,12 +1140,41 @@ def _missing_basis() -> list[str]:
 
 
 def run_eval(app: App, viewer: str) -> dict[str, Any]:
-    """사례 시험. 시연 시나리오(가상 데이터)를 따로 만든 저장소에서 처음부터 끝까지 돌려 본다.
+    """사례 시험. 평가 사례 세트(app/v3/eval/cases, 모두 가상 수치)와 시연 시나리오를 돌린다.
 
-    담당자 질문에는 모두 "모름"으로 답한다. 지금 연결된 모델 설정을 그대로 쓰므로, 규칙 정책으로
-    돌았으면 결과에 그렇게 적힌다. 검증기 통과율은 나간 메시지와 문서를 다시 검증해 센다.
+    사례마다 따로 만든 저장소에서 돌리므로 운영 데이터는 바뀌지 않는다. 지금 연결된 모델 설정과
+    공개 근거(법령, 기준값, 가정값)를 그대로 쓰므로, 규칙 정책으로 돌았으면 결과에 그렇게 적힌다.
+    맨 위의 scenario~resultStatus는 시연 시나리오 한 건의 결과이고, cases가 사례 세트의 결과다.
     """
     _org(app, viewer)
+    from app.v3.eval.loader import load_cases
+    from app.v3.eval.runner import run_cases
+
+    outcome = run_cases(app, load_cases())
+    keep = ("id", "title", "review", "open", "openNote", "tags", "error", "verdictMatch")
+    return {
+        **_demo_eval(app),
+        "cases": {
+            "model": outcome["model"],
+            "summary": outcome["summary"],
+            "results": [
+                {
+                    **{key: result[key] for key in keep},
+                    "mismatches": result["mismatches"],
+                    "forbiddenViolations": result["forbiddenViolations"],
+                    "validator": result["validator"],
+                }
+                for result in outcome["results"]
+            ],
+        },
+    }
+
+
+def _demo_eval(app: App) -> dict[str, Any]:
+    """시연 시나리오(가상 데이터)를 따로 만든 저장소에서 처음부터 끝까지 돌려 본다.
+
+    담당자 질문에는 모두 "모름"으로 답한다. 검증기 통과율은 나간 메시지와 문서를 다시 검증해 센다.
+    """
     from app.v3.evidence.registry import InMemoryRegistry
 
     trial = App(
@@ -1167,9 +1202,10 @@ def run_eval(app: App, viewer: str) -> dict[str, Any]:
     checked = passed = rewritten = 0
     for raw in trial.store.list_threads(session_id=session_id):
         thread = Thread.from_dict(raw)
+        names = thread_names(trial.store, thread)
         for message in thread.messages:
             checked += 1
-            passed += validate_message(message, trial.registry, today=trial.today).ok
+            passed += validate_message(message, trial.registry, today=trial.today, names=names).ok
             rewritten += (message.meta.get("validation") or {}).get("attempts", 1) > 1
     for document in view["documents"]:
         checked += 1
