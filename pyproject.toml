@@ -33,6 +33,10 @@ ml = [
     "scikit-learn>=1.5",
     "pillow>=10",
 ]
+# 설계안 v3 판단 도구 MCP 서버 (app/v3/mcp_server.py). API와 업체 측 서비스는 기본 의존성만으로 돈다.
+v3 = [
+    "mcp>=1.10,<2",
+]
 
 [tool.ruff]
 line-length = 100
