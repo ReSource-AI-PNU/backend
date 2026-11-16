@@ -1,6 +1,6 @@
 # 등급 모델 학습, 등록, 배포 순서
 
-미실행(Azure ML 필요). 이 폴더의 파일은 로컬에서 실행해 보지 못했다. `py_compile`과 YAML 문법만 확인했다.
+미실행(Azure ML 필요). 이 폴더의 파일은 `make_grade_dataset.py`만 로컬에서 실행해 봤다. 나머지 파이썬 파일은 `py_compile`만 통과했고, YAML은 로컬에 파서가 없어 문법 검사도 하지 못했다(눈으로만 확인).
 처음 돌릴 때 `az ml` 스키마 오류가 나면 이 문서와 YAML을 함께 고친다.
 
 대상: 리소스 그룹 `team_AIBIC2026_03_RG_EUS2`, 작업 영역 `team-workspace`, 컴퓨팅 `rsai-cpu`.
