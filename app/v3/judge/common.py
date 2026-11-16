@@ -9,10 +9,9 @@ from typing import Any
 from app.v3 import ids
 from app.v3.evidence.model import Evidence
 from app.v3.evidence.registry import EvidenceForbidden, EvidenceNotFound
+from app.v3.intake import grade_model
 from app.v3.judge import basis
 
-GRADES = ("A", "B", "C")
-OFF_GRADE = "등외"
 WORST = {"calculated": 0, "conditional": 1, "needs_information": 2}
 
 
@@ -147,18 +146,11 @@ def distance_matrix(rec: Recorder, points, distance_provider=None):
     return matrix, True, [factor.id]
 
 
-def grade_of(rec: Recorder, contamination, moisture):
-    """(등급, 쓴 상한 근거 ID). 상한 기준값이 없으면 (None, [])."""
-    used: list[str] = []
-    for grade in GRADES:
-        cont = rec.basis(f"grade.{grade}.maxContaminationPct")
-        moist = rec.basis(f"grade.{grade}.maxMoisturePct")
-        if cont is None or moist is None:
-            return None, []
-        used += [cont.id, moist.id]
-        if contamination <= float(cont.value) and moisture <= float(moist.value):
-            return grade, used
-    return OFF_GRADE, used
+def grade_of(rec: Recorder, material, contamination, moisture):
+    """(등급, 근거 ID). 등급 기준은 intake의 기준 파일(grade_thresholds) 하나만 쓴다."""
+    evidence = rec.registry.put(grade_model.thresholds_evidence())
+    result = grade_model.grade_by_thresholds(material, contamination, moisture)
+    return result["grade"], [evidence.id]
 
 
 def quality(stream: dict) -> dict:

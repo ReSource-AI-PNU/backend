@@ -81,48 +81,6 @@
       "excerpt": "팀 가정값(가상 시연용). 실제 시세·법정 기준이 아니다. app/demo/synthetic.py의 minimum_kg에서 옮겼다."
     },
     {
-      "key": "grade.A.maxContaminationPct",
-      "value": 2,
-      "unit": "%",
-      "label": "A 등급 오염도 상한",
-      "excerpt": "팀 가정값(가상 시연용). 실제 시세·법정 기준이 아니다. app/demo/synthetic.py의 reuse_max_contamination에서 옮겼다."
-    },
-    {
-      "key": "grade.B.maxContaminationPct",
-      "value": 12,
-      "unit": "%",
-      "label": "B 등급 오염도 상한",
-      "excerpt": "팀 가정값(가상 시연용). 실제 시세·법정 기준이 아니다. app/demo/synthetic.py의 sell_max_contamination에서 옮겼다."
-    },
-    {
-      "key": "grade.C.maxContaminationPct",
-      "value": 30,
-      "unit": "%",
-      "label": "C 등급 오염도 상한",
-      "excerpt": "팀 가정값(가상 시연용). 실제 시세·법정 기준이 아니다. 기존 자료에 없어 새로 둔 값이다."
-    },
-    {
-      "key": "grade.A.maxMoisturePct",
-      "value": 1,
-      "unit": "%",
-      "label": "A 등급 수분 상한",
-      "excerpt": "팀 가정값(가상 시연용). 실제 시세·법정 기준이 아니다. 기존 자료에 없어 새로 둔 값이다."
-    },
-    {
-      "key": "grade.B.maxMoisturePct",
-      "value": 3,
-      "unit": "%",
-      "label": "B 등급 수분 상한",
-      "excerpt": "팀 가정값(가상 시연용). 실제 시세·법정 기준이 아니다. 기존 자료에 없어 새로 둔 값이다."
-    },
-    {
-      "key": "grade.C.maxMoisturePct",
-      "value": 10,
-      "unit": "%",
-      "label": "C 등급 수분 상한",
-      "excerpt": "팀 가정값(가상 시연용). 실제 시세·법정 기준이 아니다. 기존 자료에 없어 새로 둔 값이다."
-    },
-    {
       "key": "distance.detourFactor",
       "value": 1.3,
       "unit": null,

@@ -25,7 +25,7 @@ def identify_stream(registry, *, org_id, today, stream, moisturePct=None):
             rec.check(field, "conditional", f"{name}이(가) 확인되지 않았습니다.")
 
     def graded(prefix, cont, moist, evidence, label):
-        grade, limits = grade_of(rec, cont, moist)
+        grade, limits = grade_of(rec, stream.get("material"), cont, moist)
         rec.number(f"{prefix}ContaminationPct", cont, "%", f"{label} 오염도", evidence)
         rec.number(f"{prefix}MoisturePct", moist, "%", f"{label} 수분", evidence)
         return grade, limits

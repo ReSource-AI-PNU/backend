@@ -100,7 +100,7 @@ def test_identify_measured_beats_photo_and_flags_disagreement():
     )
     assert (
         r["output"]["grade"] == "A"
-        and r["output"]["photoGrade"] == "B"
+        and r["output"]["photoGrade"] == "C"
         and r["status"] == "conditional"
     )
     assert any(c["key"] == "grade_disagreement" and c["ask"] for c in r["checks"])
@@ -110,7 +110,9 @@ def test_identify_measured_beats_photo_and_flags_disagreement():
         stream=stream(measure=None, photo={"contaminationPct": 8.0}),
         moisturePct=2.0,
     )
-    assert r["output"]["grade"] == "B" and r["output"]["basis"] == "photo_estimate"
+    assert r["output"]["grade"] == "C" and r["output"]["basis"] == "photo_estimate"
+    assert r["output"]["gradeEvidence"] == ["assumption:등급기준@v1"]
+    assert reg.get("assumption:등급기준@v1").kind == "assumption"
     r = run(reg, "identify_stream", stream=stream(measure=None, photo={"contaminationPct": 8.0}))
     assert r["status"] == "needs_information" and r["output"]["grade"] is None
     assert any(c["key"] == "moisture" and c["ask"] for c in r["checks"])
@@ -386,3 +388,19 @@ def test_kau_reference_feeds_cost_carbon_when_seeded():
     assert r["output"]["kau"] == "kauValue" and value["unit"] == "원/월"
     assert value["value"] == pytest.approx(-claim(r, "carbonDifference")["value"] * kau.value)
     assert kau.id in value["evidence"] and not any(c["key"] == "kau" for c in r["checks"])
+
+
+def test_grade_thresholds_have_one_source():
+    from app.v3.intake.grade_model import grade_by_thresholds
+
+    assert not [i for i in defaults.load()["items"] if i["key"].startswith("grade.")]
+    assert basis.resolve(registry(), EMITTER, "grade.A.maxContaminationPct") is None
+    reg = registry()
+    for material, cont, moist in (("PP", 2.5, 0.8), ("LDPE", 3.0, 2.0), ("PP+ABS", 40.0, 1.0)):
+        r = run(
+            reg,
+            "identify_stream",
+            stream=stream(material=material, measure=None, photo={"contaminationPct": cont}),
+            moisturePct=moist,
+        )
+        assert r["output"]["grade"] == grade_by_thresholds(material, cont, moist)["grade"]
