@@ -194,6 +194,34 @@ def test_csv_template_and_admin_status(client):
     assert status.status_code == 200 or assert_error(status, 403)
 
 
+def test_feedback_routes(client):
+    created = client.post("/api/v3/sessions", headers=org(EMITTER), json={"emitterOrgId": EMITTER})
+    session_id = created.json()["session"]["id"]
+    view = run_to_approval(client, session_id)
+    body = {"streamId": "st_sprue", "field": "form", "before": "가공 전", "after": "분쇄"}
+    path = f"/api/v3/sessions/{session_id}"
+    fixed = client.post(f"{path}/corrections", headers=org(EMITTER), json=body)
+    assert fixed.status_code == 200, fixed.text
+    assert fixed.json()["correction"]["target"] == "detector" and fixed.json()["evidence"]
+    assert_error(client.post(f"{path}/corrections", headers=org(VENDORS[0]), json=body), 403)
+    assert_error(client.post(f"{path}/corrections", headers=org(OTHER_EMITTER), json=body), *HIDDEN)
+    # 확정 전에는 실제 결과를 받지 않는다
+    thread = next(t for t in view["threads"] if t["status"] == "agreed")
+    outcome = {
+        "threadId": thread["id"],
+        "streamId": thread["assignedStreamIds"][0],
+        "actualGrade": "A",
+        "inspectedOn": view["session"]["today"],
+    }
+    early = client.post(f"{path}/outcomes", headers=org(thread["vendorOrgId"]), json=outcome)
+    assert assert_error(early, 409)["code"] == "THREAD_NOT_CONFIRMED"
+    assert_error(client.get("/api/v3/admin/retrain/export", headers=org(EMITTER)), 403)
+    assert_error(client.post("/api/v3/admin/retrain/runs", headers=org(EMITTER), json={}), 403)
+    status = client.get("/api/v3/admin/status", headers=org(EMITTER)).json()
+    assert status["retrain"]["corrections"]["count"] == 1
+    assert status["retrain"]["modelVersions"] == []
+
+
 def test_llm_factory_never_swaps_models():
     assert api.make_llm_factory("rule")("company", EMITTER, None) is None
     with pytest.raises(ValueError, match="V3_LLM"):
