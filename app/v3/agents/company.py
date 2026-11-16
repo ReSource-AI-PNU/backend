@@ -218,10 +218,15 @@ class CompanyAgent:
         offered = list(state.get("offered") or [])
         excluded = list(state.get("excluded") or [])
         uncovered = [s for s in thread.stream_ids if s not in offered and s not in excluded]
+        # counter로 대화를 다시 연 뒤에는(합의 뒤 업체 조건 변경) 그 앞에 물은 것을 세지 않는다
+        reopened = max(
+            (m.seq for m in thread.messages if m.sender == self.org_id and m.type == "counter"),
+            default=0,
+        )
         asked_streams = {
             s
             for m in thread.messages
-            if m.sender == self.org_id and m.type == "question"
+            if m.sender == self.org_id and m.type == "question" and m.seq > reopened
             for s in m.stream_ids
         }
 

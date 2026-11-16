@@ -541,11 +541,16 @@ class VendorAgent:
             distance_provider=self.distance_provider,
         )
         allowed = thread.allowed_types(vendor_org)
+        # 회사 측이 counter로 대화를 다시 열었으면(합의 뒤 조건 변경) 그 앞의 제안은 지난 조건이다
+        reopened = max(
+            (m.seq for m in thread.messages if m.sender != vendor_org and m.type == "counter"),
+            default=0,
+        )
         offered = sorted(
             {
                 item.get("streamId")
                 for m in thread.messages
-                if m.sender == vendor_org
+                if m.sender == vendor_org and m.seq > reopened
                 for item in (m.meta.get("terms") or {}).get("items") or []
             }
         )

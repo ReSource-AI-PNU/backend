@@ -12,6 +12,7 @@ from typing import Any
 
 from app.v3 import ids
 from app.v3 import names as naming
+from app.v3.a2a import guardrails as rails
 from app.v3.a2a.guardrails import WEEKDAYS
 from app.v3.a2a.message import MESSAGE_TYPES, PLACEHOLDER, Message
 from app.v3.a2a.policy import (
@@ -51,6 +52,7 @@ from app.v3.evidence.validator import (
 )
 from app.v3.intake.grade_model import GradeModelError, grade_stream
 from app.v3.judge import basis
+from app.v3.judge.common import best_criterion, permit_match, quality
 from app.v3.judge.toolbox import TOOLS, call_tool
 from app.v3.textutil import josa
 
@@ -103,6 +105,9 @@ def new_work() -> dict[str, Any]:
         "handedOff": [],
         "permitChecks": {},
         "agreedBasis": {},
+        "agreedTerms": {},
+        "reopened": {},
+        "renegotiating": {},
         "unresolved": [],
         "optimize": None,
         "result": None,
@@ -376,8 +381,10 @@ class Orchestrator:
     def run(self, session_id: str) -> dict[str, Any]:
         """다음 멈춤 지점까지 진행한다. 멈춰 있는 이유가 그대로면 아무것도 하지 않는다."""
         session = self.store.get_session(session_id)
-        if session["status"] in ("confirmed", "awaiting_approval"):
+        if session["status"] == "confirmed":
             return session
+        if session["status"] == "awaiting_approval" and not self._renegotiate(session):
+            return self.store.get_session(session_id)
         if self._open_questions(session_id):
             if session["status"] != "awaiting_answers":
                 session["status"] = "awaiting_answers"
@@ -405,6 +412,97 @@ class Orchestrator:
             session["status"] = "idle"
         self._save(session)
         return session
+
+    # ── 합의 뒤 업체 조건 변경: 새 조건으로 대화를 이어 간다 ───────────
+    def _renegotiate(self, session: dict[str, Any]) -> bool:
+        """업체 조건이 바뀌어 승인이 막힌 합의 대화를 다시 연다. 하나라도 열었으면 True.
+
+        다시 여는 것은 VENDOR_TERMS_CHANGED로 막힌 대화뿐이다. 흐름 자료가 바뀐 대화
+        (STREAM_CHANGED)는 자료를 되돌리거나 진단을 새로 해야 한다.
+        """
+        opened = False
+        for thread in self._threads(session["id"]):
+            if thread.status != "agreed":
+                continue
+            codes = {item.rsplit(": ", 1)[-1] for item in self._verify(session, thread)}
+            if "VENDOR_TERMS_CHANGED" in codes and "STREAM_CHANGED" not in codes:
+                opened = self._reopen(session, thread) or opened
+        if opened:
+            session["phase"], session["status"] = "converse", "running"
+            for stage in ("4", "5", "6"):
+                session["work"]["stages"][stage] = "running"
+        self._save(session)
+        return opened
+
+    def _reopen(self, session, thread: Thread) -> bool:
+        """합의한 대화를 회사 측의 counter로 다시 연다. 앞선 제안과 승인은 지난 조건의 것이다."""
+        work = session["work"]
+        assigned = sorted(work["assigned"].get(thread.id) or thread.stream_ids)
+        failed, evidence = self._permit_failures(session, thread, assigned)
+        if failed:
+            # 허가 품목이 빠진 흐름이 있다. 맞는 흐름이 남지 않으면 닫고, 일부면 그 흐름만 뺀다
+            if self._drop_for_permit(session, thread, failed, evidence) == "closed":
+                return False
+            if thread.status == "agreed":
+                left = {item.rsplit(": ", 1)[-1] for item in self._verify(session, thread)}
+                if "VENDOR_TERMS_CHANGED" not in left:
+                    return False  # 남은 흐름의 조건은 그대로다. 다시 승인만 받으면 된다
+        gone = {x["streamId"] for x in work["excluded"] if x["vendorOrgId"] == thread.vendor_org}
+        left_streams = [sid for sid in thread.stream_ids if sid not in gone]
+        message = make_notice(
+            kind="counter",
+            thread_id=thread.id,
+            sender=thread.emitter_org,
+            recipient=thread.vendor_org,
+            text="합의한 뒤에 업체의 조건(매입 기준표·허가 품목·가드레일)이 바뀌었습니다. "
+            "지금 조건으로 받을 수 있는지와 조건을 다시 알려 주세요.",
+            stage=5,
+            stream_ids=tuple(left_streams),
+            asks=[{"streamId": sid, "field": "terms"} for sid in left_streams],
+        )
+        try:
+            thread.check(message)
+        except ThreadError:  # 턴 상한에 닿았다. 더 협상하지 않고 담당자에게 넘긴다
+            self._handoff(
+                session,
+                thread,
+                thread.emitter_org,
+                "업체의 조건이 바뀌었지만 대화가 턴 상한에 닿아 담당자에게 넘깁니다.",
+                stage=5,
+            )
+            return False
+        was_agreed = thread.status == "agreed"
+        self._append(session, thread, message, "company_agent")  # 합의와 승인이 풀린다
+        for side in ("emitter", "vendor"):
+            self.store.set_approval(session["id"], thread.id, side, False)
+        self.store.block_approval(session["id"], thread.id, None)
+        before = work["assigned"].pop(thread.id, None)
+        if before:
+            # 다시 합의하지 못하고 닫히면 이 흐름들은 결과 한 장에서 "확인 필요"가 된다
+            work.setdefault("renegotiating", {})[thread.id] = list(before)
+        work["offers"].pop(thread.id, None)  # 지난 조건으로 받은 제안은 더 쓰지 않는다
+        work.setdefault("agreedBasis", {}).pop(thread.id, None)
+        work.setdefault("agreedTerms", {}).pop(thread.id, None)
+        work.setdefault("reopened", {})[thread.id] = message.seq
+        work["cannotAsk"].pop(thread.id, None)
+        # 업체가 고친 기준표의 새 근거를 배출 기업에 연다(대화를 열 때와 같다)
+        share_vendor_terms(
+            self.registry, self.store.get_vendor_profile(thread.vendor_org), thread.emitter_org
+        )
+        self._event(
+            session["id"],
+            "system",
+            "thread",
+            "합의한 뒤에 업체의 조건이 바뀌어 대화를 다시 열었습니다. 새 조건으로 이어 갑니다."
+            if was_agreed
+            else "업체의 조건이 바뀌어 남은 흐름의 조건을 다시 묻습니다.",
+            thread.id,
+            status=thread.status,
+            vendorOrgId=thread.vendor_org,
+            streamIds=left_streams,
+            reopenedSeq=message.seq,
+        )
+        return True
 
     # ── ① 식별·분류 ───────────────────────────────────────────────────
     def _identify(self, session: dict[str, Any]) -> bool:
@@ -821,8 +919,11 @@ class Orchestrator:
                 self.store.set_approval(session["id"], thread.id, side, False)
         work = session["work"]
         work.setdefault("agreedBasis", {}).pop(thread.id, None)
+        work.setdefault("agreedTerms", {}).pop(thread.id, None)
         work["offers"].pop(thread.id, None)  # 닫힌 대화의 제안은 더 쓰지 않는다
-        freed = work["assigned"].pop(thread.id, None)
+        # 조건이 바뀌어 다시 협상하던 대화였으면, 앞서 합의했던 흐름이 풀려난 것으로 본다
+        again = work.setdefault("renegotiating", {}).pop(thread.id, None)
+        freed = work["assigned"].pop(thread.id, None) or again
         if not freed or work.get("result") is None:
             return False
         # 합의한 대화가 닫혔다. 그 배정은 결과 한 장에서 빠지고 흐름은 "확인 필요"가 된다
@@ -836,7 +937,8 @@ class Orchestrator:
             }
             if entry not in handed:
                 handed.append(entry)
-        if reassign:
+        # 재협상 중(대화·최적안 단계)에는 여기서 다시 계산하지 않는다. 그 단계의 끝에 한 번 한다
+        if reassign and session.get("phase") not in ("converse", "propose"):
             self._reassign(session, cause=cause)
         return True
 
@@ -1007,6 +1109,11 @@ class Orchestrator:
             if kept:
                 work["assigned"][thread.id] = kept
                 work.setdefault("agreedBasis", {})[thread.id] = self._basis(session, thread)
+                terms = work.setdefault("agreedTerms", {}).get(thread.id)
+                for sid in freed if terms else []:
+                    # 남은 흐름의 합의 조건 지문은 그대로 둔다(그 조건이 바뀌었는지는 계속 본다)
+                    terms["streams"].pop(sid, None)
+                    terms["inputs"].pop(sid, None)
                 profiles = {p["orgId"]: p for p in self.store.list_vendor_profiles()}
                 streams = self.store.list_streams(session["emitterOrgId"])
                 self._loading_for(session, thread, kept, streams, profiles)
@@ -1014,6 +1121,7 @@ class Orchestrator:
                 # 합의한 흐름이 모두 빠졌다. 남은 흐름으로 대화를 이어 갈 수 있게 합의를 푼다
                 work["assigned"].pop(thread.id, None)
                 work.setdefault("agreedBasis", {}).pop(thread.id, None)
+                work.setdefault("agreedTerms", {}).pop(thread.id, None)
                 if thread.status == "agreed":
                     thread.status, thread.agreed_seq = "open", None
             self.store.put_thread(thread)
@@ -1091,7 +1199,7 @@ class Orchestrator:
             summary_ids={
                 "streamIds": [s["id"] for s in streams],
                 "vendorOrgIds": [v["orgId"] for v in vendors],
-                "reason": "handoff",
+                "reason": cause if cause in ("permit", "permit_stream", "terms") else "handoff",
             },
         )
         work["optimize"] = optimized
@@ -1138,11 +1246,12 @@ class Orchestrator:
                 )
             work["assigned"][thread.id] = new
             if sorted(new) != sorted(old):
-                work.setdefault("agreedBasis", {})[thread.id] = self._basis(session, thread)
+                self._remember(session, thread)
                 self._loading_for(session, thread, new, streams, profiles)
                 self._verify(session, thread)
         work["result"] = self._result(session, streams)
-        work["stages"]["4"] = "needs_check"
+        if cause != "terms":
+            work["stages"]["4"] = "needs_check"
         work["stages"]["6"] = (
             "needs_check" if work["result"]["status"] == "needs_information" else "done"
         )
@@ -1163,6 +1272,7 @@ class Orchestrator:
                 "최적안을 다시 계산했습니다.",
                 "permit_stream": "허가 품목이 맞지 않게 된 흐름을 그 업체의 배정에서 빼고 "
                 "최적안을 다시 계산했습니다.",
+                "terms": "업체의 조건이 바뀐 대화를 새 조건으로 이어 간 뒤 최적안을 다시 계산했습니다.",
             }.get(
                 cause, "합의한 대화가 담당자에게 넘어가 그 업체를 빼고 최적안을 다시 계산했습니다."
             ),
@@ -1298,6 +1408,9 @@ class Orchestrator:
             except (AttributeError, UnitError, TypeError, ValueError):
                 item["unitPriceKrwPerKg"] = None
         self._append(session, thread, message, "vendor_agent")
+        if thread.closed:
+            # 업체 측이 닫았다(decline, handoff). 다시 협상하던 대화였으면 앞서 합의한 배정이 풀린다
+            self._release(session, thread, reassign=True, cause="handoff")
         if message.type in TERMS_TYPES:
             terms = meta.get("terms") or {}
             offers = work["offers"].setdefault(thread.id, {})
@@ -1563,6 +1676,14 @@ class Orchestrator:
             else "done"
         )
 
+        if work.get("result") is not None:
+            # 다시 연 대화의 재협상이 끝났다. 이미 합의했거나 확정한 다른 대화의 배정은 그대로 두고
+            # 최적안과 결과 한 장을 다시 만든다(새 조건이 최적안에 들어가면 그 대화는 다시 합의가 된다)
+            self._reassign(session, cause="terms")
+            # run()이 다음 단계로 넘기므로 한 단계 앞에 둔다(승인 대기면 propose → approval)
+            session["phase"] = "propose" if session["phase"] == "approval" else "approval"
+            return False
+
         vendors = [public_profile(profiles[t.vendor_org], fleet_cost=False) for t in live]
         exclude = [
             {"streamId": s["id"], "vendorOrgId": t.vendor_org}
@@ -1606,7 +1727,7 @@ class Orchestrator:
                 streamIds=assigned[thread.id],
                 agreedSeq=thread.agreed_seq,
             )
-            work.setdefault("agreedBasis", {})[thread.id] = self._basis(session, thread)
+            self._remember(session, thread)
             self._loading_for(session, thread, assigned[thread.id], streams, profiles)
             self._verify(session, thread)
         work["result"] = self._result(session, streams)
@@ -1623,10 +1744,17 @@ class Orchestrator:
         - 메시지를 근거 검증기에 다시 넣어 나온 거부 코드
         - EVIDENCE_CHANGED: 메시지가 인용한 근거가 대화 뒤에 바뀌었거나 사라졌다
         - STREAM_CHANGED: 합의한 뒤에 배정된 흐름의 자료가 바뀌었다
+        - VENDOR_TERMS_CHANGED: 합의한 뒤에 업체가 바꾼 설정이 합의 조건에 영향을 준다
         """
         failed: list[str] = []
+        work = session["work"]
         names = thread_names(self.store, thread)
+        reopened = int((work.get("reopened") or {}).get(thread.id) or 0)
         for message in thread.messages:
+            if message.seq < reopened and message.sender == thread.vendor_org:
+                # 조건이 바뀌어 다시 협상하기 전에 업체가 낸 답은 지난 조건의 기록이다. 지금 합의는
+                # 그 뒤의 메시지에 있다(업체가 기준표 값을 고치면 예전 답의 근거도 함께 바뀐다)
+                continue
             result = validate_message(message, self.registry, today=self.today, names=names)
             failed += [f"{thread.id}_m{message.seq}: {code}" for code in result.codes]
             # 대화 뒤에 근거가 바뀌었거나 사라졌으면 그 메시지의 근거 확인은 실패다
@@ -1636,7 +1764,101 @@ class Orchestrator:
         if basis is not None and basis != self._basis(session, thread):
             # 합의한 뒤에 흐름 자료(재질, 물량, 측정값 등)가 바뀌었다. 앞선 합의와 승인은 이전 자료 기준이다
             failed.append(f"{thread.id}: STREAM_CHANGED")
+        agreed = (work.get("agreedTerms") or {}).get(thread.id)
+        if agreed:
+            now = self._vendor_terms(session, thread, agreed.get("inputs"))
+            assigned = work["assigned"].get(thread.id) or []
+            if now["common"] != agreed["common"] or any(
+                now["streams"].get(sid) != agreed["streams"].get(sid) for sid in assigned
+            ):
+                # 합의한 뒤에 업체가 매입 기준표·허가 품목·가드레일을 바꿔 합의 조건이 달라졌다
+                failed.append(f"{thread.id}: VENDOR_TERMS_CHANGED")
         return list(dict.fromkeys(failed))
+
+    def _vendor_terms(
+        self, session, thread: Thread, inputs: dict[str, dict] | None = None
+    ) -> dict[str, Any]:
+        """합의 조건에 영향을 주는 업체 쪽 설정의 지문(단가, 최소 물량, 상한, 요일, 횟수).
+
+        배정된 흐름마다 지금 프로필로 다시 본다: 허가 품목이 맞는지, 어느 매입 기준이 골라지고 그
+        단가·최소 물량·오염도·수분 상한이 얼마인지, 합의한 단가·요일이 가드레일 안인지, 자동 거절에
+        걸리는지. 여기에 수거 횟수를 정하는 값(월 최소 횟수, 차량 용량)을 더한다. 합의 조건과 관계없는
+        변경(다른 재질의 기준, 가능 요일 추가, 모델 선택 등)은 지문을 바꾸지 않는다.
+        inputs는 합의한 때의 흐름 자료다. 그것으로 계산해 흐름 쪽 변경(STREAM_CHANGED)과 섞이지 않게 한다.
+        """
+        work = session["work"]
+        offers = work["offers"].get(thread.id) or {}
+        profile = self.store.get_vendor_profile(thread.vendor_org)
+        public = public_profile(profile, fleet_cost=False)
+        guard = profile.get("guardrails") or {}
+        fleet = profile.get("fleet") or {}
+        streams: dict[str, str] = {}
+        used: dict[str, dict] = {}
+        for sid in sorted(work["assigned"].get(thread.id) or []):
+            stream = (inputs or {}).get(sid)
+            if stream is None:
+                stream = dict(self.store.get_stream(sid))
+                stream.pop("currentTreatment", None)
+            used[sid] = stream
+            criterion, checks = best_criterion(stream, public, quality(stream))
+            offer = offers.get(sid) or {}
+            violations = rails.check_terms(
+                guard,
+                {
+                    "unitPriceKrwPerKg": offer.get("unitPriceKrwPerKg"),
+                    "days": list(offer.get("days") or []),
+                    "conditions": list(offer.get("conditions") or []),
+                },
+            )
+            streams[sid] = ids.digest(
+                {
+                    "permit": permit_match(stream, public)[0],
+                    "criterion": None
+                    if criterion is None
+                    else {
+                        key: criterion.get(key)
+                        for key in (
+                            "id",
+                            "material",
+                            "grade",
+                            "form",
+                            "unitPriceKrwPerKg",
+                            "minMonthlyKg",
+                            "maxContaminationPct",
+                            "maxMoisturePct",
+                        )
+                    },
+                    "checks": [[check[0], check[1]] for check in checks],
+                    "guardrails": sorted({v.code for v in violations}),
+                    "autoDecline": rails.auto_decline_reason(guard, stream) is not None,
+                }
+            )
+        common = ids.digest(
+            {
+                "minPickupsPerMonth": guard.get("minPickupsPerMonth"),
+                "capacityKg": fleet.get("capacityKg"),
+                "capacityM3": fleet.get("capacityM3"),
+            }
+        )
+        return {"streams": streams, "common": common, "inputs": used}
+
+    def _remember(self, session, thread: Thread) -> None:
+        """합의한 내용의 지문을 남긴다(흐름 자료와 받은 조건, 업체 쪽 설정). 승인 전에 다시 견준다.
+
+        배정된 흐름이 늘어난 경우에는 이미 합의해 둔 흐름의 업체 쪽 지문을 그대로 둔다.
+        """
+        work = session["work"]
+        work.setdefault("renegotiating", {}).pop(thread.id, None)
+        work.setdefault("agreedBasis", {})[thread.id] = self._basis(session, thread)
+        fresh = self._vendor_terms(session, thread)
+        old = work.setdefault("agreedTerms", {}).get(thread.id)
+        if old:
+            fresh["common"] = old["common"]
+            for sid in fresh["streams"]:
+                if sid in old["streams"] and sid in old.get("inputs", {}):
+                    fresh["streams"][sid] = old["streams"][sid]
+                    fresh["inputs"][sid] = old["inputs"][sid]
+        work["agreedTerms"][thread.id] = fresh
 
     @staticmethod
     def _block_reason(failed: list[str]) -> str:
@@ -1644,6 +1866,11 @@ class Orchestrator:
         codes = block_codes(reason)
         if "STREAM_CHANGED" in codes:
             reason += ". 합의한 뒤에 흐름 자료가 바뀌었습니다. 진단을 새로 진행해 주세요."
+        if "VENDOR_TERMS_CHANGED" in codes:
+            reason += (
+                ". 합의한 뒤에 업체의 조건(매입 기준표·허가 품목·가드레일)이 바뀌었습니다. "
+                "진단을 다시 진행하면 새 조건으로 대화를 이어 갑니다."
+            )
         return reason
 
     def _verify(self, session, thread: Thread) -> list[str]:
@@ -2045,10 +2272,15 @@ class Orchestrator:
                 else "업체의 허가 품목이 일부 흐름과 맞지 않게 되어 그 흐름만 뺐습니다. "
                 "남은 조건을 확인하고 다시 승인해 주세요.",
             )
-        if self._verify(session, thread):
+        blocked = self._verify(session, thread)
+        if blocked:
             self._save(session)
             raise OrchestratorError(
-                "APPROVAL_BLOCKED", "근거 확인에 실패한 항목이 있어 승인할 수 없습니다."
+                "APPROVAL_BLOCKED",
+                "합의한 뒤에 업체의 조건이 바뀌어 승인할 수 없습니다. 진단을 다시 진행하면 "
+                "새 조건으로 대화를 이어 갑니다."
+                if any(item.endswith(": VENDOR_TERMS_CHANGED") for item in blocked)
+                else "근거 확인에 실패한 항목이 있어 승인할 수 없습니다.",
             )
         side = thread.side_of(org_id)
         both = thread.approve(org_id)
