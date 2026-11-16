@@ -7,12 +7,13 @@ phase와 work에 남기고, 모든 메시지·도구 호출·검증 결과·hand
 
 from __future__ import annotations
 
+import re
 from typing import Any
 
 from app.v3 import ids
 from app.v3 import names as naming
 from app.v3.a2a.guardrails import WEEKDAYS
-from app.v3.a2a.message import PLACEHOLDER, Message
+from app.v3.a2a.message import MESSAGE_TYPES, PLACEHOLDER, Message
 from app.v3.a2a.policy import (
     QuestionPolicy,
     can_open_thread,
@@ -27,6 +28,7 @@ from app.v3.agents.draft import (
     ASK_USER,
     Outcome,
     Trace,
+    id_arguments,
     make_decline,
     make_handoff,
     model_label,
@@ -40,6 +42,7 @@ from app.v3.evidence.render import render_text
 from app.v3.evidence.units import UnitError, convert
 from app.v3.evidence.validator import (
     ALLOWED_TOKENS,
+    find_numbers,
     name_tokens,
     validate_message,
     validate_text,
@@ -117,6 +120,110 @@ def claim_in(result: dict[str, Any] | None, key: str | None, new_id: str) -> dic
 def permit_digest(stream: dict[str, Any], vendor: dict[str, Any]) -> str:
     """허가 품목 대조에 들어가는 값의 지문. 같으면 대조 결과도 같다."""
     return ids.digest([stream.get("wasteItem"), stream.get("material"), vendor.get("permits")])
+
+
+_CALLED_BY = re.compile(r"^(orchestrator|code|model:[A-Za-z0-9_.\-]{1,40})$")
+_TOOL_STATUSES = ("calculated", "conditional", "needs_information", "error")
+_CHECK_STATUSES = ("met", "conditional", "unmet")
+
+
+def reported_trace(trace: Any, registry: Any = None) -> list[dict[str, Any]]:
+    """업체 측 에이전트가 답과 함께 보낸 기록(도구 호출, 검증)을 정해 둔 모양으로만 옮긴다.
+
+    별도 서비스로 뜬 업체 측의 기록은 회사 측이 확인할 수 없는 자기 보고다. 글은 옮기지 않고
+    도구 이름·상태·코드처럼 정해 둔 값만 남겨 코드가 요약을 다시 쓴다(지어낸 숫자나 없는 도구가
+    실행 기록에 실리지 않게 한다). 실행됐다는 도구 호출은 그 도구가 남긴 calc 근거가 근거 저장소에
+    실제로 있을 때만 옮긴다(판단 도구는 호출마다 calc 근거를 남긴다).
+    """
+
+    def left_by(tool: str, evidence_id: Any) -> bool:
+        if not isinstance(evidence_id, str):
+            return False
+        if registry is None:
+            return evidence_id.startswith(("calc:", "assumption:"))
+        try:
+            found = registry.get(evidence_id, None)
+        except EvidenceNotFound:
+            return False
+        return found.kind == "assumption" or (found.meta or {}).get("tool") == tool
+
+    out: list[dict[str, Any]] = []
+    for event in trace if isinstance(trace, list) else []:
+        detail = event.get("detail") if isinstance(event, dict) else None
+        if not isinstance(detail, dict):
+            continue
+        called = detail.get("calledBy")
+        if event.get("kind") == "tool_call":
+            tool, status = detail.get("tool"), detail.get("status")
+            if tool is not None and tool not in TOOLS:
+                tool = None
+            if status not in _TOOL_STATUSES:
+                continue
+            kept: dict[str, Any] = {
+                "tool": tool,
+                "arguments": id_arguments(detail.get("arguments")),
+                "status": status,
+                "calledBy": called
+                if isinstance(called, str) and _CALLED_BY.match(called)
+                else None,
+            }
+            if tool is not None:
+                kept["stage"] = TOOLS[tool].stage
+            if status == "error":
+                kept["error"] = "도구 호출에 실패했습니다."
+                summary = f"{tool or '알 수 없는 도구'} · 실패"
+            else:
+                if tool is None:
+                    continue  # 실행된 호출이라면 판단 도구 이름이 있어야 한다
+                kept["checks"] = [
+                    {"key": str(c.get("key"))[:40], "status": c.get("status")}
+                    for c in (
+                        detail.get("checks") if isinstance(detail.get("checks"), list) else []
+                    )
+                    if isinstance(c, dict)
+                    and c.get("status") in _CHECK_STATUSES
+                    and not find_numbers(str(c.get("key")))
+                ]
+                kept["evidence"] = [
+                    e
+                    for e in (
+                        detail.get("evidence") if isinstance(detail.get("evidence"), list) else []
+                    )
+                    if left_by(tool, e)
+                ]
+                if registry is not None and not kept["evidence"]:
+                    continue  # 그 도구가 남긴 근거가 없다. 일어났다고 확인할 수 없는 호출이다
+                summary = f"{tool} · {status}"
+            out.append(
+                {"actor": "vendor_agent", "kind": "tool_call", "summary": summary, "detail": kept}
+            )
+        elif event.get("kind") == "validation" and isinstance(detail.get("ok"), bool):
+            attempt = detail.get("attempt")
+            attempt = attempt if isinstance(attempt, int) and not isinstance(attempt, bool) else 0
+            model = detail.get("model") if isinstance(detail.get("model"), dict) else {}
+            kept = {
+                "ok": detail["ok"],
+                "attempt": attempt,
+                "model": {"provider": str(model.get("provider")), "name": str(model.get("name"))},
+            }
+            if detail["ok"]:
+                if detail.get("type") in MESSAGE_TYPES:
+                    kept["type"] = detail["type"]
+                summary = f"검증 통과({attempt}번째 초안)"
+            else:
+                kept["rejections"] = public_rejections(
+                    detail.get("rejections") if isinstance(detail.get("rejections"), list) else []
+                )
+                if detail.get("draftType") in MESSAGE_TYPES:
+                    kept["draftType"] = detail["draftType"]
+                codes = ", ".join(dict.fromkeys(r["code"] for r in kept["rejections"]))
+                summary = f"검증 거부({attempt}번째 초안): {codes}"
+            out.append(
+                {"actor": "validator", "kind": "validation", "summary": summary, "detail": kept}
+            )
+    for event in out:
+        event["detail"]["reportedBy"] = "vendor"
+    return out
 
 
 def thread_names(store: Any, thread: Any) -> list[str]:
@@ -929,7 +1036,12 @@ class Orchestrator:
         """업체 측 답을 회사 측에서 다시 검사한 뒤에만 스레드에 붙인다."""
         work = session["work"]
         raw_meta = reply.get("meta") if isinstance(reply.get("meta"), dict) else {}
-        self._flush(session["id"], list(raw_meta.get("trace") or []), thread.id, thread.vendor_org)
+        self._flush(
+            session["id"],
+            reported_trace(raw_meta.get("trace"), self.registry),
+            thread.id,
+            thread.vendor_org,
+        )
         meta = self._clean_meta(raw_meta, thread)
         reported = meta.get("validation") or {}
         problems: list[dict[str, Any]] = []

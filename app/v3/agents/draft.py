@@ -225,7 +225,7 @@ def build_message(
 _ARGUMENT_WORDS = ("sell", "treat", "keep", "vendor", "emitter")
 
 
-def _id_arguments(arguments: Any) -> dict[str, Any]:
+def id_arguments(arguments: Any) -> dict[str, Any]:
     """실행 기록에 남길 도구 인자. 식별자 꼴(흐름 ID, 경로 이름)만 남기고 나머지는 뺀다."""
     out: dict[str, Any] = {}
     for key, value in (arguments if isinstance(arguments, dict) else {}).items():
@@ -363,7 +363,7 @@ class AgentTools:
             f"{name} · {result.get('status')}",
             tool=name,
             stage=TOOLS[name].stage,
-            arguments=_id_arguments(arguments),
+            arguments=id_arguments(arguments),
             status=result.get("status"),
             checks=[{"key": c["key"], "status": c["status"]} for c in result.get("checks") or []],
             evidence=list(result.get("evidence") or []),
@@ -380,7 +380,7 @@ class AgentTools:
             "tool_call",
             f"{name if name in TOOLS else '알 수 없는 도구'} · 실패",
             tool=name if name in TOOLS else None,
-            arguments=_id_arguments(arguments),
+            arguments=id_arguments(arguments),
             status="error",
             error=message if name in TOOLS else "이 에이전트가 쓸 수 없는 도구입니다.",
             orgId=self.org_id,
