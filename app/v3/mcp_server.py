@@ -10,6 +10,14 @@ tests/v3/test_mcp_server.py가 CI에서 확인한다.
   toolbox.call_tool에 넘긴다. 결과(dict)는 JSON 문자열 하나로 돌려준다.
 - 준비된 JSON Schema를 그대로 싣기 위해 MCP Python SDK의 저수준 Server를 쓴다
   (FastMCP는 함수 서명에서 스키마를 만들어 toolbox의 스키마를 그대로 실을 수 없다).
+- MCP Python SDK 1.x(mcp>=1.10,<2)에서만 돈다. 2.x에서는 여기서 쓰는 저수준 API가 바뀌었다:
+  @server.list_tools()/@server.call_tool() 장식자가 없어지고 Server(on_list_tools=, on_call_tool=)로
+  바뀌었고, 처리 함수는 (ctx, params)를 받아 ListToolsResult/CallToolResult를 직접 돌려줘야 하며,
+  Tool의 inputSchema는 input_schema가 됐고, 예외가 isError 결과로 바뀌지 않는다
+  (https://py.sdk.modelcontextprotocol.io 의 v1→v2 이전 안내서, 2026-11-17 확인).
+  StreamableHTTPSessionManager의 생성자와 run()/handle_request()는 그대로다.
+  2.x로 옮기기 전에는 pyproject의 상한(<2)을 풀지 않는다. Agent Framework의 MCP 도구는
+  mcp>=2.2,<3을 요구하므로 MCP 서버 이미지와 Agent Framework 이미지는 따로 만든다.
 - 근거 레지스트리는 DATABASE_URL이 있으면 API와 같은 SQL 레지스트리다. 없으면 이 프로세스
   안의 메모리 레지스트리(법령·기준값·가정값 시드만 든 것)라서 API와 근거를 나누지 못한다.
 - 호출자가 org_id를 정하므로 내부망에서만 쓴다. 127.0.0.1이 아닌 주소로 띄우려면

@@ -181,6 +181,28 @@ def test_contract_lists_the_request_error_codes():
         assert f"| `{code}` | {status} |" in section, code
 
 
+# ── mcp 버전 ─────────────────────────────────────────────────────────
+def test_mcp_range_stays_on_the_sdk_line_the_server_is_written_for():
+    """mcp_server.py는 SDK 1.x의 저수준 API(장식자)를 쓴다. 옮기기 전에 상한을 풀면 여기서 걸린다."""
+    import ast
+
+    tree = wiring.parse("app/v3/mcp_server.py")
+    decorators = {
+        d.func.attr
+        for node in ast.walk(tree)
+        if isinstance(node, ast.AsyncFunctionDef)
+        for d in node.decorator_list
+        if isinstance(d, ast.Call) and isinstance(d.func, ast.Attribute)
+    }
+    uses_v1 = {"list_tools", "call_tool"} <= decorators
+    project = (wiring.ROOT / "pyproject.toml").read_text(encoding="utf-8")
+    pinned = '"mcp>=1.10,<2"' in project
+    assert uses_v1 == pinned, "mcp_server.py의 API와 pyproject의 mcp 범위가 어긋난다"
+    readme = (wiring.ROOT / "README.md").read_text(encoding="utf-8")
+    assert "MCP 서버 이미지와 Agent Framework 이미지는 분리" in readme
+    assert "mcp>=2.2,<3" in readme and "mcp>=1.10,<2" in readme
+
+
 def test_api_prefix_matches_devserver():
     tree = wiring.parse("app/v3/api.py")
     source = (wiring.ROOT / "app/v3/api.py").read_text(encoding="utf-8")

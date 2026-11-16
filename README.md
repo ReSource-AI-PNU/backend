@@ -356,6 +356,12 @@ docker build -t rsai-backend --build-arg EXTRAS= .    # 추론 없이 가볍게
 docker run -e APP_ROLE=mcp -e MCP_SERVICE_KEY=<서비스 키> -p 8000:8000 rsai-backend
 ```
 
+**MCP 서버 이미지와 Agent Framework 이미지는 분리한다.** 판단 도구 MCP 서버(`app/v3/mcp_server.py`, `v3` extra)는 MCP Python SDK 1.x(`mcp>=1.10,<2`)의 저수준 API로 쓰여 있고, Microsoft Agent Framework의 MCP 도구는 `mcp>=2.2,<3`을 요구한다. 두 범위가 겹치지 않아 한 이미지에 함께 설치할 수 없다. SDK 2.x에서는 `@server.list_tools()`·`@server.call_tool()` 장식자가 `Server(on_list_tools=, on_call_tool=)`로 바뀌고 `inputSchema`가 `input_schema`가 되는 등 이 서버가 쓰는 API가 달라져 같은 코드가 돌지 않는다(공식 v1→v2 이전 안내서로 확인, 2026-11-17. 실제 2.x로 돌려 보지는 못했다). 그래서 범위를 넓히지 않았다.
+
+- `APP_ROLE=mcp` 이미지: `v3` extra만 넣는다(`mcp` 1.x). Agent Framework 패키지를 넣지 않는다.
+- `V3_AGENT_FRAMEWORK`를 켜는 API 이미지: `agent-framework-foundry`, `azure-identity`를 넣고 `v3` extra는 넣지 않는다. MCP 서버에는 HTTP(`/mcp`)로만 닿으므로 SDK 버전이 달라도 된다.
+- 지금 `Dockerfile`은 이미지 하나를 `APP_ROLE`로 나눠 쓰므로, Agent Framework를 켜려면 이미지를 따로 만들어야 한다(아직 만들지 않았다).
+
 `infra/deploy.sh`는 `az acr build`로 이미지를 만들고(태그는 커밋 SHA), 새 이미지로 `alembic upgrade head`를 돌린 뒤에 앱을 바꾼다. 마이그레이션이 실패하면 앱을 바꾸지 않는다. Container Apps를 쓸 수 없는 동안에는 App Service(`infra/appservice.bicep`)에 배포한다. `main`에 병합되면 `.github/workflows/deploy.yml`이 CI 통과 뒤에 같은 스크립트를 돌린다(OIDC 설정이 끝난 뒤부터).
 
 ```bash
