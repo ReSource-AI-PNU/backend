@@ -148,6 +148,11 @@ class SqlRegistry:
             found = db.scalar(select(EvidenceRow.id).where(EvidenceRow.id == evidence_id))
         return found is not None
 
+    def clear(self) -> None:
+        """근거를 모두 지운다. 시연을 처음 상태로 되돌릴 때(service.reset_demo)만 부른다."""
+        with _transaction(self._engine) as db:
+            db.execute(delete(EvidenceRow))
+
     def list(
         self, *, kinds: Iterable[str] | None = None, org_id: str | None = None
     ) -> list[Evidence]:

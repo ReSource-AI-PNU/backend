@@ -119,6 +119,15 @@ def test_registry_keeps_empty_access_private(registry):
     assert registry.list(org_id="org_a") == []
 
 
+def test_registry_clear_removes_everything(registry):
+    """service.reset_demo가 부른다. 두 구현 모두 근거를 비우고 버전도 처음부터 센다."""
+    registry.put(evidence())
+    registry.put(evidence(value=2.0))
+    registry.clear()
+    assert registry.list() == [] and not registry.exists(evidence().id)
+    assert registry.put(evidence()).version == 1
+
+
 def test_sql_registry_persists_across_instances(engine):
     SqlRegistry(engine).put(evidence())
     again = SqlRegistry(engine)

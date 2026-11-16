@@ -144,7 +144,8 @@ def test_demo_scenario_to_confirmation(client):
         halfway = client.get(f"/api/v3/sessions/{session_id}", headers=org(EMITTER)).json()
         mine = next(t for t in halfway["threads"] if t["id"] == thread["id"])
         assert mine["status"] == "agreed"  # 한쪽만 승인하면 확정하지 않는다
-        assert halfway["documents"] == []
+        # 앞서 확정한 스레드의 문서는 이미 있으므로 이 스레드의 문서만 본다
+        assert not [d for d in halfway["documents"] if d["threadId"] == thread["id"]]
         second = client.post(
             f"/api/v3/sessions/{session_id}/approvals",
             headers=org(thread["vendorOrgId"]),
@@ -177,11 +178,12 @@ def test_evidence_search_and_chain(client):
         "/api/v3/evidence", params={"q": "폐기물", "kind": "law"}, headers=org(EMITTER)
     )
     assert found.status_code == 200, found.text
-    items = found.json()
-    assert items and all(item["kind"] == "law" for item in items)
-    one = client.get(f"/api/v3/evidence/{quote(items[0]['id'], safe='')}", headers=org(EMITTER))
+    items = found.json()  # service.search_evidence는 [{"evidence", "score"}]를 돌려준다
+    assert items and all(item["evidence"]["kind"] == "law" for item in items)
+    first_id = items[0]["evidence"]["id"]
+    one = client.get(f"/api/v3/evidence/{quote(first_id, safe='')}", headers=org(EMITTER))
     assert one.status_code == 200, one.text
-    assert one.json()["evidence"]["id"] == items[0]["id"]
+    assert one.json()["evidence"]["id"] == first_id
     assert isinstance(one.json()["chain"], list)
 
 

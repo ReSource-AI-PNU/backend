@@ -51,7 +51,9 @@ async def messages(request: Request):
         raise ApiError("VENDOR_NOT_SET", "VENDOR_ORG_ID가 설정되지 않았습니다.", 503)
     body = await json_object(request)
     message = body.get("message")
-    context = body.get("context") or {}
+    context = body.get("context")
+    if context is None:
+        context = {}
     if not isinstance(message, dict) or not isinstance(context, dict):
         raise ApiError("INVALID_REQUEST", "message와 context는 JSON 객체여야 합니다.")
     if message.get("to") != vendor_org_id:
