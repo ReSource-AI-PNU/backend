@@ -84,6 +84,28 @@ def test_c06_unknown_form_does_not_pick_the_best_price():
     assert r["status"] == "conditional" and any(
         c["key"] == "form" and c["ask"] for c in r["checks"]
     )
+    # 가장 비싼 펠렛 단가를 골라 금액을 내지 않는다(금지 사항)
+    assert not {"unitPrice", "monthlyAfter", "difference"} & {c["id"] for c in r["claims"]}
+    assert r["output"]["criterionId"] is None and r["output"]["acceptable"] is None
+    ask = next(c["ask"] for c in r["checks"] if c["key"] == "form")
+    assert "압축" in ask and "펠렛" in ask
+    assert_grounded(reg, r)
+    best = run(
+        reg,
+        "optimize_assignment",
+        streams=[case(form=None)],
+        vendors=[vendor(criteria=[PRESS, pellet])],
+    )
+    assert best["output"]["assignments"][0]["vendorOrgId"] is None  # 배정도 하지 않는다
+    cost = run(reg, "cost_carbon", stream=case(form=None), vendor=vendor(criteria=[PRESS, pellet]))
+    assert cost["status"] == "needs_information" and money(cost) == []
+    # 형태를 요구하는 기준이 하나뿐이면 그 기준으로 조건부 판정을 낸다(고를 것이 없다)
+    single = run(reg, "judge_route", stream=case(form=None), vendor=buyer())
+    assert single["status"] == "conditional" and claim(single, "unitPrice")["value"] == 200
+    # 형태와 무관한 기준이 있으면 그것을 쓴다
+    generic = {**PRESS, "id": "pc_pp_any", "form": None, "unitPriceKrwPerKg": 150}
+    r2 = run(reg, "judge_route", stream=case(form=None), vendor=vendor(criteria=[generic, pellet]))
+    assert r2["output"]["criterionId"] == "pc_pp_any" and claim(r2, "unitPrice")["value"] == 150
     ident = run(reg, "identify_stream", stream=case(form=None))
     assert ident["output"]["form"] is None and any(c["key"] == "form" for c in ident["checks"])
 

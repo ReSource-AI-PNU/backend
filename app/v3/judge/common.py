@@ -235,8 +235,7 @@ def criterion_checks(stream: dict, criterion: dict, q: dict) -> list[tuple]:
     return out
 
 
-def best_criterion(stream: dict, vendor: dict, q: dict):
-    """(매입 기준, 대조 결과). 불충족이 없는 기준 중 단가가 가장 높은 것, 동점이면 ID가 앞선 것."""
+def _ranked_criteria(stream: dict, vendor: dict, q: dict) -> list[tuple]:
     ranked = []
     for criterion in vendor.get("criteria") or []:
         if criterion.get("material") != stream.get("material"):
@@ -248,9 +247,34 @@ def best_criterion(stream: dict, vendor: dict, q: dict):
         unmet = sum(1 for c in checks if c[1] == "unmet")
         conditional = sum(1 for c in checks if c[1] == "conditional")
         ranked.append(((unmet, conditional, -price, str(criterion.get("id"))), criterion, checks))
-    if not ranked:
-        return None, []
     ranked.sort(key=lambda r: r[0])
+    return ranked
+
+
+def ambiguous_forms(stream: dict, vendor: dict, q: dict) -> list[dict]:
+    """형태를 모르는데 형태에 따라 매입 기준이 갈리면 그 기준들. 갈리지 않으면 빈 목록.
+
+    가장 앞선 후보가 특정 형태를 요구하고, 같은 정도로 맞는 다른 후보가 다른 형태를 요구할 때다.
+    이때 단가가 높은 쪽을 고르면 모르는 형태를 임의로 정하는 것이 된다.
+    """
+    if stream.get("form"):
+        return []
+    ranked = _ranked_criteria(stream, vendor, q)
+    if not ranked or ranked[0][0][0] > 0 or not ranked[0][1].get("form"):
+        return []
+    top = ranked[0][0][:2]
+    tied = [r[1] for r in ranked if r[0][:2] == top and r[1].get("form")]
+    return tied if len({c.get("form") for c in tied}) > 1 else []
+
+
+def best_criterion(stream: dict, vendor: dict, q: dict):
+    """(매입 기준, 대조 결과). 불충족이 없는 기준 중 단가가 가장 높은 것, 동점이면 ID가 앞선 것.
+
+    형태를 모르는데 형태에 따라 기준이 갈리면 어느 것도 고르지 않는다(None).
+    """
+    ranked = _ranked_criteria(stream, vendor, q)
+    if not ranked or ambiguous_forms(stream, vendor, q):
+        return None, []
     return ranked[0][1], ranked[0][2]
 
 

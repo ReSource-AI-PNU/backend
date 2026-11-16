@@ -1027,6 +1027,23 @@ class Orchestrator:
                             "evidence": list(offer["claim"]["evidence"]),
                         }
                     )
+            pending = [
+                questions.FIELDS[u["field"]]["label"]
+                for u in work.get("unresolved") or []
+                if u["streamId"] == sid and u["field"] in questions.FIELDS
+            ]
+            if vendor_id is None and pending:
+                # 모르는 값 때문에 업체를 정하지 못한 흐름을 "확정(현행 유지)"으로 보이지 않게 한다
+                status = "needs_information"
+                checks.append(
+                    {
+                        "key": "unresolved",
+                        "status": "conditional",
+                        "text": f"확인되지 않은 값({', '.join(dict.fromkeys(pending))})이 있어 "
+                        "업체 배정을 확정하지 못했습니다. 확인 필요.",
+                        "evidence": [],
+                    }
+                )
             alternatives = []
             for other_id, thread in sorted(threads.items()):
                 other = (work["offers"].get(thread.id) or {}).get(sid)

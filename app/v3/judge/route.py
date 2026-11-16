@@ -7,6 +7,7 @@ import math
 from app.v3.judge import defaults
 from app.v3.judge.common import (
     Recorder,
+    ambiguous_forms,
     best_criterion,
     num,
     permit_match,
@@ -137,6 +138,23 @@ def judge_route(registry, *, org_id, today, stream, vendor=None):
         rec.check("permit", "met", "허가 품목이 맞습니다.", None, permit_ev)
 
     q = quality(stream)
+    by_form = ambiguous_forms(stream, vendor, q)
+    if by_form:
+        # 형태를 모르는데 형태마다 기준이 다르다. 한 형태(가장 비싼 기준)를 임의로 고르지 않는다
+        forms = ", ".join(dict.fromkeys(str(c.get("form")) for c in by_form))
+        rec.check(
+            "form",
+            "conditional",
+            "흐름의 형태가 확인되지 않았고, 형태에 따라 매입 기준이 다릅니다.",
+            f"형태를 모르는 상태입니다. 매입 기준이 형태({forms})에 따라 다릅니다. 형태를 확인하는 "
+            "방법이나 형태와 관계없이 받는 조건이 있는지 알려 주세요.",
+            [e for c in by_form for e in (c.get("evidence") or [])] + q["evidence"],
+        )
+        for key, status, text, ask in stream_cautions(stream):
+            rec.check(key, status, text, ask)
+        output["reason"] = "형태에 따라 매입 기준이 달라, 형태를 확인한 뒤에 단가를 정합니다."
+        output["current"], _ = baseline(rec, stream, kg, None)
+        return rec.result("conditional", output)
     criterion, checks = best_criterion(stream, vendor, q)
     if criterion is None:
         rec.check("criteria", "unmet", "이 재질의 매입 기준이 없습니다.")
