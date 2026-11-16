@@ -288,6 +288,7 @@ def test_build_app_connects_azure_parts_only_when_configured(monkeypatch):
     monkeypatch.setattr(settings, "azure_search_api_key", "")
     monkeypatch.delenv("APPLICATIONINSIGHTS_CONNECTION_STRING", raising=False)
     monkeypatch.delenv("V3_EMBEDDINGS", raising=False)
+    monkeypatch.delenv("V3_AGENT_FRAMEWORK", raising=False)
     plain = api.build_app()
     assert plain.distance_provider is None and search.backend_name() == "local"
     assert not isinstance(plain.store, tracing.TracingStore)

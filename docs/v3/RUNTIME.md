@@ -39,6 +39,9 @@
 | `FoundryChat` | 회사 측 에이전트와 업체 측 기본 모델 |
 | `OllamaChat` | 업체가 오픈 모델을 고른 경우 |
 | `RulePolicy` | 네트워크 없이 도는 결정적 정책. 로컬 시연과 테스트에 쓴다. 화면에는 모델 이름 대신 "규칙 정책(모델 미연결)"이라고 표시한다 |
+| `MafChat`, `RegisteredAgentChat` (`agents/maf.py`) | Microsoft Agent Framework로 같은 Foundry 모델을 부른다. `V3_AGENT_FRAMEWORK=chat`이면 `FoundryChatClient`, `agent`이면 Foundry Agent Service에 등록한 Prompt Agent(`scripts/v3/register_foundry_agents.py`)다. 설정이 없으면 `FoundryChat` 그대로다 |
+
+Agent Framework를 쓸 때도 고리는 같다. 모델은 JSON만 내고, 판단 도구는 모델이 직접 부르지 않는다(JSON의 `toolCalls`를 코드가 실행한다). 판단 도구 MCP 서버의 도구는 호출자가 `org_id`를 정하므로 모델에게 그대로 주지 않는다.
 
 `RulePolicy`가 낸 결과를 모델이 낸 것처럼 보여 주지 않는다. 진단 뷰의 `vendorModel`과 실행 기록에 실제로 쓴 구현 이름이 그대로 남는다.
 
@@ -152,6 +155,8 @@ def register_model_run(app, run, viewer) -> dict                    # 재학습 
 - 계산 근거의 입력 원본(`meta.inputs`)은 계산한 조직에게만 보이고, 다른 조직에게는 `{"hidden": true}`로 나간다.
 - 메시지와 문서에 실린 claim의 근거는 받는 쪽에도 연다. 허가증 근거는 허가 품목을 대조하기 전에, 매입 기준 근거는 스레드를 열 때 배출 기업에 연다.
 
+근거 검색(`GET /evidence?q=`): 기본은 로컬 어휘 검색이다. `AZURE_SEARCH_ENDPOINT`와 `AZURE_SEARCH_API_KEY`가 있으면 순위만 Azure AI Search(하이브리드 + 시맨틱)에서 받고, 내용은 레지스트리에서 다시 읽어 조직이 볼 수 없는 근거와 색인에만 남은 근거를 걸러 낸다. 색인이 실패하면 로컬 검색으로 답한다. 판단 도구(`search_clauses`)는 이 검색을 쓰지 않아 결과가 바뀌지 않는다. 색인은 `scripts/v3/index_evidence.py`로 올린다.
+
 자료 올리기:
 
 - `upload_csv`는 흐름 이름이 같은 흐름에 측정값을 붙이고 measure 근거로 등록한다. 이름이 맞는 흐름이 없는 행은 `unmatched`로 돌려준다.
@@ -179,7 +184,7 @@ def register_model_run(app, run, viewer) -> dict                    # 재학습 
 
 ## 7. 실행 기록
 
-모든 메시지, 도구 호출, 검증 결과, handoff, 승인은 `store`의 events에 남는다. 계약 7장의 `kind`에 `thread`(스레드 개설·미개설·합의·확정), `question`(담당자 질문과 답), `document`(문서 생성), `stage`(진단 생성)를 더했다. 업체가 보는 뷰에는 자기 스레드의 메시지·handoff·승인·스레드·문서 기록과 자기가 한 도구 호출·검증 기록만 나간다. 화면의 대화와 실행 기록은 이 기록을 그대로 보여 준다. OpenTelemetry로 내보내는 것은 `api.py` 쪽에서 같은 이벤트를 span으로 옮겨 한다.
+모든 메시지, 도구 호출, 검증 결과, handoff, 승인은 `store`의 events에 남는다. 계약 7장의 `kind`에 `thread`(스레드 개설·미개설·합의·확정), `question`(담당자 질문과 답), `document`(문서 생성), `stage`(진단 생성)를 더했다. 업체가 보는 뷰에는 자기 스레드의 메시지·handoff·승인·스레드·문서 기록과 자기가 한 도구 호출·검증 기록만 나간다. 화면의 대화와 실행 기록은 이 기록을 그대로 보여 준다. OpenTelemetry로 내보내는 것은 `tracing.py`가 한다: `APPLICATIONINSIGHTS_CONNECTION_STRING`이 있으면 `api.build_app`이 저장소를 `TracingStore`로 감싸고, `add_event`로 저장된 이벤트마다 span 하나(`rsai.<kind>`, 속성 `rsai.*`)를 낸다. 저장된 이벤트만 옮기므로 화면과 추적이 같은 기록을 본다. 내보내기가 실패해도 진단은 계속된다.
 
 ## 8. 로컬 서버
 

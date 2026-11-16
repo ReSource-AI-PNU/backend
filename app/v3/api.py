@@ -105,10 +105,13 @@ def build_app() -> service.App:
     - AZURE_MAPS_KEY: 판단 도구의 도로 거리(judge/distance.py). 없으면 직선 거리 가정값 경로다.
     - AZURE_SEARCH_ENDPOINT, AZURE_SEARCH_API_KEY: 근거 검색의 순위를 Azure AI Search에서 받는다
       (evidence/search.py의 선택 계층). 없거나 설정이 틀리면 로컬 검색이다.
+    - V3_AGENT_FRAMEWORK=chat|agent + FOUNDRY_PROJECT_ENDPOINT: Foundry로 가는 모델 호출을
+      Microsoft Agent Framework로 한다(agents/maf.py). 비어 있으면 지금처럼 urllib로 부른다.
     """
     import os
 
     from app.v3 import tracing
+    from app.v3.agents import maf
     from app.v3.evidence import search, search_azure
     from app.v3.judge.distance import AzureMapsDistance
 
@@ -130,6 +133,7 @@ def build_app() -> service.App:
         api_key=settings.foundry_api_key,
         ollama_base_url=settings.ollama_base_url,
     )
+    factory = maf.factory_from_env(factory, os.environ)
     store = tracing.enable(store, os.environ.get("APPLICATIONINSIGHTS_CONNECTION_STRING", ""))
     search_env = {
         **os.environ,

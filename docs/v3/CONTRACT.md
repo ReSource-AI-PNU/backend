@@ -30,6 +30,8 @@
 | `app/v3/feedback.py` | 재학습 데이터 수집(7단계): 교정, 확정 뒤 실제 결과, 내보내기, 배포 게이트, 기준값 보정 후보 |
 | `app/v3/eval/` | 평가(8단계): 사례 세트 `cases/*.json`, 실행기, 형식 준수 시험, Foundry 평가 입력, 리포트 |
 | `app/v3/api.py`, `sql.py`, `mcp_server.py`, `vendor_service.py` | 프레임워크 가장자리 |
+| `app/v3/tracing.py`, `agents/maf.py`, `judge/distance.py`, `evidence/search_azure.py` | Azure 연결부(추적, Agent Framework, 도로 거리, 색인). 설정이 있을 때만 켜진다 |
+| `scripts/v3/ingest_laws.py`, `index_evidence.py`, `register_foundry_agents.py` | 법령 수집, 근거 색인, 에이전트 등록 스크립트 |
 | `tests/v3/` | 테스트. 가장자리 테스트는 `pytest.importorskip`으로 시작한다 |
 
 ## 3. 근거
@@ -141,13 +143,20 @@ def call_tool(name, arguments, *, registry, org_id, today) -> dict
 
 OR-Tools를 쓸 수 있으면 CVRP와 CP-SAT를 쓰고, 없으면 같은 답을 내는 순수 파이썬 풀이(작은 문제의 완전 탐색)로 돈다. 두 경로의 결과가 같은지 테스트한다.
 
+`route_extra_cost`와 `optimize_assignment`는 `output.solver`에 쓴 풀이를 남긴다: `"ortools" | "exact" | "greedy"`.
+
+- OR-Tools의 답은 순수 파이썬 검사(용량, 빠진 지점, 최소 물량)로 다시 확인한 뒤에만 쓴다. 풀지 못했거나 검사를 통과하지 못하면 순수 풀이의 답을 쓴다.
+- 작은 문제(정류장 8곳 이하, 배정 조합 20만 이하)는 완전 탐색이 정답이다. OR-Tools가 같은 답을 냈을 때만 `"ortools"`, 아니면 `"exact"`라고 남긴다. 어느 쪽이든 수치와 calc 근거 ID는 같다.
+- 그보다 큰 문제는 OR-Tools의 답을 쓴다(노선은 탐욕 분할보다 짧을 때만. 아니면 `"greedy"`). OR-Tools가 없으면 노선은 탐욕 분할, 배정은 오류다.
+- 풀이는 도구 입력으로 고를 수 없다.
+
 등급 기준은 `app/v3/intake/grade_thresholds.v1.json` 하나다(근거 `assumption:등급기준@v1`). `identify_stream`과 `intake.grade_model`이 같은 기준을 쓴다.
 
 기준값 키는 `judge/basis.py`가 근거로 잇는다. `kau.price`는 KAU 종가 ref 근거(단위 `원/tCO2e`)를 쓰고, `reference.price.<재질>.<형태>`는 가격조사 ref 근거를 "참고 시세"로만 보여 준다(업체 매입 단가가 아니므로 손익 계산에는 쓰지 않는다).
 
 현행 처리 단가에서 나온 계산 근거(`currentUnitCost`, `monthlyNow`, `difference`, 민감도)는 계산한 조직만 본다.
 
-도로 거리는 `distance_provider(points) -> km 행렬 | None`을 주입받는다. 제공자가 없으면 직선 거리에 우회 계수를 곱한 값을 `assumption` 근거로 등록하고 "가정값"으로 표시한다.
+도로 거리는 `distance_provider(points) -> km 행렬 | None`을 주입받는다. 제공자가 없으면 직선 거리에 우회 계수를 곱한 값을 `assumption` 근거로 등록하고 "가정값"으로 표시한다. `judge/distance.py`의 `AzureMapsDistance`(Route Matrix 2025-01-01)가 그 구현이고, 호출이 실패하거나 닿지 못하는 지점이 있으면 `None`을 돌려줘 가정값 경로로 돈다(일부만 도로 거리인 행렬은 만들지 않는다).
 
 ## 6. 도메인 레코드 (JSON, camelCase)
 
