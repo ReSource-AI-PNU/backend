@@ -1,3 +1,5 @@
+import pytest
+
 from app.agents.pp_evidence import CATALOG, compare_pp_evidence
 from app.agents.pp_questions import InputField, ReviewState
 
@@ -50,21 +52,74 @@ def test_unknown_conflict_and_ambiguous_values_remain_unconfirmed():
     assert result.status == "insufficient_information"
     assert result.input_summary["material"]["status"] == "unknown"
     assert result.input_summary["form"]["status"] == "conflict"
-    assert all(
-        c.material.status == c.form.status == c.region.status == "unconfirmed"
-        for c in result.comparisons
-    )
+    assert not result.comparisons
     assert (
         compare_pp_evidence(ReviewState(material=value("PP 또는 PE"))).status
         == "insufficient_information"
     )
-    assert compare_pp_evidence(ReviewState()).comparisons[0].form.status == "unconfirmed"
+    assert not compare_pp_evidence(ReviewState()).comparisons
+
+
+def test_pp_with_unknown_form_and_conflicting_region_stays_unconfirmed():
+    result = compare_pp_evidence(
+        ReviewState(
+            material=value("PP"),
+            form=InputField(status="unknown"),
+            region=InputField(status="conflict", value="부산"),
+        )
+    )
+    assert result.status == "compared"
+    assert all(c.form.status == c.region.status == "unconfirmed" for c in result.comparisons)
 
 
 def test_explicit_other_material_is_unsupported():
     result = compare_pp_evidence(ReviewState(material=value("PE")))
     assert result.status == "unsupported"
     assert not result.comparisons
+
+
+@pytest.mark.parametrize("material", ["PC", "폴리카보네이트", "나일론", "PA66", "POM", "PE"])
+def test_recognized_non_pp_never_returns_pp_comparisons(material):
+    state = ReviewState(material=value(material), form=value("압축"), region=value("부산"))
+    before = state.model_dump()
+    result = compare_pp_evidence(state)
+    assert result.status == "unsupported"
+    assert not result.comparisons
+    assert result.input_summary["material"]["value"] == material
+    assert state.model_dump() == before
+
+
+@pytest.mark.parametrize(
+    "material",
+    [
+        InputField(status="unknown"),
+        InputField(status="unanswered"),
+        InputField(status="conflict", value="PP"),
+        value("PP 또는 PE"),
+        value("PC 추정"),
+        value("미확인 재질"),
+    ],
+)
+def test_unconfirmed_material_never_returns_pp_comparisons(material):
+    state = ReviewState(material=material, form=value("압축"), region=value("부산"))
+    before = state.model_dump()
+    result = compare_pp_evidence(state)
+    assert result.status == "insufficient_information"
+    assert not result.comparisons
+    assert result.input_summary["material"] == before["material"]
+    assert state.model_dump() == before
+
+
+@pytest.mark.parametrize("material", ["PP", " 폴리프로필렌 ", "polypropylene"])
+def test_recognized_pp_retains_comparison(material):
+    state = ReviewState(material=value(material), form=value("압축"), region=value("부산"))
+    before = state.model_dump()
+    result = compare_pp_evidence(state)
+    assert result.status == "compared"
+    assert len(result.comparisons) == 3
+    assert result.comparisons[0].material.status == result.comparisons[0].form.status == "match"
+    assert result.comparisons[0].quality.status == "unconfirmed"
+    assert state.model_dump() == before
 
 
 def test_catalog_sources_and_conditions():
