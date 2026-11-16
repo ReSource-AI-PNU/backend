@@ -88,6 +88,35 @@ def test_health_and_document_confirm(client):
     assert assert_error(wrong, 422)["code"] == "INVALID_BODY"
 
 
+def test_media_upload_says_so_when_the_detector_is_not_connected(client):
+    """탐지 엔드포인트 설정이 없으면 결과를 지어내지 않고 미연결이라고 답한다."""
+    assert api.get_state().detector is None
+    uploaded = client.post(
+        "/api/v3/intake/media",
+        params={"streamId": "st_film", "filename": "필름.jpg"},
+        headers=org(EMITTER),
+        content=b"jpeg-bytes",
+    )
+    assert uploaded.status_code == 200, uploaded.text
+    assert uploaded.json() == {
+        "detectorUnavailable": True,
+        "message": "탐지 모델이 연결되지 않았습니다",
+        "streamId": "st_film",
+        "evidence": [],
+    }
+    other = client.post(
+        "/api/v3/intake/media",
+        params={"orgId": EMITTER, "streamId": "st_film", "filename": "필름.jpg"},
+        headers=org(OTHER_EMITTER),
+        content=b"jpeg-bytes",
+    )
+    assert_error(other, *HIDDEN)
+    empty = client.post(
+        "/api/v3/intake/media", params={"streamId": "st_film"}, headers=org(EMITTER), content=b""
+    )
+    assert assert_error(empty, 422)["code"] == "FILE_REQUIRED"
+
+
 def test_admin_routes_and_reset_need_the_admin_org(client, monkeypatch):
     orgs = client.get("/api/v3/orgs").json()
     assert orgs[0]["id"] == EMITTER and orgs[-1]["id"] == ADMIN  # order 순
