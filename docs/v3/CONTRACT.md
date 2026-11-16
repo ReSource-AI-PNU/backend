@@ -263,6 +263,30 @@ VendorProfile {"orgId": "org_saegil",
 - **`result.assumptions`의 모양이 바뀌었다.** 이전에는 근거 ID 문자열의 배열(`["assumption:..."]`)이었고, 지금은 `[{"id", "label", "value", "unit"}]`이다. `id`는 근거 ID(눌러서 근거 패널을 연다), `label`은 근거의 이름, `value`·`unit`은 근거의 값이다. 값 하나로 적을 수 없는 가정(등급 기준표)은 `value`와 `unit`이 `null`이다.
 - **`messages[].meta.asks[].field`에 올 수 있는 값.** `material | origin | form | contaminationPct | moisturePct | lotSame | monthlyKg | terms`. 앞의 일곱은 업체가 배출 기업에 묻는 흐름 항목이고(`questions[].field`와 같은 낱말이다), `terms`는 회사 측이 업체에 조건을 달라고 할 때다. 이 밖의 값은 메시지에 실리지 않는다(`agents/questions.py`의 `ASK_FIELDS`).
 
+### 메시지를 쓴 구현 (`model.provider`)
+
+`threads[].messages[].model`과 `threads[].vendorModel`은 `{"provider", "name"}`이다. 실제로 그 메시지를 쓴 구현을 적는다(쓰지 않은 모델 이름을 붙이지 않는다). `provider`에 올 수 있는 값:
+
+| `provider` | `name`의 예 | 뜻 |
+|---|---|---|
+| `rule` | `규칙 정책(모델 미연결)` | 모델이 연결되지 않아 규칙 정책(`agents/policy_rule.py`)이 썼다. 모델이 아니다 |
+| `foundry` | `gpt-5-mini`(배포 이름) | Azure AI Foundry의 모델이 썼다(`FoundryChat`, Agent Framework 경로 포함) |
+| `ollama` | `qwen3`(모델 이름) | 업체가 고른 오픈 모델이 썼다(`OllamaChat`) |
+| `code` | `진행기(코드)` | 모델이 아니라 코드가 쓴 메시지다. 아래 "코드가 쓰는 메시지" |
+
+- `vendorModel`에는 `configured`(업체 프로필의 설정 `{"provider": "foundry | ollama", "name"}`)와 `used`(이 진단에서 그 구현이 실제로 답을 썼는지)가 붙는다. `vendorModel.provider`는 `rule | foundry | ollama` 가운데 하나다(`code`는 메시지에만 붙는다).
+- 실행 기록의 `events[].detail.model`도 같은 모양이다. 테스트의 `ScriptedLLM`은 `provider`가 `scripted`이고 배포된 서버에서는 나오지 않는다.
+
+코드가 쓰는 메시지(`provider`가 `code`). 본문은 정해 둔 문장이고 숫자와 claim이 없다:
+
+| `type` | 보내는 쪽 | 언제 |
+|---|---|---|
+| `handoff` | 어느 쪽이든 | 초안이 두 번 거부됨, 턴 상한, 받은 답이 재검증에서 거부됨, 업체 측에 닿지 못함, 문서에서 지시문 주입 탐지 |
+| `decline` | 어느 쪽이든 | 이 대화에 허가 품목이 맞는 흐름이 하나도 남지 않음. `meta.reasonEvidence`에 허가증 근거 |
+| `answer` | 업체 | 모델이 허가 품목이 맞지 않는 흐름에 조건을 내려다 두 번 거부됐고, 맞는 흐름이 남아 있음. `meta.excluded`에 뺀 흐름 |
+| `question` | 배출 기업 | 받은 조건에 허가 품목이 맞지 않는 흐름이 있어 그 답을 붙이지 않고, 그 흐름만 빼고 남은 흐름의 조건을 다시 물음. `meta.excluded`, `meta.asks`(`field`는 `terms`) |
+| `counter` | 배출 기업 | 합의 뒤에 업체의 조건이 바뀌어 대화를 다시 엶(아래 "합의 뒤 업체 조건 변경"). `meta.asks`(`field`는 `terms`) |
+
 ### 업체가 보는 뷰의 result
 
 업체(`viewer.role`이 `vendor`)가 보는 `result`는 다음 모양이다. 배출 기업의 현행 대비 손익과 다른 업체의 제안은 나가지 않는다.
@@ -377,20 +401,70 @@ VendorProfile {"orgId": "org_saegil",
 
 오류는 `{"error": {"code": "...", "message": "한국어 문장"}}`과 맞는 상태 코드로 낸다.
 
-요청을 읽다가 나는 오류는 두 서버(`api.py`, `devserver.py`)가 `app/v3/httpio.py`의 같은 함수로 낸다. 코드와 상태 코드가 서버에 따라 달라지지 않는다.
+### 오류 코드 전체 목록
+
+요청을 읽다가 나는 오류와 요청한 조직을 정하다 나는 오류는 두 서버(`api.py`, `devserver.py`)가 `app/v3/httpio.py`의 같은 함수로 낸다. 코드와 상태 코드가 서버에 따라 달라지지 않는다. 아래가 `/api/v3`가 내는 `error.code`의 전부다(`tests/v3/test_fix2_contract_docs.py`가 코드와 이 표를 대조한다).
 
 | 코드 | 상태 | 조건 |
 |---|---|---|
 | `INVALID_JSON` | 400 | 본문이 JSON이 아니다 |
+| `INVALID_MULTIPART` | 400 | `multipart/form-data`에 경계(boundary)가 없다(`devserver`) |
+| `ORG_REQUIRED` | 401 | 요청한 조직을 밝히지 않았다(header 모드에서 `X-Org-Id`가 없다) |
+| `TOKEN_REQUIRED` | 401 | token 모드인데 `Authorization: Bearer` 헤더가 없거나 모양이 틀렸다 |
+| `INVALID_TOKEN` | 401 | token 모드인데 토큰이 어느 조직의 것도 아니다 |
+| `UNKNOWN_ORG` | 401 | 모르는 조직이다 |
+| `FORBIDDEN` | 403 | 그 조직이 할 수 없는 일이다(다른 조직의 자료, 관리자 전용 경로, 배출 기업만 하는 진행·답·교정 등) |
+| `WRONG_ROLE` | 403 | 조직의 역할이 맞지 않는다(배출 기업만, 처리 업체만) |
+| `NOT_FOUND` | 404 | 그런 주소가 없다 |
+| `ORG_NOT_FOUND`, `VENDOR_NOT_FOUND`, `STREAM_NOT_FOUND`, `SESSION_NOT_FOUND`, `THREAD_NOT_FOUND`, `QUESTION_NOT_FOUND`, `EVIDENCE_NOT_FOUND` | 404 | 없거나 볼 수 없다(볼 수 없는 것은 있는지도 알려 주지 않는다) |
+| `NOT_AGREED` | 409 | 합의된 조건이 없는 대화를 승인하려 했다 |
+| `APPROVAL_BLOCKED` | 409 | 승인이 막혀 있다. 이유는 `approvals[].blockedReason`과 `blockedCodes`에 있다(아래 "승인을 막는 사유 코드") |
+| `PERMIT_MISMATCH` | 409 | 승인하려는 대화의 업체 허가 품목이 합의 뒤에 바뀌어 흐름과 맞지 않는다. 승인하지 않는다. 맞는 흐름이 남지 않으면 그 대화를 근거와 함께 `decline`으로 닫고, 일부만 맞지 않으면 그 흐름만 빼고 승인을 지운다(남은 조건으로 다시 승인한다) |
+| `THREAD_NOT_CONFIRMED` | 409 | 확정되지 않은 대화에 실제 결과를 기록하려 했다 |
+| `TOO_LARGE` | 413 | 본문이 20MB를 넘는다 |
+| `UNSUPPORTED_MEDIA` | 415 | 사진·영상이 아닌 파일이다. 탐지 모델이 연결되지 않았어도 형식 검사가 먼저다 |
 | `INVALID_BODY` | 422 | 본문이 JSON 객체가 아니거나 필수 항목(`questionId`·`value`, `threadId` 등)이 없다 |
 | `FILE_REQUIRED` | 422 | 올릴 파일이 없거나 비어 있다 |
-| `TOO_LARGE` | 413 | 본문이 20MB를 넘는다 |
-| `ORG_REQUIRED`, `UNKNOWN_ORG` | 401 | `X-Org-Id` 헤더가 없거나 모르는 조직이다 |
-| `FORBIDDEN`, `WRONG_ROLE` | 403 | 그 조직이 할 수 없는 일이다 |
-| `*_NOT_FOUND` | 404 | 없거나 볼 수 없다(볼 수 없는 것은 있는지도 알려 주지 않는다) |
-| `INVALID_VALUE`, `INVALID_KIND`, `INVALID_ANSWER` | 422 | 값이 틀렸다 |
-| `NOT_AGREED`, `APPROVAL_BLOCKED`, `THREAD_NOT_CONFIRMED` | 409 | 지금 상태에서는 할 수 없다 |
-| `PERMIT_MISMATCH` | 409 | 승인하려는 대화의 업체 허가 품목이 합의 뒤에 바뀌어 흐름과 맞지 않는다. 승인하지 않고 그 대화를 근거와 함께 `decline`으로 닫았다 |
+| `INVALID_VALUE` | 422 | 값이 틀렸다(음수 물량, 범위를 벗어난 비율, 모르는 모델 설정, 날짜 꼴 등) |
+| `INVALID_KIND` | 422 | 근거 종류나 문서 종류가 목록에 없다 |
+| `INVALID_ANSWER` | 422 | 질문의 답이 그 항목에 맞지 않는다(빈 답 포함) |
+| `INVALID_FIELD` | 422 | 교정할 수 없는 항목이다(`POST /sessions/{id}/corrections`의 `field`) |
+| `NO_CHANGE` | 422 | 교정 전후 값이 같다 |
+| `STREAM_NOT_IN_THREAD` | 422 | 그 대화에서 확정된 흐름이 아니다(실제 결과 기록) |
+| `INVALID_MESSAGE` | 422 | 업체 측 에이전트가 받은 메시지를 처리할 수 없다 |
+| `INTERNAL` | 500 | 예상하지 못한 오류. 내용은 응답에 싣지 않는다 |
+| `DOCUMENT_FAILED`, `SHIELD_FAILED`, `DETECTOR_FAILED` | 502 | Document Intelligence, Prompt Shields, 탐지 엔드포인트 호출이 실패했거나 계약과 다른 답이 왔다 |
+| `DOCUMENT_INTELLIGENCE_UNAVAILABLE` | 503 | Document Intelligence가 설정되지 않아 글이 아닌 문서를 읽을 수 없다 |
+
+업체 측 에이전트 서비스(`vendor_service.py`. `/api/v3`가 아니라 따로 뜨는 서비스다)만 내는 코드: `UNAUTHORIZED`(401, 서비스 키가 틀림), `WRONG_RECIPIENT`(403, 이 서비스의 업체에게 온 메시지가 아님), `SERVICE_KEY_NOT_SET`·`VENDOR_NOT_SET`(503, 설정이 빠짐). 나머지는 위 표와 같다.
+
+### 승인을 막는 사유 코드
+
+HTTP 오류 코드가 아니라 `approvals[].blockedCodes`(배열)와 `blockedReason`(문장 안)에 실리는 코드다. 막힌 대화를 승인하려 하면 409 `APPROVAL_BLOCKED`가 난다.
+
+| 코드 | 조건 | 푸는 방법 |
+|---|---|---|
+| `EVIDENCE_CHANGED` | 그 대화의 메시지가 인용한 근거가 대화 뒤에 바뀌었거나 사라졌다(예: 같은 측정일로 CSV를 다시 올림) | 진단을 새로 한다 |
+| `STREAM_CHANGED` | 합의한 뒤에 배정된 흐름의 자료(재질, 물량, 측정값 등)가 바뀌었다 | 자료를 되돌리거나 진단을 새로 한다 |
+| `VENDOR_TERMS_CHANGED` | 합의한 뒤에 업체가 매입 기준표·허가 품목·가드레일을 바꿔 그 대화의 합의 조건(단가, 최소 물량, 오염도·수분 상한, 요일, 횟수)에 영향을 준다 | `POST /sessions/{id}/run`을 다시 부르면 같은 대화를 새 조건으로 이어 간다 |
+| 근거 검증기의 거부 코드(4장) | 메시지를 다시 검증했더니 통과하지 못한다(근거가 만료됨, 접근이 닫힘 등) | 진단을 새로 한다 |
+
+### 초안 거부 코드
+
+메시지의 `validation.rejections[].code`와 실행 기록의 `detail.rejections[].code`, `detail.codes`에 실리는 코드다. HTTP 오류가 아니다. 화면에는 코드와 코드별 일반 문장만 나간다(4장 "거부 기록에는 값이 없다").
+
+| 코드 | 조건 |
+|---|---|
+| 근거 검증기의 코드 10종(4장) | `NUMBER_OUTSIDE_PLACEHOLDER`, `UNKNOWN_PLACEHOLDER`, `UNUSED_CLAIM`, `CLAIM_WITHOUT_EVIDENCE`, `EVIDENCE_NOT_FOUND`, `EVIDENCE_FORBIDDEN`, `EVIDENCE_EXPIRED`, `VALUE_MISMATCH`, `UNIT_MISMATCH`, `QUOTE_MISMATCH` |
+| `UNKNOWN_CLAIM_REF` | claim 풀에 없는 ID를 썼다 |
+| `TYPE_NOT_ALLOWED`, `APPROVAL_REQUIRED`, `THREAD_RULE`, `UNKNOWN_STREAM` | 지금 보낼 수 없는 종류, 승인 전 확정, 대화 규칙 위반, 이 대화에 없는 흐름 |
+| `PERMIT_MISMATCH` | 허가 품목이 맞지 않는 흐름에 조건을 내려 했다 |
+| `UNBACKED_TERM` | 숫자 없이 조건을 뜻하는 낱말("무상", "반값", "주말", "공휴일", "매일", "무제한", "전량" 등)이 있는데 그에 해당하는 terms 항목이나 claim이 없다. 업체 측과 회사 측 모두에 건다. 낱말 표는 `app/v3/a2a/term_words.py` |
+| `GUARDRAIL_PRICE_BELOW_FLOOR`, `GUARDRAIL_PRICE_ABOVE_CEILING`, `GUARDRAIL_DAY_NOT_ALLOWED`, `GUARDRAIL_DAY_NOT_DECLARED`, `GUARDRAIL_PICKUPS_BELOW_MINIMUM`, `GUARDRAIL_AUTO_DECLINE_CONDITION`, `GUARDRAIL_AUTO_DECLINE_STREAM` | 업체 가드레일 밖의 조건이다 |
+| `GUARDRAIL_TERMS_MISSING`, `GUARDRAIL_TERMS_REF`, `GUARDRAIL_TERMS_INCOMPLETE` | 조건을 내는 메시지의 `terms`가 없거나 claim과 맞지 않는다 |
+| `OTHER_EMITTER_NAMED`, `OTHER_EMITTER_STREAM`, `OTHER_EMITTER_EVIDENCE` | 다른 배출 기업의 이름·흐름·근거를 드러냈다 |
+| `TOO_MANY_TOOL_ROUNDS`, `INVALID_OUTPUT`, `MODEL_ERROR` | 도구를 너무 많이 부름, 응답 형식이 틀림, 모델 호출 실패 |
+| `REJECTED` | 위에 없는 코드는 글자 그대로 옮기지 않고 이것으로 적는다 |
 
 이전에 `api.py`만 쓰던 `INVALID_REQUEST`(400)와 `FILE_TOO_LARGE`는 없어졌다. 업체 측 에이전트 서비스(`vendor_service.py`)도 같은 코드를 쓴다.
 
