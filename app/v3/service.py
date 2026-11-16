@@ -101,6 +101,7 @@ class App:
         )
         self.distance_provider = distance_provider
         self.vendor_memo: dict[str, list[dict[str, Any]]] = {}
+        self.resumed = False  # 로컬 서버가 저장 파일에서 이전 진단을 이어 간 경우 True
         self._rule = RulePolicy()
         self.vendor_gateway = vendor_gateway or LocalVendorGateway(
             lambda org, message, context: handle_vendor_message(self, org, message, context)

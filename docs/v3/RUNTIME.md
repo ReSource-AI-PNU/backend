@@ -207,10 +207,13 @@ def register_model_run(app, run, viewer) -> dict                    # 재학습 
 
 ## 8. 로컬 서버
 
-`python3 -m app.v3.devserver --port 8000 [--store 경로.json] [--llm rule|foundry]`
+`python3 -m app.v3.devserver --port 8000 [--store 경로.json] [--reset] [--llm rule|foundry] [--demo-closed]`
 
 - 표준 라이브러리 `http.server`로 계약 8장의 API를 모두 제공한다. 더한 주소는 `GET /health`와 `POST /intake/documents/confirm`이다.
-- 시작할 때 가정값, 근거 시드, 시연 데이터를 올린다. `--store`를 줘도 시작할 때 시연 시작 상태로 덮어쓴다(근거 레지스트리가 메모리에만 있어 이전 진단을 이어 갈 수 없다).
+- 시작할 때 가정값, 근거 시드, 시연 데이터를 올린다.
+- `--store 경로.json`을 주면 저장소는 그 파일(`JsonFileStore`)에, 근거 레지스트리는 옆 파일 `<이름>.evidence.json`(`JsonFileRegistry`)에 쓴다. 두 파일이 이미 있으면 시드로 덮어쓰지 않고 이전 진단을 이어 간다(메시지와 문서가 인용한 근거가 그대로 남아 승인과 검증이 이어진다). `--reset`을 주면 처음 상태로 되돌린다. 저장소 파일만 있고 근거 파일이 없으면 이어 갈 수 없어 처음 상태로 시작한다. `POST /demo/reset`은 두 파일을 모두 처음 상태로 되돌린다.
+- 이어 갈 때는 근거 시드(법령·기준값)를 다시 올리지 않는다. 시드 파일을 바꿨으면 `--reset`으로 다시 시작한다.
+- `/admin/*`은 운영 조직(`org_admin`)으로 부른다. 시연 되돌리기는 누구나 부를 수 있고(`demo_open`), `--demo-closed`를 주면 관리자만 부른다.
 - 기본은 `--llm rule`이다. `--llm foundry`일 때만 `FOUNDRY_ENDPOINT`, `FOUNDRY_DEPLOYMENT`, `FOUNDRY_API_KEY`를 읽는다. 업체가 ollama를 골랐으면 `OLLAMA_BASE_URL`이 있을 때만 그 모델을 쓰고, 없으면 그 업체는 규칙 정책으로 돈다.
 - CORS는 `http://localhost:3000`과 `http://127.0.0.1:3000`만 허용한다(`X-Org-Id`, `Content-Type` 헤더, `OPTIONS` 처리).
 - 업로드는 `multipart/form-data`(`file`, `orgId`, 문서는 `kind`)로 받는다.

@@ -2,8 +2,11 @@
 
 from __future__ import annotations
 
+import json
+import os
 from collections.abc import Iterable
 from dataclasses import replace
+from pathlib import Path
 from typing import Protocol
 
 from app.v3.evidence.model import Evidence
@@ -71,3 +74,51 @@ class InMemoryRegistry:
             for _, item in sorted(self._items.items())
             if (wanted is None or item.kind in wanted) and item.visible_to(org_id)
         ]
+
+
+class JsonFileRegistry(InMemoryRegistry):
+    """근거를 JSON 파일 하나에 통째로 쓴다. 로컬 시연과 개발용이다(동시 쓰기를 막지 않는다).
+
+    파일이 이미 있으면 읽어서 이어 간다(판 번호도 그대로다). JsonFileStore와 짝으로 써서
+    서버를 다시 띄워도 이전 진단의 메시지와 문서가 인용한 근거를 그대로 확인할 수 있게 한다.
+    바뀐 것이 있을 때만 쓴다.
+    """
+
+    def __init__(self, path: str | os.PathLike[str], items: Iterable[Evidence] = ()) -> None:
+        self.path = Path(path)
+        self._ready = False
+        super().__init__()
+        if self.path.exists():
+            loaded = json.loads(self.path.read_text(encoding="utf-8"))
+            for raw in loaded.get("evidence") or []:
+                item = Evidence.from_dict(raw)
+                self._items[item.id] = item
+        self._ready = True
+        for item in items:
+            self.put(item)
+
+    @staticmethod
+    def _plain(evidence: Evidence) -> Evidence:
+        """meta를 JSON으로 한 번 돌린다. 파일에서 다시 읽은 것과 같은 모양이어야 판이 헛돌지 않는다."""
+        meta = json.loads(json.dumps(evidence.meta, ensure_ascii=False, default=str))
+        return replace(evidence, meta=meta)
+
+    def put(self, evidence: Evidence) -> Evidence:
+        old = self._items.get(evidence.id)
+        saved = super().put(self._plain(evidence))
+        if saved is not old:
+            self._write()
+        return saved
+
+    def clear(self) -> None:
+        super().clear()
+        self._write()
+
+    def _write(self) -> None:
+        if not self._ready:
+            return
+        self.path.parent.mkdir(parents=True, exist_ok=True)
+        temp = self.path.with_name(self.path.name + ".tmp")
+        payload = {"evidence": [item.to_dict() for _, item in sorted(self._items.items())]}
+        temp.write_text(json.dumps(payload, ensure_ascii=False, default=str), encoding="utf-8")
+        os.replace(temp, self.path)

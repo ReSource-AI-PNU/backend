@@ -1,9 +1,11 @@
 """표준 라이브러리 HTTP 서버. 계약 8장의 API를 service 함수에 그대로 잇는다(로컬 시연, 개발용).
 
-    python3 -m app.v3.devserver --port 8000 [--store 경로.json] [--llm rule|foundry]
+    python3 -m app.v3.devserver --port 8000 [--store 경로.json] [--reset] [--llm rule|foundry]
 
-- 시작할 때 가정값, 근거 시드(법령·기준값), 시연 데이터를 올린다. --store를 줘도 시작할 때
-  시연 시작 상태로 덮어쓴다(근거 레지스트리가 메모리에만 있어 이전 진단을 이어 갈 수 없다).
+- 시작할 때 가정값, 근거 시드(법령·기준값), 시연 데이터를 올린다.
+- --store를 주면 저장소를 그 JSON 파일에, 근거 레지스트리를 옆 파일(<이름>.evidence.json)에 쓴다.
+  두 파일이 이미 있으면 시드로 덮어쓰지 않고 이전 진단을 이어 간다. --reset을 주면 처음 상태로
+  되돌린다. 저장소 파일만 있고 근거 파일이 없으면 이어 갈 수 없어 처음 상태로 시작한다.
 - 기본은 --llm rule(규칙 정책, 모델 미연결)이다. --llm foundry일 때만 환경 변수
   FOUNDRY_ENDPOINT, FOUNDRY_DEPLOYMENT, FOUNDRY_API_KEY를 읽는다. 업체가 ollama를 골랐으면
   OLLAMA_BASE_URL이 있을 때만 그 모델을 쓰고, 없으면 그 업체는 규칙 정책으로 돈다(화면에 그렇게 나온다).
@@ -25,12 +27,13 @@ import threading
 import traceback
 from collections.abc import Callable, Mapping
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from pathlib import Path
 from typing import Any
 from urllib.parse import parse_qs, unquote, urlsplit
 
 from app.v3 import httpio, service
 from app.v3.agents.llm import FoundryChat, OllamaChat
-from app.v3.evidence.registry import InMemoryRegistry
+from app.v3.evidence.registry import InMemoryRegistry, JsonFileRegistry
 from app.v3.intake import detector
 from app.v3.store import InMemoryStore, JsonFileStore
 
@@ -345,21 +348,42 @@ def build_app(
     today: str | None = None,
     env: Mapping[str, str] | None = None,
     demo_open: bool = True,
+    reset: bool = False,
 ) -> service.App:
-    store = JsonFileStore(store_path) if store_path else InMemoryStore()
+    """앱을 만든다. store_path의 두 파일이 있고 reset이 아니면 시드로 덮어쓰지 않고 이어 간다."""
+    resumed = False
+    if store_path:
+        evidence_path = evidence_file(store_path)
+        # 저장소와 근거가 함께 있어야 이전 진단의 메시지가 인용한 근거를 다시 확인할 수 있다
+        both = Path(store_path).exists() and evidence_path.exists()
+        store: Any = JsonFileStore(store_path)
+        registry: Any = JsonFileRegistry(evidence_path)
+        resumed = both and not reset and bool(store.list_orgs())
+    else:
+        store, registry = InMemoryStore(), InMemoryRegistry()
     settings = os.environ if env is None else env
     factory = foundry_factory(settings) if llm == "foundry" else None
     app = service.App(
         store,
-        InMemoryRegistry(),
+        registry,
         llm_factory=factory,
         today=today,
         demo_open=demo_open,
         # V3_DETECTOR_ENDPOINT가 없으면 None이고, 사진·영상 업로드는 "미연결"이라고 답한다
         detector=detector.client_from_env(settings),
     )
-    service.seed(app)
+    app.resumed = resumed  # 이어 간 것인지(서버가 뜰 때 알려 준다)
+    if not resumed:
+        if hasattr(registry, "clear"):
+            registry.clear()  # 이전 실행의 근거가 남아 있으면 처음 상태가 아니다
+        service.seed(app)
     return app
+
+
+def evidence_file(store_path: str) -> Path:
+    """근거 레지스트리 파일. 저장소 파일 옆에 둔다: demo.json -> demo.evidence.json"""
+    path = Path(store_path)
+    return path.with_name(f"{path.stem}.evidence.json")
 
 
 def main(argv: list[str] | None = None) -> None:
@@ -367,6 +391,9 @@ def main(argv: list[str] | None = None) -> None:
     parser.add_argument("--host", default="127.0.0.1")
     parser.add_argument("--port", type=int, default=8000)
     parser.add_argument("--store", default=None, help="저장소를 쓸 JSON 파일 경로(없으면 메모리)")
+    parser.add_argument(
+        "--reset", action="store_true", help="--store 파일이 있어도 시연 시작 상태로 되돌린다"
+    )
     parser.add_argument("--llm", choices=("rule", "foundry"), default="rule")
     parser.add_argument("--today", default=None, help="기준일 YYYY-MM-DD(없으면 오늘)")
     parser.add_argument(
@@ -374,12 +401,18 @@ def main(argv: list[str] | None = None) -> None:
     )
     args = parser.parse_args(argv)
     app = build_app(
-        store_path=args.store, llm=args.llm, today=args.today, demo_open=not args.demo_closed
+        store_path=args.store,
+        llm=args.llm,
+        today=args.today,
+        demo_open=not args.demo_closed,
+        reset=args.reset,
     )
     server = make_server(app, args.host, args.port, quiet=False)
     mode = "규칙 정책(모델 미연결)" if args.llm == "rule" else "Foundry"
+    state = "이전 진단을 이어 갑니다" if app.resumed else "시연 시작 상태"
     sys.stderr.write(
-        f"Re:Source AI v3 로컬 서버: http://{args.host}:{server.server_address[1]}{PREFIX} · 모델: {mode}\n"
+        f"Re:Source AI v3 로컬 서버: http://{args.host}:{server.server_address[1]}{PREFIX} · "
+        f"모델: {mode} · {state}\n"
     )
     try:
         server.serve_forever()
