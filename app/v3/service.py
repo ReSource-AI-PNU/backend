@@ -1204,14 +1204,7 @@ def upload_media(
         raise ServiceError("STREAM_NOT_FOUND", "그런 흐름이 없습니다.", 404) from None
     if stream.get("orgId") != org_id:
         raise ServiceError("STREAM_NOT_FOUND", "그런 흐름이 없습니다.", 404)
-    client = app.detector
-    if client is None or not client.configured:
-        return {
-            "detectorUnavailable": True,
-            "message": "탐지 모델이 연결되지 않았습니다",
-            "streamId": stream["id"],
-            "evidence": [],
-        }
+    # 형식 검사가 먼저다. 탐지 모델이 연결되지 않았어도 지원하지 않는 형식은 415로 답한다
     if media.media_type(filename) is None:
         raise ServiceError(
             "UNSUPPORTED_MEDIA",
@@ -1222,6 +1215,14 @@ def upload_media(
             + ") 파일만 올릴 수 있습니다.",
             415,
         )
+    client = app.detector
+    if client is None or not client.configured:
+        return {
+            "detectorUnavailable": True,
+            "message": "탐지 모델이 연결되지 않았습니다",
+            "streamId": stream["id"],
+            "evidence": [],
+        }
     try:
         result = client.detect(data, filename)
     except media.DetectorError as error:

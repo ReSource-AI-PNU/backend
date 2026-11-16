@@ -115,6 +115,14 @@ def test_media_upload_says_so_when_the_detector_is_not_connected(client):
         "/api/v3/intake/media", params={"streamId": "st_film"}, headers=org(EMITTER), content=b""
     )
     assert assert_error(empty, 422)["code"] == "FILE_REQUIRED"
+    # 미연결이어도 지원하지 않는 형식은 415가 먼저다
+    text = client.post(
+        "/api/v3/intake/media",
+        params={"streamId": "st_film", "filename": "메모.txt"},
+        headers=org(EMITTER),
+        content=b"hello",
+    )
+    assert assert_error(text, 415)["code"] == "UNSUPPORTED_MEDIA"
 
 
 def test_admin_routes_and_reset_need_the_admin_org(client, monkeypatch):

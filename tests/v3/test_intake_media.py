@@ -393,3 +393,62 @@ def test_media_upload_over_http():
     sent = json.loads(calls[0]["body"])["input_data"]
     assert base64.b64decode(sent["content_base64"]) == b"\xff\xd8\r\n--jpeg"  # 파일이 그대로 갔다
     assert results["no_stream"][0] == 404 and results["other"][0] == 403
+
+
+# ── 형식 검사는 탐지 모델 연결과 관계없이 먼저 한다 ───────────────────
+def test_unsupported_format_is_refused_even_without_a_detector():
+    calls = []
+    for unset in (None, detector.DetectorClient("", "k", fake(PHOTO, calls=calls))):
+        app = make_app(detector=unset)
+        before = (len(app.registry.list(org_id=None)), app.store.get_stream("st_film"))
+        for filename in ("메모.txt", "측정값.csv", "확장자없음", "사진.jpg.exe", ""):
+            fails(
+                "UNSUPPORTED_MEDIA",
+                415,
+                service.upload_media,
+                app,
+                HANBIT,
+                "st_film",
+                filename,
+                b"x",
+                HANBIT,
+            )
+        # 지원하는 형식이면 지금처럼 "미연결"이라고 답한다
+        for filename in ("필름.JPG", "필름.png", "라인.mp4"):
+            result = service.upload_media(app, HANBIT, "st_film", filename, b"x", HANBIT)
+            assert result["detectorUnavailable"] is True and result["evidence"] == []
+        assert (len(app.registry.list(org_id=None)), app.store.get_stream("st_film")) == before
+    assert calls == []
+    # 누가 부르는지와 어느 흐름인지는 형식보다 먼저 본다(남의 흐름이 있는지 형식 오류로 알려 주지 않는다)
+    app = make_app()
+    fails("FORBIDDEN", 403, service.upload_media, app, HANBIT, "st_film", "a.txt", b"x", DAON)
+    fails(
+        "STREAM_NOT_FOUND",
+        404,
+        service.upload_media,
+        app,
+        HANBIT,
+        "st_daon_pp",
+        "a.txt",
+        b"x",
+        HANBIT,
+    )
+
+
+def test_unsupported_format_over_http_without_a_detector():
+    app = devserver.build_app(today=TODAY, env={})
+    assert app.detector is None
+    server = devserver.make_server(app, "127.0.0.1", 0)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    base = f"http://127.0.0.1:{server.server_address[1]}{devserver.PREFIX}"
+    try:
+        fields = {"orgId": HANBIT, "streamId": "st_film"}
+        refused = post_media(base, fields, "메모.txt", b"hello")
+        accepted = post_media(base, fields, "필름.jpg", b"\xff\xd8")
+    finally:
+        server.shutdown()
+        server.server_close()
+        thread.join(timeout=5)
+    assert refused[0] == 415 and refused[1]["error"]["code"] == "UNSUPPORTED_MEDIA"
+    assert accepted[0] == 200 and accepted[1]["detectorUnavailable"] is True
