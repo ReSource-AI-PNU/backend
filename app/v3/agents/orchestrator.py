@@ -1358,6 +1358,13 @@ class Orchestrator:
                 {"code": p["code"], "message": p["message"]}
                 for p in check_disclosure(message, self.registry, self.store)
             ]
+            # 숫자 없이 조건을 뜻하는 낱말도 다시 본다(업체 측이 검사를 건너뛰었을 때)
+            problems += [
+                {"code": v.code, "message": v.message}
+                for v in rails.check_term_words(
+                    message, meta.get("terms"), thread_names(self.store, thread)
+                )
+            ]
         self._event(
             session["id"],
             "validator",

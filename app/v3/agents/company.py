@@ -9,6 +9,7 @@ from __future__ import annotations
 from typing import Any
 
 from app.v3 import ids
+from app.v3.a2a import guardrails as rails
 from app.v3.a2a.thread import Thread, ThreadError
 from app.v3.agents import questions
 from app.v3.agents.draft import (
@@ -335,6 +336,11 @@ class CompanyAgent:
             ]
             result = validate_message(message, self.registry, today=self.today, names=names)
             found += [r.to_dict() for r in result.rejections]
+            # 회사 측도 숫자 없이 조건을 뜻하는 낱말을 근거 없이 쓰지 못한다(업체 측과 같은 검사)
+            found += [
+                rejection(v.code, v.message, **v.detail)
+                for v in rails.check_term_words(message, None, names)
+            ]
             return found
 
         outcome = run_draft(

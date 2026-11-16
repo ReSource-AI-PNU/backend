@@ -9,13 +9,19 @@
 - days: 수거할 수 있는 요일. 제안한 요일은 모두 이 안에 있어야 한다.
 - minPickupsPerMonth: 월 최소 수거 횟수.
 - autoDecline: 자동 거절 조건. 흐름이나 조건 문구에 이 낱말이 있으면 거절한다.
+
+숫자 없이 조건을 뜻하는 낱말("무상", "주말", "전량" 등)은 check_term_words가 본다. 낱말 목록은
+term_words.py에 있고, 해당하는 terms 항목이나 claim이 없으면 UNBACKED_TERM이다. 이 검사는 업체가
+정한 값과 관계없이 업체 측과 회사 측 메시지 모두에 건다.
 """
 
 from __future__ import annotations
 
+from collections.abc import Iterable
 from dataclasses import dataclass, field
 from typing import Any
 
+from app.v3.a2a import term_words as words
 from app.v3.a2a.message import Message
 from app.v3.textutil import josa
 
@@ -132,6 +138,62 @@ def auto_decline_reason(guardrails: dict[str, Any] | None, stream: dict[str, Any
             name = stream.get("name") or stream.get("id") or "이 흐름"
             return f"{josa(name, '은는')} 업체의 자동 거절 조건({keyword})에 해당합니다."
     return None
+
+
+def check_term_words(
+    message: Message,
+    terms: dict[str, Any] | None = None,
+    names: Iterable[Any] = (),
+) -> list[Violation]:
+    """숫자 없이 조건을 뜻하는 낱말("무상", "주말", "전량" 등)에 해당하는 terms 항목이나 claim이 있는지.
+
+    없으면 UNBACKED_TERM. 본문과, 본문 밖에 실려 화면으로 나가는 문장(이유, 조건 문장)을 함께 본다.
+    업체 측과 회사 측 메시지에 똑같이 건다. terms를 주지 않으면 message.meta["terms"]를 본다
+    (회사 측 메시지에는 terms가 없으므로 claim으로만 뒷받침할 수 있다). names는 조직·흐름 이름이다.
+    """
+    terms = terms if terms is not None else message.meta.get("terms")
+    terms = terms if isinstance(terms, dict) else {}
+    text = "\n".join([message.text or "", *[found for _, found in message.free_texts()]])
+    for name in sorted({str(n) for n in names if n}, key=len, reverse=True):
+        text = text.replace(name, " ")  # 이름에 든 낱말은 조건이 아니다
+    days = [d for d in terms.get("days") or [] if d in WEEKDAYS]
+    prices = [
+        _number(item.get("unitPriceKrwPerKg"))
+        for item in terms.get("items") or []
+        if isinstance(item, dict)
+    ]
+    prices += [
+        _number(claim.value)
+        for claim in message.claims
+        if claim.kind == "number" and claim.unit in words.PRICE_UNITS
+    ]
+    has_quantity = any(
+        claim.kind == "number"
+        and claim.unit in words.QUANTITY_UNITS
+        and _number(claim.value) is not None
+        for claim in message.claims
+    )
+    backed = {
+        words.ZERO_PRICE: any(price == 0 for price in prices if price is not None),
+        words.WEEKEND_DAYS: any(day in words.WEEKEND for day in days),
+        words.EVERY_DAY: set(days) == set(WEEKDAYS),
+        words.QUANTITY: has_quantity,
+        words.NONE: False,
+    }
+    found: list[Violation] = []
+    for word in words.TERM_WORDS:
+        hit = word.pattern.search(text)
+        if hit is None or backed[word.needs]:
+            continue
+        found.append(
+            Violation(
+                words.CODE,
+                f"'{hit.group(0)}'처럼 숫자 없이 조건을 뜻하는 낱말이 있는데 그에 해당하는 terms "
+                f"항목이나 claim이 없습니다. {word.hint}",
+                {"word": hit.group(0), "key": word.key, "needs": word.needs},
+            )
+        )
+    return found
 
 
 def enforce(

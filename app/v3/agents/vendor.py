@@ -669,6 +669,11 @@ class VendorAgent:
             if "GUARDRAIL_DAY_NOT_ALLOWED" in known:
                 known.add("GUARDRAIL_DAY_NOT_DECLARED")
             found += [g for g in self._guard_any(guard, reply) if g["code"] not in known]
+            # 숫자 없이 조건을 뜻하는 낱말("무상", "주말", "전량" 등)에는 terms 항목이나 claim이 있어야 한다
+            found += [
+                rejection(v.code, v.message, **v.detail)
+                for v in rails.check_term_words(reply, terms or {}, names)
+            ]
             found += self._permits(reply, terms, tools, by_id)
             for problem in check_disclosure(reply, self.registry, self.store):
                 found.append(
