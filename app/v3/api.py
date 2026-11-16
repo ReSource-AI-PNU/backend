@@ -303,6 +303,23 @@ async def approve(session_id: str, request: Request):
     return await call(service.approve, session_id, str(required(body, "threadId")), viewer)
 
 
+# ── 재학습 데이터 수집 (7단계) ───────────────────────────────────────
+@router.post("/sessions/{session_id}/corrections")
+@guarded
+async def record_correction(session_id: str, request: Request):
+    viewer = viewer_of(request)
+    body = await json_object(request)
+    return await call(service.record_correction, session_id, body, viewer)
+
+
+@router.post("/sessions/{session_id}/outcomes")
+@guarded
+async def record_outcome(session_id: str, request: Request):
+    viewer = viewer_of(request)
+    body = await json_object(request)
+    return await call(service.record_outcome, session_id, body, viewer)
+
+
 # ── 근거 ─────────────────────────────────────────────────────────────
 @router.get("/evidence")
 @guarded
@@ -368,3 +385,17 @@ async def admin_status(request: Request):
 @guarded
 async def admin_eval(request: Request):
     return await call(service.run_eval, viewer_of(request))
+
+
+@router.get("/admin/retrain/export")
+@guarded
+async def admin_retrain_export(request: Request):
+    return await call(service.export_retraining, viewer_of(request))
+
+
+@router.post("/admin/retrain/runs")
+@guarded
+async def admin_retrain_runs(request: Request):
+    viewer = viewer_of(request)
+    body = await json_object(request)
+    return await call(service.register_model_run, body, viewer)

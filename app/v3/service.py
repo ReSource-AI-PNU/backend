@@ -10,7 +10,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any
 
-from app.v3 import ids
+from app.v3 import feedback, ids
 from app.v3.a2a.message import STAGES
 from app.v3.a2a.thread import Thread
 from app.v3.agents.draft import model_label
@@ -827,7 +827,113 @@ def get_view(app: App, session_id: str, viewer: str) -> dict[str, Any]:
             d for d in app.store.list_documents(session_id) if d.get("threadId") in thread_ids
         ],
         "events": events,
+        "feedback": _feedback_view(app, session, viewer, owner),
     }
+
+
+def _feedback_view(app: App, session: dict[str, Any], viewer: str, owner: bool) -> dict[str, Any]:
+    """이 진단에 쌓인 교정과 실제 결과. 교정은 배출 기업만, 실제 결과는 그 스레드의 당사자만 본다."""
+    recorded = feedback.outcomes(app, session["id"])
+    if not owner:
+        recorded = [r for r in recorded if r["vendorOrgId"] == viewer]
+    return {
+        "corrections": feedback.corrections(app, session["id"]) if owner else [],
+        "outcomes": recorded,
+    }
+
+
+# ── 재학습 데이터 수집 (7단계) ───────────────────────────────────────
+
+
+def _feedback_call(call, *args):
+    try:
+        return call(*args)
+    except feedback.FeedbackError as error:
+        raise ServiceError(error.code, error.message, error.status) from error
+
+
+def _admin(app: App, viewer: str) -> dict[str, Any]:
+    me = _org(app, viewer)
+    if me.get("role") != "admin":
+        raise ServiceError("FORBIDDEN", "관리자만 할 수 있는 일입니다.", 403)
+    return me
+
+
+def record_correction(
+    app: App, session_id: str, body: dict[str, Any], viewer: str
+) -> dict[str, Any]:
+    """배출 기업 담당자가 고친 값(박스·재질·출처·등급 등)을 human 근거로 남긴다.
+
+    탐지 모델 재학습 데이터 후보로 쌓인다. 흐름의 값 자체는 바꾸지 않는다.
+    """
+    _org(app, viewer)
+    session = _session(app, session_id)
+    if viewer != session["emitterOrgId"]:
+        if not _visible_threads(app, session, viewer):
+            raise ServiceError("SESSION_NOT_FOUND", "그런 진단이 없습니다.", 404)
+        raise ServiceError("FORBIDDEN", "값은 배출 기업 담당자만 고칠 수 있습니다.", 403)
+    if not isinstance(body, dict):
+        raise ServiceError("INVALID_BODY", "고친 내용을 객체로 보내 주세요.", 422)
+    try:
+        stream = app.store.get_stream(str(body.get("streamId") or ""), viewer)
+    except NotFound:
+        raise ServiceError("STREAM_NOT_FOUND", "그런 흐름이 없습니다.", 404) from None
+    if stream.get("orgId") != viewer:
+        raise ServiceError("STREAM_NOT_FOUND", "그런 흐름이 없습니다.", 404)
+    record = _feedback_call(feedback.record_correction, app, session, stream, body)
+    return {"correction": record, "evidence": [record["id"]]}
+
+
+def record_outcome(app: App, session_id: str, body: dict[str, Any], viewer: str) -> dict[str, Any]:
+    """업체가 확정 뒤에 기록하는 실제 등급·단가·중량. 그 스레드의 업체만, confirmed일 때만 받는다."""
+    session, _ = _session_for(app, session_id, viewer)
+    if not isinstance(body, dict):
+        raise ServiceError("INVALID_BODY", "실제 결과를 객체로 보내 주세요.", 422)
+    thread = next(
+        (
+            t
+            for t in _visible_threads(app, session, viewer)
+            if t["id"] == str(body.get("threadId") or "")
+        ),
+        None,
+    )
+    if thread is None:
+        raise ServiceError("THREAD_NOT_FOUND", "그런 대화가 없습니다.", 404)
+    if thread["vendorOrgId"] != viewer:
+        raise ServiceError("FORBIDDEN", "실제 결과는 그 대화의 업체만 기록할 수 있습니다.", 403)
+    if thread["status"] != "confirmed":
+        raise ServiceError(
+            "THREAD_NOT_CONFIRMED",
+            "양쪽 승인으로 확정된 대화에만 실제 결과를 기록할 수 있습니다.",
+            409,
+        )
+    stream_id = str(body.get("streamId") or "")
+    if stream_id not in (session["work"]["assigned"].get(thread["id"]) or []):
+        raise ServiceError("STREAM_NOT_IN_THREAD", "이 대화에서 확정된 흐름이 아닙니다.", 422)
+    try:
+        stream = app.store.get_stream(stream_id)
+    except NotFound:
+        raise ServiceError("STREAM_NOT_FOUND", "그런 흐름이 없습니다.", 404) from None
+    record = _feedback_call(feedback.record_outcome, app, session, thread, stream, body)
+    return {"outcome": record, "evidence": list(record["evidence"].values())}
+
+
+def export_retraining(app: App, viewer: str) -> dict[str, Any]:
+    """재학습 작업이 가져갈 행. 여러 조직의 기록이 섞여 있어 관리자만 받는다."""
+    _admin(app, viewer)
+    return {
+        "gradeLabels": feedback.export_grade_labels(app),
+        "detectionCorrections": feedback.export_detection_corrections(app),
+        "gate": feedback.gate_status(app),
+    }
+
+
+def register_model_run(app: App, run: dict[str, Any], viewer: str) -> dict[str, Any]:
+    """Azure ML 재학습 작업이 낸 결과(compare_and_gate.py의 출력)를 모델 버전 표에 올린다."""
+    _admin(app, viewer)
+    if not isinstance(run, dict):
+        raise ServiceError("INVALID_BODY", "실행 결과를 객체로 보내 주세요.", 422)
+    return {"run": _feedback_call(feedback.register_model_run, app, run, viewer)}
 
 
 # ── 근거 ─────────────────────────────────────────────────────────────
@@ -989,7 +1095,7 @@ def confirm_document(
 
 
 def admin_status(app: App, viewer: str) -> dict[str, Any]:
-    _org(app, viewer)
+    me = _org(app, viewer)
     public = app.registry.list(org_id=viewer)
     kinds = {kind: sum(1 for e in public if e.kind == kind) for kind in KINDS}
     refs = [e for e in public if e.kind == "ref"]
@@ -1016,6 +1122,8 @@ def admin_status(app: App, viewer: str) -> dict[str, Any]:
         "distance": {"provider": app.distance_provider is not None},
         "vendorGateway": type(app.vendor_gateway).__name__,
         "store": type(app.store).__name__,
+        # 재학습 표: 실제 등급 라벨 수, 교정 건수, 배포 게이트, 기준값 보정 후보, 모델 버전
+        "retrain": feedback.retrain_table(app, None if me.get("role") == "admin" else viewer),
     }
 
 

@@ -198,6 +198,10 @@ def route(app: service.App, request: Request) -> Any:
             if not body.get("threadId"):
                 raise service.ServiceError("INVALID_BODY", "threadId를 보내 주세요.", 422)
             return service.approve(app, session_id, str(body["threadId"]), viewer)
+        case ("POST", ["sessions", session_id, "corrections"]):
+            return service.record_correction(app, session_id, request.json(), viewer)
+        case ("POST", ["sessions", session_id, "outcomes"]):
+            return service.record_outcome(app, session_id, request.json(), viewer)
         case ("GET", ["evidence"]):
             kinds = [k for raw in request.query.get("kind", []) for k in raw.split(",") if k]
             return service.search_evidence(
@@ -228,6 +232,10 @@ def route(app: service.App, request: Request) -> Any:
             return service.admin_status(app, viewer)
         case ("POST", ["admin", "eval"]):
             return service.run_eval(app, viewer)
+        case ("GET", ["admin", "retrain", "export"]):
+            return service.export_retraining(app, viewer)
+        case ("POST", ["admin", "retrain", "runs"]):
+            return service.register_model_run(app, request.json(), viewer)
     raise service.ServiceError("NOT_FOUND", "그런 주소가 없습니다.", 404)
 
 
