@@ -1,0 +1,9 @@
+# 이미지에 필요한 것만 보낸다 (az acr build가 올리는 양을 줄이고, .env나 데이터가 섞이지 않게 한다)
+*
+!pyproject.toml
+!alembic.ini
+!app
+!scripts
+!migrations
+**/__pycache__
+**/*.pyc

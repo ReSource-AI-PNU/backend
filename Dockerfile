@@ -14,9 +14,9 @@ COPY alembic.ini ./
 COPY migrations ./migrations
 
 # 가중치는 이미지에 넣지 않는다. 시작 시 MODEL_BLOB_URL 이 있으면 models/ 로 내려받고, 없으면 제로샷(Azure OpenAI)으로 동작.
-# 같은 이미지에서 실행 명령만 바꿔 띄운다 (v3 부분은 미실행·미검증):
-#   API(기본)        : 아래 CMD
+# 같은 이미지에서 환경 변수 APP_ROLE(api | vendor-agent | mcp | migrate)이나 실행 명령만 바꿔 띄운다.
+# 기본(api)은 이전 CMD와 같은 순서다. v3 부분은 미실행·미검증이다. 직접 띄우는 명령:
 #   업체 측 에이전트 : uvicorn app.v3.vendor_service:app --host 0.0.0.0 --port 8000
 #   판단 도구 MCP    : python -m app.v3.mcp_server --host 0.0.0.0 --port 8000
 EXPOSE 8000
-CMD ["sh", "-c", "python scripts/fetch_models.py && uvicorn app.main:app --host 0.0.0.0 --port 8000"]
+CMD ["sh", "scripts/v3/start.sh"]
