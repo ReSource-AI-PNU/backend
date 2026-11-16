@@ -24,7 +24,7 @@ REVIEWS = (REVIEW_DRAFT, REVIEW_POLICY_DRAFT, "검토 완료")
 VERDICTS = ("calculated", "conditional", "needs_information")
 THREAD_STATUSES = ("not_opened", "open", "agreed", "declined", "handoff", "confirmed")
 SESSION_STATUSES = ("idle", "running", "awaiting_answers", "awaiting_approval", "confirmed")
-CHECK_STATUSES = ("met", "conditional", "unmet")
+CHECK_STATUSES = ("met", "conditional", "unmet", "needs_information")
 FORBIDDEN_KINDS = (
     "money",  # 그 흐름에 금액 claim(단가·월 손익)이 나오면 안 된다
     "assigned",  # 그 흐름이 (그 업체에) 배정되면 안 된다

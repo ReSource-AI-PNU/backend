@@ -136,6 +136,8 @@ def call_tool(name, arguments, *, registry, org_id, today) -> dict
 }
 ```
 
+결과 한 장의 `checks`에는 판단 도구의 세 상태 말고 `needs_information`도 온다. 배정이 빠졌거나(`handoff`), 모르는 값이 남았거나(`unresolved`), 검사를 건너뛴(`skipped`) 항목이고 화면은 "확인 필요"로 그린다.
+
 `output`에 들어가는 숫자는 모두 `claims`에도 있어야 한다. `conditional`의 `checks[].ask`는 업체 측 에이전트에게 보낼 질문이 된다.
 
 | 단계 | 도구 | 하는 일 |

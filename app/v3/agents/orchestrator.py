@@ -2067,7 +2067,7 @@ class Orchestrator:
                 checks.append(
                     {
                         "key": "handoff",
-                        "status": "conditional",
+                        "status": "needs_information",
                         "text": (
                             f"{names.get(handed[sid]['vendorOrgId']) or '업체'}의 허가 품목이 맞지 "
                             "않게 되어 합의한 대화를 닫고 이 흐름의 배정을 뺐습니다. 확인 필요."
@@ -2087,7 +2087,7 @@ class Orchestrator:
                 checks.append(
                     {
                         "key": "unresolved",
-                        "status": "conditional",
+                        "status": "needs_information",
                         "text": f"확인되지 않은 값({', '.join(dict.fromkeys(pending))})이 있어 "
                         "업체 배정을 확정하지 못했습니다. 확인 필요.",
                         "evidence": [],
@@ -2172,7 +2172,7 @@ class Orchestrator:
                     "checks": [
                         {
                             "key": "skipped",
-                            "status": "conditional",
+                            "status": "needs_information",
                             "text": item["reason"],
                             "evidence": [],
                         }
