@@ -1565,7 +1565,9 @@ class Orchestrator:
                                 "status": "conditional",
                                 "text": text,  # 자리표시자는 claims로 그린다
                                 "claims": cited,
-                                "evidence": [e for c in cited for e in c["evidence"]],
+                                "evidence": list(
+                                    dict.fromkeys(e for c in cited for e in c["evidence"])
+                                ),
                             }
                         )
                 expected = claim_in(route, "unitPrice", "x")
@@ -1605,7 +1607,7 @@ class Orchestrator:
                             "status": check["status"],
                             "text": check["text"],
                             "claims": [c for c in cited if c],
-                            "evidence": list(check.get("evidence") or []),
+                            "evidence": list(dict.fromkeys(check.get("evidence") or [])),
                         }
                     )
                     if check["status"] != "met" and status == "calculated":

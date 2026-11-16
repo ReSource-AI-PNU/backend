@@ -47,7 +47,8 @@ class Claim:
     def __post_init__(self) -> None:
         if self.kind not in CLAIM_KINDS:
             raise ValueError(f"알 수 없는 claim 종류: {self.kind}")
-        object.__setattr__(self, "evidence", tuple(self.evidence))
+        # 같은 근거 ID를 두 번 싣지 않는다(순서는 그대로. 첫 번째가 값의 출처다)
+        object.__setattr__(self, "evidence", tuple(dict.fromkeys(self.evidence)))
 
     def to_dict(self) -> dict[str, Any]:
         out: dict[str, Any] = {

@@ -515,8 +515,9 @@ def _claim(pool: ClaimPool, claim_id: str | None) -> dict[str, Any] | None:
 
 
 def _visible_ids(app: App, evidence_ids, viewer: str) -> list[str]:
+    """보는 조직이 열 수 있는 근거 ID만, 같은 ID는 한 번만(처음 나온 순서대로) 남긴다."""
     out = []
-    for evidence_id in evidence_ids or []:
+    for evidence_id in dict.fromkeys(evidence_ids or []):
         try:
             app.registry.get(evidence_id, viewer)
         except (EvidenceNotFound, EvidenceForbidden):
