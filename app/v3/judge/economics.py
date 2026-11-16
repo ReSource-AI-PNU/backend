@@ -3,19 +3,25 @@
 from __future__ import annotations
 
 import itertools
+import logging
 import math
 
 from app.v3.judge.common import Recorder, best_criterion, distance_matrix, num, quality
 from app.v3.judge.route import baseline
 
-try:  # 큰 문제에서만 쓴다. 작은 문제는 순수 파이썬 완전 탐색이 정답을 낸다.
+try:  # 없으면 순수 파이썬 풀이로만 돈다
     from ortools.constraint_solver import pywrapcp  # noqa: F401
 
     HAS_ORTOOLS = True
 except Exception:  # noqa: BLE001
     HAS_ORTOOLS = False
 
+logger = logging.getLogger(__name__)
+
 EXACT_LIMIT = 8
+SOLVER_SCALE = 1000  # OR-Tools는 정수만 받는다: km→m, kg→g, m3→L
+SAME_KM = 1e-6  # 두 풀이의 거리가 같다고 보는 차이
+_AUTO = object()
 
 
 def cost_carbon(
@@ -200,6 +206,74 @@ def plan_trips(matrix, loads, cap_kg, cap_m3):
     return best[full]
 
 
+def ortools_routes(matrix, loads, cap_kg, cap_m3):
+    """OR-Tools CVRP로 회차별 방문 순서를 구한다(app.platform.routing의 CVRP를 무게·부피로 확장).
+
+    로컬 미실행: 작성한 환경에서는 ortools를 불러올 수 없었다. 결과는 solve_trips가 순수 파이썬
+    검사(_routes_cost)로 다시 확인한 뒤에만 쓴다.
+    """
+    from app.platform.routing import capacity_routes
+
+    scaled = [[round(float(v) * SOLVER_SCALE) for v in row] for row in matrix]
+    capacities = [math.floor(cap_kg * SOLVER_SCALE + SAME_KM)]
+    demands = [[round(kg * SOLVER_SCALE)] for kg, _ in loads]
+    if cap_m3 is not None:
+        capacities.append(math.floor(cap_m3 * SOLVER_SCALE + SAME_KM))
+        demands = [[round(kg * SOLVER_SCALE), round(m3 * SOLVER_SCALE)] for kg, m3 in loads]
+    return capacity_routes(scaled, demands, capacities)
+
+
+def _routes_cost(matrix, loads, cap_kg, cap_m3, routes):
+    """(총 거리, 회차 수). 모든 지점을 한 번씩 돌고 용량을 지키는지 확인한다. 아니면 ValueError."""
+    seen: list[int] = []
+    total = []
+    for route in routes:
+        nodes = [int(node) for node in route]
+        if not nodes:
+            raise ValueError("빈 회차가 있다")
+        kg = math.fsum(loads[n - 1][0] for n in nodes if 1 <= n <= len(loads))
+        m3 = math.fsum(loads[n - 1][1] for n in nodes if 1 <= n <= len(loads))
+        if kg > cap_kg + 1e-9 or (cap_m3 is not None and m3 > cap_m3 + 1e-9):
+            raise ValueError("용량을 넘는 회차가 있다")
+        seen.extend(nodes)
+        legs = [matrix[0][nodes[0]], matrix[nodes[-1]][0]]
+        legs += [matrix[a][b] for a, b in itertools.pairwise(nodes)]
+        total.append(math.fsum(legs))
+    if sorted(seen) != list(range(1, len(loads) + 1)):
+        raise ValueError("빠지거나 겹친 지점이 있다")
+    return round(math.fsum(total), 9), len(routes)
+
+
+def solve_trips(matrix, loads, cap_kg, cap_m3, *, ortools_solver=_AUTO):
+    """(총 거리, 회차 수, 쓴 풀이). 풀이는 "ortools" | "exact" | "greedy".
+
+    순수 풀이(plan_trips)는 그대로 돌린다. OR-Tools가 있으면 그것도 풀고, 순수 파이썬으로
+    다시 확인한 답만 쓴다.
+    - 지점이 EXACT_LIMIT 이하: 완전 탐색이 정답이다. OR-Tools가 같은 답을 냈을 때만 "ortools",
+      다르거나 실패하면 완전 탐색의 답을 쓰고 "exact"라고 남긴다(어느 쪽이든 수치는 같다).
+    - 그보다 많으면: OR-Tools의 답이 탐욕 분할보다 짧을 때만 그 답을 쓴다. 아니면 "greedy".
+    ortools_solver는 테스트에서 가짜로 바꾼다: (matrix, loads, cap_kg, cap_m3) -> 회차별 방문 순서.
+    """
+    km, trips = plan_trips(matrix, loads, cap_kg, cap_m3)
+    pure = "exact" if len(loads) <= EXACT_LIMIT else "greedy"
+    if ortools_solver is _AUTO:
+        ortools_solver = ortools_routes if HAS_ORTOOLS else None
+    if ortools_solver is None or not loads:
+        return km, trips, pure
+    try:
+        routes = ortools_solver(matrix, loads, cap_kg, cap_m3)
+        found_km, found_trips = _routes_cost(matrix, loads, cap_kg, cap_m3, routes)
+    except Exception as error:  # noqa: BLE001 - 어떤 실패든 순수 풀이의 답으로 돌아간다
+        logger.warning("OR-Tools CVRP를 쓰지 못해 순수 풀이로 돈다: %s", type(error).__name__)
+        return km, trips, pure
+    if pure == "exact":
+        same = abs(found_km - km) <= SAME_KM and found_trips == trips
+        return km, trips, "ortools" if same else "exact"
+    if found_km < km - SAME_KM:
+        return found_km, found_trips, "ortools"
+    return km, trips, pure
+
+
 def route_extra_cost(registry, *, org_id, today, vendor, stops, newStop, distance_provider=None):
     args = {"vendor": vendor, "stops": stops, "newStop": newStop}
     rec = Recorder("route_extra_cost", registry, org_id, today, args, [vendor.get("orgId")])
@@ -211,7 +285,12 @@ def route_extra_cost(registry, *, org_id, today, vendor, stops, newStop, distanc
         num(fleet.get("capacityM3")),
     )
     per_km = num(fleet.get("costPerKm"))
-    output = {"vendorOrgId": vendor.get("orgId"), "distanceAssumed": None, "exact": None}
+    output = {
+        "vendorOrgId": vendor.get("orgId"),
+        "distanceAssumed": None,
+        "exact": None,
+        "solver": None,
+    }
     if not depot or cap_kg is None or per_km is None:
         rec.check(
             "fleet", "conditional", "차고지, 적재 용량, 운행 단가가 있어야 계산합니다. 확인 필요."
@@ -231,8 +310,10 @@ def route_extra_cost(registry, *, org_id, today, vendor, stops, newStop, distanc
     volume_known = cap_m3 is not None and all(num(s.get("m3")) is not None for s in every)
     cap = cap_m3 if volume_known else None
     try:
-        base_km, base_trips = plan_trips([r[:-1] for r in matrix[:-1]], loads[:-1], cap_kg, cap)
-        new_km, new_trips = plan_trips(matrix, loads, cap_kg, cap)
+        base_km, base_trips, base_solver = solve_trips(
+            [r[:-1] for r in matrix[:-1]], loads[:-1], cap_kg, cap
+        )
+        new_km, new_trips, solver = solve_trips(matrix, loads, cap_kg, cap)
     except ValueError:
         rec.check(
             "loading",
@@ -249,6 +330,10 @@ def route_extra_cost(registry, *, org_id, today, vendor, stops, newStop, distanc
     rec.number("extraCost", (new_km - base_km) * per_km, "원/회", "늘어난 거리 × 운행 단가", ev)
     rec.number("trips", new_trips, "회", "용량을 지키는 데 필요한 회차 수", ev)
     output.update(feasible=True, distanceAssumed=assumed, exact=len(every) <= EXACT_LIMIT)
+    # 정류장을 더한 노선을 푼 풀이. 기존 노선의 풀이가 다르면 따로 남긴다
+    output["solver"] = solver
+    if stops and base_solver != solver:
+        output["baseSolver"] = base_solver
     output["extraTrips"] = new_trips - base_trips
     if not volume_known:
         rec.check("loading_volume", "conditional", "부피 정보가 없어 무게만으로 적재를 봤습니다.")

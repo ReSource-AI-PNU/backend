@@ -3,12 +3,125 @@
 from __future__ import annotations
 
 import itertools
+import logging
 import math
 
 from app.v3.judge.common import Recorder, best_criterion, num, permit_match, quality
 from app.v3.judge.route import current_cost
 
+try:  # 없으면 순수 파이썬 완전 탐색으로만 돈다
+    from ortools.sat.python import cp_model  # noqa: F401
+
+    HAS_ORTOOLS = True
+except Exception:  # noqa: BLE001
+    HAS_ORTOOLS = False
+
+logger = logging.getLogger(__name__)
+
 MAX_COMBINATIONS = 200_000
+SOLVER_SCALE = 1000  # CP-SAT는 정수만 받는다: kg→g, m3→L, 원→1/1000원
+_AUTO = object()
+
+
+def _name(choice) -> str:
+    return str(choice["vendor"].get("orgId")) if choice["vendor"] else ""
+
+
+def cp_sat_pick(usable, options, weight):
+    """CP-SAT로 흐름마다 고를 선택지의 번호를 구한다. 못 풀면 None.
+
+    로컬 미실행: 작성한 환경에서는 ortools를 불러올 수 없었다. 결과는 optimize_assignment가
+    순수 파이썬 검사(feasible)와 완전 탐색으로 다시 확인한 뒤에만 쓴다.
+
+    완전 탐색과 같은 규칙이다: 업체별 합계 물량이 고른 매입 기준의 최소 물량 이상, 회당 무게와
+    부피가 차량 용량 이하(부피는 밀도를 모르는 흐름이 섞이면 보지 않는다), 목적은
+    월 손익 − 가중치 × 탄소의 최대화, 동점이면 업체 ID 순서가 앞선 배정.
+    """
+    from ortools.sat.python import cp_model
+
+    grams = [round(item["kg"] * SOLVER_SCALE) for item in usable]
+    by_vendor: dict[str, list[tuple[int, int]]] = {}
+    for i, choices in enumerate(options):
+        for j, choice in enumerate(choices):
+            if choice["vendor"] is not None:
+                by_vendor.setdefault(_name(choice), []).append((i, j))
+    gain = [
+        [round((c["value"] - weight * c["carbon"]) * SOLVER_SCALE) for c in choices]
+        for choices in options
+    ]
+
+    def build():
+        model = cp_model.CpModel()
+        x = [
+            [model.new_bool_var(f"x_{i}_{j}") for j in range(len(choices))]
+            for i, choices in enumerate(options)
+        ]
+        for row in x:
+            model.add(sum(row) == 1)
+        for members in by_vendor.values():
+            vendor = options[members[0][0]][members[0][1]]["vendor"]
+            total = sum(grams[i] * x[i][j] for i, j in members)
+            for i, j in members:
+                minimum = num(options[i][j]["criterion"].get("minMonthlyKg")) or 0.0
+                if minimum > 0:
+                    # 이 선택지를 고르면(x=1) 합계가 최소 물량 이상이어야 한다
+                    model.add(total >= math.ceil(minimum * SOLVER_SCALE - 1e-6) * x[i][j])
+            fleet = vendor.get("fleet") or {}
+            pickups = num((vendor.get("guardrails") or {}).get("minPickupsPerMonth"))
+            cap_kg, cap_m3 = num(fleet.get("capacityKg")), num(fleet.get("capacityM3"))
+            if pickups and cap_kg is not None:
+                model.add(total <= math.floor(cap_kg * pickups * SOLVER_SCALE + 1e-6))
+            if pickups and cap_m3 is not None:
+                density = {
+                    i: num(usable[i]["stream"].get("bulkDensityKgPerM3")) for i, _ in members
+                }
+                liters = {
+                    i: round(usable[i]["kg"] / density[i] * SOLVER_SCALE)
+                    for i, _ in members
+                    if density[i]
+                }
+                unknown = [x[i][j] for i, j in members if not density[i]]
+                volume = sum(liters[i] * x[i][j] for i, j in members if i in liters)
+                limit = math.floor(cap_m3 * pickups * SOLVER_SCALE + 1e-6)
+                # 밀도를 모르는 흐름이 하나라도 들어가면 부피 검사를 하지 않는다(완전 탐색과 같다)
+                if liters and unknown:
+                    model.add(volume <= limit + sum(liters.values()) * sum(unknown))
+                elif liters:
+                    model.add(volume <= limit)
+        return model, x
+
+    def solve(model):
+        solver = cp_model.CpSolver()
+        solver.parameters.num_search_workers = 1  # 같은 입력이면 같은 답
+        return solver if solver.solve(model) == cp_model.OPTIMAL else None
+
+    def objective(x):
+        return sum(gain[i][j] * x[i][j] for i in range(len(options)) for j in range(len(x[i])))
+
+    model, x = build()
+    model.maximize(objective(x))
+    solver = solve(model)
+    if solver is None:
+        return None
+    best = sum(
+        gain[i][j] for i in range(len(options)) for j in range(len(x[i])) if solver.value(x[i][j])
+    )
+    picked: list[int] = []
+    for i, choices in enumerate(options):  # 동점 정리: 앞 흐름부터 업체 ID가 앞선 것을 고정한다
+        if len(choices) == 1:
+            picked.append(0)
+            continue
+        order = sorted({_name(c) for c in choices})
+        model, x = build()
+        model.add(objective(x) == best)
+        for done, j in enumerate(picked):
+            model.add(x[done][j] == 1)
+        model.minimize(sum(order.index(_name(c)) * x[i][j] for j, c in enumerate(choices)))
+        solver = solve(model)
+        if solver is None:
+            return None
+        picked.append(next(j for j in range(len(choices)) if solver.value(x[i][j])))
+    return tuple(picked)
 
 
 def _carbon_per_kg(rec: Recorder, item: str):
@@ -21,8 +134,24 @@ def _carbon_per_kg(rec: Recorder, item: str):
     return (float(after_ef.value) - float(now_ef.value)) / 1000, [now_ef.id, after_ef.id]
 
 
-def optimize_assignment(registry, *, org_id, today, streams, vendors, carbonWeight=0, exclude=None):
-    """exclude는 [{"streamId", "vendorOrgId"}]. 업체가 거절했거나 제안하지 않은 짝을 뺀다."""
+def optimize_assignment(
+    registry,
+    *,
+    org_id,
+    today,
+    streams,
+    vendors,
+    carbonWeight=0,
+    exclude=None,
+    cp_solver=_AUTO,
+):
+    """exclude는 [{"streamId", "vendorOrgId"}]. 업체가 거절했거나 제안하지 않은 짝을 뺀다.
+
+    output["solver"]에 쓴 풀이를 남긴다. OR-Tools(CP-SAT)가 있으면 그것으로도 풀고, 조합이
+    MAX_COMBINATIONS 이하이면 완전 탐색과 같은 답일 때만 "ortools", 아니면 완전 탐색의 답을 쓰고
+    "exact"라고 남긴다(어느 쪽이든 배정은 같다). 조합이 그보다 많으면 CP-SAT의 답만 쓸 수 있다.
+    cp_solver는 테스트에서 가짜로 바꾼다(도구 입력이 아니다): (usable, options, weight) -> 번호들.
+    """
     orgs = sorted({str(s.get("orgId")) for s in streams})
     if len(orgs) > 1:
         raise ValueError("한 번에 한 배출 기업의 흐름만 배정할 수 있다")
@@ -36,7 +165,13 @@ def optimize_assignment(registry, *, org_id, today, streams, vendors, carbonWeig
         args["exclude"] = [list(pair) for pair in excluded]
     rec = Recorder("optimize_assignment", registry, org_id, today, args)
     vendors = sorted(vendors, key=lambda v: str(v.get("orgId")))
-    output = {"assignments": [], "totals": {}, "carbonInObjective": weight > 0, "skipped": []}
+    output = {
+        "assignments": [],
+        "totals": {},
+        "carbonInObjective": weight > 0,
+        "skipped": [],
+        "solver": None,
+    }
 
     usable, options = [], []
     for stream in streams:
@@ -99,7 +234,10 @@ def optimize_assignment(registry, *, org_id, today, streams, vendors, carbonWeig
 
     if not usable:
         return rec.result("needs_information", output)
-    if math.prod(len(o) for o in options) > MAX_COMBINATIONS:
+    too_many = math.prod(len(o) for o in options) > MAX_COMBINATIONS
+    if cp_solver is _AUTO:
+        cp_solver = cp_sat_pick if HAS_ORTOOLS else None
+    if too_many and cp_solver is None:
         raise ValueError("배정 조합이 너무 많다. 흐름이나 업체 수를 줄인다")
 
     def feasible(combo) -> bool:
@@ -125,17 +263,39 @@ def optimize_assignment(registry, *, org_id, today, streams, vendors, carbonWeig
                     return False
         return True
 
-    best, best_key = None, None
-    for combo in itertools.product(*options):
-        if not feasible(combo):
-            continue
-        money = math.fsum(c["value"] for c in combo)
-        carbon = math.fsum(c["carbon"] for c in combo)
-        objective = money - weight * carbon
-        names = tuple(str(c["vendor"].get("orgId")) if c["vendor"] else "" for c in combo)
-        key = (-round(objective, 6), names)  # 동점이면 업체 ID 순서가 앞선 배정
-        if best_key is None or key < best_key:
-            best, best_key = combo, key
+    def exhaustive():
+        best, best_key = None, None
+        for combo in itertools.product(*options):
+            if not feasible(combo):
+                continue
+            money = math.fsum(c["value"] for c in combo)
+            carbon = math.fsum(c["carbon"] for c in combo)
+            objective = money - weight * carbon
+            names = tuple(str(c["vendor"].get("orgId")) if c["vendor"] else "" for c in combo)
+            key = (-round(objective, 6), names)  # 동점이면 업체 ID 순서가 앞선 배정
+            if best_key is None or key < best_key:
+                best, best_key = combo, key
+        return best
+
+    found = None
+    if cp_solver is not None:
+        try:
+            picked = cp_solver(usable, options, weight)
+            if picked is not None:
+                found = tuple(options[i][int(j)] for i, j in enumerate(picked, 0))
+                if len(found) != len(options) or not feasible(found):
+                    found = None
+        except Exception as error:  # noqa: BLE001 - 어떤 실패든 완전 탐색으로 돌아간다
+            logger.warning("CP-SAT를 쓰지 못해 완전 탐색으로 돈다: %s", type(error).__name__)
+            found = None
+    if too_many:
+        if found is None:
+            raise ValueError("배정 조합이 너무 많다. 흐름이나 업체 수를 줄인다")
+        best, output["solver"] = found, "ortools"
+    else:
+        best = exhaustive()
+        same = found is not None and all(a is b for a, b in zip(found, best, strict=True))
+        output["solver"] = "ortools" if same else "exact"
 
     now_total = after_total = carbon_total = 0.0
     carbon_known = True
