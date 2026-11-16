@@ -391,7 +391,13 @@ class Orchestrator:
                     }
                 )
                 if not ok:
-                    refused[vendor_id].append({"stream": stream, "evidence": evidence})
+                    refused[vendor_id].append(
+                        {
+                            "stream": stream,
+                            "evidence": evidence,
+                            "unknown": permit["output"].get("matched") is None,
+                        }
+                    )
                 elif vendor_id in candidates:
                     matched[vendor_id].append(stream)
                 else:
@@ -445,7 +451,12 @@ class Orchestrator:
                     for x in refused[vendor_id]
                 )
                 evidence = list(dict.fromkeys(e for x in refused[vendor_id] for e in x["evidence"]))
-                reason = f"업체의 허가 품목에 {names}이(가) 없어 대화를 열지 않습니다."
+                if all(x["unknown"] for x in refused[vendor_id]):
+                    reason = (
+                        f"업체의 허가 품목을 확인하지 못해 {names}에 대한 대화를 열지 않습니다."
+                    )
+                else:
+                    reason = f"업체의 허가 품목에 {names}이(가) 없어 대화를 열지 않습니다."
                 thread.refuse_open(reason, evidence)
                 self.store.put_thread(thread)
                 self._event(
@@ -519,7 +530,22 @@ class Orchestrator:
         return False
 
     # ── 메시지 보내기와 받기 ──────────────────────────────────────────
+    def _fingerprints(self, message: Message) -> dict[str, str]:
+        """메시지가 인용한 근거의 지금 내용. 나중에 근거가 바뀌었는지 볼 때 쓴다."""
+        marks: dict[str, str] = {}
+        for claim in message.claims:
+            for evidence_id in claim.evidence:
+                try:
+                    found = self.registry.get(evidence_id, None)
+                except EvidenceNotFound:
+                    continue
+                marks[evidence_id] = ids.digest(
+                    [found.value, found.unit, found.excerpt, found.valid_until]
+                )
+        return marks
+
     def _append(self, session, thread: Thread, message: Message, actor: str) -> None:
+        message.meta["evidenceMarks"] = self._fingerprints(message)
         thread.append(message, now=self.store.now())
         self._share_claims(message, thread.counterpart(message.sender))
         self.store.put_thread(thread)
@@ -907,6 +933,9 @@ class Orchestrator:
         for message in thread.messages:
             result = validate_message(message, self.registry, today=self.today)
             failed += [f"{thread.id}_m{message.seq}: {code}" for code in result.codes]
+            # 대화 뒤에 근거가 바뀌었거나 사라졌으면 그 메시지의 근거 확인은 실패다
+            if message.meta.get("evidenceMarks", {}) != self._fingerprints(message):
+                failed.append(f"{thread.id}_m{message.seq}: EVIDENCE_CHANGED")
         if failed:
             reason = "근거 확인에 실패한 항목이 있어 승인할 수 없습니다: " + ", ".join(
                 dict.fromkeys(failed)
