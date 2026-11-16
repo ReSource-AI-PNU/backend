@@ -22,6 +22,14 @@
 
 모델이 정하는 것은 무엇을 물을지, 어떤 도구를 부를지, 결과를 어떻게 설명할지다.
 
+구현하면서 정한 것(`app/v3/agents/draft.py`, `company.py`, `vendor.py`):
+
+- **도구 입력은 ID뿐이다.** `toolCalls[].arguments`는 `{"streamId": "..."}` 또는 `{"streamIds": ["..."]}`만 받고, 코드가 흐름과 업체 레코드로 바꿔 판단 도구를 부른다. 모델이 지어낸 흐름을 도구에 넣어 근거를 만들 수 없다.
+- **조건(terms)도 claim ID로 적는다.** 업체 측이 `offer`, `counter`, `conditional`을 낼 때는 `"terms": {"items": [{"streamId", "unitPriceRef"}], "days": [...], "pickupsPerMonthRef": "...", "conditions": [...]}`를 함께 낸다. 단가는 본문에 쓴 claim ID로 가리키고, 코드가 값으로 바꿔 가드레일을 검사한다. 본문에 쓴 단가 claim은 모두 `terms.items`에 있어야 한다.
+- **메시지가 아닌 결정 두 가지.** 회사 측은 `type`에 `accept`(상대 조건을 그대로 받는다. 메시지는 나가지 않는다)와 `ask_user`(담당자만 아는 값이다. `userQuestions`에 `{"streamId", "field"}`를 적는다)를 쓸 수 있다. `field`는 `agents/questions.py`의 목록에서만 고르고, 질문 문구는 코드가 쓴다.
+- **현행 처리 단가는 업체와 나누는 풀에 넣지 않는다.** 판단 도구가 현행 단가로 계산한 근거는 계산한 조직만 본다.
+- **업체가 보낸 기록은 줄여서 남긴다.** 업체 측의 거부 사유는 코드와 일반 문장만 실행 기록에 남는다(가드레일 수치나 다른 배출 기업의 근거 ID가 새지 않게 한다).
+
 ## 2. 모델 구현 세 가지
 
 `app/v3/agents/llm.py`의 `LLM` 프로토콜을 따른다.
@@ -33,6 +41,10 @@
 | `RulePolicy` | 네트워크 없이 도는 결정적 정책. 로컬 시연과 테스트에 쓴다. 화면에는 모델 이름 대신 "규칙 정책(모델 미연결)"이라고 표시한다 |
 
 `RulePolicy`가 낸 결과를 모델이 낸 것처럼 보여 주지 않는다. 진단 뷰의 `vendorModel`과 실행 기록에 실제로 쓴 구현 이름이 그대로 남는다.
+
+`vendorModel`은 `{"provider", "name", "configured": 업체가 고른 설정, "used": 실제로 답을 썼는지}`다. 규칙 정책으로 돌면 `provider`는 `rule`, `name`은 `규칙 정책(모델 미연결)`이고, 업체가 고른 `foundry | ollama` 설정은 `configured`에 따로 남는다. 메시지마다 `model`에도 같은 값이 붙고, 도구 호출 기록의 `calledBy`는 `orchestrator`(진행기가 정해진 순서로 부름) 또는 `model:<provider>`(에이전트가 고름)다.
+
+`RulePolicy`도 모델과 똑같이 입력(JSON)을 받아 `type`, `text`, `claimRefs`, `toolCalls`를 내고, 같은 검증을 거친다.
 
 ## 3. 진단 한 건의 순서
 
@@ -48,6 +60,10 @@
 | ⑤ 비용·탄소 비교 | 받은 제안마다 `cost_carbon`과 `check_loading`, 업체 쪽은 `route_extra_cost` | |
 | ⑥ 최적안 제안 | `optimize_assignment`로 흐름별 업체를 정하고 결과 한 장을 만든다. 선택되지 않은 제안은 대안으로 남긴다 | `awaiting_approval` |
 | 승인 | 양쪽 담당자가 스레드를 승인하면 `confirm`을 보내고 요청서와 이행 계획서를 만든다. 문서도 검증기를 통과해야 한다 | `confirmed` |
+
+실제 실행 순서(구현): 업체 매입 기준과 대조하려면 허가 품목이 맞는 업체가 먼저 정해져야 해서, 도구는 ① `identify_stream` → ④ `find_vendors` → ③ `match_permit` → (스레드 개설, 근거 공유) → ② `judge_route` → ③ `check_requirements` → ④ `inquiry` 순서로 불린다. 실행 기록의 `stage`는 도구가 속한 단계 번호다.
+
+스레드는 업체마다 하나다. 허가 품목이 맞는 흐름은 한 스레드에 모으고, 맞지 않는 흐름이 있으면 그 업체의 `not_opened` 스레드를 하나 더 만들어 이유와 허가증 근거를 남긴다. 업체는 한 스레드 안에서 흐름별로 조건을 낸다. 자동 거절 조건에 걸린 흐름은 메시지의 `excluded`에 이유와 함께 적고, 받을 흐름이 하나도 없을 때만 `decline`으로 스레드를 닫는다. 최적안에 들어간 스레드만 `agreed`가 되고, `confirm`과 문서에는 그 스레드에 배정된 흐름만 들어간다. 선택되지 않은 제안은 `open` 상태로 남아 결과 한 장의 대안으로 보인다.
 
 담당자 질문은 한 묶음에 3개까지, 진단 한 건에 2묶음까지다. "모름"은 유효한 답이고 같은 질문을 다시 하지 않는다. 질문을 다 쓰고도 모르는 값은 "확인 필요"로 남기고 진행한다.
 
@@ -65,6 +81,8 @@
 
 업체 측 에이전트는 가드레일(하한 단가, 가능 요일, 월 최소 횟수, 자동 거절 조건) 밖의 조건을 내지 못한다. 가드레일 검사는 검증기와 별도로, 메시지가 나가기 전에 코드가 한다.
 
+근거 확인 실패와 승인: 합의한 스레드의 메시지는 승인 직전에 다시 검증한다. 검증에 실패하거나, 메시지가 인용한 근거가 대화 뒤에 바뀌었으면(`EVIDENCE_CHANGED`) `block_approval`로 승인을 막고 이유를 남긴다. 근거가 다시 맞으면 풀린다.
+
 업체 측 에이전트는 여러 배출 기업의 물량을 자기 노선에 묶어 계산할 수 있지만, 한 배출 기업에게 다른 배출 기업의 이름이나 물량을 알려 주지 않는다. `policy.check_disclosure`가 나가는 메시지를 검사한다.
 
 ## 5. 업체 측 에이전트의 위치
@@ -81,13 +99,19 @@ class VendorGateway(Protocol):
 
 받은 답 메시지는 회사 측에서 다시 검증기를 통과시킨다. 보내는 쪽이 검증했다는 말을 믿지 않는다.
 
+`context`는 `{"sessionId", "today", "thread": 스레드(메시지 포함), "streams": 그 스레드의 흐름(현행 처리 단가 제외), "emitter": {"id", "name", "location"}}`다. 답 메시지의 `meta`에는 `validation`(시도 횟수와 줄인 거부 사유), `model`(실제로 쓴 구현), `terms`, `excluded`, `trace`(업체 측 도구 호출과 검증 기록)가 붙고, 진행기가 `trace`를 실행 기록으로 옮긴다. `HttpVendorGateway`의 본문에는 `vendorOrgId`도 함께 간다.
+
 ## 6. 서비스 함수
 
 `app/v3/service.py`는 프레임워크와 무관한 함수 모음이고, `api.py`(FastAPI)와 `devserver.py`(표준 라이브러리 HTTP 서버)가 같은 함수를 부른다.
 
 ```python
 class App:                      # 저장소, 레지스트리, 모델, 게이트웨이, 시계를 묶는다
-    def __init__(self, store, registry, *, llm_factory, vendor_gateway=None, today=None): ...
+    def __init__(self, store, registry, *, llm_factory=None, vendor_gateway=None, today=None,
+                 shields=None, documents=None, grade_client=None, distance_provider=None): ...
+    def llm_for(self, role, org_id, model) -> LLM      # llm_factory가 None을 주면 RulePolicy
+
+def seed(app) -> dict                                   # 가정값, 근거 시드, 시연 데이터를 올린다
 
 def reset_demo(app) -> dict
 def list_orgs(app) -> list[dict]
@@ -100,17 +124,48 @@ def get_view(app, session_id, viewer) -> dict                       # 계약 7�
 def run_session(app, session_id, viewer) -> dict                    # 멈춤 지점까지
 def answer_question(app, session_id, question_id, value, viewer) -> dict
 def approve(app, session_id, thread_id, viewer) -> dict
+def handle_vendor_message(app, vendor_org_id, message, context) -> dict   # 답 메시지(dict) 하나
 def get_evidence(app, evidence_id, viewer) -> dict                  # {"evidence", "chain"}
 def search_evidence(app, query, kinds, viewer) -> list[dict]
 def csv_template(app) -> bytes
 def upload_csv(app, org_id, filename, data, viewer) -> dict
 def upload_document(app, org_id, kind, filename, data, viewer) -> dict
+def confirm_document(app, org_id, document_name, fields, viewer) -> dict   # 확인한 추출값만 doc 근거로
 def admin_status(app, viewer) -> dict
 def run_eval(app, viewer) -> dict
 ```
 
 `viewer`는 요청한 조직 ID다. 권한이 없으면 `ServiceError(code, message, status)`를 낸다. 업체가 보는 진단 뷰에는 자기 스레드와 그 스레드의 흐름만 들어간다.
 
+**모델 고르기 (가장자리와 맞춘 계약).** `llm_factory(role, org_id, model) -> LLM | None`이다. `role`은 `"company" | "vendor"`, `model`은 업체 프로필의 `{"provider", "name"}` 또는 `None`(회사 측)이다. `None`을 돌려주면 그 조직은 `RulePolicy`(모델 미연결)로 돈다. `App(..., llm_factory=None)`이면 전부 `RulePolicy`다.
+
+**업체 측 진입점 (가장자리와 맞춘 계약).** `handle_vendor_message(app, vendor_org_id, message, context) -> dict`는 업체 측 에이전트가 받은 메시지 하나에 답 메시지(dict) 하나를 돌려준다. `LocalVendorGateway`와 별도 서비스(`vendor_service.py`)가 같은 함수를 부른다. 그 업체 프로필의 `model`로 `llm_factory("vendor", vendor_org_id, model)`을 불러 모델을 고른다.
+
+조직 시야:
+
+- 배출 기업은 자기 진단만 본다. 다른 배출 기업의 진단, 흐름, 근거를 물으면 없는 것으로 답한다(404).
+- 업체는 자기와 실제로 열린 스레드, 그 스레드의 흐름(현행 처리 단가 제외), 자기에게 배정된 흐름의 단가만 본다. `not_opened` 스레드, 다른 업체, 배출 기업의 현행 대비 손익과 담당자 질문은 보이지 않는다.
+- 계산 근거의 입력 원본(`meta.inputs`)은 계산한 조직에게만 보이고, 다른 조직에게는 `{"hidden": true}`로 나간다.
+- 메시지와 문서에 실린 claim의 근거는 받는 쪽에도 연다. 허가증 근거는 허가 품목을 대조하기 전에, 매입 기준 근거는 스레드를 열 때 배출 기업에 연다.
+
+자료 올리기:
+
+- `upload_csv`는 흐름 이름이 같은 흐름에 측정값을 붙이고 measure 근거로 등록한다. 이름이 맞는 흐름이 없는 행은 `unmatched`로 돌려준다.
+- `upload_document`는 Document Intelligence가 설정돼 있으면 그것으로, 없으면 UTF-8 글 파일만 읽는다(`extraction: "text_only"`). Prompt Shields가 설정되지 않았으면 `shieldUnavailable: true`를 그대로 돌려준다. 주입이 탐지되면 문서를 쓰지 않고 올린 조직의 진행 중인 스레드를 모두 `handoff`로 넘긴다.
+- 뽑은 값은 `confirm_document`로 담당자가 확인한 것만 doc 근거가 된다.
+
+`run_eval`은 시연 시나리오를 따로 만든 저장소에서 처음부터 끝까지 돌리고, 나간 메시지와 문서를 다시 검증해 통과율을 낸다. 지금 연결된 모델 설정을 그대로 쓰므로 규칙 정책으로 돌았으면 결과에 그렇게 적힌다.
+
 ## 7. 실행 기록
 
-모든 메시지, 도구 호출, 검증 결과, handoff, 승인은 `store`의 events에 남는다. 화면의 대화와 실행 기록은 이 기록을 그대로 보여 준다. OpenTelemetry로 내보내는 것은 `api.py` 쪽에서 같은 이벤트를 span으로 옮겨 한다.
+모든 메시지, 도구 호출, 검증 결과, handoff, 승인은 `store`의 events에 남는다. 계약 7장의 `kind`에 `thread`(스레드 개설·미개설·합의·확정), `question`(담당자 질문과 답), `document`(문서 생성), `stage`(진단 생성)를 더했다. 업체가 보는 뷰에는 자기 스레드의 메시지·handoff·승인·스레드·문서 기록과 자기가 한 도구 호출·검증 기록만 나간다. 화면의 대화와 실행 기록은 이 기록을 그대로 보여 준다. OpenTelemetry로 내보내는 것은 `api.py` 쪽에서 같은 이벤트를 span으로 옮겨 한다.
+
+## 8. 로컬 서버
+
+`python3 -m app.v3.devserver --port 8000 [--store 경로.json] [--llm rule|foundry]`
+
+- 표준 라이브러리 `http.server`로 계약 8장의 API를 모두 제공한다. 더한 주소는 `GET /health`와 `POST /intake/documents/confirm`이다.
+- 시작할 때 가정값, 근거 시드, 시연 데이터를 올린다. `--store`를 줘도 시작할 때 시연 시작 상태로 덮어쓴다(근거 레지스트리가 메모리에만 있어 이전 진단을 이어 갈 수 없다).
+- 기본은 `--llm rule`이다. `--llm foundry`일 때만 `FOUNDRY_ENDPOINT`, `FOUNDRY_DEPLOYMENT`, `FOUNDRY_API_KEY`를 읽는다. 업체가 ollama를 골랐으면 `OLLAMA_BASE_URL`이 있을 때만 그 모델을 쓰고, 없으면 그 업체는 규칙 정책으로 돈다.
+- CORS는 `http://localhost:3000`과 `http://127.0.0.1:3000`만 허용한다(`X-Org-Id`, `Content-Type` 헤더, `OPTIONS` 처리).
+- 업로드는 `multipart/form-data`(`file`, `orgId`, 문서는 `kind`)로 받는다.

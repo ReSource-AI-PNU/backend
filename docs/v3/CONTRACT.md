@@ -133,9 +133,15 @@ def call_tool(name, arguments, *, registry, org_id, today) -> dict
 | ④ | `find_vendors` | 지역, 허가 품목, 매입 기준으로 업체를 찾고, 걸러진 업체는 이유와 함께 돌려준다 |
 | ⑤ | `cost_carbon` | 도로 거리, 배출계수, KAU로 비용과 탄소를 계산한다 |
 | ⑤ | `route_extra_cost` | 업체 노선에 정류장을 더할 때의 추가 운송비 (CVRP, 무게와 부피) |
-| ⑥ | `optimize_assignment` | 흐름과 업체 배정. 회사 측 월 순비용을 최소화한다. 탄소는 기본 목적 함수에 넣지 않고 `carbonWeight`가 0보다 크면 가중치로 더한다 |
+| ⑥ | `optimize_assignment` | 흐름과 업체 배정. 회사 측 월 순비용을 최소화한다. 탄소는 기본 목적 함수에 넣지 않고 `carbonWeight`가 0보다 크면 가중치로 더한다. `exclude`(`[{streamId, vendorOrgId}]`)로 업체가 거절했거나 조건을 내지 않은 짝을 뺀다 |
 
 OR-Tools를 쓸 수 있으면 CVRP와 CP-SAT를 쓰고, 없으면 같은 답을 내는 순수 파이썬 풀이(작은 문제의 완전 탐색)로 돈다. 두 경로의 결과가 같은지 테스트한다.
+
+등급 기준은 `app/v3/intake/grade_thresholds.v1.json` 하나다(근거 `assumption:등급기준@v1`). `identify_stream`과 `intake.grade_model`이 같은 기준을 쓴다.
+
+기준값 키는 `judge/basis.py`가 근거로 잇는다. `kau.price`는 KAU 종가 ref 근거(단위 `원/tCO2e`)를 쓰고, `reference.price.<재질>.<형태>`는 가격조사 ref 근거를 "참고 시세"로만 보여 준다(업체 매입 단가가 아니므로 손익 계산에는 쓰지 않는다).
+
+현행 처리 단가에서 나온 계산 근거(`currentUnitCost`, `monthlyNow`, `difference`, 민감도)는 계산한 조직만 본다.
 
 도로 거리는 `distance_provider(points) -> km 행렬 | None`을 주입받는다. 제공자가 없으면 직선 거리에 우회 계수를 곱한 값을 `assumption` 근거로 등록하고 "가정값"으로 표시한다.
 
@@ -202,6 +208,19 @@ VendorProfile {"orgId": "org_saegil",
 
 `{"claim"}`은 `{"id", "kind", "value", "unit", "evidence"}` 객체다. 값이 없으면 `null`을 넣고 화면은 "확인 필요"를 보여 준다.
 
+구현하면서 더한 항목(있던 항목의 모양은 그대로다):
+
+- `session.phase`, `session.today`
+- `streams[]`: `orgId`, `process`, `wasteItem`, `lot`, `contaminants`, `monthlyKgBasis`, `contamination`·`photoContamination`·`moisture`(claim), `unknownFields`, `grade.label`. 업체가 보는 뷰에서는 `currentTreatment`가 `null`이다.
+- `threads[]`: `emitterOrgId`, `assignedStreamIds`(최적안에서 이 업체에 배정된 흐름), `agreedSeq`, `vendorModel.configured`·`vendorModel.used`. `messages[]`에는 `model`과 `meta`(`asks`, `excluded`, `reason`, `terms`의 `items[{streamId, claimId}]`·`days`·`conditions`)가 붙는다. 조건의 값은 `claims`에만 있다.
+- `graph.edges[]`: `kind`(`permit | criterion | assignment | excluded | regulation | document`)
+- `result`: `referencePrices[{key, material, form, label, asOf, price: claim, note}]`(가격조사 참고 시세. 손익 계산에는 쓰지 않는다), `carbonInObjective`, `evidence`. `assignments[]`에는 `vendorName`, `threadId`, `carbonValue`(claim, KAU 환산), `currentAssumed`가 붙고, `checks[]`는 `{key, status, text, evidence}`에 업체가 내건 조건이면 `claims`가 붙는다(`text`의 자리표시자를 그 claims로 그린다). `alternatives[]`에는 `vendorName`, `unitPrice`(claim)가 붙는다. `sensitivity[]`는 흐름별이고 `streamId`가 붙는다.
+- `questions[]`: `unknown`, `answerType`(`number | choice | text`), `unit`, `choices`
+- `unresolved[{streamId, field}]`: 질문 한도를 다 쓰고도 모르는 값
+- `approvals[]`: `streamIds`
+- `documents[]`: `threadId`, `streamIds`, `rendered`(자리표시자를 값으로 바꾼 글), `createdAt`
+- `events[].kind`: `thread`, `question`, `document`, `stage`를 더했다
+
 ## 8. HTTP API
 
 접두어는 `/api/v3`이고, 요청하는 조직은 `X-Org-Id` 헤더로 밝힌다(시연용. 실제 인증은 기존 Entra 설정에 연결한다).
@@ -224,6 +243,8 @@ VendorProfile {"orgId": "org_saegil",
 | `GET /admin/status`, `POST /admin/eval` | 색인·기준값 상태, 사례 시험 실행 |
 
 오류는 `{"error": {"code": "...", "message": "한국어 문장"}}`과 맞는 상태 코드로 낸다.
+
+구현하면서 더한 주소: `GET /health`, `POST /intake/documents/confirm`(`{orgId, documentName, fields}`. 담당자가 확인한 추출값만 doc 근거로 등록한다). 업로드는 `multipart/form-data`의 `file`, `orgId`, (문서는) `kind`로 받는다. `kind`는 `permit | purchase_criteria | material_spec | msds | contract`다.
 
 ## 9. 작업 규칙
 

@@ -292,3 +292,37 @@ def test_company_revalidates_what_the_vendor_sends(forged):
     recheck_events = [e for e in view["events"] if e["detail"].get("recheckedBy") == HANBIT]
     assert any(e["detail"]["ok"] is False and e["threadId"] == thread["id"] for e in recheck_events)
     assert "50원" not in str(view["threads"])
+
+
+def test_permit_mismatch_found_after_opening_closes_with_decline_and_evidence():
+    """대화를 연 뒤에 업체 쪽에서 허가 품목이 맞지 않음을 알게 되면 근거와 함께 decline으로 닫는다."""
+
+    class PermitChanged:
+        def __init__(self, app):
+            self.app = app
+
+        def deliver(self, vendor_org, message, context):
+            if vendor_org == MISO:  # 문의가 도착하기 전에 허가 품목이 바뀌었다
+                profile = self.app.store.get_vendor_profile(MISO)
+                profile["permits"][0]["materials"] = ["ABS"]
+                self.app.store.put_vendor_profile(profile)
+            return service.handle_vendor_message(self.app, vendor_org, message, context)
+
+    app = make_app()
+    app.vendor_gateway = PermitChanged(app)
+    view = to_approval(app)
+    thread = thread_of(view, MISO)
+    assert thread["status"] == "declined" and [m["type"] for m in thread["messages"]] == [
+        "inquiry",
+        "decline",
+    ]
+    decline = thread["messages"][-1]
+    assert decline["from"] == MISO and "받을 수 없습니다" in decline["text"]
+    assert "허가 품목" in thread["statusReason"]
+    assert thread["reasonEvidence"] == ["doc:org_miso:허가증:폐플라스틱"]
+    assert {x["streamId"] for x in decline["meta"]["excluded"]} == {"st_defect", "st_sprue"}
+    assert all(a["vendorOrgId"] != MISO for a in view["result"]["assignments"])
+    assert (
+        view["session"]["status"] == "awaiting_approval"
+        and recheck(app, view)[0] == recheck(app, view)[1]
+    )
