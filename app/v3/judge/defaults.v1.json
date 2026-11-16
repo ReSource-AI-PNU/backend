@@ -9,9 +9,13 @@
     }
   ],
   "missing": [
-    "kau.price",
     "emission.transport.perKm"
   ],
+  "refs": {
+    "kau.price": [
+      "ref:KAU:KAU26-종가@2026-11-16"
+    ]
+  },
   "items": [
     {
       "key": "current.cost.폐플라스틱",

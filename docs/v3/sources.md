@@ -47,10 +47,10 @@
 | `ref:가격조사:PP-플레이크-경남@2026-10` | 562.7 원/kg | https://www.recycling-info.or.kr/sds/marketIndex.do | 2026-10-31 | 2026-11-16T17:35:50.077Z |
 | `ref:가격조사:PE-펠렛-경남@2026-10` | 888.3 원/kg | https://www.recycling-info.or.kr/sds/marketIndex.do | 2026-10-31 | 2026-11-16T17:35:50.077Z |
 | `ref:가격조사:PP-펠렛-경남@2026-10` | 723.7 원/kg | https://www.recycling-info.or.kr/sds/marketIndex.do | 2026-10-31 | 2026-11-16T17:35:50.077Z |
-| `ref:KAU:KAU26-종가@2026-11-16` | 29750 원/t | https://ets.krx.co.kr/contents/ETS/03/03010000/ETS03010000.jsp | 2026-11-16 | 2026-11-16T17:36:06.136Z |
+| `ref:KAU:KAU26-종가@2026-11-16` | 29750 원/tCO2e | https://ets.krx.co.kr/contents/ETS/03/03010000/ETS03010000.jsp | 2026-11-16 | 2026-11-16T17:36:06.136Z |
 
 - 가격조사 값은 자원순환정보시스템 통계DB 화면의 2026년 10월 경남 열이다. 화면에 적힌 조건은 "VAT포함(단위:원/kg)"뿐이다.
-- KAU 값은 배출권 1톤(tCO2e)당 원이다. 계약의 단위 목록에 맞춰 `원/t`로 적고 `meta.per`에 `tCO2e`를 남겼다.
+- KAU 값은 배출권 1톤(tCO2e)당 원이다. 단위는 `원/tCO2e`로 적고 `meta.per`에도 `tCO2e`를 남겼다.
 
 ## 확인 필요 (넣지 않은 것)
 

@@ -3,8 +3,9 @@ import pytest
 from app.v3.evidence.units import UNITS, UnitError, convert, dimension, known, same_value
 
 CONTRACT_UNITS = [
-    "원", "원/kg", "원/t", "원/월", "원/회", "kg", "t", "kg/월", "t/월", "%", "km", "m", "m3",
-    "kg/m3", "tCO2e", "kgCO2e", "tCO2e/월", "kgCO2e/kg", "tCO2e/t", "회/월", "일", "개",
+    "원", "원/kg", "원/t", "원/월", "원/회", "원/km", "원/tCO2e", "kg", "t", "kg/월", "t/월", "%",
+    "km", "m", "m3", "kg/m3", "tCO2e", "kgCO2e", "tCO2e/월", "kgCO2e/kg", "tCO2e/t", "회", "회/월",
+    "일", "개",
 ]  # fmt: skip
 
 
@@ -56,3 +57,12 @@ def test_dimension():
     assert dimension("원/t") == dimension("원/kg")
     with pytest.raises(UnitError):
         dimension("평")
+
+
+def test_units_without_conversion_partner():
+    # 원/km, 회, 원/tCO2e는 같은 단위끼리만 비교한다
+    for unit in ("원/km", "회", "원/tCO2e"):
+        assert known(unit) and same_value(3, unit, 3, unit)
+    for src, dst in (("원/km", "원/kg"), ("원/tCO2e", "원/t"), ("회", "회/월")):
+        with pytest.raises(UnitError):
+            convert(1, src, dst)

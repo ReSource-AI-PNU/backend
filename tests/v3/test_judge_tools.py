@@ -371,3 +371,18 @@ def test_org_boundary():
     assert f"doc:{VENDOR}:노선:차량" not in {
         e for c in hidden["claims"] for e in c["evidence"]
     }  # 업체 내부 문서
+
+
+def test_kau_reference_feeds_cost_carbon_when_seeded():
+    from app.v3.evidence.seeds import load_seed_dir
+
+    reg = registry()
+    assert basis.resolve(reg, EMITTER, "kau.price") is None
+    load_seed_dir(reg)
+    kau = basis.resolve(reg, EMITTER, "kau.price")
+    assert kau.kind == "ref" and kau.unit == "원/tCO2e" and kau.meta["per"] == "tCO2e"
+    r = run(reg, "cost_carbon", stream=stream(), vendor=vendor(), origin=ORIGIN)
+    value = claim(r, "kauValue")
+    assert r["output"]["kau"] == "kauValue" and value["unit"] == "원/월"
+    assert value["value"] == pytest.approx(-claim(r, "carbonDifference")["value"] * kau.value)
+    assert kau.id in value["evidence"] and not any(c["key"] == "kau" for c in r["checks"])
