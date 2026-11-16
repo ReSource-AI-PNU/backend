@@ -401,7 +401,7 @@ def test_rule_policy_runs_are_deterministic():
     assert strip_times(first_waiting) == strip_times(second_waiting)
     assert strip_times(first_done) == strip_times(second_done)
     # reset 뒤에 다시 돌려도 같다
-    service.reset_demo(app)
+    service.reset_demo(app, "org_admin")
     assert strip_times(to_approval(app)) == strip_times(first_waiting)
 
 

@@ -43,6 +43,8 @@ class Settings(BaseSettings):
     # 따로 띄운 업체 측 에이전트의 주소 {"업체 조직 ID": "https://..."}. "*"는 나머지 모든 업체.
     # 비어 있으면 API 프로세스 안에서 업체 측 에이전트를 부른다. 값을 주면 모든 업체 메시지가 HTTP로 간다.
     v3_vendor_agents: dict[str, str] = {}
+    # 참이면 시연 되돌리기(POST /api/v3/demo/reset)를 누구나 부를 수 있다. 기본은 관리자 조직만.
+    v3_demo_open: bool = False
 
     # ① 식별 모델 (backend#8). 가중치는 git 에 없다 -> scripts/fetch_models.py 가 MODEL_BLOB_URL 에서 받는다.
     classifier_backend: str = "auto"  # auto | trained | zeroshot

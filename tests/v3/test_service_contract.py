@@ -13,6 +13,7 @@ from app.v3.evidence.registry import InMemoryRegistry
 from app.v3.store import InMemoryStore
 
 EMITTER, OTHER_EMITTER = "org_hanbit", "org_daon"
+ADMIN = "org_admin"
 VENDORS = ("org_saegil", "org_namhae", "org_miso")
 HIDDEN = (403, 404)  # test_api.py와 같은 뜻: 볼 수 없는 것은 금지나 없음으로 답한다
 
@@ -63,7 +64,7 @@ def test_reset_on_an_unseeded_app_loads_laws_references_and_demo():
     summary = service.reset_demo(app)
     assert summary["seedEvidence"] > 30
     assert {EMITTER, OTHER_EMITTER, *VENDORS} <= {o["id"] for o in service.list_orgs(app)}
-    status = service.admin_status(app, EMITTER)
+    status = service.admin_status(app, ADMIN)
     assert status["laws"]["count"] > 0 and status["evidence"]["byKind"]["ref"] > 0
     assert status["evidence"]["byKind"]["assumption"] > 0  # 가정값도 함께 올라온다
     streams = service.list_streams(app, EMITTER, EMITTER)
@@ -74,7 +75,11 @@ def test_reset_on_an_unseeded_app_loads_laws_references_and_demo():
 def test_reset_twice_gives_the_same_start(app):
     before = (service.list_orgs(app), service.list_streams(app, EMITTER, EMITTER))
     created = service.create_session(app, EMITTER, EMITTER)
-    service.reset_demo(app)
+    # 조직이 이미 있는 저장소는 관리자만 되돌린다(빈 저장소의 첫 시드만 누구나 부른다)
+    assert error_of(service.reset_demo, app).status == 401
+    assert error_of(service.reset_demo, app, EMITTER).status == 403
+    assert service.get_view(app, created["session"]["id"], EMITTER)["session"]["status"] == "idle"
+    service.reset_demo(app, ADMIN)
     assert (service.list_orgs(app), service.list_streams(app, EMITTER, EMITTER)) == before
     assert error_of(service.get_view, app, created["session"]["id"], EMITTER).status == 404
 
@@ -202,10 +207,12 @@ def test_evidence_search_returns_evidence_with_score(app):
     assert isinstance(one["chain"], list)
 
 
-def test_csv_template_and_admin_status_need_no_special_role(app):
+def test_csv_template_needs_no_special_role_and_admin_status_needs_admin(app):
     assert service.csv_template(app).strip()
-    assert service.admin_status(app, EMITTER)["today"] == app.today
-    assert service.admin_status(app, VENDORS[0])["store"] == "InMemoryStore"
+    assert error_of(service.admin_status, app, EMITTER).status == 403
+    assert error_of(service.admin_status, app, VENDORS[0]).status == 403
+    assert service.admin_status(app, ADMIN)["today"] == app.today
+    assert service.admin_status(app, ADMIN)["store"] == "InMemoryStore"
 
 
 def test_vendor_entry_point_answers_one_message(app):

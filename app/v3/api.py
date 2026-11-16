@@ -155,6 +155,7 @@ def build_app() -> service.App:
         distance_provider=(
             AzureMapsDistance(settings.azure_maps_key) if settings.azure_maps_key else None
         ),
+        demo_open=settings.v3_demo_open,
     )
 
 
@@ -260,7 +261,9 @@ async def health(request: Request):
 @router.post("/demo/reset")
 @guarded
 async def demo_reset(request: Request):
-    return await call(service.reset_demo)
+    # 관리자만(설정 V3_DEMO_OPEN이 참이면 누구나). 헤더가 없으면 서비스가 401로 답한다
+    viewer = (request.headers.get("x-org-id") or "").strip() or None
+    return await call(service.reset_demo, viewer)
 
 
 @router.get("/orgs")

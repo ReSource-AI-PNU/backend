@@ -9,7 +9,7 @@ from urllib.parse import quote
 import pytest
 
 from app.v3 import devserver
-from tests.v3.runtime_fixtures import DAON, HANBIT, SAEGIL, TODAY
+from tests.v3.runtime_fixtures import ADMIN, DAON, HANBIT, SAEGIL, TODAY
 
 
 @pytest.fixture(scope="module")
@@ -71,7 +71,7 @@ def multipart(fields, filename, content):
 def test_full_flow_over_http(base):
     seeded = api(base, "POST", "/demo/reset")
     assert seeded["emitterOrgId"] == HANBIT and seeded["synthetic"] is True
-    assert [o["id"] for o in api(base, "GET", "/orgs")][:2] == [DAON, HANBIT]
+    assert [o["id"] for o in api(base, "GET", "/orgs")][:2] == [HANBIT, DAON]
     assert len(api(base, "GET", f"/orgs/{HANBIT}/streams")) == 4
 
     view = api(base, "POST", "/sessions", {"emitterOrgId": HANBIT})
@@ -117,7 +117,8 @@ def test_full_flow_over_http(base):
     theirs = api(base, "GET", f"/sessions/{sid}", org=SAEGIL)
     assert [t["vendorOrgId"] for t in theirs["threads"]] == [SAEGIL]
     api(base, "GET", f"/sessions/{sid}", org=DAON, expect=404)
-    report = api(base, "POST", "/admin/eval")
+    assert api(base, "POST", "/admin/eval", expect=403)["error"]["code"] == "FORBIDDEN"
+    report = api(base, "POST", "/admin/eval", org=ADMIN)
     assert report["validatorPassRate"] == 1.0 and report["model"]["provider"] == "rule"
 
 
@@ -213,7 +214,9 @@ def test_uploads_and_profile_edits_over_http(base):
     vendor = api(base, "PUT", f"/vendors/{SAEGIL}", {"guardrails": {"days": ["수"]}}, org=SAEGIL)
     assert vendor["guardrails"]["days"] == ["수"]
     assert "guardrails" not in api(base, "GET", f"/vendors/{SAEGIL}")
-    status = api(base, "GET", "/admin/status")
+    assert api(base, "GET", "/admin/status", expect=403)["error"]["code"] == "FORBIDDEN"
+    assert api(base, "GET", "/admin/status", org=None, expect=401)["error"]["code"]
+    status = api(base, "GET", "/admin/status", org=ADMIN)
     assert status["store"] == "InMemoryStore" and status["models"]["llmFactory"] is False
     assert api(base, "GET", "/health", org=None) == {"ok": True}
 
@@ -276,3 +279,21 @@ def test_llm_option_reads_environment_only_for_foundry(tmp_path):
     )
     assert (local.provider, local.model) == ("ollama", "qwen2.5:7b")
     assert path.exists() and json.loads(path.read_text("utf-8"))["orgs"]
+
+
+def test_reset_is_open_only_when_the_app_says_so():
+    """로컬 시연(demo_open=True)에서는 누구나, 닫으면 관리자만 되돌린다."""
+    closed = devserver.build_app(today=TODAY, demo_open=False)
+    for viewer, code, status in ((None, "ORG_REQUIRED", 401), (HANBIT, "FORBIDDEN", 403)):
+        headers = {"X-Org-Id": viewer} if viewer else {}
+        request = devserver.Request("POST", f"{devserver.PREFIX}/demo/reset", {}, headers, b"")
+        with pytest.raises(devserver.service.ServiceError) as caught:
+            devserver.route(closed, request)
+        assert (caught.value.code, caught.value.status) == (code, status)
+    as_admin = devserver.Request(
+        "POST", f"{devserver.PREFIX}/demo/reset", {}, {"X-Org-Id": ADMIN}, b""
+    )
+    assert devserver.route(closed, as_admin)["emitterOrgId"] == HANBIT
+    opened = devserver.build_app(today=TODAY)  # 기본값
+    anyone = devserver.Request("POST", f"{devserver.PREFIX}/demo/reset", {}, {}, b"")
+    assert opened.demo_open is True and devserver.route(opened, anyone)["synthetic"] is True

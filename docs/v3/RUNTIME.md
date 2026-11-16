@@ -111,13 +111,14 @@ class VendorGateway(Protocol):
 ```python
 class App:                      # 저장소, 레지스트리, 모델, 게이트웨이, 시계를 묶는다
     def __init__(self, store, registry, *, llm_factory=None, vendor_gateway=None, today=None,
-                 shields=None, documents=None, grade_client=None, distance_provider=None): ...
+                 shields=None, documents=None, grade_client=None, distance_provider=None,
+                 demo_open=False): ...
     def llm_for(self, role, org_id, model) -> LLM      # llm_factory가 None을 주면 RulePolicy
 
 def seed(app) -> dict                                   # 가정값, 근거 시드, 시연 데이터를 올린다
 
-def reset_demo(app) -> dict
-def list_orgs(app) -> list[dict]
+def reset_demo(app, viewer=None) -> dict                # 관리자만. App(demo_open=True)이면 누구나
+def list_orgs(app) -> list[dict]                        # 조직 레코드의 order 순
 def list_streams(app, org_id, viewer) -> list[dict]
 def update_stream(app, org_id, stream_id, patch, viewer) -> dict
 def get_vendor(app, org_id, viewer) -> dict
@@ -134,8 +135,8 @@ def csv_template(app) -> bytes
 def upload_csv(app, org_id, filename, data, viewer) -> dict
 def upload_document(app, org_id, kind, filename, data, viewer) -> dict
 def confirm_document(app, org_id, document_name, fields, viewer) -> dict   # 확인한 추출값만 doc 근거로
-def admin_status(app, viewer) -> dict                               # 재학습 표(retrain) 포함
-def run_eval(app, viewer) -> dict                                   # 사례 세트 + 시연 시나리오
+def admin_status(app, viewer) -> dict                               # 재학습 표(retrain) 포함. 관리자만
+def run_eval(app, viewer) -> dict                                   # 사례 세트 + 시연 시나리오. 관리자만
 def record_correction(app, session_id, body, viewer) -> dict        # 배출 기업 담당자가 고친 값
 def record_outcome(app, session_id, body, viewer) -> dict           # 업체가 확정 뒤 기록하는 실제 결과
 def export_retraining(app, viewer) -> dict                          # 재학습 행(관리자만)
@@ -172,7 +173,7 @@ def register_model_run(app, run, viewer) -> dict                    # 재학습 
 - `feedback.export_detection_corrections(app)`은 박스·재질·출처·형태·혼입물 교정을 낸다. `photoEvidence`로 원본 사진을 찾고, 사진이 없는 흐름의 교정은 `hasPhoto: false`로 표시한다.
 - `feedback.gate_status(app)`는 실제 등급 행으로 지금 기준값 규칙을 평가해 `deploy_gate`에 넣는다. 재학습한 후보 모델의 점수는 Azure ML 작업이 내고, 등록된 실행만 모델 버전 표에 나온다.
 - `feedback.calibration_candidates(app, viewer)`는 실제 단가와 매입 기준표 단가의 차이를 흐름·업체별로 건별로 늘어놓는다. 평균을 내지 않고 기준값을 바꾸지 않는다.
-- 관리자 조직(`role: admin`)은 시연 데이터에 없다. 내보내기와 실행 등록은 관리자 조직을 만든 환경에서만 쓸 수 있다.
+- 관리자 조직(`org_admin`, `role: admin`)이 시연 데이터에 있다. 관리자 화면(`/admin/*`)과 내보내기, 실행 등록, 시연 되돌리기는 이 조직으로 부른다.
 
 진행기에서 평가하며 고친 것:
 

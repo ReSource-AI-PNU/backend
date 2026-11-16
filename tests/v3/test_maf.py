@@ -152,7 +152,7 @@ def test_demo_scenario_runs_through_the_adapter():
         json.dumps(t["vendorModel"], sort_keys=True) for t in view["threads"] if t["messages"]
     }
     assert all('"provider": "foundry"' in m and "chat-deploy" in m for m in models)
-    assert service.admin_status(app, HANBIT)["models"]["company"]["name"] == "chat-deploy"
+    assert service.admin_status(app, "org_admin")["models"]["company"]["name"] == "chat-deploy"
 
 
 # ── 모델 고르기 ──────────────────────────────────────────────────────

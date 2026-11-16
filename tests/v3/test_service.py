@@ -7,6 +7,7 @@ import pytest
 from app.v3 import service
 from app.v3.intake.shields import PromptShieldsClient
 from tests.v3.runtime_fixtures import (
+    ADMIN,
     DAON,
     HANBIT,
     MISO,
@@ -40,11 +41,24 @@ def raises(code, status, call, *args):
 
 def test_reset_seeds_everything():
     app = make_app()
-    summary = service.reset_demo(app)
+    raises("ORG_REQUIRED", 401, service.reset_demo, app)
+    raises("FORBIDDEN", 403, service.reset_demo, app, HANBIT)
+    raises("FORBIDDEN", 403, service.reset_demo, app, SAEGIL)
+    summary = service.reset_demo(app, ADMIN)
     assert summary["synthetic"] is True and summary["seedEvidence"] > 30
-    assert [o["id"] for o in service.list_orgs(app)] == [DAON, HANBIT, MISO, NAMHAE, SAEGIL]
+    # 시연 주인공이 맨 앞에 오고(order), 운영 조직은 맨 뒤다
+    assert [o["id"] for o in service.list_orgs(app)] == [HANBIT, DAON, SAEGIL, NAMHAE, MISO, ADMIN]
+    app.store.put_org({"id": "org_zz", "name": "순서 없는 조직(가상)", "role": "emitter"})
+    app.store.put_org({"id": "org_aa", "name": "순서 없는 조직(가상)", "role": "emitter"})
+    assert [o["id"] for o in service.list_orgs(app)][-3:] == [ADMIN, "org_aa", "org_zz"]
+    opened = make_app(demo_open=True)
+    assert service.reset_demo(opened)["emitterOrgId"] == HANBIT  # 로컬 시연에서는 누구나
+    assert service.reset_demo(opened, HANBIT)["emitterOrgId"] == HANBIT
     assert len(service.list_streams(app, HANBIT, HANBIT)) == 4
-    status = service.admin_status(app, HANBIT)
+    for viewer in (HANBIT, SAEGIL):  # /admin/* 은 관리자만
+        raises("FORBIDDEN", 403, service.admin_status, app, viewer)
+        raises("FORBIDDEN", 403, service.run_eval, app, viewer)
+    status = service.admin_status(app, ADMIN)
     assert status["laws"]["count"] == 26 and status["evidence"]["byKind"]["ref"] == 7
     assert status["models"]["company"] == {"provider": "rule", "name": "규칙 정책(모델 미연결)"}
     assert status["promptShields"] == {"configured": False}
@@ -438,7 +452,7 @@ def test_injection_in_uploaded_document_hands_threads_off():
 
 def test_run_eval_reports_the_real_implementation():
     app = make_app()
-    report = service.run_eval(app, HANBIT)
+    report = service.run_eval(app, ADMIN)
     assert report["model"] == {"provider": "rule", "name": "규칙 정책(모델 미연결)"}
     assert report["sessionStatus"] == "confirmed" and report["validatorPassRate"] == 1.0
     assert report["checked"] == report["passed"] > 15 and report["rewritten"] == 0

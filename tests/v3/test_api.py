@@ -16,6 +16,7 @@ from app.v3.agents.llm import FoundryChat, OllamaChat
 
 EMITTER, OTHER_EMITTER = "org_hanbit", "org_daon"
 VENDORS = ("org_saegil", "org_namhae", "org_miso")
+ADMIN = "org_admin"
 HIDDEN = (403, 404)  # 볼 수 없는 것은 금지나 없음으로 답한다
 
 
@@ -85,6 +86,21 @@ def test_health_and_document_confirm(client):
         "/api/v3/intake/documents/confirm", headers=org(EMITTER), json={"fields": "x"}
     )
     assert assert_error(wrong, 422)["code"] == "INVALID_BODY"
+
+
+def test_admin_routes_and_reset_need_the_admin_org(client, monkeypatch):
+    orgs = client.get("/api/v3/orgs").json()
+    assert orgs[0]["id"] == EMITTER and orgs[-1]["id"] == ADMIN  # order 순
+    for path in ("/api/v3/admin/status", "/api/v3/admin/retrain/export"):
+        assert assert_error(client.get(path, headers=org(EMITTER)), 403)["code"] == "FORBIDDEN"
+        assert client.get(path, headers=org(ADMIN)).status_code == 200
+    # 조직이 이미 있는 저장소는 관리자만 되돌린다(V3_DEMO_OPEN 기본 false)
+    assert assert_error(client.post("/api/v3/demo/reset"), 401)["code"] == "ORG_REQUIRED"
+    denied = client.post("/api/v3/demo/reset", headers=org(EMITTER))
+    assert assert_error(denied, 403)["code"] == "FORBIDDEN"
+    assert client.post("/api/v3/demo/reset", headers=org(ADMIN)).status_code == 200
+    monkeypatch.setattr(api.get_state(), "demo_open", True)
+    assert client.post("/api/v3/demo/reset").status_code == 200
 
 
 def test_error_shape(client):
@@ -213,7 +229,7 @@ def test_csv_template_and_admin_status(client):
     assert template.status_code == 200
     assert template.headers["content-type"].startswith("text/csv")
     assert "attachment" in template.headers["content-disposition"] and template.content
-    status = client.get("/api/v3/admin/status", headers=org(EMITTER))
+    status = client.get("/api/v3/admin/status", headers=org(ADMIN))
     assert status.status_code == 200 or assert_error(status, 403)
 
 
@@ -240,7 +256,7 @@ def test_feedback_routes(client):
     assert assert_error(early, 409)["code"] == "THREAD_NOT_CONFIRMED"
     assert_error(client.get("/api/v3/admin/retrain/export", headers=org(EMITTER)), 403)
     assert_error(client.post("/api/v3/admin/retrain/runs", headers=org(EMITTER), json={}), 403)
-    status = client.get("/api/v3/admin/status", headers=org(EMITTER)).json()
+    status = client.get("/api/v3/admin/status", headers=org(ADMIN)).json()
     assert status["retrain"]["corrections"]["count"] == 1
     assert status["retrain"]["modelVersions"] == []
 

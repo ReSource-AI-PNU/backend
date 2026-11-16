@@ -81,8 +81,11 @@ class App:
         documents: Any = None,
         grade_client: Any = None,
         distance_provider: Any = None,
+        demo_open: bool = False,
     ) -> None:
         self.store = store
+        # True면 시연 되돌리기(POST /demo/reset)를 누구나 부를 수 있다(로컬 시연). 기본은 관리자만
+        self.demo_open = bool(demo_open)
         self.registry = registry
         self.llm_factory = llm_factory
         self._today = today
@@ -115,6 +118,13 @@ def _org(app: App, org_id: str | None) -> dict[str, Any]:
         return app.store.get_org(org_id)
     except NotFound:
         raise ServiceError("UNKNOWN_ORG", "알 수 없는 조직입니다.", 401) from None
+
+
+def _admin(app: App, viewer: str | None) -> dict[str, Any]:
+    me = _org(app, viewer)
+    if me.get("role") != "admin":
+        raise ServiceError("FORBIDDEN", "관리자만 할 수 있는 일입니다.", 403)
+    return me
 
 
 def _owner(app: App, org_id: str, viewer: str, role: str | None = None) -> dict[str, Any]:
@@ -224,7 +234,14 @@ def seed(app: App) -> dict[str, Any]:
     return {**summary, "seedEvidence": loaded}
 
 
-def reset_demo(app: App) -> dict[str, Any]:
+def reset_demo(app: App, viewer: str | None = None) -> dict[str, Any]:
+    """시연 데이터를 처음 상태로 되돌린다. 관리자만 부를 수 있다.
+
+    App(demo_open=True)이면 누구나 부를 수 있다(로컬 시연). 조직이 하나도 없는 빈 저장소의
+    첫 시드도 막지 않는다(관리자 조직이 아직 없어 아무도 부를 수 없게 되는 것을 피한다).
+    """
+    if not app.demo_open and app.store.list_orgs():
+        _admin(app, viewer)
     if hasattr(app.registry, "clear"):
         app.registry.clear()
     app.vendor_memo.clear()
@@ -232,7 +249,14 @@ def reset_demo(app: App) -> dict[str, Any]:
 
 
 def list_orgs(app: App) -> list[dict[str, Any]]:
-    return app.store.list_orgs()
+    """조직 목록. 조직 레코드의 order(작은 값이 앞)로 늘어놓고, order가 없으면 뒤에 ID 순으로 둔다."""
+
+    def position(org: dict[str, Any]) -> tuple[bool, float, str]:
+        order = org.get("order")
+        known = isinstance(order, (int, float)) and not isinstance(order, bool)
+        return (not known, float(order) if known else 0.0, str(org.get("id")))
+
+    return sorted(app.store.list_orgs(), key=position)
 
 
 def _vendor_stream(stream: dict[str, Any]) -> dict[str, Any]:
@@ -858,13 +882,6 @@ def _feedback_call(call, *args):
         raise ServiceError(error.code, error.message, error.status) from error
 
 
-def _admin(app: App, viewer: str) -> dict[str, Any]:
-    me = _org(app, viewer)
-    if me.get("role") != "admin":
-        raise ServiceError("FORBIDDEN", "관리자만 할 수 있는 일입니다.", 403)
-    return me
-
-
 def record_correction(
     app: App, session_id: str, body: dict[str, Any], viewer: str
 ) -> dict[str, Any]:
@@ -1101,7 +1118,8 @@ def confirm_document(
 
 
 def admin_status(app: App, viewer: str) -> dict[str, Any]:
-    me = _org(app, viewer)
+    """색인·기준값 상태와 재학습 표. 여러 조직의 기록 건수가 섞여 있어 관리자만 본다."""
+    _admin(app, viewer)
     public = app.registry.list(org_id=viewer)
     kinds = {kind: sum(1 for e in public if e.kind == kind) for kind in KINDS}
     refs = [e for e in public if e.kind == "ref"]
@@ -1129,7 +1147,7 @@ def admin_status(app: App, viewer: str) -> dict[str, Any]:
         "vendorGateway": type(app.vendor_gateway).__name__,
         "store": type(app.store).__name__,
         # 재학습 표: 실제 등급 라벨 수, 교정 건수, 배포 게이트, 기준값 보정 후보, 모델 버전
-        "retrain": feedback.retrain_table(app, None if me.get("role") == "admin" else viewer),
+        "retrain": feedback.retrain_table(app, None),
     }
 
 
@@ -1145,8 +1163,9 @@ def run_eval(app: App, viewer: str) -> dict[str, Any]:
     사례마다 따로 만든 저장소에서 돌리므로 운영 데이터는 바뀌지 않는다. 지금 연결된 모델 설정과
     공개 근거(법령, 기준값, 가정값)를 그대로 쓰므로, 규칙 정책으로 돌았으면 결과에 그렇게 적힌다.
     맨 위의 scenario~resultStatus는 시연 시나리오 한 건의 결과이고, cases가 사례 세트의 결과다.
+    관리자만 부를 수 있다.
     """
-    _org(app, viewer)
+    _admin(app, viewer)
     from app.v3.eval.loader import load_cases
     from app.v3.eval.runner import run_cases
 

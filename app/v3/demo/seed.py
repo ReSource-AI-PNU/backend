@@ -1,5 +1,7 @@
 """시연 데이터. 회사 이름, 좌표, 수치, 문서는 모두 가상이다(실제 업체나 견적이 아니다).
 
+조직 레코드의 order는 조직 목록(GET /orgs)의 순서다. 시연 주인공 (주)한빛정밀이 맨 앞이다.
+
 seed_demo(store, registry, today)는 저장소를 비우고 같은 상태로 다시 채운다.
 허가증, 매입 기준표, 계약서 값은 doc 근거로, 측정값은 measure 근거로, 사진 추정은 model 근거로
 등록한다. 근거는 소유 조직만 볼 수 있고, 대화가 열릴 때 share_evidence로 상대에게 연다.
@@ -20,10 +22,12 @@ DOC_DATE = "2026-11-01"
 EMITTER = "org_hanbit"
 OTHER_EMITTER = "org_daon"
 VENDORS = ("org_saegil", "org_namhae", "org_miso")
+ADMIN = "org_admin"
 
 ORGS: list[dict[str, Any]] = [
     {
         "id": "org_hanbit",
+        "order": 1,
         "name": "(주)한빛정밀",
         "role": "emitter",
         "region": "부산 강서구 녹산산단",
@@ -31,6 +35,7 @@ ORGS: list[dict[str, Any]] = [
     },
     {
         "id": "org_daon",
+        "order": 2,
         "name": "(주)다온산업",
         "role": "emitter",
         "region": "부산 강서구 녹산산단",
@@ -38,6 +43,7 @@ ORGS: list[dict[str, Any]] = [
     },
     {
         "id": "org_saegil",
+        "order": 3,
         "name": "(주)새길자원",
         "role": "vendor",
         "region": "부산 강서구 미음산단",
@@ -45,6 +51,7 @@ ORGS: list[dict[str, Any]] = [
     },
     {
         "id": "org_namhae",
+        "order": 4,
         "name": "(주)남해열분해",
         "role": "vendor",
         "region": "경남 김해시 주촌면",
@@ -52,10 +59,20 @@ ORGS: list[dict[str, Any]] = [
     },
     {
         "id": "org_miso",
+        "order": 5,
         "name": "(주)미소환경",
         "role": "vendor",
         "region": "부산 사상구 학장동",
         "location": [128.9795, 35.1462],
+    },
+    # 운영 조직. 관리자 화면(/admin/*)과 시연 되돌리기를 부른다. 흐름도 업체 프로필도 없다
+    {
+        "id": "org_admin",
+        "order": 99,
+        "name": "Re:Source AI 운영",
+        "role": "admin",
+        "region": None,
+        "location": None,
     },
 ]
 

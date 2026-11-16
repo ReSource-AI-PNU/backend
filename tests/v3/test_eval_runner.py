@@ -9,7 +9,7 @@ from app.v3 import service
 from app.v3.eval import foundry_eval, report
 from app.v3.eval.loader import load_cases
 from app.v3.eval.runner import run_case, run_cases
-from tests.v3.runtime_fixtures import HANBIT, make_app
+from tests.v3.runtime_fixtures import make_app
 
 CASES = load_cases()
 REPORT = Path(__file__).resolve().parents[2] / "docs" / "v3" / "eval-report.md"
@@ -102,7 +102,7 @@ def test_runner_accepts_an_app_or_a_registry(outcome):
 
 def test_service_run_eval_runs_the_case_set(outcome):
     app = make_app()
-    evaluated = service.run_eval(app, HANBIT)
+    evaluated = service.run_eval(app, "org_admin")
     cases = evaluated["cases"]
     assert cases["summary"] == outcome["summary"]
     assert len(cases["results"]) == 50 and "observed" not in cases["results"][0]

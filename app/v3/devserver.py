@@ -8,6 +8,8 @@
   FOUNDRY_ENDPOINT, FOUNDRY_DEPLOYMENT, FOUNDRY_API_KEY를 읽는다. 업체가 ollama를 골랐으면
   OLLAMA_BASE_URL이 있을 때만 그 모델을 쓰고, 없으면 그 업체는 규칙 정책으로 돈다(화면에 그렇게 나온다).
 - 요청하는 조직은 X-Org-Id 헤더로 밝힌다(시연용).
+- /admin/* 은 관리자 조직(org_admin)만 부른다. 시연 되돌리기(POST /demo/reset)는 로컬 시연에서는
+  누구나 부를 수 있다(App(demo_open=True)). --demo-closed를 주면 관리자만 부른다.
 """
 
 from __future__ import annotations
@@ -158,7 +160,7 @@ def route(app: service.App, request: Request) -> Any:
         case ("GET", ["health"]):
             return {"ok": True}
         case ("POST", ["demo", "reset"]):
-            return service.reset_demo(app)
+            return service.reset_demo(app, viewer or None)
         case ("GET", ["orgs"]):
             return service.list_orgs(app)
         case ("GET", ["orgs", org_id, "streams"]):
@@ -329,10 +331,13 @@ def build_app(
     llm: str = "rule",
     today: str | None = None,
     env: Mapping[str, str] | None = None,
+    demo_open: bool = True,
 ) -> service.App:
     store = JsonFileStore(store_path) if store_path else InMemoryStore()
     factory = foundry_factory(os.environ if env is None else env) if llm == "foundry" else None
-    app = service.App(store, InMemoryRegistry(), llm_factory=factory, today=today)
+    app = service.App(
+        store, InMemoryRegistry(), llm_factory=factory, today=today, demo_open=demo_open
+    )
     service.seed(app)
     return app
 
@@ -344,8 +349,13 @@ def main(argv: list[str] | None = None) -> None:
     parser.add_argument("--store", default=None, help="저장소를 쓸 JSON 파일 경로(없으면 메모리)")
     parser.add_argument("--llm", choices=("rule", "foundry"), default="rule")
     parser.add_argument("--today", default=None, help="기준일 YYYY-MM-DD(없으면 오늘)")
+    parser.add_argument(
+        "--demo-closed", action="store_true", help="시연 되돌리기를 관리자 조직만 부르게 한다"
+    )
     args = parser.parse_args(argv)
-    app = build_app(store_path=args.store, llm=args.llm, today=args.today)
+    app = build_app(
+        store_path=args.store, llm=args.llm, today=args.today, demo_open=not args.demo_closed
+    )
     server = make_server(app, args.host, args.port, quiet=False)
     mode = "규칙 정책(모델 미연결)" if args.llm == "rule" else "Foundry"
     sys.stderr.write(

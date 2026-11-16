@@ -30,7 +30,13 @@ def test_orgs_and_streams(demo):
         "org_saegil": "(주)새길자원",
         "org_namhae": "(주)남해열분해",
         "org_miso": "(주)미소환경",
+        "org_admin": "Re:Source AI 운영",
     }
+    roles = {o["id"]: o["role"] for o in store.list_orgs()}
+    assert roles["org_admin"] == "admin" and store.list_streams("org_admin") == []
+    orders = {o["id"]: o["order"] for o in store.list_orgs()}
+    assert min(orders, key=orders.get) == "org_hanbit"  # 시연 주인공이 맨 앞
+    assert len(set(orders.values())) == len(orders)
     assert all(o["synthetic"] for o in store.list_orgs())
     streams = {s["id"]: s for s in store.list_streams("org_hanbit")}
     assert {k: (v["material"], v["origin"], v["monthlyKg"]) for k, v in streams.items()} == {

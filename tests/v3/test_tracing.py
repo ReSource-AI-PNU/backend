@@ -115,7 +115,9 @@ def test_tracing_store_delegates_and_emits_every_event():
         tracing.event_span(sid, event)["attributes"]["rsai.event.kind"] for sid, event in emitted
     }
     assert {"message", "tool_call", "validation", "approval", "document"} <= kinds
-    assert store.inner is inner and service.admin_status(app, HANBIT)["store"] == "TracingStore"
+    assert (
+        store.inner is inner and service.admin_status(app, "org_admin")["store"] == "TracingStore"
+    )
 
 
 def test_emit_failure_does_not_stop_the_run():

@@ -265,7 +265,7 @@ def test_calibration_lists_each_case_without_averaging(confirmed):
 def test_admin_status_has_the_retrain_table_and_no_invented_versions(confirmed):
     app, view = confirmed
     sid = view["session"]["id"]
-    empty = service.admin_status(make_app(), HANBIT)["retrain"]
+    empty = service.admin_status(make_app(), ADMIN)["retrain"]
     assert empty["gradeLabels"]["count"] == 0 and empty["corrections"]["count"] == 0
     assert empty["modelVersions"] == [] and empty["gate"]["allowed"] is False
     service.record_outcome(app, sid, outcome_body(view), SAEGIL)
@@ -275,21 +275,23 @@ def test_admin_status_has_the_retrain_table_and_no_invented_versions(confirmed):
         {"streamId": "st_film", "field": "origin", "before": "PCR", "after": "PIR"},
         HANBIT,
     )
-    table = service.admin_status(app, HANBIT)["retrain"]
+    fails("FORBIDDEN", 403, service.admin_status, app, HANBIT)
+    table = service.admin_status(app, ADMIN)["retrain"]
     assert table["gradeLabels"]["count"] == 1 and table["corrections"] == {
         "count": 1,
         "byField": {"origin": 1},
         "detectorCandidates": 1,
     }
     assert table["calibration"]["count"] == 1 and table["modelVersions"] == []
-    # 건수는 전체지만 건별 목록은 당사자만 본다
-    other = service.admin_status(app, MISO)["retrain"]
+    assert table["calibration"]["groups"]  # 관리자는 건별 목록을 모두 본다
+    # 재학습 표를 조직 시야로 만들면 건수는 전체지만 건별 목록은 당사자만 본다
+    other = feedback.retrain_table(app, MISO)
     assert other["gradeLabels"]["count"] == 1 and other["calibration"]["groups"] == []
 
 
 def test_model_runs_and_export_are_admin_only(confirmed):
     app, view = confirmed
-    app.store.put_org({"id": ADMIN, "name": "운영자(가상)", "role": "admin"})
+    assert app.store.get_org(ADMIN)["role"] == "admin"  # 시연 데이터에 있는 운영 조직
     service.record_outcome(app, view["session"]["id"], outcome_body(view), SAEGIL)
     run = {
         "model": grade_model.MODEL_NAME,
@@ -308,7 +310,7 @@ def test_model_runs_and_export_are_admin_only(confirmed):
     fails("INVALID_VALUE", 422, service.register_model_run, app, {**run, "gate": {}}, ADMIN)
     saved = service.register_model_run(app, run, ADMIN)["run"]
     assert saved["metrics"] == {"accuracy": 0.97} and saved["deployed"] is False
-    versions = service.admin_status(app, HANBIT)["retrain"]["modelVersions"]
+    versions = service.admin_status(app, ADMIN)["retrain"]["modelVersions"]
     assert [(v["model"], v["version"], v["gate"]["allowed"]) for v in versions] == [
         (grade_model.MODEL_NAME, "2", False)
     ]
@@ -354,7 +356,8 @@ def test_devserver_routes_for_feedback():
         denied = call("POST", f"/sessions/{sid}/outcomes", outcome_body(view), HANBIT, 403)
         assert denied["error"]["code"] == "FORBIDDEN"
         call("GET", "/admin/retrain/export", None, HANBIT, 403)
-        status = call("GET", "/admin/status", None, HANBIT)
+        call("GET", "/admin/status", None, HANBIT, 403)
+        status = call("GET", "/admin/status", None, ADMIN)
         assert status["retrain"]["gradeLabels"]["count"] == 1
     finally:
         server.shutdown()

@@ -16,6 +16,7 @@ TODAY = "2026-11-17"
 CLOCK = "2026-11-17T00:00:00+00:00"
 HANBIT, DAON = "org_hanbit", "org_daon"
 SAEGIL, NAMHAE, MISO = "org_saegil", "org_namhae", "org_miso"
+ADMIN = "org_admin"  # 운영 조직(관리자 화면과 시연 되돌리기)
 FILM_MOISTURE = 2.0  # 시연에서 담당자가 답하는 가상 값
 
 
