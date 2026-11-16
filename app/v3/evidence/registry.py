@@ -58,6 +58,10 @@ class InMemoryRegistry:
     def exists(self, evidence_id: str) -> bool:
         return evidence_id in self._items
 
+    def clear(self) -> None:
+        """모두 지운다. 시연 데이터를 처음 상태로 되돌릴 때 쓴다."""
+        self._items.clear()
+
     def list(
         self, *, kinds: Iterable[str] | None = None, org_id: str | None = None
     ) -> list[Evidence]:
