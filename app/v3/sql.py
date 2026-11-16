@@ -82,7 +82,8 @@ def _plain(value: Any) -> Any:
 # ── 근거 레지스트리 ──────────────────────────────────────────────────
 def _to_evidence(row: EvidenceRow) -> Evidence:
     data = row.payload
-    # Evidence.from_dict는 빈 access를 공개("*")로 바꾸므로 쓰지 않는다. access는 열 값을 그대로 쓴다.
+    # Evidence.from_dict는 빈 access를 공개("*")로 바꾸므로 쓰지 않는다.
+    # access는 열 값을 그대로 쓴다.
     return Evidence(
         id=row.id,
         kind=row.kind,

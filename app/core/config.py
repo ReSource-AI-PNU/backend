@@ -31,6 +31,16 @@ class Settings(BaseSettings):
     platform_road_matrix_url: str = ""
     platform_road_matrix_token: str = ""
 
+    # 설계안 v3 (app/v3). DATABASE_URL이 있으면 SQL 저장, 없으면 메모리 저장으로 돈다.
+    v3_llm: str = "rule"  # rule(규칙 정책, 모델 미연결) | foundry
+    foundry_endpoint: str = ""  # 리소스 주소까지만 (뒤에 /openai/... 를 붙이지 않는다)
+    foundry_deployment: str = ""
+    foundry_api_key: str = ""
+    ollama_base_url: str = ""  # 업체가 오픈 모델을 고른 경우. VNet 안의 주소만 쓴다
+    # 업체 측 에이전트 서비스 (app/v3/vendor_service.py)
+    vendor_org_id: str = ""
+    vendor_service_key: str = ""
+
     # ① 식별 모델 (backend#8). 가중치는 git 에 없다 -> scripts/fetch_models.py 가 MODEL_BLOB_URL 에서 받는다.
     classifier_backend: str = "auto"  # auto | trained | zeroshot
     material_model_dir: str = "models/material"
