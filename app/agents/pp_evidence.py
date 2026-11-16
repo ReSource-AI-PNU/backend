@@ -123,6 +123,23 @@ _OTHER = {
     "ABS",
     "HDPE",
     "LDPE",
+    "PC",
+    "POLYCARBONATE",
+    "폴리카보네이트",
+    "PA",
+    "PA6",
+    "PA66",
+    "NYLON",
+    "나일론",
+    "폴리아미드",
+    "POM",
+    "PMMA",
+    "PU",
+    "EVA",
+    "PBT",
+    "PLA",
+    "아크릴",
+    "폴리우레탄",
     "폴리에틸렌",
     "폴리에스터",
     "폴리스티렌",
@@ -190,11 +207,9 @@ def compare_pp_evidence(state: ReviewState) -> ComparisonResult:
     )
     if material_value in _OTHER:
         return ComparisonResult("unsupported", summary, (), limits, follow_up)
-    material_finding = (
-        Finding("match", "입력 재질 PP가 문서의 PP와 같습니다.")
-        if material_value in _PP
-        else _unconfirmed(material, "재질")
-    )
+    if material_value not in _PP:
+        return ComparisonResult("insufficient_information", summary, (), limits, follow_up)
+    material_finding = Finding("match", "입력 재질 PP가 문서의 PP와 같습니다.")
     comparisons = []
     for evidence in CATALOG:
         form = state.form
@@ -228,5 +243,4 @@ def compare_pp_evidence(state: ReviewState) -> ComparisonResult:
                 ),
             )
         )
-    status = "compared" if material_value in _PP else "insufficient_information"
-    return ComparisonResult(status, summary, tuple(comparisons), limits, follow_up)
+    return ComparisonResult("compared", summary, tuple(comparisons), limits, follow_up)
