@@ -1,13 +1,28 @@
-"""근거 검색과 조회. 로컬 레지스트리에 대한 결정적 어휘 검색이다. Azure AI Search는 search_azure.py."""
+"""근거 검색과 조회. 기본은 로컬 레지스트리에 대한 결정적 어휘 검색이다.
+
+use_backend로 Azure AI Search(search_azure.py)를 연결하면 순위만 거기서 받는다. 돌려주는 근거의
+내용은 언제나 레지스트리에서 다시 읽은 것이고, 조직이 볼 수 없는 근거는 걸러 낸다. 백엔드가
+실패하면 로컬 검색으로 답한다. 판단 도구는 이 검색을 쓰지 않으므로 도구의 결과는 그대로다.
+"""
 
 from __future__ import annotations
 
+import logging
 import re
-from collections.abc import Iterable
+from collections.abc import Callable, Iterable
 from typing import Any
 
 from app.v3.evidence.model import Evidence
 from app.v3.evidence.registry import EvidenceForbidden, EvidenceNotFound, EvidenceRegistry
+
+logger = logging.getLogger(__name__)
+
+# backend(query, org_id=..., kinds=..., top=...) -> [{"evidence": {"id", ...}, "score"}]
+# AzureSearchClient.search와 같은 서명이다.
+SearchBackend = Callable[..., list[dict[str, Any]]]
+LOCAL = "local"
+_backend: SearchBackend | None = None
+_backend_name = LOCAL
 
 _TOKEN = re.compile(r"[0-9a-z가-힣]+")
 _HANGUL_RUN = re.compile(r"[가-힣]+")
@@ -57,6 +72,11 @@ def search_evidence(
 
     질의가 비어 있으면 볼 수 있는 근거를 ID 순서로 limit개 돌려준다(점수 0).
     """
+    kinds = None if kinds is None else list(kinds)
+    if limit > 0 and _backend is not None and query.strip():
+        ranked_elsewhere = _from_backend(registry, query, kinds, org_id, limit)
+        if ranked_elsewhere is not None:
+            return ranked_elsewhere
     items = registry.list(kinds=kinds, org_id=org_id)
     if limit <= 0:
         return []
@@ -65,6 +85,47 @@ def search_evidence(
     scored = [(score(e, query), e) for e in items]
     ranked = sorted((pair for pair in scored if pair[0] > 0), key=lambda p: (-p[0], p[1].id))
     return [{"evidence": e.to_dict(), "score": s} for s, e in ranked[:limit]]
+
+
+def use_backend(backend: SearchBackend | None, name: str = "azure") -> None:
+    """검색 순위를 낼 백엔드를 정한다. None이면 로컬 검색으로 돌아간다."""
+    global _backend, _backend_name
+    _backend, _backend_name = backend, (name if backend is not None else LOCAL)
+
+
+def backend_name() -> str:
+    return _backend_name
+
+
+def _from_backend(
+    registry: EvidenceRegistry,
+    query: str,
+    kinds: list[str] | None,
+    org_id: str | None,
+    limit: int,
+) -> list[dict[str, Any]] | None:
+    """백엔드의 순위대로 레지스트리에서 다시 읽어 돌려준다. 백엔드가 실패하면 None."""
+    try:
+        hits = _backend(query, org_id=org_id, kinds=kinds, top=limit)  # type: ignore[misc]
+    except Exception as error:  # noqa: BLE001 - 어떤 실패든 로컬 검색으로 답한다
+        logger.warning("검색 백엔드(%s) 실패, 로컬 검색으로 답한다: %s", _backend_name, error)
+        return None
+    results: list[dict[str, Any]] = []
+    seen: set[str] = set()
+    for hit in hits or []:
+        found = hit.get("evidence") if isinstance(hit, dict) else None
+        evidence_id = found.get("id") if isinstance(found, dict) else None
+        if not isinstance(evidence_id, str) or evidence_id in seen:
+            continue
+        seen.add(evidence_id)
+        try:
+            current = registry.get(evidence_id, org_id)
+        except (EvidenceNotFound, EvidenceForbidden):
+            continue  # 색인에만 남은 근거나 볼 수 없는 근거는 내보내지 않는다
+        if kinds is not None and current.kind not in kinds:
+            continue
+        results.append({"evidence": current.to_dict(), "score": float(hit.get("score") or 0.0)})
+    return results[:limit]
 
 
 def get_evidence(

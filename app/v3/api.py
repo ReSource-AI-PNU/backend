@@ -98,7 +98,20 @@ def make_vendor_gateway() -> Any:
 
 
 def build_app() -> service.App:
-    """설정에 따라 service.App을 만든다. DATABASE_URL이 있으면 SQL 저장, 없으면 메모리."""
+    """설정에 따라 service.App을 만든다. DATABASE_URL이 있으면 SQL 저장, 없으면 메모리.
+
+    Azure 연결부는 설정이 있을 때만 켠다(이 부분은 로컬 미실행):
+    - APPLICATIONINSIGHTS_CONNECTION_STRING: 실행 기록을 OpenTelemetry span으로 내보낸다(tracing.py).
+    - AZURE_MAPS_KEY: 판단 도구의 도로 거리(judge/distance.py). 없으면 직선 거리 가정값 경로다.
+    - AZURE_SEARCH_ENDPOINT, AZURE_SEARCH_API_KEY: 근거 검색의 순위를 Azure AI Search에서 받는다
+      (evidence/search.py의 선택 계층). 없거나 설정이 틀리면 로컬 검색이다.
+    """
+    import os
+
+    from app.v3 import tracing
+    from app.v3.evidence import search, search_azure
+    from app.v3.judge.distance import AzureMapsDistance
+
     if settings.database_url:
         from app.platform.db import engine
         from app.v3.sql import SqlRegistry, SqlStore
@@ -117,7 +130,30 @@ def build_app() -> service.App:
         api_key=settings.foundry_api_key,
         ollama_base_url=settings.ollama_base_url,
     )
-    return service.App(store, registry, llm_factory=factory, vendor_gateway=make_vendor_gateway())
+    store = tracing.enable(store, os.environ.get("APPLICATIONINSIGHTS_CONNECTION_STRING", ""))
+    search_env = {
+        **os.environ,
+        "AZURE_SEARCH_ENDPOINT": settings.azure_search_endpoint,
+        "AZURE_SEARCH_API_KEY": settings.azure_search_api_key,
+        "OLLAMA_BASE_URL": settings.ollama_base_url,
+        "FOUNDRY_ENDPOINT": settings.foundry_endpoint,
+        "FOUNDRY_API_KEY": settings.foundry_api_key,
+    }
+    try:
+        search_client = search_azure.client_from_env(search_env)
+    except ValueError as error:
+        logger.warning("Azure AI Search 설정이 틀려 로컬 검색으로 돈다: %s", error)
+        search_client = None
+    search.use_backend(search_client.search if search_client is not None else None)
+    return service.App(
+        store,
+        registry,
+        llm_factory=factory,
+        vendor_gateway=make_vendor_gateway(),
+        distance_provider=(
+            AzureMapsDistance(settings.azure_maps_key) if settings.azure_maps_key else None
+        ),
+    )
 
 
 _state: service.App | None = None

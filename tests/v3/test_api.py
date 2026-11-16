@@ -274,3 +274,33 @@ def test_remote_vendor_agents_need_a_service_key(monkeypatch):
     assert api.make_vendor_gateway() is not None
     monkeypatch.setattr(settings, "vendor_org_id", "org_saegil")
     assert api.make_vendor_gateway() is None  # 업체 측 서비스 자신은 다시 넘기지 않는다
+
+
+def test_build_app_connects_azure_parts_only_when_configured(monkeypatch):
+    """도로 거리, 검색 백엔드, 추적은 설정이 있을 때만 켜진다."""
+    from app.v3 import tracing
+    from app.v3.evidence import search
+    from app.v3.judge.distance import AzureMapsDistance
+
+    monkeypatch.setattr(settings, "database_url", "")
+    monkeypatch.setattr(settings, "azure_maps_key", "")
+    monkeypatch.setattr(settings, "azure_search_endpoint", "")
+    monkeypatch.setattr(settings, "azure_search_api_key", "")
+    monkeypatch.delenv("APPLICATIONINSIGHTS_CONNECTION_STRING", raising=False)
+    monkeypatch.delenv("V3_EMBEDDINGS", raising=False)
+    plain = api.build_app()
+    assert plain.distance_provider is None and search.backend_name() == "local"
+    assert not isinstance(plain.store, tracing.TracingStore)
+
+    monkeypatch.setattr(settings, "azure_maps_key", "test-key")
+    monkeypatch.setattr(settings, "azure_search_endpoint", "https://search.invalid")
+    monkeypatch.setattr(settings, "azure_search_api_key", "test-key")
+    connected = api.build_app()
+    assert isinstance(connected.distance_provider, AzureMapsDistance)
+    assert search.backend_name() == "azure"
+
+    monkeypatch.setenv("V3_EMBEDDINGS", "ollama")  # 주소가 없으면 로컬 검색으로 돈다
+    monkeypatch.setattr(settings, "ollama_base_url", "")
+    api.build_app()
+    assert search.backend_name() == "local"
+    search.use_backend(None)

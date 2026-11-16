@@ -11,7 +11,7 @@ import base64
 import json
 import urllib.error
 import urllib.request
-from collections.abc import Callable, Iterable, Sequence
+from collections.abc import Callable, Iterable, Mapping, Sequence
 from typing import Any
 
 from app.v3.evidence.model import PUBLIC, Evidence
@@ -251,6 +251,71 @@ class AzureSearchClient:
         if status >= 300:
             raise AzureSearchError(status, text)
         return json.loads(text) if text.strip() else {}
+
+
+DEFAULT_INDEX = "rsai-evidence"
+EMBEDDING_PROVIDERS = ("ollama", "foundry")
+
+
+def embeddings_from_env(env: Mapping[str, str], *, transport: Any = None) -> Embed | None:
+    """V3_EMBEDDINGS로 임베딩을 고른다. 색인과 질의가 같은 함수를 거쳐 같은 모델을 쓴다.
+
+    - 비어 있으면 None(벡터 없이 글과 시맨틱 랭커만 쓴다).
+    - ollama: OLLAMA_BASE_URL, OLLAMA_EMBED_MODEL(기본 bge-m3)
+    - foundry: FOUNDRY_ENDPOINT, FOUNDRY_API_KEY, FOUNDRY_EMBEDDING_DEPLOYMENT
+    고른 쪽의 값이 빠져 있으면 다른 쪽으로 바꾸지 않고 ValueError로 무엇이 없는지 밝힌다.
+    transport는 agents.llm의 transport 모양이다(테스트용).
+    """
+    from app.v3.agents.llm import FoundryEmbeddings, OllamaEmbeddings
+
+    provider = (env.get("V3_EMBEDDINGS") or "").strip().lower()
+    if not provider or provider == "none":
+        return None
+    if provider not in EMBEDDING_PROVIDERS:
+        raise ValueError(f"V3_EMBEDDINGS는 {', '.join(EMBEDDING_PROVIDERS)} 가운데 하나다")
+    names = (
+        ("OLLAMA_BASE_URL",)
+        if provider == "ollama"
+        else ("FOUNDRY_ENDPOINT", "FOUNDRY_API_KEY", "FOUNDRY_EMBEDDING_DEPLOYMENT")
+    )
+    missing = [name for name in names if not (env.get(name) or "").strip()]
+    if missing:
+        raise ValueError(f"V3_EMBEDDINGS={provider}에는 환경 변수가 필요하다: {', '.join(missing)}")
+    if provider == "ollama":
+        model = (env.get("OLLAMA_EMBED_MODEL") or "bge-m3").strip()
+        return OllamaEmbeddings(env["OLLAMA_BASE_URL"].strip(), model, transport).embed
+    return FoundryEmbeddings(
+        env["FOUNDRY_ENDPOINT"].strip(),
+        env["FOUNDRY_EMBEDDING_DEPLOYMENT"].strip(),
+        env["FOUNDRY_API_KEY"].strip(),
+        transport=transport,
+    ).embed
+
+
+def client_from_env(
+    env: Mapping[str, str], *, transport: Transport | None = None, embed_transport: Any = None
+) -> AzureSearchClient | None:
+    """AZURE_SEARCH_ENDPOINT와 AZURE_SEARCH_API_KEY가 모두 있으면 클라이언트, 아니면 None.
+
+    색인 이름은 AZURE_SEARCH_INDEX(기본 rsai-evidence), 벡터 차원은
+    AZURE_SEARCH_VECTOR_DIMENSIONS(기본 1024, bge-m3)다.
+    """
+    endpoint = (env.get("AZURE_SEARCH_ENDPOINT") or "").strip()
+    api_key = (env.get("AZURE_SEARCH_API_KEY") or "").strip()
+    if not endpoint or not api_key:
+        return None
+    try:
+        dimensions = int((env.get("AZURE_SEARCH_VECTOR_DIMENSIONS") or "1024").strip())
+    except ValueError:
+        raise ValueError("AZURE_SEARCH_VECTOR_DIMENSIONS는 정수여야 한다") from None
+    return AzureSearchClient(
+        endpoint,
+        (env.get("AZURE_SEARCH_INDEX") or DEFAULT_INDEX).strip(),
+        api_key,
+        transport=transport,
+        embed=embeddings_from_env(env, transport=embed_transport),
+        vector_dimensions=dimensions,
+    )
 
 
 def urllib_transport(
