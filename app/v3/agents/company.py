@@ -327,7 +327,12 @@ class CompanyAgent:
                 thread.check(message)
             except ThreadError as error:
                 found.append(rejection("THREAD_RULE", f"대화 규칙에 맞지 않습니다: {error}"))
-            result = validate_message(message, self.registry, today=self.today)
+            names = [
+                self.org.get("name"),
+                vendor_org.get("name"),
+                *[x.get("name") for x in streams],
+            ]
+            result = validate_message(message, self.registry, today=self.today, names=names)
             found += [r.to_dict() for r in result.rejections]
             return found
 

@@ -27,7 +27,12 @@ from app.v3.demo.seed import share_evidence, share_stream, share_vendor_terms
 from app.v3.evidence.registry import EvidenceForbidden, EvidenceNotFound
 from app.v3.evidence.render import render_text
 from app.v3.evidence.units import UnitError, convert
-from app.v3.evidence.validator import validate_message, validate_text
+from app.v3.evidence.validator import (
+    ALLOWED_TOKENS,
+    name_tokens,
+    validate_message,
+    validate_text,
+)
 from app.v3.intake.grade_model import GradeModelError, grade_stream
 from app.v3.judge import basis
 from app.v3.judge.toolbox import TOOLS, call_tool
@@ -85,6 +90,23 @@ def claim_in(result: dict[str, Any] | None, key: str | None, new_id: str) -> dic
         if claim["id"] == key:
             return {**claim, "id": new_id}
     return None
+
+
+def thread_names(store: Any, thread: Any) -> list[str]:
+    """대화에 나오는 조직과 흐름의 이름. 검증기가 이름에 든 숫자를 수치로 세지 않게 넘긴다."""
+    raw = thread.to_dict() if hasattr(thread, "to_dict") else thread
+    names: list[str] = []
+    for org_id in (raw.get("emitterOrgId"), raw.get("vendorOrgId")):
+        try:
+            names.append(store.get_org(org_id).get("name"))
+        except KeyError:
+            continue
+    for stream_id in raw.get("streamIds") or []:
+        try:
+            names.append(store.get_stream(stream_id).get("name"))
+        except KeyError:
+            continue
+    return [n for n in names if n]
 
 
 class Orchestrator:
@@ -644,7 +666,9 @@ class Orchestrator:
                 {"code": "THREAD_RULE", "message": f"대화 규칙에 맞지 않습니다: {error}"}
             )
         if message is not None and not problems:
-            result = validate_message(message, self.registry, today=self.today)
+            result = validate_message(
+                message, self.registry, today=self.today, names=thread_names(self.store, thread)
+            )
             problems += [r.to_dict() for r in result.rejections]
             problems += [
                 {"code": p["code"], "message": p["message"]}
@@ -859,7 +883,10 @@ class Orchestrator:
         costs = []
         for thread in live:
             offered = sorted(work["offers"][thread.id])
-            calls = [("cost_carbon", {"streamId": sid}) for sid in offered]
+            # 대화 중에 담당자 답으로 흐름이 바뀌었으면 경로 판단부터 다시 한다(같은 입력이면 다시 부르지
+            # 않는다). 결과 한 장의 확인할 것과 민감도는 이 판단에서 나온다
+            calls = [("judge_route", {"streamId": sid}) for sid in offered]
+            calls += [("cost_carbon", {"streamId": sid}) for sid in offered]
             calls.append(("check_loading", {"streamIds": offered}))
             results, trace = agent.run_tools(
                 calls,
@@ -868,7 +895,7 @@ class Orchestrator:
                 memo=work["threadTools"].setdefault(thread.id, []),
             )
             self._flush(session["id"], trace, thread.id, org_id)
-            costs += [r.get("status") for r in results]
+            costs += [r.get("status") for r in results if r.get("tool") != "judge_route"]
         work["stages"]["5"] = (
             "needs_check"
             if not live or "needs_information" in costs or "error" in costs
@@ -931,7 +958,9 @@ class Orchestrator:
         """합의한 스레드의 메시지를 다시 검증한다. 실패가 있으면 승인을 막는다."""
         failed: list[str] = []
         for message in thread.messages:
-            result = validate_message(message, self.registry, today=self.today)
+            result = validate_message(
+                message, self.registry, today=self.today, names=thread_names(self.store, thread)
+            )
             failed += [f"{thread.id}_m{message.seq}: {code}" for code in result.codes]
             # 대화 뒤에 근거가 바뀌었거나 사라졌으면 그 메시지의 근거 확인은 실패다
             if message.meta.get("evidenceMarks", {}) != self._fingerprints(message):
@@ -1273,6 +1302,7 @@ class Orchestrator:
                 self.registry,
                 org_id=thread.emitter_org,
                 today=self.today,
+                allowed_tokens=(*ALLOWED_TOKENS, *name_tokens(thread_names(self.store, thread))),
             )
             self._event(
                 session["id"],

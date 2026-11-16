@@ -352,7 +352,10 @@ def test_csv_upload_registers_measures_and_updates_streams():
     assert (
         defect["contamination"]["evidence"][0] == "measure:org_hanbit:st_defect:오염도@2026-11-12"
     )
-    assert [q["streamId"] for q in view["questions"]] == ["st_film", "st_purge"]
+    # 측정 등급(B)과 사진 추정 등급(C)이 달라 로트 확인 질문이 함께 나온다
+    asked = [(q["streamId"], q["field"]) for q in view["questions"]]
+    assert asked[0] == ("st_defect", "lotSame")
+    assert [sid for sid, _ in asked] == ["st_defect", "st_film", "st_purge"]
     raises("FORBIDDEN", 403, service.upload_csv, app, HANBIT, "a.csv", b"", DAON)
     raises("WRONG_ROLE", 403, service.upload_csv, app, SAEGIL, "a.csv", b"", SAEGIL)
 

@@ -24,9 +24,15 @@ from app.v3.a2a import guardrails as rails
 from app.v3.a2a.policy import QuestionPolicy
 from app.v3.a2a.thread import Thread
 from app.v3.agents.draft import model_label
+from app.v3.agents.orchestrator import thread_names
 from app.v3.agents.vendor import public_profile
 from app.v3.eval import world as worlds
-from app.v3.evidence.validator import validate_message, validate_text
+from app.v3.evidence.validator import (
+    ALLOWED_TOKENS,
+    name_tokens,
+    validate_message,
+    validate_text,
+)
 from app.v3.judge.common import permit_match
 from app.v3.judge.toolbox import call_tool
 
@@ -192,13 +198,17 @@ class _Session:
 
     def _recheck(self) -> None:
         """새로 나간 메시지와 문서를 근거 검증기에 다시 넣는다(나간 직후의 근거 상태로 한 번만)."""
+        names: dict[str, list[str]] = {}
         for raw in self.app.store.list_threads(session_id=self.sid):
             thread = Thread.from_dict(raw)
+            names[thread.id] = thread_names(self.app.store, thread)
             for message in thread.messages:
                 key = f"{thread.id}#{message.seq}"
                 if key in self.validated:
                     continue
-                result = validate_message(message, self.app.registry, today=self.app.today)
+                result = validate_message(
+                    message, self.app.registry, today=self.app.today, names=names[thread.id]
+                )
                 self.validated[key] = {
                     "ok": result.ok,
                     "codes": list(result.codes),
@@ -215,6 +225,10 @@ class _Session:
                 self.app.registry,
                 org_id=self.emitter,
                 today=self.app.today,
+                allowed_tokens=(
+                    *ALLOWED_TOKENS,
+                    *name_tokens(names.get(str(document.get("threadId"))) or []),
+                ),
             )
             self.validated[key] = {
                 "ok": result.ok,
@@ -223,9 +237,29 @@ class _Session:
                 "attempts": 1,
             }
 
+    def _confirm_other(self, org: str) -> None:
+        """다른 배출 기업의 진단을 먼저 확정까지 돌린다(같은 업체의 노선에 이미 묶인 물량)."""
+        app = self.app
+        view = service.run_session(app, service.create_session(app, org, org)["session"]["id"], org)
+        sid = view["session"]["id"]
+        for _ in range(MAX_ANSWER_ROUNDS):
+            if view["session"]["status"] != "awaiting_answers":
+                break
+            for question in view["questions"]:
+                if not question["answered"]:
+                    service.answer_question(app, sid, question["id"], "unknown", org)
+            view = service.run_session(app, sid, org)
+        vendors = {t["id"]: t["vendorOrgId"] for t in view["threads"]}
+        for item in view["approvals"]:
+            service.approve(app, sid, item["threadId"], org)
+            service.approve(app, sid, item["threadId"], vendors[item["threadId"]])
+
     def run(self) -> None:
         app, emitter = self.app, self.emitter
         answers = self.case.get("answers") or {}
+        for other in self.case["world"].get("otherEmitters") or []:
+            if other.get("confirmed"):
+                self._confirm_other(str(other["id"]))
         self._actions("before_run")
         self.sid = service.create_session(app, emitter, emitter)["session"]["id"]
         self.view = service.run_session(app, self.sid, emitter)
@@ -306,6 +340,7 @@ def _observe(session: _Session) -> dict[str, Any]:
                 "grade": s["grade"]["value"],
                 "gradeBasis": s["grade"]["basis"],
                 "material": s["material"],
+                "origin": s["origin"],
                 "form": s["form"],
                 "currentAssumed": (s.get("currentTreatment") or {}).get("assumed"),
             }
@@ -577,15 +612,20 @@ def _forbidden(
                 found = pattern.search(o["text"])
                 if found:
                     hit(item, {"in": o["kind"], "threadId": o["threadId"], "match": found.group(0)})
-            for tool in tools:
+            for tool in [] if item.get("from") else tools:
                 for text in [*(tool.get("asks") or []), *(tool.get("texts") or [])]:
                     found = pattern.search(text)
                     if found:
                         hit(item, {"in": tool["tool"], "match": found.group(0)})
         elif kind == "evidence_cited":
             prefix = item["evidence"]
-            claims = [c for o in outgoing for c in o["claims"]]
-            if session and item.get("result", True):
+            claims = [
+                c
+                for o in outgoing
+                if not item.get("from") or o["from"] == item["from"]
+                for c in o["claims"]
+            ]
+            if session and item.get("result", True) and not item.get("from"):
                 claims += _result_claims(session.view)
             cited = sorted({e for c in claims for e in c["evidence"] if e.startswith(prefix)})
             if cited:

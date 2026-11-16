@@ -38,9 +38,14 @@ def identify_stream(registry, *, org_id, today, stream, moisturePct=None):
             "measured", m_cont, m_moist, measure.get("evidence"), "측정"
         )
         output["basis"] = "measured"
-    if p_cont is not None and asked is not None:
-        evidence = [*(photo.get("evidence") or []), *(answers.get("evidence") or [])]
-        photo_grade, photo_limits = graded("photo", p_cont, asked, evidence, "사진 추정")
+    photo_moist = asked
+    photo_extra = list(answers.get("evidence") or [])
+    if photo_moist is None and output["grade"] is not None:
+        # 측정값이 함께 있으면 견주기 위해 측정 수분을 쓴다(intake.grade_model.grade_stream과 같다)
+        photo_moist, photo_extra = m_moist, list(measure.get("evidence") or [])
+    if p_cont is not None and photo_moist is not None:
+        evidence = [*(photo.get("evidence") or []), *photo_extra]
+        photo_grade, photo_limits = graded("photo", p_cont, photo_moist, evidence, "사진 추정")
         output["photoGrade"] = photo_grade
         if output["grade"] is None:
             output["grade"], output["basis"], limits = photo_grade, "photo_estimate", photo_limits

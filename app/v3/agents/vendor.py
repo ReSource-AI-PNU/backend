@@ -519,7 +519,8 @@ class VendorAgent:
                 thread.check(reply)
             except ThreadError as error:
                 found.append(rejection("THREAD_RULE", f"대화 규칙에 맞지 않습니다: {error}"))
-            result = validate_message(reply, self.registry, today=self.today)
+            names = [org.get("name"), emitter.get("name"), *[x.get("name") for x in streams]]
+            result = validate_message(reply, self.registry, today=self.today, names=names)
             found += [r.to_dict() for r in result.rejections]
             terms, problems = self._terms(output, reply, pool)
             found += problems

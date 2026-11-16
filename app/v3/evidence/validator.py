@@ -190,11 +190,36 @@ def validate_text(
     return ValidationResult(ok=not rejections, rejections=tuple(rejections))
 
 
+def name_tokens(names: Iterable[Any]) -> tuple[str, ...]:
+    """이름(조직, 흐름)에 든 숫자를 수치로 보지 않게 하는 허용 낱말.
+
+    이름은 코드가 저장소에서 읽어 넘긴다(모델이 정하지 못한다). 숫자만으로 된 이름은 수치와
+    구분할 수 없어 허용하지 않는다.
+    """
+    out = []
+    for name in names:
+        text = str(name or "").strip()
+        if any(ch.isdigit() for ch in text) and re.search(r"[^\d\s.,%+\-−]", text):
+            out.append(text)
+    return tuple(dict.fromkeys(out))
+
+
 def validate_message(
-    message: Message, registry: EvidenceRegistry, *, today: str
+    message: Message, registry: EvidenceRegistry, *, today: str, names: Iterable[Any] = ()
 ) -> ValidationResult:
-    """보내는 조직(message.sender)의 권한으로 메시지를 검사한다."""
-    return validate_text(message.text, message.claims, registry, org_id=message.sender, today=today)
+    """보내는 조직(message.sender)의 권한으로 메시지를 검사한다.
+
+    names는 이 대화에 나오는 조직과 흐름의 이름이다. "(주)제2공장", "PP 2차 분쇄품"처럼 이름에
+    든 숫자는 자리표시자 밖 숫자로 세지 않는다.
+    """
+    return validate_text(
+        message.text,
+        message.claims,
+        registry,
+        org_id=message.sender,
+        today=today,
+        allowed_tokens=(*ALLOWED_TOKENS, *name_tokens(names)),
+    )
 
 
 def _check_claim(
