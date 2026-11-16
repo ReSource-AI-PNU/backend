@@ -45,6 +45,11 @@ class Settings(BaseSettings):
     v3_vendor_agents: dict[str, str] = {}
     # 참이면 시연 되돌리기(POST /api/v3/demo/reset)를 누구나 부를 수 있다. 기본은 관리자 조직만.
     v3_demo_open: bool = False
+    # 탐지 모델(Azure ML 관리형 온라인 엔드포인트)의 채점 주소와 키. 비어 있으면 사진·영상 업로드는
+    # "탐지 모델이 연결되지 않았습니다"로 답한다.
+    v3_detector_endpoint: str = ""
+    v3_detector_api_key: str = ""
+    v3_detector_deployment: str = ""
 
     # ① 식별 모델 (backend#8). 가중치는 git 에 없다 -> scripts/fetch_models.py 가 MODEL_BLOB_URL 에서 받는다.
     classifier_backend: str = "auto"  # auto | trained | zeroshot

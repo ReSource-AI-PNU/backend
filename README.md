@@ -328,6 +328,7 @@ MCP 도구의 입력은 `{"org_id", "today", "arguments"}`이고 `arguments`가 
 | `VENDOR_ORG_ID`, `VENDOR_SERVICE_KEY` | 업체 측 에이전트 서비스가 대변하는 업체와 Bearer 서비스 키. 키가 없으면 모든 메시지를 거절한다 |
 | `V3_VENDOR_AGENTS` | 따로 띄운 업체 측 에이전트의 주소 `{"업체 조직 ID": "https://..."}`. 비어 있으면(기본) API 프로세스 안에서 부른다. 값을 주면 모든 업체 메시지가 HTTP로 가므로 업체마다 서비스가 있거나 `"*"` 주소가 있어야 하고, `VENDOR_SERVICE_KEY`가 같아야 한다 |
 | `V3_DEMO_OPEN` | `true`면 시연 되돌리기(`POST /api/v3/demo/reset`)를 누구나 부를 수 있다. 기본은 `false`(관리자 조직 `org_admin`만. 조직이 하나도 없는 빈 저장소의 첫 시드는 누구나) |
+| `V3_DETECTOR_ENDPOINT`, `V3_DETECTOR_API_KEY`, `V3_DETECTOR_DEPLOYMENT` | 탐지 모델(Azure ML 관리형 온라인 엔드포인트)의 채점 주소와 키, 선택으로 배포 이름. 주소가 비어 있으면(기본) 사진·영상 업로드(`POST /api/v3/intake/media`)는 `detectorUnavailable: true`로 답한다 |
 | `MCP_SERVICE_KEY`, `MCP_HOST`, `MCP_PORT` | MCP 서버의 Bearer 서비스 키와 주소 |
 | `APP_ROLE` | 컨테이너에서 띄울 서비스: `api`(기본), `vendor-agent`, `mcp`, `migrate` |
 

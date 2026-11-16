@@ -7,6 +7,8 @@
 - 기본은 --llm rule(규칙 정책, 모델 미연결)이다. --llm foundry일 때만 환경 변수
   FOUNDRY_ENDPOINT, FOUNDRY_DEPLOYMENT, FOUNDRY_API_KEY를 읽는다. 업체가 ollama를 골랐으면
   OLLAMA_BASE_URL이 있을 때만 그 모델을 쓰고, 없으면 그 업체는 규칙 정책으로 돈다(화면에 그렇게 나온다).
+- 사진·영상 업로드(POST /intake/media)는 V3_DETECTOR_ENDPOINT(와 V3_DETECTOR_API_KEY)가 있을 때만
+  탐지 모델을 부른다. 없으면 {"detectorUnavailable": true}로 답한다(탐지 결과를 지어내지 않는다).
 - 요청하는 조직은 X-Org-Id 헤더로 밝힌다(시연용).
 - /admin/* 은 관리자 조직(org_admin)만 부른다. 시연 되돌리기(POST /demo/reset)는 로컬 시연에서는
   누구나 부를 수 있다(App(demo_open=True)). --demo-closed를 주면 관리자만 부른다.
@@ -29,6 +31,7 @@ from urllib.parse import parse_qs, unquote, urlsplit
 from app.v3 import httpio, service
 from app.v3.agents.llm import FoundryChat, OllamaChat
 from app.v3.evidence.registry import InMemoryRegistry
+from app.v3.intake import detector
 from app.v3.store import InMemoryStore, JsonFileStore
 
 PREFIX = "/api/v3"
@@ -205,6 +208,16 @@ def route(app: service.App, request: Request) -> Any:
             return service.upload_document(
                 app, fields.get("orgId") or viewer, fields.get("kind") or "", filename, data, viewer
             )
+        case ("POST", ["intake", "media"]):
+            fields, filename, data = request.upload("사진")
+            return service.upload_media(
+                app,
+                fields.get("orgId") or viewer,
+                fields.get("streamId") or "",
+                filename,
+                data,
+                viewer,
+            )
         case ("POST", ["intake", "documents", "confirm"]):
             body = request.json()
             fields = body.get("fields") or []
@@ -334,9 +347,16 @@ def build_app(
     demo_open: bool = True,
 ) -> service.App:
     store = JsonFileStore(store_path) if store_path else InMemoryStore()
-    factory = foundry_factory(os.environ if env is None else env) if llm == "foundry" else None
+    settings = os.environ if env is None else env
+    factory = foundry_factory(settings) if llm == "foundry" else None
     app = service.App(
-        store, InMemoryRegistry(), llm_factory=factory, today=today, demo_open=demo_open
+        store,
+        InMemoryRegistry(),
+        llm_factory=factory,
+        today=today,
+        demo_open=demo_open,
+        # V3_DETECTOR_ENDPOINT가 없으면 None이고, 사진·영상 업로드는 "미연결"이라고 답한다
+        detector=detector.client_from_env(settings),
     )
     service.seed(app)
     return app

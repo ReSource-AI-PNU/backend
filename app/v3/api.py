@@ -111,6 +111,7 @@ def build_app() -> service.App:
     from app.v3 import tracing
     from app.v3.agents import maf
     from app.v3.evidence import search, search_azure
+    from app.v3.intake import detector
     from app.v3.judge.distance import AzureMapsDistance
 
     if settings.database_url:
@@ -156,6 +157,14 @@ def build_app() -> service.App:
             AzureMapsDistance(settings.azure_maps_key) if settings.azure_maps_key else None
         ),
         demo_open=settings.v3_demo_open,
+        # 탐지 모델(Azure ML 엔드포인트). 주소가 없으면 None이고 업로드는 "미연결"이라고 답한다
+        detector=detector.client_from_env(
+            {
+                detector.ENV_ENDPOINT: settings.v3_detector_endpoint,
+                detector.ENV_KEY: settings.v3_detector_api_key,
+                detector.ENV_DEPLOYMENT: settings.v3_detector_deployment,
+            }
+        ),
     )
 
 
@@ -405,6 +414,16 @@ async def upload_document(request: Request):
     org_id = fields.get("orgId") or viewer
     kind = fields.get("kind") or ""  # 종류가 없거나 틀리면 서비스가 INVALID_KIND로 답한다
     return await call(service.upload_document, org_id, kind, filename, data, viewer)
+
+
+@router.post("/intake/media")
+@guarded
+async def upload_media(request: Request):
+    viewer = viewer_of(request)
+    fields, filename, data = await read_upload(request, "사진")
+    org_id = fields.get("orgId") or viewer
+    stream_id = fields.get("streamId") or ""
+    return await call(service.upload_media, org_id, stream_id, filename, data, viewer)
 
 
 @router.post("/intake/documents/confirm")

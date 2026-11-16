@@ -34,6 +34,7 @@ from app.v3.evidence.seeds import load_seed_dir
 from app.v3.evidence.units import UnitError, same_value
 from app.v3.evidence.validator import validate_message, validate_text
 from app.v3.intake import csv_measure, documents, shields
+from app.v3.intake import detector as media
 from app.v3.judge import basis
 from app.v3.judge.defaults import register_defaults
 from app.v3.store import InMemoryStore, NotFound
@@ -84,6 +85,7 @@ class App:
         grade_client: Any = None,
         distance_provider: Any = None,
         demo_open: bool = False,
+        detector: Any = None,
     ) -> None:
         self.store = store
         # True면 시연 되돌리기(POST /demo/reset)를 누구나 부를 수 있다(로컬 시연). 기본은 관리자만
@@ -94,6 +96,9 @@ class App:
         self.shields = shields
         self.documents = documents
         self.grade_client = grade_client
+        self.detector = (
+            detector  # 탐지 모델 엔드포인트(intake.detector.DetectorClient). 없으면 미연결
+        )
         self.distance_provider = distance_provider
         self.vendor_memo: dict[str, list[dict[str, Any]]] = {}
         self._rule = RulePolicy()
@@ -1182,6 +1187,87 @@ def upload_document(
     }
 
 
+def upload_media(
+    app: App, org_id: str, stream_id: str, filename: str, data: bytes, viewer: str
+) -> dict[str, Any]:
+    """사진·영상을 탐지 모델에 보내 재질 추정과 이물 비율을 model 근거로 등록한다.
+
+    탐지 모델(Azure ML 엔드포인트)이 연결되지 않았으면 파일을 쓰지 않고 그렇다고 답한다.
+    탐지 결과를 지어내지 않는다. 사진으로는 수지 종류를 가르지 못하므로 흐름의 재질은 바꾸지 않는다.
+    """
+    _owner(app, org_id, viewer, "emitter")
+    try:
+        stream = app.store.get_stream(str(stream_id or ""))
+    except NotFound:
+        raise ServiceError("STREAM_NOT_FOUND", "그런 흐름이 없습니다.", 404) from None
+    if stream.get("orgId") != org_id:
+        raise ServiceError("STREAM_NOT_FOUND", "그런 흐름이 없습니다.", 404)
+    client = app.detector
+    if client is None or not client.configured:
+        return {
+            "detectorUnavailable": True,
+            "message": "탐지 모델이 연결되지 않았습니다",
+            "streamId": stream["id"],
+            "evidence": [],
+        }
+    if media.media_type(filename) is None:
+        raise ServiceError(
+            "UNSUPPORTED_MEDIA",
+            "사진("
+            + ", ".join(media.IMAGE_TYPES)
+            + ")이나 영상("
+            + ", ".join(media.VIDEO_TYPES)
+            + ") 파일만 올릴 수 있습니다.",
+            415,
+        )
+    try:
+        result = client.detect(data, filename)
+    except media.DetectorError as error:
+        raise ServiceError("DETECTOR_FAILED", str(error), 502) from error
+    found = media.register_detection(app.registry, org_id, stream, result, filename, app.today)
+    photo = dict(stream.get("photo") or {})
+    contamination = found["contamination"]
+    if contamination is not None:
+        photo.update(
+            contaminationPct=contamination["contaminationPct"],
+            evidence=list(contamination["evidence"]),
+            reliable=contamination["reliable"],
+        )
+    if found["material"] is not None:
+        photo["materialEstimate"] = found["material"]
+    photo.update(file=filename, mode=result["mode"])
+    stream["photo"] = photo
+    saved = app.store.put_stream(stream)
+    claim = None
+    if contamination is not None:
+        claim = naming.annotate(
+            {
+                "id": f"{stream['id']}_photoContaminationPct",
+                "kind": "number",
+                "value": contamination["contaminationPct"],
+                "unit": "%",
+                "evidence": list(contamination["evidence"]),
+            }
+        )
+    return {
+        "detectorUnavailable": False,
+        "streamId": stream["id"],
+        "filename": filename,
+        "mode": result["mode"],
+        "framesAnalyzed": result["framesAnalyzed"],
+        "tracksTotal": result["tracksTotal"],
+        "model": {"name": media.MODEL_NAME, "version": result["modelVersion"] or None},
+        "material": found["material"],
+        "contamination": None
+        if contamination is None
+        else {"claim": claim, "reliable": contamination["reliable"], "note": contamination["note"]},
+        "detections": result["detections"],
+        "evidence": found["evidence"],
+        "stream": saved,
+        "note": "사진 추정값입니다. 재질(수지 종류)과 이물 비율은 담당자가 확인해 주세요.",
+    }
+
+
 def confirm_document(
     app: App, org_id: str, document_name: str, fields: list[dict[str, Any]], viewer: str
 ) -> dict[str, Any]:
@@ -1222,6 +1308,7 @@ def admin_status(app: App, viewer: str) -> dict[str, Any]:
         "promptShields": {"configured": bool(app.shields and app.shields.configured)},
         "documentIntelligence": {"configured": bool(app.documents and app.documents.configured)},
         "gradeEndpoint": {"configured": bool(app.grade_client and app.grade_client.configured)},
+        "detector": {"configured": bool(app.detector and app.detector.configured)},
         "distance": {"provider": app.distance_provider is not None},
         "vendorGateway": type(app.vendor_gateway).__name__,
         "store": type(app.store).__name__,

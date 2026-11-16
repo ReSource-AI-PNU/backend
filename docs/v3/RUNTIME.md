@@ -127,7 +127,7 @@ class VendorGateway(Protocol):
 class App:                      # 저장소, 레지스트리, 모델, 게이트웨이, 시계를 묶는다
     def __init__(self, store, registry, *, llm_factory=None, vendor_gateway=None, today=None,
                  shields=None, documents=None, grade_client=None, distance_provider=None,
-                 demo_open=False): ...
+                 demo_open=False, detector=None): ...
     def llm_for(self, role, org_id, model) -> LLM      # llm_factory가 None을 주면 RulePolicy
 
 def seed(app) -> dict                                   # 가정값, 근거 시드, 시연 데이터를 올린다
@@ -150,6 +150,7 @@ def csv_template(app) -> bytes
 def upload_csv(app, org_id, filename, data, viewer) -> dict
 def upload_document(app, org_id, kind, filename, data, viewer) -> dict
 def confirm_document(app, org_id, document_name, fields, viewer) -> dict   # 확인한 추출값만 doc 근거로
+def upload_media(app, org_id, stream_id, filename, data, viewer) -> dict  # 사진·영상 → 탐지 → model 근거
 def admin_status(app, viewer) -> dict                               # 재학습 표(retrain) 포함. 관리자만
 def run_eval(app, viewer) -> dict                                   # 사례 세트 + 시연 시나리오. 관리자만
 def record_correction(app, session_id, body, viewer) -> dict        # 배출 기업 담당자가 고친 값
@@ -178,6 +179,7 @@ def register_model_run(app, run, viewer) -> dict                    # 재학습 
 - `upload_csv`는 흐름 이름이 같은 흐름에 측정값을 붙이고 measure 근거로 등록한다. 이름이 맞는 흐름이 없는 행은 `unmatched`로 돌려준다.
 - `upload_document`는 Document Intelligence가 설정돼 있으면 그것으로, 없으면 UTF-8 글 파일만 읽는다(`extraction: "text_only"`). Prompt Shields가 설정되지 않았으면 `shieldUnavailable: true`를 그대로 돌려준다. 주입이 탐지되면 문서를 쓰지 않고 올린 조직의 진행 중인 스레드를 모두 `handoff`로 넘긴다.
 - 뽑은 값은 `confirm_document`로 담당자가 확인한 것만 doc 근거가 된다.
+- `upload_media`는 사진·영상을 탐지 모델(Azure ML 관리형 온라인 엔드포인트, `intake/detector.py`의 `DetectorClient`)에 보내 재질 추정과 이물 비율을 model 근거로 등록하고 흐름의 `photo`에 붙인다. 엔드포인트가 설정되지 않았으면 `detectorUnavailable: true`를 돌려주고 아무것도 등록하지 않는다. 탐지 모델의 엔드포인트는 아직 배포되지 않았고, 가짜 transport로만 확인했다.
 
 `run_eval`은 평가 사례 세트(`app/v3/eval/cases`, 50건, 모두 가상 수치)를 `eval.runner.run_cases`로 돌리고, 시연 시나리오도 따로 만든 저장소에서 처음부터 끝까지 돌린다. 사례마다 새 저장소를 만들므로 운영 데이터는 바뀌지 않는다. 지금 연결된 모델 설정과 공개 근거를 그대로 쓰므로 규칙 정책으로 돌았으면 결과에 그렇게 적힌다.
 

@@ -24,7 +24,7 @@
 | `app/v3/a2a/message.py` | A2A 메시지와 claim (작성됨) |
 | `app/v3/a2a/thread.py`, `guardrails.py`, `policy.py` | 스레드 상태와 12턴 상한, 업체 가드레일, 질문 정책과 대화 개설 조건 |
 | `app/v3/agents/` | LLM 클라이언트, 회사 측 에이전트, 업체 측 에이전트, 진행기 |
-| `app/v3/intake/` | 측정값 CSV, 등급 모델, 문서 추출, Prompt Shields |
+| `app/v3/intake/` | 측정값 CSV, 등급 모델, 문서 추출, Prompt Shields, 사진·영상 탐지(`detector.py`) |
 | `app/v3/demo/` | 시연 데이터 (모두 가상) |
 | `app/v3/store.py`, `service.py`, `devserver.py` | 저장소 인터페이스와 메모리 구현, 서비스 함수, 표준 라이브러리 HTTP 서버 |
 | `app/v3/feedback.py` | 재학습 데이터 수집(7단계): 교정, 확정 뒤 실제 결과, 내보내기, 배포 게이트, 기준값 보정 후보 |
@@ -169,7 +169,8 @@ Stream  {"id": "st_sprue", "orgId": "org_hanbit", "name": "스프루·런너", "
          "lot": "...", "monthlyKg": 600, "monthlyKgBasis": "measured | estimated | null",
          "bulkDensityKgPerM3": 250,
          "measure": {"contaminationPct": 1.0, "moisturePct": 0.3, "measuredOn": "2026-11-10", "evidence": ["measure:..."]},
-         "photo":   {"contaminationPct": 2.0, "evidence": ["model:..."]},
+         "photo":   {"contaminationPct": 2.0, "evidence": ["model:..."],
+                     "materialEstimate": {"class": "plastic_rigid", "label": "경질 플라스틱", "wasteItem": "폐플라스틱", "confidence": 0.9, "evidence": ["model:..."]}},
          "currentTreatment": {"method": "혼합 소각", "unitCostKrwPerKg": 250, "evidence": ["doc:..."]}}
 
 VendorProfile {"orgId": "org_saegil",
@@ -344,6 +345,7 @@ VendorProfile {"orgId": "org_saegil",
 | `GET /evidence/{id}` | 근거 하나와 계산 사슬 `{evidence, chain: [evidence]}` |
 | `GET /evidence?q=&kind=` | 근거 검색 |
 | `GET /intake/csv/template`, `POST /intake/csv` | 측정값 CSV 양식과 업로드 |
+| `POST /intake/media` | 사진·영상 업로드(multipart: `file`, `orgId`, `streamId`). 탐지 모델을 불러 재질 추정과 이물 비율을 model 근거로 등록한다. 아래 "사진·영상" |
 | `POST /intake/documents` | 문서 업로드와 추출 |
 | `POST /intake/documents/confirm` | `{orgId, documentName, fields}`. 담당자가 확인한 추출값(`confirmed: true`)만 doc 근거로 등록한다. 응답은 `{"evidence": [근거 ID]}` |
 | `GET /admin/status`, `POST /admin/eval` | 색인·기준값 상태와 재학습 표, 사례 시험 실행(관리자만) |
@@ -375,6 +377,28 @@ VendorProfile {"orgId": "org_saegil",
 - `/admin/*`(`GET /admin/status`, `POST /admin/eval`, `GET /admin/retrain/export`, `POST /admin/retrain/runs`)는 `X-Org-Id`가 관리자 조직일 때만 답한다. 다른 조직은 403 `FORBIDDEN`, 헤더가 없으면 401 `ORG_REQUIRED`.
 - `POST /demo/reset`도 관리자만 부른다. 예외 두 가지: `App(demo_open=True)`이면 누구나 부른다(`devserver`의 기본값. `--demo-closed`로 끈다. `api.py`는 설정 `V3_DEMO_OPEN`, 기본 `false`). 그리고 조직이 하나도 없는 빈 저장소의 첫 시드는 막지 않는다(관리자 조직이 아직 없다).
 - 배출 기업과 업체는 관리자 화면을 볼 수 없다. 화면에서 조직을 `org_admin`으로 바꿔야 한다.
+
+사진·영상(`POST /intake/media`):
+
+- 그 흐름의 배출 기업만 부른다. `streamId`가 그 조직의 흐름이 아니면 404 `STREAM_NOT_FOUND`.
+- **탐지 모델(Azure ML 관리형 온라인 엔드포인트)이 연결되지 않았으면** 파일을 쓰지 않고 200으로 `{"detectorUnavailable": true, "message": "탐지 모델이 연결되지 않았습니다", "streamId", "evidence": []}`를 돌려준다. 탐지 결과를 지어내지 않는다. 연결은 `V3_DETECTOR_ENDPOINT`(채점 주소), `V3_DETECTOR_API_KEY`, 선택으로 `V3_DETECTOR_DEPLOYMENT`로 한다.
+- 연결돼 있으면 `app/v3/intake/detector.py`의 `DetectorClient`가 `{"input_data": {"filename", "media_type": "image | video", "content_base64"}}`를 보내고, 기존 추론 결과 계약(`app/ml/track.py`의 `run()` 결과: `items`, `primary_material`, `contamination`, `detections`, `mode`, `frames_analyzed`, `tracks_total` 등)으로 답을 받는다. 영상은 같은 계약의 `mode: "video"`와 `tracks_total`(ByteTrack 트랙 수)을 그대로 따른다.
+- 응답:
+
+```json
+{"detectorUnavailable": false, "streamId": "st_film", "filename": "필름.jpg", "mode": "photos | video",
+ "framesAnalyzed": 1, "tracksTotal": 0, "model": {"name": "resource-ai-detector", "version": "v5"},
+ "material": {"class": "plastic_film", "label": "필름", "wasteItem": "포장재", "confidence": 0.82, "evidence": ["model:..."]},
+ "contamination": {"claim": {"claim"}, "reliable": false, "note": "..."},
+ "detections": [{"id", "label", "kind": "item | contaminant", "confidence", "box": [x, y, w, h], "ratio"}],
+ "evidence": ["model:resource-ai-detector:v5:st_film-재질", "model:resource-ai-detector:v5:st_film-오염비율"],
+ "stream": {"흐름 레코드"}, "note": "..."}
+```
+
+- 이물 비율(면적 기준 0~1)은 %로 바꿔 `model:resource-ai-detector:<버전>:<흐름>-오염비율` 근거가 되고 흐름의 `photo.contaminationPct`와 `photo.evidence`에 들어간다. 상태 모델이 돌지 않아 `contamination`이 없으면 `contamination`은 `null`이고 흐름의 값도 바꾸지 않는다.
+- 재질 추정은 `model:...:<흐름>-재질` 근거가 되고 흐름의 `photo.materialEstimate`(`{class, label, wasteItem, confidence, evidence}`)에 들어간다. 사진으로는 수지 종류(PP·PE·ABS)를 가르지 못하므로 흐름의 `material`은 바꾸지 않는다. `material`은 탐지된 것이 없으면 `null`이다.
+- 오류: 사진·영상이 아닌 파일은 415 `UNSUPPORTED_MEDIA`, 엔드포인트 호출 실패나 계약과 다른 응답은 502 `DETECTOR_FAILED`.
+- 근거는 올린 조직만 본다. 대화가 열리면 다른 사진 추정 근거와 같이 업체에 열린다.
 
 재학습 데이터 수집(7단계) 주소의 규칙:
 
