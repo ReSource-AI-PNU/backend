@@ -1,0 +1,848 @@
+{
+  "title": "혼입, 여러 업체, 허가 품목 불일치",
+  "synthetic": true,
+  "note": "사례의 회사, 업체, 수치는 모두 가상이다. 실제 업체·견적·측정이 아니다.",
+  "cases": [
+    {
+      "id": "C25",
+      "title": "종이 라벨이 섞인 불량 사출품(사진 추정)",
+      "review": "초안",
+      "tags": [
+        "PP",
+        "혼입",
+        "사진 추정",
+        "조건부"
+      ],
+      "world": {
+        "streams": [
+          {
+            "id": "st_a",
+            "name": "불량 사출품",
+            "material": "PP",
+            "origin": "PIR",
+            "form": "가공 전",
+            "monthlyKg": 500,
+            "monthlyKgBasis": "measured",
+            "bulkDensityKgPerM3": 250,
+            "measure": null,
+            "photo": {
+              "contaminationPct": 6.0
+            },
+            "contaminants": [
+              "종이 라벨"
+            ]
+          }
+        ],
+        "vendors": [
+          {
+            "orgId": "org_v1",
+            "permits": [
+              {
+                "wasteItem": "폐플라스틱",
+                "materials": [
+                  "PP",
+                  "PE"
+                ]
+              }
+            ],
+            "criteria": [
+              {
+                "id": "pc_pp_b",
+                "material": "PP",
+                "form": null,
+                "grade": "B",
+                "maxContaminationPct": 8,
+                "maxMoisturePct": 2,
+                "unitPriceKrwPerKg": 200,
+                "minMonthlyKg": 300
+              }
+            ]
+          }
+        ]
+      },
+      "answers": {
+        "st_a.moisturePct": 0.5
+      },
+      "expect": {
+        "result": {
+          "status": "conditional"
+        },
+        "assignments": {
+          "st_a": {
+            "vendor": "org_v1",
+            "status": "conditional",
+            "checks": [
+              "mixture",
+              "vendor_condition"
+            ]
+          }
+        },
+        "threads": [
+          {
+            "vendor": "org_v1",
+            "status": "agreed",
+            "hasTypes": [
+              "conditional"
+            ]
+          }
+        ]
+      },
+      "forbidden": [
+        {
+          "kind": "verdict",
+          "stream": "st_a",
+          "status": "calculated",
+          "why": "혼입 상태의 수용을 확정하지 않는다"
+        }
+      ],
+      "synthetic": true
+    },
+    {
+      "id": "C26",
+      "title": "PVC가 섞인 흐름(업체 자동 거절 조건)",
+      "review": "초안",
+      "tags": [
+        "PP",
+        "혼입",
+        "가드레일",
+        "자동 거절"
+      ],
+      "world": {
+        "streams": [
+          {
+            "id": "st_a",
+            "name": "PP 압축품",
+            "material": "PP",
+            "origin": "PIR",
+            "form": "압축",
+            "monthlyKg": 500,
+            "monthlyKgBasis": "measured",
+            "bulkDensityKgPerM3": 250,
+            "measure": {
+              "contaminationPct": 1.0,
+              "moisturePct": 0.3
+            },
+            "contaminants": [
+              "PVC 혼입"
+            ]
+          }
+        ],
+        "vendors": [
+          {
+            "orgId": "org_v1",
+            "permits": [
+              {
+                "wasteItem": "폐플라스틱",
+                "materials": [
+                  "PP",
+                  "PE"
+                ]
+              }
+            ],
+            "criteria": [
+              {
+                "id": "pc_pp_b",
+                "material": "PP",
+                "form": null,
+                "grade": "B",
+                "maxContaminationPct": 8,
+                "maxMoisturePct": 2,
+                "unitPriceKrwPerKg": 200,
+                "minMonthlyKg": 300
+              }
+            ],
+            "guardrails": {
+              "autoDecline": [
+                "PVC"
+              ]
+            }
+          }
+        ]
+      },
+      "expect": {
+        "threads": [
+          {
+            "vendor": "org_v1",
+            "status": "declined",
+            "lastType": "decline"
+          }
+        ],
+        "assignments": {
+          "st_a": {
+            "vendor": null,
+            "route": "keep",
+            "unitPrice": null
+          }
+        }
+      },
+      "forbidden": [
+        {
+          "kind": "message_type",
+          "from": "org_v1",
+          "type": "offer",
+          "why": "자동 거절 조건에 걸린 흐름에 조건을 내지 않는다"
+        },
+        {
+          "kind": "message_type",
+          "from": "org_v1",
+          "type": "conditional",
+          "why": "자동 거절 조건에 걸린 흐름에 조건을 내지 않는다"
+        },
+        {
+          "kind": "assigned",
+          "stream": "st_a",
+          "why": "거절된 흐름을 배정하지 않는다"
+        }
+      ],
+      "synthetic": true
+    },
+    {
+      "id": "C27",
+      "title": "단가가 높은 업체는 자동 거절, 다른 업체가 받는 경우",
+      "review": "초안",
+      "tags": [
+        "PP",
+        "혼입",
+        "금속",
+        "가드레일",
+        "여러 업체"
+      ],
+      "world": {
+        "streams": [
+          {
+            "id": "st_a",
+            "name": "PP 압축품",
+            "material": "PP",
+            "origin": "PIR",
+            "form": "가공 전",
+            "monthlyKg": 500,
+            "monthlyKgBasis": "measured",
+            "bulkDensityKgPerM3": 250,
+            "measure": {
+              "contaminationPct": 1.0,
+              "moisturePct": 0.3
+            },
+            "contaminants": [
+              "금속 인서트"
+            ]
+          }
+        ],
+        "vendors": [
+          {
+            "orgId": "org_v1",
+            "permits": [
+              {
+                "wasteItem": "폐플라스틱",
+                "materials": [
+                  "PP",
+                  "PE"
+                ]
+              }
+            ],
+            "criteria": [
+              {
+                "id": "pc_pp_b",
+                "material": "PP",
+                "form": null,
+                "grade": "B",
+                "maxContaminationPct": 8,
+                "maxMoisturePct": 2,
+                "unitPriceKrwPerKg": 300,
+                "minMonthlyKg": 300
+              }
+            ],
+            "guardrails": {
+              "autoDecline": [
+                "금속 인서트"
+              ]
+            }
+          },
+          {
+            "orgId": "org_v2",
+            "permits": [
+              {
+                "wasteItem": "폐플라스틱",
+                "materials": [
+                  "PP",
+                  "PE"
+                ]
+              }
+            ],
+            "criteria": [
+              {
+                "id": "pc_pp_c",
+                "material": "PP",
+                "form": null,
+                "grade": "B",
+                "maxContaminationPct": 8,
+                "maxMoisturePct": 2,
+                "unitPriceKrwPerKg": 180,
+                "minMonthlyKg": 300
+              }
+            ]
+          }
+        ]
+      },
+      "expect": {
+        "threads": [
+          {
+            "vendor": "org_v1",
+            "status": "declined"
+          },
+          {
+            "vendor": "org_v2",
+            "status": "agreed"
+          }
+        ],
+        "result": {
+          "status": "conditional"
+        },
+        "assignments": {
+          "st_a": {
+            "vendor": "org_v2",
+            "status": "conditional",
+            "unitPrice": 180,
+            "checks": [
+              "mixture"
+            ]
+          }
+        }
+      },
+      "forbidden": [
+        {
+          "kind": "assigned",
+          "stream": "st_a",
+          "vendor": "org_v1",
+          "why": "단가가 높아도 거절한 업체에 배정하지 않는다"
+        }
+      ],
+      "synthetic": true
+    },
+    {
+      "id": "C28",
+      "title": "두 업체가 모두 받을 때 단가가 높은 쪽을 고르고 나머지는 대안으로 둔다",
+      "review": "초안",
+      "tags": [
+        "PP",
+        "여러 업체",
+        "대안"
+      ],
+      "world": {
+        "streams": [
+          {
+            "id": "st_a",
+            "name": "PP 압축품",
+            "material": "PP",
+            "origin": "PIR",
+            "form": "압축",
+            "monthlyKg": 500,
+            "monthlyKgBasis": "measured",
+            "bulkDensityKgPerM3": 250,
+            "measure": {
+              "contaminationPct": 1.0,
+              "moisturePct": 0.3
+            }
+          }
+        ],
+        "vendors": [
+          {
+            "orgId": "org_v1",
+            "permits": [
+              {
+                "wasteItem": "폐플라스틱",
+                "materials": [
+                  "PP",
+                  "PE"
+                ]
+              }
+            ],
+            "criteria": [
+              {
+                "id": "pc_pp_b",
+                "material": "PP",
+                "form": null,
+                "grade": "B",
+                "maxContaminationPct": 8,
+                "maxMoisturePct": 2,
+                "unitPriceKrwPerKg": 200,
+                "minMonthlyKg": 300
+              }
+            ]
+          },
+          {
+            "orgId": "org_v2",
+            "permits": [
+              {
+                "wasteItem": "폐플라스틱",
+                "materials": [
+                  "PP",
+                  "PE"
+                ]
+              }
+            ],
+            "criteria": [
+              {
+                "id": "pc_pp_a",
+                "material": "PP",
+                "form": null,
+                "grade": "A",
+                "maxContaminationPct": 2,
+                "maxMoisturePct": 1,
+                "unitPriceKrwPerKg": 320,
+                "minMonthlyKg": 300
+              }
+            ]
+          }
+        ]
+      },
+      "expect": {
+        "result": {
+          "status": "calculated"
+        },
+        "assignments": {
+          "st_a": {
+            "vendor": "org_v2",
+            "route": "sell",
+            "status": "calculated",
+            "unitPrice": 320,
+            "alternatives": [
+              "org_v1"
+            ]
+          }
+        },
+        "threads": [
+          {
+            "vendor": "org_v2",
+            "status": "agreed"
+          },
+          {
+            "vendor": "org_v1",
+            "status": "open"
+          }
+        ]
+      },
+      "forbidden": [
+        {
+          "kind": "assigned",
+          "stream": "st_a",
+          "vendor": "org_v1",
+          "why": "회사 측 월 순비용이 더 나쁜 업체에 배정하지 않는다"
+        },
+        {
+          "kind": "evidence_cited",
+          "evidence": "doc:org_v2",
+          "from": "org_v1",
+          "why": "업체는 다른 업체의 매입 기준을 인용할 수 없다"
+        }
+      ],
+      "synthetic": true
+    },
+    {
+      "id": "C29",
+      "title": "필름 허가 품목이 없는 업체와 있는 업체",
+      "review": "초안",
+      "tags": [
+        "LDPE",
+        "PCR",
+        "허가 불일치",
+        "여러 업체"
+      ],
+      "world": {
+        "streams": [
+          {
+            "id": "st_a",
+            "name": "포장 필름",
+            "material": "LDPE",
+            "origin": "PCR",
+            "form": "필름",
+            "monthlyKg": 300,
+            "monthlyKgBasis": "measured",
+            "bulkDensityKgPerM3": 60,
+            "measure": {
+              "contaminationPct": 2.0,
+              "moisturePct": 1.5
+            },
+            "wasteItem": "포장재"
+          }
+        ],
+        "vendors": [
+          {
+            "orgId": "org_v1",
+            "permits": [
+              {
+                "wasteItem": "폐플라스틱",
+                "materials": [
+                  "PP",
+                  "ABS"
+                ]
+              }
+            ],
+            "criteria": [
+              {
+                "id": "pc_pp_b",
+                "material": "PP",
+                "form": null,
+                "grade": "B",
+                "maxContaminationPct": 8,
+                "maxMoisturePct": 2,
+                "unitPriceKrwPerKg": 200,
+                "minMonthlyKg": 300
+              }
+            ]
+          },
+          {
+            "orgId": "org_v2",
+            "permits": [
+              {
+                "wasteItem": "포장재",
+                "materials": [
+                  "LDPE",
+                  "LLDPE"
+                ]
+              }
+            ],
+            "criteria": [
+              {
+                "id": "pc_film_b",
+                "material": "LDPE",
+                "form": "필름",
+                "grade": "B",
+                "maxContaminationPct": 5,
+                "maxMoisturePct": 3,
+                "unitPriceKrwPerKg": 150,
+                "minMonthlyKg": 250
+              }
+            ]
+          }
+        ]
+      },
+      "expect": {
+        "threads": [
+          {
+            "vendor": "org_v1",
+            "status": "not_opened",
+            "streams": [
+              "st_a"
+            ],
+            "reasonEvidence": true
+          },
+          {
+            "vendor": "org_v2",
+            "status": "agreed"
+          }
+        ],
+        "assignments": {
+          "st_a": {
+            "vendor": "org_v2",
+            "route": "sell",
+            "status": "calculated",
+            "unitPrice": 150
+          }
+        }
+      },
+      "forbidden": [
+        {
+          "kind": "thread_opened",
+          "vendor": "org_v1",
+          "why": "허가 품목이 맞지 않는 업체와는 대화를 열지 않는다"
+        }
+      ],
+      "synthetic": true
+    },
+    {
+      "id": "C30",
+      "title": "허가증이 올라와 있지 않은 업체",
+      "review": "초안",
+      "tags": [
+        "PP",
+        "허가 미확인"
+      ],
+      "world": {
+        "streams": [
+          {
+            "id": "st_a",
+            "name": "PP 압축품",
+            "material": "PP",
+            "origin": "PIR",
+            "form": "압축",
+            "monthlyKg": 500,
+            "monthlyKgBasis": "measured",
+            "bulkDensityKgPerM3": 250,
+            "measure": {
+              "contaminationPct": 1.0,
+              "moisturePct": 0.3
+            }
+          }
+        ],
+        "vendors": [
+          {
+            "orgId": "org_v1",
+            "permits": [],
+            "criteria": [
+              {
+                "id": "pc_pp_b",
+                "material": "PP",
+                "form": null,
+                "grade": "B",
+                "maxContaminationPct": 8,
+                "maxMoisturePct": 2,
+                "unitPriceKrwPerKg": 200,
+                "minMonthlyKg": 300
+              }
+            ]
+          }
+        ]
+      },
+      "expect": {
+        "tools": [
+          {
+            "tool": "match_permit",
+            "stream": "st_a",
+            "vendor": "org_v1",
+            "status": "needs_information",
+            "output": {
+              "matched": null,
+              "openThread": false
+            }
+          }
+        ],
+        "threads": [
+          {
+            "vendor": "org_v1",
+            "status": "not_opened",
+            "streams": [
+              "st_a"
+            ]
+          }
+        ],
+        "assignments": {
+          "st_a": {
+            "vendor": null,
+            "route": "keep",
+            "unitPrice": null
+          }
+        }
+      },
+      "forbidden": [
+        {
+          "kind": "thread_opened",
+          "vendor": "org_v1",
+          "why": "허가 품목을 확인하지 못한 업체와는 대화를 열지 않는다"
+        }
+      ],
+      "synthetic": true
+    },
+    {
+      "id": "C31",
+      "title": "품목은 맞지만 재질(PE)이 허가 목록에 없는 경우",
+      "review": "초안",
+      "tags": [
+        "PE",
+        "허가 불일치"
+      ],
+      "world": {
+        "streams": [
+          {
+            "id": "st_a",
+            "name": "PE 분쇄품",
+            "material": "PE",
+            "origin": "PIR",
+            "form": "분쇄",
+            "monthlyKg": 500,
+            "monthlyKgBasis": "measured",
+            "bulkDensityKgPerM3": 250,
+            "measure": {
+              "contaminationPct": 1.0,
+              "moisturePct": 0.3
+            }
+          }
+        ],
+        "vendors": [
+          {
+            "orgId": "org_v1",
+            "permits": [
+              {
+                "wasteItem": "폐플라스틱",
+                "materials": [
+                  "PP"
+                ]
+              }
+            ],
+            "criteria": [
+              {
+                "id": "pc_pe_b",
+                "material": "PE",
+                "form": null,
+                "grade": "B",
+                "maxContaminationPct": 8,
+                "maxMoisturePct": 2,
+                "unitPriceKrwPerKg": 260,
+                "minMonthlyKg": 300
+              }
+            ]
+          }
+        ]
+      },
+      "expect": {
+        "tools": [
+          {
+            "tool": "match_permit",
+            "stream": "st_a",
+            "vendor": "org_v1",
+            "output": {
+              "matched": false
+            }
+          },
+          {
+            "tool": "judge_route",
+            "stream": "st_a",
+            "vendor": "org_v1",
+            "checks": {
+              "permit": "unmet"
+            },
+            "output": {
+              "acceptable": false,
+              "route": "keep"
+            },
+            "absentClaims": [
+              "unitPrice"
+            ]
+          }
+        ],
+        "threads": [
+          {
+            "vendor": "org_v1",
+            "status": "not_opened",
+            "reasonEvidence": true
+          }
+        ],
+        "assignments": {
+          "st_a": {
+            "vendor": null,
+            "route": "keep"
+          }
+        }
+      },
+      "forbidden": [
+        {
+          "kind": "thread_opened",
+          "vendor": "org_v1",
+          "why": "매입 기준에 재질이 있어도 허가 품목에 없으면 대화를 열지 않는다"
+        },
+        {
+          "kind": "assigned",
+          "stream": "st_a",
+          "why": "허가 품목이 맞지 않는 업체에 배정하지 않는다"
+        }
+      ],
+      "synthetic": true
+    },
+    {
+      "id": "C32",
+      "title": "한 업체에 허가가 맞는 흐름과 맞지 않는 흐름이 섞인 경우",
+      "review": "초안",
+      "tags": [
+        "PP",
+        "LDPE",
+        "허가 불일치",
+        "여러 흐름"
+      ],
+      "world": {
+        "streams": [
+          {
+            "id": "st_a",
+            "name": "PP 압축품",
+            "material": "PP",
+            "origin": "PIR",
+            "form": "압축",
+            "monthlyKg": 500,
+            "monthlyKgBasis": "measured",
+            "bulkDensityKgPerM3": 250,
+            "measure": {
+              "contaminationPct": 1.0,
+              "moisturePct": 0.3
+            }
+          },
+          {
+            "id": "st_b",
+            "name": "포장 필름",
+            "material": "LDPE",
+            "origin": "PCR",
+            "form": "필름",
+            "monthlyKg": 300,
+            "monthlyKgBasis": "measured",
+            "bulkDensityKgPerM3": 60,
+            "measure": {
+              "contaminationPct": 2.0,
+              "moisturePct": 1.5
+            },
+            "wasteItem": "포장재"
+          }
+        ],
+        "vendors": [
+          {
+            "orgId": "org_v1",
+            "permits": [
+              {
+                "wasteItem": "폐플라스틱",
+                "materials": [
+                  "PP"
+                ]
+              }
+            ],
+            "criteria": [
+              {
+                "id": "pc_pp_b",
+                "material": "PP",
+                "form": null,
+                "grade": "B",
+                "maxContaminationPct": 8,
+                "maxMoisturePct": 2,
+                "unitPriceKrwPerKg": 200,
+                "minMonthlyKg": 300
+              }
+            ]
+          }
+        ]
+      },
+      "expect": {
+        "threads": [
+          {
+            "vendor": "org_v1",
+            "status": "agreed",
+            "streams": [
+              "st_a"
+            ]
+          },
+          {
+            "vendor": "org_v1",
+            "status": "not_opened",
+            "streams": [
+              "st_b"
+            ],
+            "reasonEvidence": true
+          }
+        ],
+        "assignments": {
+          "st_a": {
+            "vendor": "org_v1",
+            "status": "calculated"
+          },
+          "st_b": {
+            "vendor": null,
+            "route": "keep"
+          }
+        }
+      },
+      "forbidden": [
+        {
+          "kind": "thread_opened",
+          "vendor": "org_v1",
+          "stream": "st_b",
+          "why": "허가 품목이 맞지 않는 흐름은 열린 대화에 넣지 않는다"
+        }
+      ],
+      "synthetic": true
+    }
+  ]
+}
