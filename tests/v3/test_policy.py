@@ -129,3 +129,40 @@ def test_disclosure_follows_calc_chain(demo):
     # 배출 기업이 업체에 보내는 메시지는 이 검사의 대상이 아니다
     back = Message("th_1", "org_hanbit", "org_saegil", "answer", 4, "네.")
     assert check_disclosure(back, registry, store) == []
+
+
+def test_can_open_thread_matches_real_match_permit_output(demo):
+    """judge.match_permit이 실제로 내는 결과를 그대로 넣어 본다."""
+    from app.v3.demo.seed import share_evidence
+    from app.v3.judge.toolbox import call_tool
+
+    store, registry = demo
+    today = "2026-11-17"
+
+    def permit(stream_id, vendor_id, vendor=None):
+        profile = vendor or store.get_vendor_profile(vendor_id)
+        for item in profile.get("permits") or []:
+            for evidence_id in item["evidence"]:
+                share_evidence(registry, evidence_id, "org_hanbit")  # 허가증은 대조 전에 연다
+        return call_tool(
+            "match_permit",
+            {"stream": store.get_stream(stream_id), "vendor": profile},
+            registry=registry,
+            org_id="org_hanbit",
+            today=today,
+        )
+
+    film_miso = permit("st_film", "org_miso")
+    ok, reason = can_open_thread(film_miso)
+    assert ok is False and "허가 품목" in reason
+    assert permit_evidence(film_miso) == ["doc:org_miso:허가증:폐플라스틱"]
+
+    film_saegil = permit("st_film", "org_saegil")
+    assert can_open_thread(film_saegil)[0] is True
+    assert permit_evidence(film_saegil) == ["doc:org_saegil:허가증:포장재"]
+
+    no_permit = {**store.get_vendor_profile("org_miso"), "permits": []}
+    unknown = permit("st_film", "org_miso", no_permit)
+    assert unknown["status"] == "needs_information"
+    ok, reason = can_open_thread(unknown)
+    assert ok is False and "확인하지 못해" in reason

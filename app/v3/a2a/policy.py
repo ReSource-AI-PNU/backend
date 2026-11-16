@@ -104,12 +104,19 @@ def permit_evidence(permit_result: dict[str, Any] | None) -> list[str]:
         ids += list(check.get("evidence") or [])
     for claim in permit_result.get("claims") or []:
         ids += list(claim.get("evidence") or [])
-    ids += list((permit_result.get("output") or {}).get("evidence") or [])
+    output = permit_result.get("output") or {}
+    # match_permit은 허가증 근거를 output.permitEvidence에 담는다
+    ids += list(output.get("permitEvidence") or [])
+    ids += list(output.get("evidence") or [])
     return list(dict.fromkeys(ids))
 
 
 def can_open_thread(permit_result: dict[str, Any] | None) -> tuple[bool, str]:
     """허가 품목이 맞을 때만 대화를 연다. match_permit 도구의 결과를 받는다.
+
+    match_permit의 실제 결과 모양: output.matched(True | False | None), output.openThread,
+    output.permitEvidence, checks[0]은 key "permit"에 status met | unmet | conditional,
+    허가 품목이 올라와 있지 않으면 status가 needs_information이다.
 
     허가 품목을 확인하지 못한 경우에도 열지 않는다. 연 뒤에 불일치를 알게 되면
     호출자는 근거와 함께 decline으로 닫는다.
@@ -120,6 +127,8 @@ def can_open_thread(permit_result: dict[str, Any] | None) -> tuple[bool, str]:
     checks = permit_result.get("checks") or []
     unmet = [c for c in checks if c.get("status") == "unmet"]
     matched = output.get("matched")
+    if output.get("openThread") is False and matched is None and not unmet:
+        return False, "업체의 허가 품목을 확인하지 못해 대화를 열지 않습니다."
     if matched is False or unmet:
         detail = unmet[0].get("text") if unmet else output.get("reason")
         reason = "업체의 허가 품목에 이 흐름이 없어 대화를 열지 않습니다."
