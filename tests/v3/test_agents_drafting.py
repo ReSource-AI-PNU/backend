@@ -89,7 +89,7 @@ def test_claim_ref_outside_the_pool_is_rejected():
         refs=["best_price"],
         terms={"items": [{"streamId": "st_sprue", "unitPriceRef": "best_price"}]},
     )
-    app, llm, view = run_with_vendor(made_up, GOOD)
+    *_, view = run_with_vendor(made_up, GOOD)
     offer = thread_of(view, SAEGIL)["messages"][1]
     assert offer["validation"]["attempts"] == 2 and codes(offer) == ["UNKNOWN_CLAIM_REF"]
     assert [c["id"] for c in offer["claims"]] == [PRICE]
@@ -171,7 +171,7 @@ def test_auto_decline_stream_cannot_be_offered():
 def test_other_emitter_is_never_disclosed():
     named = draft("answer", "다온산업 물량과 같은 노선에 묶어 싣겠습니다.", streams=["st_sprue"])
     stream = draft("answer", "st_daon_pp 흐름과 함께 수거합니다.", streams=["st_sprue"])
-    app, llm, view = run_with_vendor(named, stream)
+    *_, view = run_with_vendor(named, stream)
     thread = thread_of(view, SAEGIL)
     assert thread["status"] == "handoff"
     assert set(codes(thread["messages"][-1])) == {"OTHER_EMITTER_NAMED", "OTHER_EMITTER_STREAM"}
@@ -236,7 +236,7 @@ def to_approval_from(app, session_id):
 def test_model_failure_twice_is_a_handoff_not_a_guess():
     from app.v3.agents.llm import LLMError
 
-    app, llm, view = run_with_vendor(LLMError("timeout"), LLMError("timeout"))
+    *_, view = run_with_vendor(LLMError("timeout"), LLMError("timeout"))
     thread = thread_of(view, SAEGIL)
     assert thread["status"] == "handoff" and codes(thread["messages"][-1]) == ["MODEL_ERROR"] * 2
     _app, _llm, view = run_with_vendor("죄송하지만 JSON으로 답할 수 없습니다.", GOOD)
