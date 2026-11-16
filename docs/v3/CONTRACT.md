@@ -268,7 +268,7 @@ VendorProfile {"orgId": "org_saegil",
                   "monthlyAfter": null, "monthlyNow": null, "difference": null, "carbon": null, "carbonValue": null,
                   "alternatives": []}],
  "totals": {"monthlyNow": null, "monthlyAfter": null, "difference": null, "carbon": null},
- "assumptions": [], "sensitivity": [], "referencePrices": []}
+ "assumptions": [], "sensitivity": [], "referencePrices": [{"참고 시세. 배출 기업이 보는 것과 같다"}]}
 ```
 
 - `assignments`에는 자기에게 배정된 흐름만 있고, 하나도 없으면 `status`는 `needs_information`이다.
@@ -289,6 +289,7 @@ VendorProfile {"orgId": "org_saegil",
 - `approvals[]`: `streamIds`
 - `documents[]`: `threadId`, `streamIds`, `rendered`(자리표시자를 값으로 바꾼 글), `createdAt`
 - `events[].kind`: `thread`, `question`, `document`, `stage`를 더했다
+- `events[].detail.hiddenEvidenceCount`: 실행 기록에 실린 근거 ID 가운데 보는 조직이 열 수 없는 것은 뷰를 만들 때 뺀다(상대 쪽 도구 호출의 `detail.evidence` 같은 곳). 뺀 것이 있을 때만 그 개수(정수)가 붙는다. 배출 기업이 보는 뷰와 업체가 보는 뷰 모두 같다. 저장된 기록은 바뀌지 않는다. 진단 뷰 전체에 보는 조직이 열 수 없는 근거 ID는 실리지 않는다(`tests/v3/test_view_evidence_scope.py`).
 
 재학습 데이터 수집(7단계)에서 더한 항목:
 

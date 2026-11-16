@@ -185,7 +185,7 @@ def register_model_run(app, run, viewer) -> dict                    # 재학습 
 
 ## 7. 실행 기록
 
-모든 메시지, 도구 호출, 검증 결과, handoff, 승인은 `store`의 events에 남는다. 계약 7장의 `kind`에 `thread`(스레드 개설·미개설·합의·확정), `question`(담당자 질문과 답), `document`(문서 생성), `stage`(진단 생성)를 더했다. 업체가 보는 뷰에는 자기 스레드의 메시지·handoff·승인·스레드·문서 기록과 자기가 한 도구 호출·검증 기록만 나간다. 화면의 대화와 실행 기록은 이 기록을 그대로 보여 준다. OpenTelemetry로 내보내는 것은 `tracing.py`가 한다: `APPLICATIONINSIGHTS_CONNECTION_STRING`이 있으면 `api.build_app`이 저장소를 `TracingStore`로 감싸고, `add_event`로 저장된 이벤트마다 span 하나(`rsai.<kind>`, 속성 `rsai.*`)를 낸다. 저장된 이벤트만 옮기므로 화면과 추적이 같은 기록을 본다. 내보내기가 실패해도 진단은 계속된다.
+모든 메시지, 도구 호출, 검증 결과, handoff, 승인은 `store`의 events에 남는다. 계약 7장의 `kind`에 `thread`(스레드 개설·미개설·합의·확정), `question`(담당자 질문과 답), `document`(문서 생성), `stage`(진단 생성)를 더했다. 업체가 보는 뷰에는 자기 스레드의 메시지·handoff·승인·스레드·문서 기록과 자기가 한 도구 호출·검증 기록만 나간다. 화면의 대화와 실행 기록은 이 기록을 그대로 보여 준다. 다만 기록에 실린 근거 ID 가운데 보는 조직이 열 수 없는 것은 뷰를 만들 때 빼고 개수(`detail.hiddenEvidenceCount`)만 남긴다(상대 쪽 계산 근거의 ID에는 도구 이름과 값의 종류가 드러난다). OpenTelemetry로 내보내는 것은 `tracing.py`가 한다: `APPLICATIONINSIGHTS_CONNECTION_STRING`이 있으면 `api.build_app`이 저장소를 `TracingStore`로 감싸고, `add_event`로 저장된 이벤트마다 span 하나(`rsai.<kind>`, 속성 `rsai.*`)를 낸다. 저장된 이벤트만 옮기므로 화면과 추적이 같은 기록을 본다. 내보내기가 실패해도 진단은 계속된다.
 
 ## 8. 로컬 서버
 

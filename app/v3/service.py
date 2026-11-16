@@ -767,6 +767,63 @@ def _graph(
     return {"nodes": list(nodes.values()), "edges": edges}
 
 
+def _is_evidence_id(value: Any) -> bool:
+    """근거 ID처럼 생긴 문자열인지(종류 접두어 + 콜론). 실제 근거인지는 레지스트리로 확인한다."""
+    if not isinstance(value, str) or ":" not in value:
+        return False
+    head, _, rest = value.partition(":")
+    return head in KINDS and bool(rest) and not any(c.isspace() for c in value)
+
+
+def _event_view(app: App, event: dict[str, Any], viewer: str, seen: dict[str, bool]) -> dict:
+    """실행 기록 한 줄에서 보는 조직이 열 수 없는 근거 ID를 뺀다.
+
+    상대 쪽 도구 호출의 detail.evidence 같은 곳에는 상대만 볼 수 있는 계산 근거의 ID가 실린다.
+    ID에는 도구 이름과 값의 종류가 드러나므로 빼고, 뺀 개수만 detail.hiddenEvidenceCount에 남긴다.
+    """
+    hidden: set[str] = set()
+
+    def can_open(evidence_id: str) -> bool:
+        if evidence_id not in seen:
+            try:
+                app.registry.get(evidence_id, viewer)
+                seen[evidence_id] = True
+            except EvidenceForbidden:
+                seen[evidence_id] = False
+            except EvidenceNotFound:
+                # 레지스트리에 없는 것은 근거 ID가 아니다("model:rule" 같은 표시). 그대로 둔다
+                seen[evidence_id] = True
+        return seen[evidence_id]
+
+    def scrub(node: Any) -> Any:
+        if isinstance(node, dict):
+            out = {}
+            for key, value in node.items():
+                if _is_evidence_id(key) and not can_open(key):
+                    hidden.add(key)  # 근거 ID를 키로 쓴 표(evidenceMarks 같은 것)
+                    continue
+                if _is_evidence_id(value) and not can_open(value):
+                    hidden.add(value)
+                    out[key] = None
+                    continue
+                out[key] = scrub(value)
+            return out
+        if isinstance(node, list):
+            kept = []
+            for value in node:
+                if _is_evidence_id(value) and not can_open(value):
+                    hidden.add(value)
+                    continue
+                kept.append(scrub(value))
+            return kept
+        return node
+
+    detail = scrub(event.get("detail") or {})
+    if hidden:
+        detail["hiddenEvidenceCount"] = len(hidden)
+    return {**event, "detail": detail}
+
+
 def _result_view(session: dict[str, Any], viewer: str, owner: bool) -> dict[str, Any] | None:
     result = session["work"].get("result")
     if result is None or owner:
@@ -796,6 +853,11 @@ def _result_view(session: dict[str, Any], viewer: str, owner: bool) -> dict[str,
         "sensitivity": [],
         "referencePrices": result.get("referencePrices") or [],
     }
+
+
+def _events_view(app: App, events: list[dict[str, Any]], viewer: str) -> list[dict[str, Any]]:
+    seen: dict[str, bool] = {}
+    return [_event_view(app, event, viewer, seen) for event in events]
 
 
 def get_view(app: App, session_id: str, viewer: str) -> dict[str, Any]:
@@ -869,7 +931,7 @@ def get_view(app: App, session_id: str, viewer: str) -> dict[str, Any]:
         "documents": [
             d for d in app.store.list_documents(session_id) if d.get("threadId") in thread_ids
         ],
-        "events": events,
+        "events": _events_view(app, events, viewer),
         "feedback": _feedback_view(app, session, viewer, owner),
     }
 
