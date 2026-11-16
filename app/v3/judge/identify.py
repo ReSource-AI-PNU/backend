@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from app.v3.judge.common import Recorder, grade_of, num
+from app.v3.textutil import josa
 
 
 def identify_stream(registry, *, org_id, today, stream, moisturePct=None):
@@ -22,7 +23,7 @@ def identify_stream(registry, *, org_id, today, stream, moisturePct=None):
     }
     for field, name in (("material", "재질"), ("origin", "출처(PIR·PCR)"), ("form", "형태")):
         if not stream.get(field):
-            rec.check(field, "conditional", f"{name}이(가) 확인되지 않았습니다.")
+            rec.check(field, "conditional", f"{josa(name, '이가')} 확인되지 않았습니다.")
 
     def graded(prefix, cont, moist, evidence, label):
         grade, limits = grade_of(rec, stream.get("material"), cont, moist)

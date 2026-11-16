@@ -50,6 +50,7 @@ from app.v3.evidence.validator import (
 from app.v3.intake.grade_model import GradeModelError, grade_stream
 from app.v3.judge import basis
 from app.v3.judge.toolbox import TOOLS, call_tool
+from app.v3.textutil import josa
 
 PHASES = ("identify", "discover", "converse", "propose", "approval", "done")
 TERMS_TYPES = ("offer", "counter", "conditional")
@@ -593,7 +594,7 @@ class Orchestrator:
                     session["id"],
                     "system",
                     "thread",
-                    f"{name}와 대화를 엽니다(허가 품목 일치).",
+                    f"{josa(name, '와과')} 대화를 엽니다(허가 품목 일치).",
                     thread.id,
                     vendorOrgId=vendor_id,
                     streamIds=list(thread.stream_ids),
@@ -617,7 +618,7 @@ class Orchestrator:
                         f"업체의 허가 품목을 확인하지 못해 {names}에 대한 대화를 열지 않습니다."
                     )
                 else:
-                    reason = f"업체의 허가 품목에 {names}이(가) 없어 대화를 열지 않습니다."
+                    reason = f"업체의 허가 품목에 {josa(names, '이가')} 없어 대화를 열지 않습니다."
                 thread.refuse_open(reason, evidence)
                 self.store.put_thread(thread)
                 self._event(
@@ -1621,7 +1622,7 @@ class Orchestrator:
                             f"{names.get(handed[sid]['vendorOrgId']) or '업체'}의 허가 품목이 맞지 "
                             "않게 되어 합의한 대화를 닫고 이 흐름의 배정을 뺐습니다. 확인 필요."
                             if handed[sid].get("cause") == "permit"
-                            else f"{names.get(handed[sid]['vendorOrgId']) or '업체'}와 합의한 대화가 "
+                            else f"{josa(names.get(handed[sid]['vendorOrgId']) or '업체', '와과')} 합의한 대화가 "
                             "담당자에게 넘어가 이 흐름의 배정을 뺐습니다. 확인 필요."
                         ),
                         "evidence": [],
@@ -1931,7 +1932,7 @@ class Orchestrator:
                 session["id"],
                 "system",
                 "document",
-                f"{document['title']}을(를) 만들었습니다.",
+                f"{josa(document['title'], '을를')} 만들었습니다.",
                 thread.id,
                 documentId=document["id"],
                 document=document["kind"],

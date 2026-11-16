@@ -11,6 +11,7 @@ from collections.abc import Callable, Mapping
 from typing import Any, Protocol
 
 from app.v3.agents.llm import Transport, urllib_transport
+from app.v3.textutil import josa
 
 Handler = Callable[[str, dict[str, Any], dict[str, Any]], dict[str, Any]]
 
@@ -89,7 +90,7 @@ class HttpVendorGateway:
                 f"업체 측 에이전트에 연결하지 못했다: {type(error).__name__}"
             ) from error
         if status >= 400:
-            raise GatewayError(f"업체 측 에이전트가 {status}를 돌려줬다")
+            raise GatewayError(f"업체 측 에이전트가 {josa(str(status), '을를')} 돌려줬다")
         try:
             data = json.loads(raw.decode("utf-8"))
         except (UnicodeDecodeError, json.JSONDecodeError) as error:

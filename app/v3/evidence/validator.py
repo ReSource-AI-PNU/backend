@@ -12,6 +12,7 @@ from app.v3.a2a.message import PLACEHOLDER, Claim, Message
 from app.v3.evidence.model import Evidence
 from app.v3.evidence.registry import EvidenceForbidden, EvidenceNotFound, EvidenceRegistry
 from app.v3.evidence.units import UnitError, same_value
+from app.v3.textutil import josa
 
 NUMBER_OUTSIDE_PLACEHOLDER = "NUMBER_OUTSIDE_PLACEHOLDER"
 UNKNOWN_PLACEHOLDER = "UNKNOWN_PLACEHOLDER"
@@ -181,7 +182,7 @@ def validate_text(
                 Rejection(
                     UNUSED_CLAIM,
                     f"claim '{claim.id}'가 본문에 쓰이지 않았습니다. 본문에 "
-                    f"{{{{{claim.id}}}}}를 넣거나 claim을 지우세요.",
+                    f"{josa('{{' + claim.id + '}}', '을를')} 넣거나 claim을 지우세요.",
                     claim_id=claim.id,
                 )
             )

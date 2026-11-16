@@ -14,6 +14,7 @@ from typing import Any
 from app.v3 import ids
 from app.v3.evidence.model import Evidence
 from app.v3.intake._http import Transport, default_transport
+from app.v3.textutil import josa
 
 GRADES = ("A", "B", "C", "등외")
 MODEL_NAME = "resource-ai-grade"
@@ -169,7 +170,7 @@ class GradeModelClient:
         except OSError as error:
             raise GradeModelError(f"등급 엔드포인트에 연결하지 못했습니다: {error}") from error
         if status != 200:
-            raise GradeModelError(f"등급 엔드포인트가 {status}를 돌려줬습니다.")
+            raise GradeModelError(f"등급 엔드포인트가 {josa(str(status), '을를')} 돌려줬습니다.")
         try:
             payload = json.loads(raw.decode("utf-8"))
             if isinstance(payload, str):  # score.py가 JSON 문자열을 한 번 더 감싸는 경우

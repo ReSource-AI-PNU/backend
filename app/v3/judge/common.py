@@ -11,6 +11,7 @@ from app.v3.evidence.model import Evidence
 from app.v3.evidence.registry import EvidenceForbidden, EvidenceNotFound
 from app.v3.intake import grade_model
 from app.v3.judge import basis
+from app.v3.textutil import josa
 
 WORST = {"calculated": 0, "conditional": 1, "needs_information": 2}
 
@@ -238,9 +239,7 @@ def permit_match(stream: dict, vendor: dict):
 
 def subject(word: str) -> str:
     """주격 조사를 붙인다: 받침이 있으면 '이', 없으면 '가'(오염도가, 수분이)."""
-    last = word[-1] if word else ""
-    final = "가" <= last <= "힣" and (ord(last) - ord("가")) % 28 != 0
-    return f"{word}{'이' if final else '가'}"
+    return josa(word, "이가")
 
 
 def criterion_checks(stream: dict, criterion: dict, q: dict) -> list[tuple]:

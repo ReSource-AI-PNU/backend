@@ -9,6 +9,7 @@ import json
 from typing import Any
 
 from app.v3.intake._http import Transport, default_transport
+from app.v3.textutil import josa
 
 API_VERSION = "2024-09-01"
 MAX_DOCUMENT_CHARS = 10000
@@ -48,7 +49,7 @@ class PromptShieldsClient:
         except OSError as error:
             raise ShieldError(f"Prompt Shields에 연결하지 못했습니다: {error}") from error
         if status != 200:
-            raise ShieldError(f"Prompt Shields가 {status}를 돌려줬습니다.")
+            raise ShieldError(f"Prompt Shields가 {josa(str(status), '을를')} 돌려줬습니다.")
         try:
             payload = json.loads(raw.decode("utf-8"))
             analysis = payload["documentsAnalysis"]

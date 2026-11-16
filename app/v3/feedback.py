@@ -24,6 +24,7 @@ from app.v3 import ids
 from app.v3.evidence.model import Evidence
 from app.v3.intake import grade_model
 from app.v3.judge.common import quality
+from app.v3.textutil import josa
 
 DETECTOR_MODEL = "resource-ai-detector"
 DETECTOR_FIELDS = ("box", "material", "origin", "form", "contaminant")
@@ -103,7 +104,9 @@ def _checked_after(field: str, after: Any) -> Any:
     if field in ("contaminationPct", "moisturePct"):
         number = _number(after)
         if number is None or not 0 <= number <= 100:
-            raise FeedbackError("INVALID_VALUE", f"{label}는 0에서 100 사이의 숫자(%)입니다.")
+            raise FeedbackError(
+                "INVALID_VALUE", f"{josa(label, '은는')} 0에서 100 사이의 숫자(%)입니다."
+            )
         return number
     if field == "box":
         if not isinstance(after, (dict, list)) or not after:
@@ -176,7 +179,7 @@ def record_correction(
         session["id"],
         "system",
         "feedback",
-        f"담당자가 {name}의 {label}을(를) 고쳤습니다.",
+        f"담당자가 {name}의 {josa(label, '을를')} 고쳤습니다.",
         detail={
             "orgId": org_id,
             "type": "correction",

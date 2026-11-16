@@ -15,6 +15,7 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from app.v3.a2a.message import Message
+from app.v3.textutil import josa
 
 THREAD_STATUSES = ("not_opened", "open", "agreed", "declined", "handoff", "confirmed")
 CLOSED_STATUSES = ("declined", "handoff", "confirmed")
@@ -104,7 +105,7 @@ class Thread:
             return "emitter"
         if org_id == self.vendor_org:
             return "vendor"
-        raise NotParty(f"{org_id}는 스레드 {self.id}의 당사자가 아니다")
+        raise NotParty(f"{josa(org_id, '은는')} 스레드 {self.id}의 당사자가 아니다")
 
     def counterpart(self, org_id: str) -> str:
         return self.vendor_org if self.side_of(org_id) == "emitter" else self.emitter_org
@@ -141,7 +142,7 @@ class Thread:
             raise ThreadError(f"메시지의 threadId({message.thread_id})가 스레드와 다르다")
         side = self.side_of(message.sender)
         if message.recipient != self.counterpart(message.sender):
-            raise NotParty(f"받는 쪽 {message.recipient}가 이 스레드의 상대가 아니다")
+            raise NotParty(f"받는 쪽 {josa(message.recipient, '이가')} 이 스레드의 상대가 아니다")
         if self.closed:
             raise InvalidTransition(f"닫힌 스레드({self.status})에는 메시지를 보낼 수 없다")
         if self.blocked:
@@ -149,13 +150,13 @@ class Thread:
         allowed = _ALLOWED[self.status][side]
         if message.type not in allowed:
             raise InvalidTransition(
-                f"{self.status} 상태에서 {side} 쪽은 {message.type}를 보낼 수 없다"
+                f"{self.status} 상태에서 {side} 쪽은 {josa(message.type, '을를')} 보낼 수 없다"
             )
         if message.type == "confirm" and not all(self.approvals.values()):
             raise ApprovalRequired("양쪽 담당자가 승인한 뒤에만 confirm을 보낼 수 있다")
         if message.type not in UNCOUNTED_TYPES and self.turn_limit_reached:
             raise TurnLimitReached(
-                f"스레드 {self.id}가 {self.max_turns}턴에 닿았다. handoff로 넘겨야 한다"
+                f"스레드 {josa(self.id, '이가')} {self.max_turns}턴에 닿았다. handoff로 넘겨야 한다"
             )
         unknown = [s for s in message.stream_ids if s not in self.stream_ids]
         if unknown:

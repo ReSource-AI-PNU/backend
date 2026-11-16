@@ -17,6 +17,7 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from app.v3.a2a.message import Message
+from app.v3.textutil import josa
 
 ENFORCED_TYPES = ("offer", "counter", "conditional")
 WEEKDAYS = ("월", "화", "수", "목", "금", "토", "일")
@@ -129,7 +130,7 @@ def auto_decline_reason(guardrails: dict[str, Any] | None, stream: dict[str, Any
     for keyword in (guardrails or {}).get("autoDecline") or []:
         if any(_norm(keyword) in _norm(text) for text in texts):
             name = stream.get("name") or stream.get("id") or "이 흐름"
-            return f"{name}은(는) 업체의 자동 거절 조건({keyword})에 해당합니다."
+            return f"{josa(name, '은는')} 업체의 자동 거절 조건({keyword})에 해당합니다."
     return None
 
 

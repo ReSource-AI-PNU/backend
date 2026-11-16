@@ -10,11 +10,14 @@ from __future__ import annotations
 import json
 from typing import Any
 
+from app.v3.evidence.render import format_value
+from app.v3.textutil import josa, particle
+
 PROVIDER = "rule"
 MODEL_NAME = "규칙 정책(모델 미연결)"
 _QUALITY_FIELDS = {"contaminationPct": "오염도", "moisturePct": "수분", "form": "형태"}
 _BASIS_KEYS = {"moisture_basis": "moisturePct", "contamination_basis": "contaminationPct"}
-_SUBJECT = {"contaminationPct": "오염도가", "moisturePct": "수분이"}
+_SUBJECT = {key: josa(_QUALITY_FIELDS[key], "이가") for key in ("contaminationPct", "moisturePct")}
 
 
 class RulePolicy:
@@ -81,6 +84,12 @@ class _Base:
         if claim_id not in self.refs:
             self.refs.append(claim_id)
         return _ph(claim_id)
+
+    def after(self, claim_id: str | None, pair: str) -> str:
+        """claim 자리표시자 뒤에 올 조사. 화면에는 값과 단위로 그려지므로 단위의 끝소리로 고른다."""
+        claim = self.pool.get(str(claim_id)) or {}
+        unit = claim.get("unit")
+        return particle(str(unit) if unit else format_value(claim.get("value")), pair)
 
     def result(self, tool: str, **arguments: Any) -> dict[str, Any] | None:
         for item in self.results:
@@ -456,18 +465,18 @@ class _Vendor(_Base):
             )
         elif days:
             tail_lines.append(f"수거는 {'·'.join(days)}요일 가운데 정합니다.")
-        total, minimum = (
-            self.use(load_claims.get("totalKg")),
-            self.use(load_claims.get("minMonthlyKg")),
-        )
+        total_id = load_claims.get("totalKg")
+        total, minimum = self.use(total_id), self.use(load_claims.get("minMonthlyKg"))
         if total and minimum:
             if checks.get("min_volume") == "met":
                 tail_lines.append(
-                    f"받을 수 있는 흐름을 합친 물량 {total}은 최소 물량 {minimum} 이상입니다."
+                    f"받을 수 있는 흐름을 합친 물량 {total}{self.after(total_id, '은는')} "
+                    f"최소 물량 {minimum} 이상입니다."
                 )
             else:
                 tail_lines.append(
-                    f"받을 수 있는 흐름을 합친 물량 {total}이 최소 물량 {minimum}에 못 미쳐, "
+                    f"받을 수 있는 흐름을 합친 물량 {total}{self.after(total_id, '이가')} "
+                    f"최소 물량 {minimum}에 못 미쳐, "
                     "기존 노선에 묶어 수거하는 조건입니다."
                 )
                 conditions.append("최소 물량에 못 미쳐 기존 노선에 묶어 수거할 것")

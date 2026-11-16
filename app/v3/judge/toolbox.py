@@ -13,6 +13,7 @@ from app.v3.judge.identify import identify_stream
 from app.v3.judge.regulation import check_requirements, match_permit, search_clauses
 from app.v3.judge.route import check_loading, judge_route
 from app.v3.judge.vendors import find_vendors
+from app.v3.textutil import josa
 
 
 @dataclass(frozen=True)
@@ -135,7 +136,7 @@ def validate_arguments(schema: dict, arguments: Any) -> None:
             continue
         expected = _TYPES[prop["type"]]
         if isinstance(value, bool) or not isinstance(value, expected):
-            msg = f"입력 형식이 다르다: {key}는 {prop['type']}이어야 한다"
+            msg = f"입력 형식이 다르다: {josa(key, '은는')} {prop['type']}이어야 한다"
             raise ValueError(msg)  # noqa: TRY004
         if "enum" in prop and value not in prop["enum"]:
             raise ValueError(f"허용하지 않는 값: {key}")

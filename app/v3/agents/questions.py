@@ -11,6 +11,7 @@ from typing import Any
 from app.v3 import ids
 from app.v3.a2a.policy import UNKNOWN
 from app.v3.evidence.model import Evidence
+from app.v3.textutil import josa
 
 FIELDS: dict[str, dict[str, Any]] = {
     "material": {
@@ -24,7 +25,7 @@ FIELDS: dict[str, dict[str, Any]] = {
         "answerType": "choice",
         "choices": ["PIR", "PCR"],
         "label": "출처",
-        "text": "{name}은(는) 공정에서 나온 것(PIR)인가요, 쓰고 난 뒤 나온 것(PCR)인가요?",
+        "text": "{name_topic} 공정에서 나온 것(PIR)인가요, 쓰고 난 뒤 나온 것(PCR)인가요?",
     },
     "form": {
         "priority": 2,
@@ -95,10 +96,11 @@ _CHECK_FIELDS = {
 def make_question(stream: dict[str, Any], field: str, *, asked_by: str = "identify") -> dict:
     """계약 7장 questions 항목(묶음 번호와 ID는 진행기가 붙인다)."""
     spec = FIELDS[field]
+    name = str(stream.get("name") or stream["id"])
     return {
         "streamId": stream["id"],
         "field": field,
-        "text": spec["text"].format(name=stream.get("name") or stream["id"]),
+        "text": spec["text"].format(name=name, name_topic=josa(name, "은는")),
         "answerType": spec["answerType"],
         "unit": spec.get("unit"),
         "choices": spec.get("choices"),

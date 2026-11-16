@@ -15,6 +15,7 @@ from app.v3 import names
 from app.v3.a2a.message import Claim, Message
 from app.v3.evidence.registry import EvidenceForbidden, EvidenceNotFound
 from app.v3.evidence.units import UnitError, same_value
+from app.v3.textutil import josa
 
 _UNSAFE = re.compile(r"[^A-Za-z0-9_]+")
 # 배출 기업의 현행 처리 단가에서 나온 값. 업체와 나누는 대화의 풀에는 넣지 않는다.
@@ -43,7 +44,7 @@ class UnknownClaimRef(ValueError):
         return {
             "code": "UNKNOWN_CLAIM_REF",
             "message": (
-                f"claimRefs의 {', '.join(self.missing)}는 claim 풀에 없습니다. "
+                f"claimRefs의 {josa(', '.join(self.missing), '은는')} claim 풀에 없습니다. "
                 "풀(pool)에 있는 ID만 쓰고, 필요한 값이 없으면 도구를 부르거나 '확인 필요'로 두세요."
             ),
             "claimId": self.missing[0] if self.missing else None,

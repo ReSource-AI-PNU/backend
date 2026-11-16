@@ -27,6 +27,7 @@ from app.ml.contract import ITEM_OF, LABEL_KO  # 재질 분류 → 품목, 한�
 from app.v3 import ids
 from app.v3.evidence.model import Evidence
 from app.v3.intake._http import Transport, default_transport
+from app.v3.textutil import josa
 
 MODEL_NAME = "resource-ai-detector"
 IMAGE_TYPES = ("jpg", "jpeg", "png", "webp", "bmp")
@@ -63,7 +64,9 @@ def _number(value: Any) -> float | None:
 def _ratio(value: Any, what: str) -> float:
     number = _number(value)
     if number is None or not 0.0 <= number <= 1.0:
-        raise DetectorError(f"탐지 엔드포인트 응답의 {what}이(가) 0~1 사이의 수가 아닙니다.")
+        raise DetectorError(
+            f"탐지 엔드포인트 응답의 {josa(what, '이가')} 0~1 사이의 수가 아닙니다."
+        )
     return number
 
 
@@ -178,7 +181,7 @@ class DetectorClient:
                 f"탐지 엔드포인트에 연결하지 못했습니다: {type(error).__name__}"
             ) from error
         if status != 200:
-            raise DetectorError(f"탐지 엔드포인트가 {status}를 돌려줬습니다.")
+            raise DetectorError(f"탐지 엔드포인트가 {josa(str(status), '을를')} 돌려줬습니다.")
         try:
             payload = json.loads(raw.decode("utf-8"))
         except (UnicodeDecodeError, ValueError) as error:

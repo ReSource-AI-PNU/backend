@@ -44,6 +44,7 @@ from app.v3.evidence.validator import (
     name_tokens,
     validate_text,
 )
+from app.v3.textutil import josa
 
 SITUATION_COUNT = 20
 MAX_TOOL_ROUNDS = 2
@@ -197,7 +198,7 @@ def check_response(situation: Situation, content: Any) -> dict[str, Any]:
         problems.append(_problem(SCHEMA, "stage는 단계 번호(정수)여야 합니다."))
     for key in ("streamIds", "claimRefs"):
         if key in output and not _is_strings(output[key]):
-            problems.append(_problem(SCHEMA, f"{key}는 문자열 배열이어야 합니다."))
+            problems.append(_problem(SCHEMA, f"{josa(key, '은는')} 문자열 배열이어야 합니다."))
     if "text" in output and not isinstance(output["text"], str):
         problems.append(_problem(SCHEMA, "text는 문자열이어야 합니다."))
     calls = output.get("toolCalls")
@@ -231,7 +232,7 @@ def check_response(situation: Situation, content: Any) -> dict[str, Any]:
         problems.append(
             _problem(
                 TYPE_NOT_ALLOWED,
-                f"지금은 '{kind}'을(를) 보낼 수 없습니다. 보낼 수 있는 종류: {shown}.",
+                f"지금은 {josa(repr(str(kind)), '을를')} 보낼 수 없습니다. 보낼 수 있는 종류: {shown}.",
             )
         )
         return {"ok": False, "kind": "message", "problems": problems}

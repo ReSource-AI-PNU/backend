@@ -11,6 +11,7 @@ from typing import Any
 
 from app.v3 import ids
 from app.v3.evidence.model import Evidence
+from app.v3.textutil import josa
 
 # 필드 -> (양식에 쓰는 한국어 머리글, 필수 여부, 받아 주는 별칭)
 COLUMNS: dict[str, tuple[str, bool, tuple[str, ...]]] = {
@@ -145,7 +146,7 @@ def parse_csv(data: bytes) -> dict[str, Any]:
         if required and field not in written
     ]
     for label in missing:
-        fail(1, label, f"필수 열 '{label}'이(가) 없습니다.")
+        fail(1, label, f"필수 열 {josa(repr(label), '이가')} 없습니다.")
     if missing:
         return {"rows": [], "errors": errors, "encoding": encoding}
 
