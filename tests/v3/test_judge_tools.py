@@ -404,3 +404,38 @@ def test_grade_thresholds_have_one_source():
             moisturePct=moist,
         )
         assert r["output"]["grade"] == grade_by_thresholds(material, cont, moist)["grade"]
+
+
+def test_every_tool_output_passes_the_validator():
+    """도구 10개의 claims와 ask 문장이 근거 검증기를 그대로 통과한다."""
+    from app.v3.evidence.seeds import load_seed_dir
+
+    reg = registry()
+    load_seed_dir(reg)
+    mixed = stream(
+        id="st_defect",
+        measure=None,
+        photo={"contaminationPct": 6.0},
+        monthlyKgBasis="estimated",
+        contaminants=[{"name": "종이 라벨", "ratio": 0.04}],
+    )
+    stops = [{"id": "a", "location": [128.92, 35.12], "kg": 1000, "m3": 4}]
+    new = {"id": "n", "location": ORIGIN, "kg": 600, "m3": 2.4}
+    calls = [
+        (EMITTER, "identify_stream", {"stream": mixed}),
+        (EMITTER, "identify_stream", {"stream": mixed, "moisturePct": 1.5}),
+        (EMITTER, "judge_route", {"stream": stream()}),
+        (EMITTER, "judge_route", {"stream": mixed, "vendor": vendor()}),
+        (EMITTER, "judge_route", {"stream": stream(), "vendor": film_vendor()}),
+        (EMITTER, "check_loading", {"streams": [stream(), mixed], "vendor": vendor()}),
+        (EMITTER, "search_clauses", {"query": "폐기물 위탁 재활용"}),
+        (EMITTER, "check_requirements", {"stream": stream(), "route": "sell"}),
+        (EMITTER, "match_permit", {"stream": stream(), "vendor": film_vendor()}),
+        (EMITTER, "find_vendors", {"stream": stream(), "vendors": [vendor()], "origin": ORIGIN}),
+        (EMITTER, "cost_carbon", {"stream": mixed, "vendor": vendor(), "origin": ORIGIN}),
+        (VENDOR, "route_extra_cost", {"vendor": vendor(), "stops": stops, "newStop": new}),
+        (EMITTER, "optimize_assignment", {"streams": [stream(), mixed], "vendors": [vendor()]}),
+    ]
+    assert {name for _, name, _ in calls} == set(TOOLS)
+    for org, name, args in calls:
+        assert_grounded(reg, run(reg, name, org=org, **args), org)

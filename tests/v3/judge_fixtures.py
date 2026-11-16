@@ -3,10 +3,10 @@
 from __future__ import annotations
 
 import copy
-import re
 
 from app.v3.evidence.model import Evidence
 from app.v3.evidence.registry import InMemoryRegistry
+from app.v3.evidence.validator import validate_text
 from app.v3.judge import basis, defaults
 from app.v3.judge.toolbox import call_tool
 
@@ -141,19 +141,22 @@ def claim(result, cid):
 
 
 def assert_grounded(reg, result, org=EMITTER):
-    """모든 claim의 근거가 레지스트리에 있고, 보이고, 값이 같다. 검증기가 생기면 그것으로 바꾼다."""
+    """도구 결과를 실제 근거 검증기에 통과시킨다.
+
+    claims는 자리표시자만 늘어놓은 본문으로 검사하고(근거 존재·접근·값·인용),
+    checks의 text와 ask는 claim 없이 검사한다(자리표시자 밖 숫자가 없어야 한다).
+    """
     assert result["status"] in ("calculated", "conditional", "needs_information")
+    body = " ".join("{{" + c["id"] + "}}" for c in result["claims"])
+    checked = validate_text(body, result["claims"], reg, org_id=org, today=TODAY)
+    assert checked.ok, checked.to_dict()
     for c in result["claims"]:
-        assert c["evidence"], c
-        first = reg.get(c["evidence"][0], org)
-        for other in c["evidence"][1:]:
-            reg.get(other, org)
         if c["kind"] == "number":
-            assert first.kind == "calc" and first.value == c["value"] and first.unit == c["unit"]
-            assert first.meta["tool"] == result["tool"]
-        else:
-            assert c["value"] in first.excerpt
+            first = reg.get(c["evidence"][0], org)
+            assert first.kind == "calc" and first.meta["tool"] == result["tool"]
     for check in result["checks"]:
         assert check["status"] in ("met", "conditional", "unmet")
-        if check["ask"]:
-            assert not re.search(r"\d", check["ask"]), check["ask"]
+        for sentence in (check["text"], check["ask"]):
+            if sentence:
+                plain = validate_text(sentence, [], reg, org_id=org, today=TODAY)
+                assert plain.ok, (sentence, plain.to_dict())
