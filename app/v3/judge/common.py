@@ -30,6 +30,9 @@ def worst(*statuses: str) -> str:
     return max(statuses, key=lambda s: WORST[s])
 
 
+CALL_KEY = "call"  # 호출 기록 calc 근거의 값 이름
+
+
 class Recorder:
     """도구 한 번 호출의 claim, check, calc 근거를 모은다."""
 
@@ -119,7 +122,41 @@ class Recorder:
         self.checks.append(item)
         return item
 
+    def record_call(self, status: str) -> str:
+        """호출 한 번의 기록을 calc 근거로 남긴다(숫자를 내지 않은 호출도 근거 저장소에 남는다).
+
+        ID는 입력에서만 나오므로 같은 입력이면 같은 기록이다. 판정과 검사 결과를 담고, 검사에 쓴
+        근거(허가증, 조항 등)와 이 호출이 낸 계산 근거를 입력 근거로 잇는다.
+        """
+        evidence_id = ids.calc_id(self.tool, self.inputs, CALL_KEY)
+        checked = [e for check in self.checks for e in check.get("evidence") or []]
+        linked = list(dict.fromkeys([*self.created, *self.visible(checked)]))
+        summary = ", ".join(f"{c['key']}={c['status']}" for c in self.checks)
+        text = f"판정 {status}" + (f". 검사: {summary}" if summary else "")
+        self.registry.put(
+            Evidence(
+                id=evidence_id,
+                kind="calc",
+                label=f"{self.subject + ' ' if self.subject else ''}판단 도구 호출 기록",
+                excerpt=text,
+                source=f"판단 도구 {self.tool}",
+                as_of=self.today,
+                access=self.access,
+                meta={
+                    "tool": self.tool,
+                    "inputs": self.inputs,
+                    "formula": "판단 도구 호출 기록(판정과 검사 결과)",
+                    "inputEvidence": linked,
+                    "status": status,
+                    "checks": [{"key": c["key"], "status": c["status"]} for c in self.checks],
+                    "call": True,
+                },
+            )
+        )
+        return evidence_id
+
     def result(self, status: str, output: dict) -> dict:
+        self.created.append(self.record_call(status))
         return {
             "tool": self.tool,
             "status": status,

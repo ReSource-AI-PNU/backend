@@ -60,7 +60,9 @@ ROOT = Path(__file__).resolve().parents[2]
 VENDORS = (SAEGIL, NAMHAE, MISO)
 PRICE = "pc_saegil_pp_a_unitPrice"
 # 모델이 지어낸 값의 표식. 시연 데이터와 근거 어디에도 없는 수다
-FAKE = ("13,579", "13579", "１３５７９", "만삼천")
+FAKE = ("13,579", "１３５７９", "만삼천")
+# 쉼표 없는 꼴은 calc 근거 ID의 16진 지문과 우연히 겹칠 수 있어 앞뒤가 16진 글자가 아닌 것만 센다
+FAKE_DIGITS = re.compile(r"(?<![0-9a-f])13579(?![0-9a-f])")
 SENTENCE = "검토자가심은문장"
 
 
@@ -172,6 +174,7 @@ def assert_clean(app, session_id, *marks, emitter=HANBIT):
     text = everything(app, session_id, emitter)
     for mark in (*FAKE, SENTENCE, *marks):
         assert mark not in text, mark
+    assert FAKE_DIGITS.search(text) is None
     assert unvalidated_messages(app, session_id) == []
     for viewer, view in all_views(app, session_id, emitter).items():
         assert ungrounded(app, view, viewer) == [], viewer
@@ -602,6 +605,53 @@ def test_rule2_same_input_gives_the_same_verdict_and_calc_ids():
         runs.append((_judgement(app, session_id), _calc_ids(app, session_id)))
     assert runs[0] == runs[1]
     assert sum(len(ids) for _, _, ids in runs[0][1]) > 30  # calc 근거가 실제로 남았다
+
+
+def test_rule2_every_tool_call_leaves_a_calc_record(confirmed_demo):
+    """숫자를 내지 않는 호출(허가 품목 대조, 요건 판정)도 calc 근거를 남긴다."""
+    app, session_id = confirmed_demo
+    calls = [
+        e
+        for e in app.store.list_events(session_id)
+        if e["kind"] == "tool_call" and e["detail"].get("status") != "error"
+    ]
+    assert {e["detail"]["tool"] for e in calls} == set(TOOLS) - {"search_clauses"}
+    for event in calls:
+        detail = event["detail"]
+        records = [
+            app.registry.get(evidence_id, None)
+            for evidence_id in detail["evidence"]
+            if evidence_id.endswith(":call")
+        ]
+        assert len(records) == 1, detail["tool"]
+        record = records[0]
+        assert record.kind == "calc" and record.meta["tool"] == detail["tool"]
+        assert record.meta["status"] == detail["status"]
+        assert record.meta["checks"] == detail["checks"]
+        assert detail["orgId"] in record.access
+        # 같은 입력으로 다시 부르면 같은 기록이다
+        assert record.id == f"calc:{detail['tool']}:{record.id.split(':')[2]}:call"
+    # 도구를 직접 불러도 같다
+    stream = app.store.get_stream("st_sprue")
+    vendor = public_profile(app.store.get_vendor_profile(SAEGIL), fleet_cost=False)
+    first = call_tool(
+        "match_permit",
+        {"stream": stream, "vendor": vendor},
+        registry=app.registry,
+        org_id=HANBIT,
+        today=TODAY,
+    )
+    again = call_tool(
+        "match_permit",
+        {"stream": stream, "vendor": vendor},
+        registry=app.registry,
+        org_id=HANBIT,
+        today=TODAY,
+    )
+    assert first["evidence"] == again["evidence"] and len(first["evidence"]) == 1
+    record = app.registry.get(first["evidence"][0], HANBIT)
+    assert record.meta["inputEvidence"] == ["doc:org_saegil:허가증:폐플라스틱"]
+    assert "permit=met" in record.excerpt
 
 
 def test_rule2_different_wording_does_not_change_verdict_or_numbers():
@@ -1875,15 +1925,15 @@ def test_rule11_a_remote_vendor_cannot_write_its_own_story_into_the_record():
         if event["kind"] == "tool_call":
             assert event["detail"]["tool"] in TOOLS or event["detail"]["status"] == "error"
             assert event["summary"].split(" · ")[0] in (*TOOLS, "알 수 없는 도구")
-    forged = [
-        e for e in reported if e["detail"].get("calledBy") is None and e["kind"] == "tool_call"
-    ]
-    assert len(forged) == 1 and forged[0]["detail"]["arguments"] == {"streamId": "st_sprue"}
-    assert forged[0]["detail"]["evidence"] == ["calc:judge_route:abc:unitPrice"]
-    assert forged[0]["detail"]["checks"] == [{"key": "permit", "status": "met"}]
-    # 배출 기업 뷰에서는 볼 수 없는 근거 ID가 가려진다
-    seen = next(e for e in view["events"] if e["seq"] == forged[0]["seq"])
-    assert seen["detail"]["evidence"] in ([], ["calc:judge_route:abc:unitPrice"])
+    # 근거 저장소에 그 도구가 남긴 calc 근거가 없는 호출은 일어났다고 적지 않는다
+    for event in reported:
+        if event["kind"] == "tool_call" and event["detail"]["status"] != "error":
+            assert event["detail"]["calledBy"] in ("model:rule", "code")
+            assert event["detail"]["evidence"]
+            for evidence_id in event["detail"]["evidence"]:
+                found = app.registry.get(evidence_id, None)
+                assert found.kind == "assumption" or found.meta["tool"] == event["detail"]["tool"]
+    assert "calc:judge_route:abc" not in text
 
 
 # ── 4장(하지 말 것)과 무작위성 ───────────────────────────────────────

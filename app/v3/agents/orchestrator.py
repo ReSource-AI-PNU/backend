@@ -133,7 +133,7 @@ def reported_trace(trace: Any, registry: Any = None) -> list[dict[str, Any]]:
     별도 서비스로 뜬 업체 측의 기록은 회사 측이 확인할 수 없는 자기 보고다. 글은 옮기지 않고
     도구 이름·상태·코드처럼 정해 둔 값만 남겨 코드가 요약을 다시 쓴다(지어낸 숫자나 없는 도구가
     실행 기록에 실리지 않게 한다). 실행됐다는 도구 호출은 그 도구가 남긴 calc 근거가 근거 저장소에
-    실제로 있을 때만 옮긴다(판단 도구는 호출마다 calc 근거를 남긴다).
+    실제로 있을 때만 옮긴다(판단 도구는 호출마다 호출 기록을 calc 근거로 남긴다).
     """
 
     def left_by(tool: str, evidence_id: Any) -> bool:
