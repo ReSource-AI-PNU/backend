@@ -77,6 +77,17 @@ _IDENTIFIER = re.compile(
     r"(?<![A-Za-z0-9_])(?:" + "|".join(IDENTIFIER_PREFIXES) + r")_[A-Za-z0-9][A-Za-z0-9_]*"
 )
 _NUMBER = re.compile(r"[-−+]?\d+(?:,\d{3})*(?:\.\d+)?\s?%?")
+# 식별자 바로 뒤에 단위가 붙으면 식별자가 아니라 숫자를 숨긴 것으로 본다 (예: st_320원)
+_UNIT_AFTER = re.compile(r"\s?(?:원|kg|킬로|톤|t(?![A-Za-z])|%|퍼센트|회|개|건|km|m3)")
+_DIGITS = re.compile(r"\d+")
+# 한글로 적은 수: 십·백·천·만·억이 들었거나 두 글자 이상이고, 바로 뒤에 단위가 온다 (예: 삼백이십 원)
+_HANGUL_NUMBER = re.compile(
+    r"(?<![가-힣])(?=[일이삼사오육칠팔구십백천만억]*[십백천만억])[일이삼사오육칠팔구십백천만억]+"
+    r"\s?(?:원|킬로그램|킬로|kg|톤|퍼센트|%|회)"
+    r"(?=$|[\s.,;:!?)\]]|[이가을를은는의에도로과와씩당]|입니다|이며|이고)"
+)
+# 인용은 이 길이 이상이어야 한다. 짧은 조각(숫자 한 토막 등)을 인용으로 내보내는 것을 막는다.
+MIN_QUOTE_CHARS = 10
 
 
 @dataclass(frozen=True)
@@ -112,14 +123,16 @@ def find_numbers(text: str, *, allowed_tokens: Iterable[str] = ALLOWED_TOKENS) -
     """자리표시자와 허용 예외를 뺀 본문에 남은 숫자 표기를 나온 순서대로 돌려준다."""
     work = text.translate(_FULLWIDTH)
     work = _mask(PLACEHOLDER, work)
-    work = _mask(_IDENTIFIER, work)
+    work = _IDENTIFIER.sub(_mask_identifier, work)
     for pattern in _DATE_PATTERNS:
-        work = _mask(pattern, work)
+        work = pattern.sub(_mask_date, work)
     work = _mask(_STAGE, work)
     work = _mask(_LIST_NUMBER, work)
     for token in sorted(set(allowed_tokens), key=len, reverse=True):
         work = _mask(_token_pattern(token), work)
-    return [m.group(0).strip() for m in _NUMBER.finditer(work)]
+    found = [(m.start(), m.group(0).strip()) for m in _NUMBER.finditer(work)]
+    found += [(m.start(), m.group(0).strip()) for m in _HANGUL_NUMBER.finditer(work)]
+    return [token for _, token in sorted(found)]
 
 
 def validate_text(
@@ -298,7 +311,15 @@ def _shown(value: Any, unit: str | None) -> str:
 def _check_quote(claim: Claim, evidence: Evidence) -> Rejection | None:
     quote = claim.value
     if isinstance(quote, str) and quote and quote in evidence.excerpt:
-        return None
+        if len(quote.strip()) >= MIN_QUOTE_CHARS or quote.strip() == evidence.excerpt.strip():
+            return None
+        return Rejection(
+            QUOTE_MISMATCH,
+            f"claim '{claim.id}'의 인용이 너무 짧습니다. 근거 '{evidence.id}'의 원문에서 "
+            "뜻이 통하는 구절이나 문장 전체를 그대로 복사하세요.",
+            claim_id=claim.id,
+            detail={"evidenceId": evidence.id, "quote": quote, "minChars": MIN_QUOTE_CHARS},
+        )
     return Rejection(
         QUOTE_MISMATCH,
         f"claim '{claim.id}'의 인용이 근거 '{evidence.id}'의 원문과 글자 그대로 일치하지 "
@@ -310,6 +331,25 @@ def _check_quote(claim: Claim, evidence: Evidence) -> Rejection | None:
 
 def _is_number(value: Any) -> bool:
     return isinstance(value, (int, float)) and not isinstance(value, bool) and math.isfinite(value)
+
+
+def _mask_identifier(match: re.Match[str]) -> str:
+    """식별자는 가리되, 바로 뒤에 단위가 붙은 것은 숫자로 남긴다."""
+    if _UNIT_AFTER.match(match.string, match.end()):
+        return match.group(0)
+    return " " * len(match.group(0))
+
+
+def _mask_date(match: re.Match[str]) -> str:
+    """날짜는 가리되, 월·일이 범위를 벗어나면 날짜가 아니므로 숫자로 남긴다."""
+    text = match.group(0)
+    parts = [int(d) for d in _DIGITS.findall(text)]
+    month_day = parts[1:] if parts and parts[0] > 31 else parts  # 맨 앞이 연도면 뺀다
+    if len(month_day) >= 1 and not 1 <= month_day[0] <= 12:
+        return text
+    if len(month_day) >= 2 and not 1 <= month_day[1] <= 31:
+        return text
+    return " " * len(text)
 
 
 def _mask(pattern: re.Pattern[str], text: str) -> str:

@@ -98,7 +98,6 @@ def test_number_outside_placeholder(registry, text, found):
         "탄소는 tCO2e와 kgCO2e로, 부피는 m3로 적습니다. CO2, CO2e도 같습니다.",
         "재질은 PA6, PA66, PA12이고 먼지는 PM10, PM2.5 기준입니다.",
         "A2A 대화에서 bge-m3 임베딩을 씁니다.",
-        "삼백 원이라고 한글로 쓴 수사는 대상이 아닙니다.",
         "숫자가 없는 문장입니다.",
     ],
 )
@@ -240,7 +239,7 @@ def test_quote_mismatch(registry, quote):
 
 def test_quote_must_be_string_and_exact_substring(registry):
     assert check(registry, "근거: {{c}}", [Claim("c", "clause", LAW_TEXT, (LAW,))]).ok
-    assert check(registry, "근거: {{c}}", [Claim("c", "clause", "다만, 재투입은", (LAW,))]).ok
+    assert check(registry, "근거: {{c}}", [Claim("c", "clause", LAW_TEXT[:20], (LAW,))]).ok
     assert check(registry, "근거: {{c}}", [Claim("c", "clause", 1, (LAW,))]).codes == (
         v.QUOTE_MISMATCH,
     )
@@ -266,3 +265,54 @@ def test_message_uses_sender_org(registry):
         claims=(num("p", 250, "원/kg", OTHER),),
     )  # fmt: skip
     assert v.validate_message(msg, registry, today=TODAY).codes == (v.EVIDENCE_FORBIDDEN,)
+
+
+# ── 우회 시도 (직접 공격해 보고 막은 것) ──────────────────────────────
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "단가는 st_320원입니다",  # 식별자로 위장한 숫자
+        "물량은 th_3 톤입니다",
+        "2026-11-99 기준 단가",  # 날짜로 위장한 숫자 (일이 범위 밖)
+        "2026-13 기준",  # 달이 범위 밖
+        "단가는 삼백이십 원입니다",  # 한글로 적은 수
+        "운송비는 오만 원이고",
+        "물량은 이천 kg",
+    ],
+)
+def test_disguised_numbers_are_found(text):
+    assert v.find_numbers(text), text
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "st_sprue의 조건과 th_1 대화, ses_1 진단",
+        "2026-11-17 기준, 2026년 11월 17일",
+        "이 원료는 받지 않습니다",  # '이 원'은 수가 아니다
+        "이것만 원하면 됩니다",
+        "천천히 확인하겠습니다",
+    ],
+)
+def test_plain_text_is_not_mistaken_for_numbers(text):
+    assert v.find_numbers(text) == [], text
+
+
+def test_short_quote_fragment_is_rejected():
+    reg = InMemoryRegistry()
+    law = reg.put(
+        Evidence(
+            id="law:폐기물관리법:제17조@2026-11-12",
+            kind="law",
+            excerpt="사업장폐기물을 배출하는 사업자는 다음 각 호의 사항을 지켜야 한다.",
+            source="국가법령정보센터",
+            as_of="2026-11-12",
+        )
+    )
+    short = Claim("q", "clause", "사업자는", (law.id,))
+    result = v.validate_text("법은 {{q}}", [short], reg, org_id="org_a", today=TODAY)
+    assert result.codes == (v.QUOTE_MISMATCH,)
+    full = Claim("q", "clause", law.excerpt, (law.id,))
+    assert v.validate_text("법은 {{q}}", [full], reg, org_id="org_a", today=TODAY).ok
