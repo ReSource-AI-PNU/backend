@@ -127,7 +127,7 @@ def test_contract_routes_are_read():
     assert ("POST", "/demo/reset") in routes and ("GET", "/evidence/{}") in routes
     assert ("GET", "/evidence") in routes and ("PUT", "/orgs/{}/streams/{}") in routes
     assert ("POST", "/intake/documents/confirm") in routes and ("GET", "/health") in routes
-    assert len(routes) == 20
+    assert len(routes) == 24
 
 
 def test_devserver_routes_equal_the_contract():
