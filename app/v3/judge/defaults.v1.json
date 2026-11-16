@@ -1,0 +1,150 @@
+{
+  "version": "v1",
+  "asOf": "2026-11-16",
+  "source": "Re:Source AI 팀 가정값 v1 (app/v3/judge/defaults.v1.json)",
+  "sensitivity": [
+    {
+      "label": "현행이 무상 위탁 재활용일 때",
+      "key": "current.alt.위탁재활용-무상"
+    }
+  ],
+  "missing": [
+    "kau.price",
+    "emission.transport.perKm"
+  ],
+  "items": [
+    {
+      "key": "current.cost.폐플라스틱",
+      "value": 250,
+      "unit": "원/kg",
+      "label": "현행 혼합 소각 처리비 (폐플라스틱)",
+      "excerpt": "팀 가정값(가상 시연용). 실제 시세·법정 기준이 아니다. app/demo/synthetic.py의 current_per_kg에서 옮겼다. 부호를 뒤집어 처리비로 적었다."
+    },
+    {
+      "key": "current.cost.포장재",
+      "value": 250,
+      "unit": "원/kg",
+      "label": "현행 혼합 소각 처리비 (포장재)",
+      "excerpt": "팀 가정값(가상 시연용). 실제 시세·법정 기준이 아니다. app/demo/synthetic.py의 current_per_kg에서 옮겼다. 부호를 뒤집어 처리비로 적었다."
+    },
+    {
+      "key": "current.cost.금속 스크랩",
+      "value": 250,
+      "unit": "원/kg",
+      "label": "현행 혼합 소각 처리비 (금속 스크랩)",
+      "excerpt": "팀 가정값(가상 시연용). 실제 시세·법정 기준이 아니다. app/demo/synthetic.py의 current_per_kg에서 옮겼다. 부호를 뒤집어 처리비로 적었다."
+    },
+    {
+      "key": "current.cost.폐목재",
+      "value": 120,
+      "unit": "원/kg",
+      "label": "현행 혼합 소각 처리비 (폐목재)",
+      "excerpt": "팀 가정값(가상 시연용). 실제 시세·법정 기준이 아니다. app/demo/synthetic.py의 current_per_kg에서 옮겼다. 부호를 뒤집어 처리비로 적었다."
+    },
+    {
+      "key": "current.alt.위탁재활용-무상",
+      "value": 0,
+      "unit": "원/kg",
+      "label": "현행이 무상 위탁 재활용일 때의 처리비",
+      "excerpt": "팀 가정값(가상 시연용). 실제 시세·법정 기준이 아니다. 기존 자료에 없어 새로 둔 값이다."
+    },
+    {
+      "key": "min.monthlyKg.폐플라스틱",
+      "value": 1000,
+      "unit": "kg/월",
+      "label": "업체가 기준을 밝히지 않았을 때의 최소 물량 (폐플라스틱)",
+      "excerpt": "팀 가정값(가상 시연용). 실제 시세·법정 기준이 아니다. app/demo/synthetic.py의 minimum_kg에서 옮겼다."
+    },
+    {
+      "key": "min.monthlyKg.포장재",
+      "value": 1000,
+      "unit": "kg/월",
+      "label": "업체가 기준을 밝히지 않았을 때의 최소 물량 (포장재)",
+      "excerpt": "팀 가정값(가상 시연용). 실제 시세·법정 기준이 아니다. app/demo/synthetic.py의 minimum_kg에서 옮겼다."
+    },
+    {
+      "key": "min.monthlyKg.금속 스크랩",
+      "value": 300,
+      "unit": "kg/월",
+      "label": "업체가 기준을 밝히지 않았을 때의 최소 물량 (금속 스크랩)",
+      "excerpt": "팀 가정값(가상 시연용). 실제 시세·법정 기준이 아니다. app/demo/synthetic.py의 minimum_kg에서 옮겼다."
+    },
+    {
+      "key": "min.monthlyKg.폐목재",
+      "value": 500,
+      "unit": "kg/월",
+      "label": "업체가 기준을 밝히지 않았을 때의 최소 물량 (폐목재)",
+      "excerpt": "팀 가정값(가상 시연용). 실제 시세·법정 기준이 아니다. app/demo/synthetic.py의 minimum_kg에서 옮겼다."
+    },
+    {
+      "key": "grade.A.maxContaminationPct",
+      "value": 2,
+      "unit": "%",
+      "label": "A 등급 오염도 상한",
+      "excerpt": "팀 가정값(가상 시연용). 실제 시세·법정 기준이 아니다. app/demo/synthetic.py의 reuse_max_contamination에서 옮겼다."
+    },
+    {
+      "key": "grade.B.maxContaminationPct",
+      "value": 12,
+      "unit": "%",
+      "label": "B 등급 오염도 상한",
+      "excerpt": "팀 가정값(가상 시연용). 실제 시세·법정 기준이 아니다. app/demo/synthetic.py의 sell_max_contamination에서 옮겼다."
+    },
+    {
+      "key": "grade.C.maxContaminationPct",
+      "value": 30,
+      "unit": "%",
+      "label": "C 등급 오염도 상한",
+      "excerpt": "팀 가정값(가상 시연용). 실제 시세·법정 기준이 아니다. 기존 자료에 없어 새로 둔 값이다."
+    },
+    {
+      "key": "grade.A.maxMoisturePct",
+      "value": 1,
+      "unit": "%",
+      "label": "A 등급 수분 상한",
+      "excerpt": "팀 가정값(가상 시연용). 실제 시세·법정 기준이 아니다. 기존 자료에 없어 새로 둔 값이다."
+    },
+    {
+      "key": "grade.B.maxMoisturePct",
+      "value": 3,
+      "unit": "%",
+      "label": "B 등급 수분 상한",
+      "excerpt": "팀 가정값(가상 시연용). 실제 시세·법정 기준이 아니다. 기존 자료에 없어 새로 둔 값이다."
+    },
+    {
+      "key": "grade.C.maxMoisturePct",
+      "value": 10,
+      "unit": "%",
+      "label": "C 등급 수분 상한",
+      "excerpt": "팀 가정값(가상 시연용). 실제 시세·법정 기준이 아니다. 기존 자료에 없어 새로 둔 값이다."
+    },
+    {
+      "key": "distance.detourFactor",
+      "value": 1.3,
+      "unit": null,
+      "label": "직선 거리에 곱하는 도로 우회 계수",
+      "excerpt": "팀 가정값(가상 시연용). 실제 시세·법정 기준이 아니다. 기존 자료에 없어 새로 둔 값이다."
+    },
+    {
+      "key": "transport.costPerKm",
+      "value": 1200,
+      "unit": "원/km",
+      "label": "차량 운행 단가",
+      "excerpt": "팀 가정값(가상 시연용). 실제 시세·법정 기준이 아니다. 기존 자료에 없어 새로 둔 값이다. 업체가 노선·차량 단가를 올리면 그 값을 쓴다."
+    },
+    {
+      "key": "emission.incinerate.폐플라스틱",
+      "value": 0.78,
+      "unit": "kgCO2e/kg",
+      "label": "혼합 소각 배출계수 (폐플라스틱)",
+      "excerpt": "팀 가정값(가상 시연용). 실제 시세·법정 기준이 아니다. app/schemas.py StreamDecision 예시(월 600kg, 0.47t)에서 역산했다."
+    },
+    {
+      "key": "emission.recycle.폐플라스틱",
+      "value": -1.6,
+      "unit": "kgCO2e/kg",
+      "label": "재활용 회피 배출계수 (폐플라스틱)",
+      "excerpt": "팀 가정값(가상 시연용). 실제 시세·법정 기준이 아니다. app/schemas.py StreamDecision 예시(월 600kg, -0.96t)에서 역산했다."
+    }
+  ]
+}
