@@ -658,7 +658,7 @@ class VendorAgent:
                 stage=int(message.get("stage") or 4),
                 rejections=public_rejections(outcome.rejections),
                 attempts=outcome.attempts,
-                model=model_label(self.llm),
+                # 이 문장은 모델이 아니라 코드가 썼다. 모델 이름을 붙이지 않는다(시도는 trace에 남는다)
             )
         data = reply.to_dict()
         for event in trace.events:

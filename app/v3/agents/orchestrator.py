@@ -995,7 +995,8 @@ class Orchestrator:
             "rejections": list(reported.get("rejections") or []),
             "recheckedBy": thread.emitter_org,
         }
-        if meta.get("model"):
+        if meta.get("model") and meta["model"].get("provider") != "code":
+            # 실제로 답을 쓴 구현만 적는다. 코드가 쓴 handoff·decline은 모델이 쓴 답이 아니다
             work["vendorModels"][thread.vendor_org] = meta["model"]
         claims = {c.id: c for c in message.claims}
         for item in (message.meta.get("terms") or {}).get("items") or []:
