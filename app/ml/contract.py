@@ -139,8 +139,8 @@ def to_stream_classify(res: dict, *, stream_id: str, name: str = "", process: st
     if c and not c.get("reliable"):
         questions.append({"id": _qid("contamination", stream_id), "step": "classify", "streamId": stream_id, "kind": "number", "unit": "%",
                           "text": ("사진에서는 이물질이 거의 보이지 않습니다. 실제로도 이물질이 없나요? 있다면 대략 몇 %인가요?" if c["overall_ratio"] < 0.01 else
-                                   "사진 기준 이물질 비율을 약 {}%로 추정했습니다(면적 기준). 실제와 비슷한가요?".format(int(c["overall_ratio"] * 100))),
-                          "why": c.get("note", ""), "suggested": str(int(c["overall_ratio"] * 100))})
+                                   "사진 기준 이물질 비율을 약 {}%로 추정했습니다(면적 기준). 실제와 비슷한가요?".format(round(c["overall_ratio"] * 100))),
+                          "why": c.get("note", ""), "suggested": str(round(c["overall_ratio"] * 100))})
     # 월 발생량 확정
     questions.append({"id": _qid("kg", stream_id), "step": "classify", "streamId": stream_id, "kind": "number", "unit": "kg",
                       "text": "이 흐름의 월 발생량은 얼마인가요?", "why": "경로별 월 손익과 트럭 적재율 계산의 기준값입니다.",
