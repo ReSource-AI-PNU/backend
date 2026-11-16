@@ -30,6 +30,9 @@
 #   FOUNDRY_DEPLOYMENT 기본 gpt-5-mini
 #   VENDOR_ORG_ID     업체 측 에이전트 서비스가 대변하는 업체 (기본 org_saegil)
 #   OLLAMA_BASE_URL   Ollama 주소 (VNet 안에서만 닿는다. 기본은 비움)
+#   V3_AUTH           header(기본, 시연 전용: X-Org-Id를 믿는다) | token(조직별 서비스 토큰). 공개 주소에는 token을
+#                     쓴다. token이면 Key Vault 비밀 v3-org-tokens(JSON {"조직 ID": "토큰"})가 먼저 있어야 한다
+#   V3_DEMO_OPEN      true면 시연 되돌리기를 누구나 부른다 (기본 false: 관리자 조직만)
 #   ALLOW_DIRTY=1     커밋하지 않은 변경이 있어도 진행한다 (태그와 내용이 달라질 수 있다)
 #
 # 비밀: Key Vault에서 읽어 앱 비밀로만 넣고 화면에 찍지 않는다. vendor-service-key 와 mcp-service-key 가
@@ -45,6 +48,8 @@ V3_LLM="${V3_LLM:-foundry}"
 FOUNDRY_DEPLOYMENT="${FOUNDRY_DEPLOYMENT:-gpt-5-mini}"
 VENDOR_ORG_ID="${VENDOR_ORG_ID:-org_saegil}"
 OLLAMA_BASE_URL="${OLLAMA_BASE_URL:-}"
+V3_AUTH="${V3_AUTH:-header}"
+V3_DEMO_OPEN="${V3_DEMO_OPEN:-false}"
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT="$(cd "$HERE/.." && pwd)"
 FRONTEND_DIR="${FRONTEND_DIR:-$ROOT/../frontend}"
@@ -57,6 +62,8 @@ die() { echo "[deploy] 오류: $*" >&2; exit 1; }
 case "$WHAT" in backend|frontend|vendor-agent|mcp|all) ;; *) echo "사용법: $0 backend|frontend|vendor-agent|mcp|all" >&2; exit 2 ;; esac
 case "$PLATFORM" in auto|containerapps|appservice) ;; *) die "PLATFORM은 auto|containerapps|appservice 중 하나" ;; esac
 case "$MIGRATE_MODE" in acr|local) ;; *) die "MIGRATE_MODE는 acr|local 중 하나" ;; esac
+case "$V3_AUTH" in header|token) ;; *) die "V3_AUTH는 header|token 중 하나" ;; esac
+case "$V3_DEMO_OPEN" in true|false) ;; *) die "V3_DEMO_OPEN은 true|false 중 하나" ;; esac
 
 selected() { [ "$WHAT" = all ] || [ "$WHAT" = "$1" ]; }
 uses_backend_image() { selected backend || selected vendor-agent || selected mcp; }
@@ -88,6 +95,13 @@ ensure_key() {
     say "Key Vault 비밀 $1 을 새로 만들었다"
   fi
 }
+
+# token 모드의 조직별 토큰은 사람이 정해 Key Vault에 넣는다(여기서 만들지 않는다). 없으면 앱이 모든 요청에
+# 500으로 답하므로 배포 전에 멈춘다.
+if [ "$V3_AUTH" = token ] && { [ "$WHAT" = all ] || [ "$WHAT" = backend ]; }; then
+  az keyvault secret show --vault-name "$KV" -n v3-org-tokens --query id -o tsv >/dev/null 2>&1 \
+    || die "V3_AUTH=token인데 Key Vault 비밀 v3-org-tokens가 없다"
+fi
 
 # ── 태그 정하기 ──────────────────────────────────────────────
 commit_of() {
@@ -152,10 +166,13 @@ migrate() {
     (cd "$ROOT" && DATABASE_URL="$(kv_secret database-url)" uv run alembic upgrade head)
     return
   fi
+  # ACR 작업의 단계는 이미지의 WORKDIR가 아니라 /workspace에서 돈다(ACR Tasks YAML 문서의 workingDirectory
+  # 기본값). alembic.ini와 app 패키지는 /app(Dockerfile의 WORKDIR)에 있으므로 작업 폴더를 맞춘다.
   cat > "$TMP/migrate.yaml" <<'YAML'
 version: v1.1.0
 steps:
   - cmd: "{{.Run.Registry}}/{{.Values.image}} alembic upgrade head"
+    workingDirectory: /app
     env:
       - "DATABASE_URL={{.Values.database_url}}"
     timeout: 900
@@ -171,7 +188,8 @@ if uses_backend_image; then migrate; fi
 # ── 3) 앱 바꾸기 ─────────────────────────────────────────────
 deploy_appservice() {
   local params=("acrName=$ACR" "keyVaultName=$KV" "v3Llm=$V3_LLM" "foundryEndpoint=$FOUNDRY_ENDPOINT"
-    "foundryDeployment=$FOUNDRY_DEPLOYMENT" "vendorOrgId=$VENDOR_ORG_ID" "ollamaBaseUrl=$OLLAMA_BASE_URL")
+    "foundryDeployment=$FOUNDRY_DEPLOYMENT" "vendorOrgId=$VENDOR_ORG_ID" "ollamaBaseUrl=$OLLAMA_BASE_URL"
+    "v3Auth=$V3_AUTH" "v3DemoOpen=$V3_DEMO_OPEN")
   local apps=()
   if uses_backend_image; then params+=("backendImage=rsai-backend:$BACKEND_TAG"); fi
   if selected backend; then params+=("deployBackend=true"); apps+=("$APP_API"); fi
@@ -216,10 +234,17 @@ deploy_containerapps() {
   local db foundry
   if uses_backend_image; then db="$(kv_secret database-url)"; foundry="$(kv_secret foundry-api-key)"; fi
   if selected backend; then
+    # token 모드일 때만 조직별 토큰을 비밀로 넣는다. header 모드에서는 앱이 V3_ORG_TOKENS를 읽지 않는다.
+    local auth_env=("V3_AUTH=$V3_AUTH" "V3_DEMO_OPEN=$V3_DEMO_OPEN") auth_secret=()
+    if [ "$V3_AUTH" = token ]; then
+      auth_env+=("V3_ORG_TOKENS=secretref:v3-org-tokens")
+      auth_secret=("v3-org-tokens=$(kv_secret v3-org-tokens)")
+    fi
     ca_app "$APP_API" "rsai-backend:$BACKEND_TAG" 8000 external -- \
-      APP_ROLE=api APP_ENV=demo "CORS_ORIGINS=[\"https://$HOST_WEB\"]" "${model_env[@]}" \
+      APP_ROLE=api APP_ENV=demo "CORS_ORIGINS=[\"https://$HOST_WEB\"]" "${model_env[@]}" "${auth_env[@]}" \
       AZURE_STORAGE_CONNECTION_STRING=secretref:storage-connection-string -- \
-      "database-url=$db" "foundry-api-key=$foundry" "storage-connection-string=$(kv_secret storage-connection-string)"
+      "database-url=$db" "foundry-api-key=$foundry" "storage-connection-string=$(kv_secret storage-connection-string)" \
+      ${auth_secret[@]+"${auth_secret[@]}"}
   fi
   if selected vendor-agent; then
     ensure_key vendor-service-key

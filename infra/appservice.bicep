@@ -51,6 +51,14 @@ param foundryDeployment string = 'gpt-5-mini'
 param vendorOrgId string = 'org_saegil'
 @description('Ollama 주소. VNet 통합이 없어 App Service에서는 비워 둔다.')
 param ollamaBaseUrl string = ''
+@description('요청한 조직을 정하는 방법. header는 시연 전용(X-Org-Id를 그대로 믿는다)이고, 공개 주소에는 token을 쓴다. token이면 Key Vault 비밀 v3-org-tokens(JSON {"조직 ID": "토큰"})가 있어야 한다.')
+@allowed([
+  'header'
+  'token'
+])
+param v3Auth string = 'header'
+@description('true면 시연 되돌리기(POST /api/v3/demo/reset)를 누구나 부른다. 기본은 관리자 조직만.')
+param v3DemoOpen bool = false
 
 var suffix = take(uniqueString(resourceGroup().id), 6)
 var tags = {
@@ -77,6 +85,7 @@ var secretRef = {
   storage: '@Microsoft.KeyVault(VaultName=${keyVaultName};SecretName=storage-connection-string)'
   vendorServiceKey: '@Microsoft.KeyVault(VaultName=${keyVaultName};SecretName=vendor-service-key)'
   mcpServiceKey: '@Microsoft.KeyVault(VaultName=${keyVaultName};SecretName=mcp-service-key)'
+  orgTokens: '@Microsoft.KeyVault(VaultName=${keyVaultName};SecretName=v3-org-tokens)'
 }
 
 resource acr 'Microsoft.ContainerRegistry/registries@2023-07-01' existing = {
@@ -183,6 +192,19 @@ resource backend 'Microsoft.Web/sites@2023-12-01' = if (deployBackend) {
         {
           name: 'AZURE_STORAGE_CONNECTION_STRING'
           value: secretRef.storage
+        }
+        {
+          name: 'V3_AUTH'
+          value: v3Auth
+        }
+        {
+          name: 'V3_DEMO_OPEN'
+          value: v3DemoOpen ? 'true' : 'false'
+        }
+        {
+          // header 모드에서는 앱이 이 값을 읽지 않는다. 비밀이 없을 때 풀리지 않은 참조가 남지 않게 비워 둔다.
+          name: 'V3_ORG_TOKENS'
+          value: v3Auth == 'token' ? secretRef.orgTokens : ''
         }
       ])
     }
