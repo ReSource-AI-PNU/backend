@@ -19,6 +19,7 @@ from app.v3.agents.gateway import LocalVendorGateway
 from app.v3.agents.orchestrator import (
     Orchestrator,
     OrchestratorError,
+    block_codes,
     memo_result,
     thread_names,
     vendor_model,
@@ -339,7 +340,9 @@ def update_stream(
                 "unitCostKrwPerKg": cost,
                 "evidence": [evidence],
             }
-    return app.store.put_stream(stream)
+    saved = app.store.put_stream(stream)
+    _recheck(app, org_id)
+    return saved
 
 
 def get_vendor(app: App, org_id: str, viewer: str) -> dict[str, Any]:
@@ -440,6 +443,7 @@ def update_vendor(app: App, org_id: str, patch: dict[str, Any], viewer: str) -> 
         fleet["evidence"] = list(dict.fromkeys(evidence))
         profile["fleet"] = fleet
     saved = app.store.put_vendor_profile(profile)
+    _recheck(app, org_id)
     return {**saved, "name": app.store.get_org(org_id).get("name")}
 
 
@@ -874,8 +878,21 @@ def _events_view(app: App, events: list[dict[str, Any]], viewer: str) -> list[di
     return [_event_view(app, event, viewer, seen) for event in events]
 
 
+def _recheck(app: App, org_id: str) -> None:
+    """org_id의 자료가 바뀐 뒤: 그 조직이 들어간, 승인을 기다리는 진단의 합의한 대화를 다시 확인한다.
+
+    바뀐 근거나 흐름을 인용한 대화는 승인을 시도하기 전에 모두 막힌다(approvals[].blocked).
+    """
+    for session in app.store.list_sessions(org_id):
+        if session.get("status") == "awaiting_approval":
+            Orchestrator(app).recheck(session["id"])
+
+
 def get_view(app: App, session_id: str, viewer: str) -> dict[str, Any]:
     session, owner = _session_for(app, session_id, viewer)
+    if session.get("status") == "awaiting_approval":
+        # 저장소를 직접 고친 변경까지 잡으려고 뷰를 만들 때도 다시 확인한다(바뀐 것이 없으면 아무것도 쓰지 않는다)
+        Orchestrator(app).recheck(session_id)
     me = app.store.get_org(viewer)
     work = session["work"]
     threads = _visible_threads(app, session, viewer)
@@ -939,7 +956,11 @@ def get_view(app: App, session_id: str, viewer: str) -> dict[str, Any]:
         ],
         "unresolved": list(work.get("unresolved") or []) if owner else [],
         "approvals": [
-            {**a, "streamIds": list(work["assigned"].get(a["threadId"]) or [])}
+            {
+                **a,
+                "blockedCodes": block_codes(a.get("blockedReason")),
+                "streamIds": list(work["assigned"].get(a["threadId"]) or []),
+            }
             for a in app.store.list_approvals(session_id)
             # 승인할 수 있는 대화만 낸다. 담당자에게 넘어간 대화의 승인 칸은 보이지 않는다
             if a["threadId"] in approvable
@@ -1124,6 +1145,8 @@ def upload_csv(app: App, org_id: str, filename: str, data: bytes, viewer: str) -
                 stream[key] = row[key]
         app.store.put_stream(stream)
         updated.append(sid)
+    if registered:
+        _recheck(app, org_id)
     return {
         "filename": filename,
         "encoding": parsed["encoding"],
@@ -1246,6 +1269,7 @@ def upload_media(
     photo.update(file=filename, mode=result["mode"])
     stream["photo"] = photo
     saved = app.store.put_stream(stream)
+    _recheck(app, org_id)
     claim = None
     if contamination is not None:
         claim = naming.annotate(
@@ -1284,6 +1308,8 @@ def confirm_document(
     registered = documents.confirm_fields(
         app.registry, org_id, document_name, fields or [], viewer, today=app.today
     )
+    if registered:
+        _recheck(app, org_id)
     return {"evidence": registered}
 
 

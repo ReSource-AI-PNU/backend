@@ -68,6 +68,16 @@ LOADING_CLAIMS = {
 }
 
 
+# 승인을 막는 사유 코드(approvals[].blockedCodes). 근거 검증기의 거부 코드도 올 수 있다
+BLOCK_CODES = ("EVIDENCE_CHANGED", "STREAM_CHANGED", "VENDOR_TERMS_CHANGED")
+_BLOCK_CODE = re.compile(r": ([A-Z][A-Z_]+)(?=,|\.|$)")
+
+
+def block_codes(reason: str | None) -> list[str]:
+    """blockedReason 문장에서 사유 코드를 처음 나온 순서대로 뽑는다."""
+    return list(dict.fromkeys(_BLOCK_CODE.findall(reason or "")))
+
+
 class OrchestratorError(RuntimeError):
     """진행기 규칙 위반. code는 서비스 오류 코드로 그대로 쓴다."""
 
@@ -1607,28 +1617,50 @@ class Orchestrator:
             session["phase"] = "approval"  # 다음 단계(done)로 넘어가게 한다
         return False
 
-    def _verify(self, session, thread: Thread) -> list[str]:
-        """합의한 스레드의 메시지를 다시 검증한다. 실패가 있으면 승인을 막는다."""
+    def _failures(self, session, thread: Thread) -> list[str]:
+        """합의한 스레드의 승인을 막아야 하는 사유(없으면 빈 목록). 저장소를 바꾸지 않는다.
+
+        - 메시지를 근거 검증기에 다시 넣어 나온 거부 코드
+        - EVIDENCE_CHANGED: 메시지가 인용한 근거가 대화 뒤에 바뀌었거나 사라졌다
+        - STREAM_CHANGED: 합의한 뒤에 배정된 흐름의 자료가 바뀌었다
+        """
         failed: list[str] = []
+        names = thread_names(self.store, thread)
         for message in thread.messages:
-            result = validate_message(
-                message, self.registry, today=self.today, names=thread_names(self.store, thread)
-            )
+            result = validate_message(message, self.registry, today=self.today, names=names)
             failed += [f"{thread.id}_m{message.seq}: {code}" for code in result.codes]
             # 대화 뒤에 근거가 바뀌었거나 사라졌으면 그 메시지의 근거 확인은 실패다
             if message.meta.get("evidenceMarks", {}) != self._fingerprints(message):
                 failed.append(f"{thread.id}_m{message.seq}: EVIDENCE_CHANGED")
         basis = (session["work"].get("agreedBasis") or {}).get(thread.id)
-        changed = basis is not None and basis != self._basis(session, thread)
-        if changed:
+        if basis is not None and basis != self._basis(session, thread):
             # 합의한 뒤에 흐름 자료(재질, 물량, 측정값 등)가 바뀌었다. 앞선 합의와 승인은 이전 자료 기준이다
             failed.append(f"{thread.id}: STREAM_CHANGED")
+        return list(dict.fromkeys(failed))
+
+    @staticmethod
+    def _block_reason(failed: list[str]) -> str:
+        reason = "근거 확인에 실패한 항목이 있어 승인할 수 없습니다: " + ", ".join(failed)
+        codes = block_codes(reason)
+        if "STREAM_CHANGED" in codes:
+            reason += ". 합의한 뒤에 흐름 자료가 바뀌었습니다. 진단을 새로 진행해 주세요."
+        return reason
+
+    def _verify(self, session, thread: Thread) -> list[str]:
+        """합의한 스레드를 다시 확인한다. 실패가 있으면 승인을 막고 앞서 한 승인을 지운다.
+
+        몇 번을 불러도 결과가 같다: 막는 이유가 그대로면 저장소도 실행 기록도 건드리지 않는다
+        (뷰를 만들 때마다 부른다).
+        """
+        failed = self._failures(session, thread)
+        current = next(
+            (a for a in self.store.list_approvals(session["id"]) if a["threadId"] == thread.id),
+            None,
+        )
         if failed:
-            reason = "근거 확인에 실패한 항목이 있어 승인할 수 없습니다: " + ", ".join(
-                dict.fromkeys(failed)
-            )
-            if changed:
-                reason += ". 합의한 뒤에 흐름 자료가 바뀌었습니다. 진단을 새로 진행해 주세요."
+            reason = self._block_reason(failed)
+            if current and current["blocked"] and current["blockedReason"] == reason:
+                return failed
             self.store.block_approval(session["id"], thread.id, reason)
             if any(thread.approvals.values()):
                 # 앞서 한 승인은 바뀌기 전의 내용에 대한 것이다. 스레드의 승인도 함께 지운다
@@ -1643,15 +1675,26 @@ class Orchestrator:
                 thread.id,
                 ok=False,
                 failed=failed,
+                codes=block_codes(reason),
             )
-        else:
-            current = next(
-                (a for a in self.store.list_approvals(session["id"]) if a["threadId"] == thread.id),
-                None,
-            )
-            if current and current["blocked"]:
-                self.store.block_approval(session["id"], thread.id, None)
+        elif current and current["blocked"]:
+            self.store.block_approval(session["id"], thread.id, None)
         return failed
+
+    def recheck(self, session_id: str) -> list[str]:
+        """승인을 기다리는 진단의 합의한 대화를 모두 다시 확인한다. 막힌 대화의 ID를 돌려준다.
+
+        근거나 흐름 자료가 바뀌면 그것을 인용한 대화가 여럿일 수 있다. 승인을 누른 대화 하나만이
+        아니라 관련된 대화를 모두, 승인을 시도하기 전에 막는다(자료를 바꾼 때와 뷰를 만들 때 부른다).
+        """
+        session = self.store.get_session(session_id)
+        if session.get("status") != "awaiting_approval":
+            return []
+        blocked = []
+        for thread in self._threads(session_id):
+            if thread.status == "agreed" and self._verify(session, thread):
+                blocked.append(thread.id)
+        return blocked
 
     def _basis(self, session, thread: Thread) -> str:
         """합의한 내용의 지문: 배정된 흐름의 자료와 그 흐름에 받은 조건.
