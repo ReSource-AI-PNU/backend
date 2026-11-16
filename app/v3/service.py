@@ -54,6 +54,23 @@ STREAM_FIELDS = (
 MODEL_PROVIDERS = ("foundry", "ollama")
 VENDOR_EVENT_KINDS = ("message", "handoff", "approval", "thread", "document")
 VENDOR_CHECK_KEYS = ("vendor_condition", "min_volume", "loading", "loading_volume")
+# 업체가 보는 판단 그래프에 쓰는 검사(judge_route). 업체의 매입 기준·허가 품목과, 대화에서 업체에 열린
+# 흐름 자료(오염도, 수분, 형태, 혼입물, 물량의 근거)를 대조한 것만이다. 배출 기업의 현행 처리에 관한
+# 검사와 비용·탄소 검사는 넣지 않는다
+VENDOR_GRAPH_CHECKS = (
+    "permit",
+    "criteria",
+    "vendor",
+    "form",
+    "contaminationPct",
+    "moisturePct",
+    "contamination_basis",
+    "moisture_basis",
+    "mixture",
+    "monthly_kg",
+    "monthly_kg_basis",
+    "material_basis",
+)
 
 
 class ServiceError(Exception):
@@ -715,18 +732,26 @@ def _graph(
     for thread in threads:
         vendor = thread["vendorOrgId"]
         memo = work["threadTools"].get(thread["id"]) or []
-        if not owner:
-            memo = []  # 회사 측 도구 결과는 배출 기업에게만 보인다
         for sid in thread["streamIds"]:
+            if sid not in stream_ids:
+                continue
             route = memo_result(memo, "judge_route", streamId=sid)
             if not route:
                 continue
             checks = route.get("checks") or []
+            if owner:
+                pending = route["status"] != "calculated"
+            else:
+                # 업체는 자기 매입 기준·허가 품목과 흐름을 대조한 검사만 본다. 같은 판단 도구가 같은
+                # 입력(업체에 열린 흐름 자료와 업체의 기준표)으로 낸 결과다. 배출 기업의 현행 처리와
+                # 비용·탄소에 관한 검사, 그 문장(output.reason)은 쓰지 않는다
+                checks = [c for c in checks if c["key"] in VENDOR_GRAPH_CHECKS]
+                pending = any(c["status"] == "conditional" for c in checks)
             open_checks = [c for c in checks if c["status"] != "met" and c["key"] != "permit"]
             status = (
                 "unmet"
                 if any(c["status"] == "unmet" for c in checks)
-                else ("conditional" if route["status"] != "calculated" else "met")
+                else ("conditional" if pending else "met")
             )
             label = open_checks[0]["text"] if open_checks else "매입 기준 충족"
             evidence = [e for c in checks for e in c.get("evidence") or []]
@@ -745,7 +770,9 @@ def _graph(
                     sid,
                     vendor,
                     status,
-                    route["output"].get("reason") or label,
+                    (route["output"].get("reason") or label)
+                    if owner
+                    else (label if open_checks else "맞는 매입 기준이 정해지지 않았습니다."),
                     evidence,
                     kind="criterion",
                 )
