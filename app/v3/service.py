@@ -104,8 +104,11 @@ class App:
         distance_provider: Any = None,
         demo_open: bool = False,
         detector: Any = None,
+        auth_mode: str = "header",
     ) -> None:
         self.store = store
+        # HTTP 층이 요청한 조직을 정하는 방법(관리자 화면 표시용). header는 시연 전용이다
+        self.auth_mode = str(auth_mode)
         # True면 시연 되돌리기(POST /demo/reset)를 누구나 부를 수 있다(로컬 시연). 기본은 관리자만
         self.demo_open = bool(demo_open)
         self.registry = registry
@@ -274,15 +277,31 @@ def reset_demo(app: App, viewer: str | None = None) -> dict[str, Any]:
     return seed(app)
 
 
-def list_orgs(app: App) -> list[dict[str, Any]]:
-    """조직 목록. 조직 레코드의 order(작은 값이 앞)로 늘어놓고, order가 없으면 뒤에 ID 순으로 둔다."""
+def list_orgs(app: App, viewer: str | None = None, scoped: bool = False) -> list[dict[str, Any]]:
+    """조직 목록. 조직 레코드의 order(작은 값이 앞)로 늘어놓고, order가 없으면 뒤에 ID 순으로 둔다.
+
+    scoped면(token 인증 모드) 요청한 조직 자신과 대화 상대만 준다: 배출 기업은 자기 진단의 스레드에
+    있는 업체, 업체는 자기와 실제로 열린 대화의 배출 기업. 관리자는 모두 본다. scoped가 아니면
+    (header 모드, 시연 전용) 조직을 밝히지 않아도 모든 조직을 준다(화면의 조직 고르기용).
+    """
 
     def position(org: dict[str, Any]) -> tuple[bool, float, str]:
         order = org.get("order")
         known = isinstance(order, (int, float)) and not isinstance(order, bool)
         return (not known, float(order) if known else 0.0, str(org.get("id")))
 
-    return sorted(app.store.list_orgs(), key=position)
+    orgs = sorted(app.store.list_orgs(), key=position)
+    if not scoped:
+        return orgs
+    me = _org(app, viewer)
+    if me.get("role") == "admin":
+        return orgs
+    allowed = {str(viewer)}
+    for session in app.store.list_sessions(viewer):
+        mine = viewer == session["emitterOrgId"]
+        for thread in _visible_threads(app, session, str(viewer)):
+            allowed.add(thread["vendorOrgId"] if mine else thread["emitterOrgId"])
+    return [org for org in orgs if org["id"] in allowed]
 
 
 def _vendor_stream(stream: dict[str, Any]) -> dict[str, Any]:
@@ -1367,6 +1386,8 @@ def admin_status(app: App, viewer: str) -> dict[str, Any]:
     known_keys = basis.keys()
     return {
         "today": app.today,
+        # 요청한 조직을 정하는 방법. header는 X-Org-Id를 그대로 믿는 시연 전용 모드다
+        "auth": {"mode": app.auth_mode, "demoOnly": app.auth_mode != "token"},
         "evidence": {"visible": len(public), "byKind": kinds},
         "laws": {
             "count": kinds["law"],

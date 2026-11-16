@@ -298,7 +298,13 @@ curl -X POST http://localhost:8000/api/v3/sessions -H 'X-Org-Id: org_hanbit' \
 curl -X POST http://localhost:8000/api/v3/sessions/ses_1/run -H 'X-Org-Id: org_hanbit'
 ```
 
-요청하는 조직은 `X-Org-Id` 헤더로 밝힌다. 시연용이고, 실제 로그인과는 아직 연결하지 않았다. 오류는 `{"error": {"code", "message"}}`로 온다.
+요청하는 조직을 정하는 방법은 `V3_AUTH`로 고른다. 오류는 `{"error": {"code", "message"}}`로 온다.
+
+- `V3_AUTH=header`(기본): `X-Org-Id` 헤더를 그대로 믿는다. **header 모드는 시연 전용이며 공개 주소에 그대로 두면 조직 경계가 지켜지지 않는다.** 헤더만 바꾸면 다른 조직의 진단을 보고 승인할 수 있고, `GET /api/v3/orgs`는 누구에게나 모든 조직을 준다.
+- `V3_AUTH=token`: 조직별 서비스 토큰. `Authorization: Bearer <토큰>`으로 조직을 정하고 `X-Org-Id`는 무시한다. 토큰과 조직의 짝은 `V3_ORG_TOKENS`(JSON `{"조직 ID": "토큰"}`, 값은 목록도 된다. 16자 이상, 조직마다 다른 값)로 받고 Key Vault에서 주입한다. 비교는 `hmac.compare_digest`로 한다. `GET /api/v3/orgs`는 자기 조직과 대화 상대만 준다. 토큰이 없으면 401 `TOKEN_REQUIRED`, 틀리면 401 `INVALID_TOKEN`이다.
+- Entra 로그인과는 아직 연결하지 않았다. token 모드는 조직 단위 식별이고 담당자 개인은 가리지 않는다.
+
+로컬 서버도 같은 옵션을 받는다: `python3 -m app.v3.devserver --auth token --org-tokens 토큰.json`(파일은 `{"조직 ID": "토큰"}` 꼴이고 저장소에 넣지 않는다).
 
 `DATABASE_URL`이 있으면 PostgreSQL(또는 SQLite)에 저장한다. 테이블은 마이그레이션으로 만든다.
 
@@ -327,6 +333,8 @@ MCP 도구의 입력은 `{"org_id", "today", "arguments"}`이고 `arguments`가 
 | `OLLAMA_BASE_URL` | 업체가 오픈 모델을 고른 경우의 Ollama 주소(VNet 안). 비어 있으면 그 업체는 규칙 정책으로 돌고, 다른 모델로 바꿔 부르지 않는다 |
 | `VENDOR_ORG_ID`, `VENDOR_SERVICE_KEY` | 업체 측 에이전트 서비스가 대변하는 업체와 Bearer 서비스 키. 키가 없으면 모든 메시지를 거절한다 |
 | `V3_VENDOR_AGENTS` | 따로 띄운 업체 측 에이전트의 주소 `{"업체 조직 ID": "https://..."}`. 비어 있으면(기본) API 프로세스 안에서 부른다. 값을 주면 모든 업체 메시지가 HTTP로 가므로 업체마다 서비스가 있거나 `"*"` 주소가 있어야 하고, `VENDOR_SERVICE_KEY`가 같아야 한다 |
+| `V3_AUTH` | 요청한 조직을 정하는 방법. `header`(기본, 시연 전용: `X-Org-Id`를 믿는다) 또는 `token`(조직별 서비스 토큰). header 모드는 시연 전용이며 공개 주소에 그대로 두면 조직 경계가 지켜지지 않는다 |
+| `V3_ORG_TOKENS` | `V3_AUTH=token`일 때의 조직별 토큰 JSON `{"조직 ID": "토큰"}`. Key Vault에서 주입한다. token 모드인데 비어 있거나 모양이 틀리면 요청을 처리하지 않는다(500) |
 | `V3_DEMO_OPEN` | `true`면 시연 되돌리기(`POST /api/v3/demo/reset`)를 누구나 부를 수 있다. 기본은 `false`(관리자 조직 `org_admin`만. 조직이 하나도 없는 빈 저장소의 첫 시드는 누구나) |
 | `V3_DETECTOR_ENDPOINT`, `V3_DETECTOR_API_KEY`, `V3_DETECTOR_DEPLOYMENT` | 탐지 모델(Azure ML 관리형 온라인 엔드포인트)의 채점 주소와 키, 선택으로 배포 이름. 주소가 비어 있으면(기본) 사진·영상 업로드(`POST /api/v3/intake/media`)는 `detectorUnavailable: true`로 답한다 |
 | `MCP_SERVICE_KEY`, `MCP_HOST`, `MCP_PORT` | MCP 서버의 Bearer 서비스 키와 주소 |

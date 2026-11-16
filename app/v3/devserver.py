@@ -1,6 +1,7 @@
 """표준 라이브러리 HTTP 서버. 계약 8장의 API를 service 함수에 그대로 잇는다(로컬 시연, 개발용).
 
     python3 -m app.v3.devserver --port 8000 [--store 경로.json] [--reset] [--llm rule|foundry]
+                                [--auth header|token --org-tokens 토큰.json]
 
 - 시작할 때 가정값, 근거 시드(법령·기준값), 시연 데이터를 올린다.
 - --store를 주면 저장소를 그 JSON 파일에, 근거 레지스트리를 옆 파일(<이름>.evidence.json)에 쓴다.
@@ -11,7 +12,10 @@
   OLLAMA_BASE_URL이 있을 때만 그 모델을 쓰고, 없으면 그 업체는 규칙 정책으로 돈다(화면에 그렇게 나온다).
 - 사진·영상 업로드(POST /intake/media)는 V3_DETECTOR_ENDPOINT(와 V3_DETECTOR_API_KEY)가 있을 때만
   탐지 모델을 부른다. 없으면 {"detectorUnavailable": true}로 답한다(탐지 결과를 지어내지 않는다).
-- 요청하는 조직은 X-Org-Id 헤더로 밝힌다(시연용).
+- 요청하는 조직은 X-Org-Id 헤더로 밝힌다(--auth header, 기본). 이 모드는 시연 전용이며 공개 주소에
+  그대로 두면 조직 경계가 지켜지지 않는다. --auth token --org-tokens <파일>을 주면 조직별 서비스 토큰
+  (Authorization: Bearer <토큰>)으로 조직을 정하고 X-Org-Id는 무시한다. 파일은
+  {"조직 ID": "토큰"} 꼴의 JSON이고, GET /orgs는 자기 조직과 대화 상대만 준다.
 - /admin/* 은 관리자 조직(org_admin)만 부른다. 시연 되돌리기(POST /demo/reset)는 로컬 시연에서는
   누구나 부를 수 있다(App(demo_open=True)). --demo-closed를 주면 관리자만 부른다.
 """
@@ -39,14 +43,20 @@ from app.v3.store import InMemoryStore, JsonFileStore
 
 PREFIX = "/api/v3"
 ALLOWED_ORIGINS = ("http://localhost:3000", "http://127.0.0.1:3000")
-ALLOWED_HEADERS = "X-Org-Id, Content-Type"
+ALLOWED_HEADERS = "X-Org-Id, Authorization, Content-Type"
 ALLOWED_METHODS = "GET, POST, PUT, OPTIONS"
 FOUNDRY_ENV = ("FOUNDRY_ENDPOINT", "FOUNDRY_DEPLOYMENT", "FOUNDRY_API_KEY")
 
 
 class Request:
     def __init__(
-        self, method: str, path: str, query: dict, headers: Mapping[str, str], body: bytes
+        self,
+        method: str,
+        path: str,
+        query: dict,
+        headers: Mapping[str, str],
+        body: bytes,
+        auth: httpio.Auth | None = None,
     ):
         self.method, self.path, self.query, self.headers, self.body = (
             method,
@@ -55,11 +65,14 @@ class Request:
             headers,
             body,
         )
+        # 요청한 조직을 정하는 방법. 기본은 header(X-Org-Id를 믿는다, 시연 전용)
+        self.auth = auth or httpio.Auth()
         self._form: tuple[dict[str, str], dict[str, tuple[str, bytes]]] | None = None
 
     @property
     def viewer(self) -> str:
-        return (self.headers.get("X-Org-Id") or "").strip()
+        """요청한 조직. token 모드에서는 Authorization: Bearer 토큰으로 정하고 X-Org-Id는 무시한다."""
+        return self.auth.viewer(self.headers)
 
     def json(self) -> dict[str, Any]:
         """JSON이 아니면 400 INVALID_JSON, 객체가 아니면 422 INVALID_BODY(api.py와 같다)."""
@@ -161,14 +174,22 @@ def route(app: service.App, request: Request) -> Any:
     if not request.path.startswith(PREFIX):
         raise service.ServiceError("NOT_FOUND", "그런 주소가 없습니다.", 404)
     parts = [unquote(p) for p in request.path[len(PREFIX) :].strip("/").split("/") if p]
-    method, viewer = request.method, request.viewer
+    method = request.method
+    # 상태 확인은 조직을 밝히지 않고 부른다(토큰이 없거나 틀려도 답한다). token 모드에서는 그 밖의
+    # 모든 경로에 토큰이 있어야 한다(시연 되돌리기만 예외: 누가 부를 수 있는지는 서비스가 정한다)
+    if parts == ["health"]:
+        viewer = ""
+    else:
+        needed = request.auth.scoped and parts != ["demo", "reset"]
+        viewer = request.auth.viewer(request.headers, required=needed)
     match (method, parts):
         case ("GET", ["health"]):
             return {"ok": True}
         case ("POST", ["demo", "reset"]):
             return service.reset_demo(app, viewer or None)
         case ("GET", ["orgs"]):
-            return service.list_orgs(app)
+            # token 모드에서는 자기 조직과 대화 상대만 준다
+            return service.list_orgs(app, viewer or None, request.auth.scoped)
         case ("GET", ["orgs", org_id, "streams"]):
             return service.list_streams(app, org_id, viewer)
         case ("PUT", ["orgs", org_id, "streams", stream_id]):
@@ -244,8 +265,14 @@ def route(app: service.App, request: Request) -> Any:
     raise service.ServiceError("NOT_FOUND", "그런 주소가 없습니다.", 404)
 
 
-def make_handler(app: service.App, lock: threading.Lock | None = None, quiet: bool = True):
+def make_handler(
+    app: service.App,
+    lock: threading.Lock | None = None,
+    quiet: bool = True,
+    auth: httpio.Auth | None = None,
+):
     guard = lock or threading.Lock()
+    auth = auth or httpio.Auth()
 
     class Handler(BaseHTTPRequestHandler):
         server_version = "ReSourceDev/3"
@@ -292,7 +319,9 @@ def make_handler(app: service.App, lock: threading.Lock | None = None, quiet: bo
                     raise httpio.too_large()
                 body = self.rfile.read(length) if length > 0 else b""
                 url = urlsplit(self.path)
-                request = Request(self.command, url.path, parse_qs(url.query), self.headers, body)
+                request = Request(
+                    self.command, url.path, parse_qs(url.query), self.headers, body, auth
+                )
                 with guard:  # 저장소가 동시 쓰기를 막지 않으므로 한 번에 한 요청만 처리한다
                     result = route(app, request)
             except service.ServiceError as error:
@@ -318,8 +347,16 @@ def make_handler(app: service.App, lock: threading.Lock | None = None, quiet: bo
     return Handler
 
 
-def make_server(app: service.App, host: str = "127.0.0.1", port: int = 8000, quiet: bool = True):
-    server = ThreadingHTTPServer((host, port), make_handler(app, quiet=quiet))
+def make_server(
+    app: service.App,
+    host: str = "127.0.0.1",
+    port: int = 8000,
+    quiet: bool = True,
+    auth: httpio.Auth | None = None,
+):
+    auth = auth or httpio.Auth()
+    app.auth_mode = auth.mode  # 관리자 화면에 지금 모드를 보여 준다
+    server = ThreadingHTTPServer((host, port), make_handler(app, quiet=quiet, auth=auth))
     server.daemon_threads = True
     return server
 
@@ -380,6 +417,22 @@ def build_app(
     return app
 
 
+def load_auth(mode: str, tokens_path: str | None) -> httpio.Auth:
+    """--auth와 --org-tokens로 Auth를 만든다. 설정이 틀리면 무엇이 틀렸는지만 밝히고 멈춘다."""
+    raw = None
+    if mode == httpio.AUTH_TOKEN:
+        if not tokens_path:
+            raise SystemExit("--auth token에는 --org-tokens 파일이 필요합니다.")
+        try:
+            raw = Path(tokens_path).read_text(encoding="utf-8")
+        except OSError:
+            raise SystemExit(f"--org-tokens 파일을 읽을 수 없습니다: {tokens_path}") from None
+    try:
+        return httpio.make_auth(mode, raw)
+    except ValueError as error:
+        raise SystemExit(f"조직 토큰 설정이 틀렸습니다: {error}") from None
+
+
 def evidence_file(store_path: str) -> Path:
     """근거 레지스트리 파일. 저장소 파일 옆에 둔다: demo.json -> demo.evidence.json"""
     path = Path(store_path)
@@ -399,7 +452,20 @@ def main(argv: list[str] | None = None) -> None:
     parser.add_argument(
         "--demo-closed", action="store_true", help="시연 되돌리기를 관리자 조직만 부르게 한다"
     )
+    parser.add_argument(
+        "--auth",
+        choices=httpio.AUTH_MODES,
+        default=httpio.AUTH_HEADER,
+        help="요청한 조직을 정하는 방법. header(기본, 시연 전용: X-Org-Id를 믿는다) | "
+        "token(조직별 서비스 토큰: Authorization: Bearer)",
+    )
+    parser.add_argument(
+        "--org-tokens",
+        default=None,
+        help='--auth token일 때 조직별 토큰 JSON 파일 경로({"조직 ID": "토큰"})',
+    )
     args = parser.parse_args(argv)
+    auth = load_auth(args.auth, args.org_tokens)
     app = build_app(
         store_path=args.store,
         llm=args.llm,
@@ -407,12 +473,17 @@ def main(argv: list[str] | None = None) -> None:
         demo_open=not args.demo_closed,
         reset=args.reset,
     )
-    server = make_server(app, args.host, args.port, quiet=False)
+    server = make_server(app, args.host, args.port, quiet=False, auth=auth)
     mode = "규칙 정책(모델 미연결)" if args.llm == "rule" else "Foundry"
     state = "이전 진단을 이어 갑니다" if app.resumed else "시연 시작 상태"
+    who = (
+        "조직 식별: token(조직별 서비스 토큰)"
+        if auth.mode == httpio.AUTH_TOKEN
+        else f"조직 식별: header(X-Org-Id). {httpio.HEADER_MODE_WARNING}"
+    )
     sys.stderr.write(
         f"Re:Source AI v3 로컬 서버: http://{args.host}:{server.server_address[1]}{PREFIX} · "
-        f"모델: {mode} · {state}\n"
+        f"모델: {mode} · {state} · {who}\n"
     )
     try:
         server.serve_forever()

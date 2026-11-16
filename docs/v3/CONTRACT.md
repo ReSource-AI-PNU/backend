@@ -335,13 +335,28 @@ VendorProfile {"orgId": "org_saegil",
 
 ## 8. HTTP API
 
-접두어는 `/api/v3`이고, 요청하는 조직은 `X-Org-Id` 헤더로 밝힌다(시연용. 실제 인증은 기존 Entra 설정에 연결한다).
+접두어는 `/api/v3`이다. 요청하는 조직을 정하는 방법은 설정 `V3_AUTH`로 고른다(아래 "요청한 조직"). 기본은 `X-Org-Id` 헤더다.
+
+### 요청한 조직 (인증 모드)
+
+| `V3_AUTH` | 조직을 정하는 방법 | `GET /orgs` |
+|---|---|---|
+| `header` (기본) | `X-Org-Id` 헤더를 그대로 믿는다 | 조직을 밝히지 않아도 모든 조직을 준다(화면의 조직 고르기용) |
+| `token` | `Authorization: Bearer <토큰>`. 토큰에 묶인 조직이 요청한 조직이고 `X-Org-Id`는 무시한다 | 요청한 조직 자신과 대화 상대만 준다(배출 기업은 자기 진단의 스레드에 있는 업체, 업체는 자기와 열린 대화의 배출 기업, 관리자는 모두) |
+
+- **header 모드는 시연 전용이며 공개 주소에 그대로 두면 조직 경계가 지켜지지 않는다.** 헤더만 바꾸면 다른 조직의 뷰를 받고 승인할 수 있다. 서비스 함수 아래의 조직 경계(뷰, 근거, 스레드)는 요청한 조직이 맞다는 전제에서만 지켜진다.
+- token 모드의 토큰과 조직의 짝은 설정 `V3_ORG_TOKENS`로 받는다. JSON `{"조직 ID": "토큰"}`이고 값은 목록도 된다(교체 기간에 둘을 함께 둘 때). 토큰은 16자 이상이고 두 조직이 같은 토큰을 쓸 수 없다. Key Vault에서 주입하고 저장소에 넣지 않는다. token 모드인데 비어 있거나 모양이 틀리면 요청을 처리하지 않는다(`devserver`는 뜨지 않고, `api.py`는 500 `INTERNAL`로 답한다).
+- 토큰 비교는 `hmac.compare_digest`로 하고 모든 항목을 끝까지 견준다. 토큰 → 조직 해석은 `app/v3/httpio.py`의 `Auth`, `org_tokens`, `match_token`에 있고 두 서버가 같이 쓴다.
+- token 모드의 오류: 토큰이 없거나 `Bearer` 꼴이 아니면 401 `TOKEN_REQUIRED`, 토큰이 어느 조직의 것도 아니면 401 `INVALID_TOKEN`. `GET /health`만 토큰 없이 답한다. `POST /demo/reset`은 토큰이 없으면 서비스의 규칙(`V3_DEMO_OPEN`, 관리자 조직)대로 답한다.
+- `devserver`도 같은 옵션을 받는다: `--auth header|token`, `--org-tokens <JSON 파일>`.
+- `GET /admin/status`의 `auth`: `{"mode": "header | token", "demoOnly": true | false}`. 관리자 화면이 시연 전용 모드임을 보여 줄 때 쓴다.
+- Entra 인증에는 연결하지 않았다. token 모드는 조직 단위 식별이고 담당자 개인은 가리지 않는다.
 
 | 메서드와 경로 | 내용 |
 |---|---|
 | `GET /health` | `{"ok": true}`. 조직 헤더 없이 부른다 |
 | `POST /demo/reset` | 시연 데이터를 처음 상태로 되돌린다. 관리자만(아래 "관리자 조직") |
-| `GET /orgs` | 조직 목록. 조직 레코드의 `order`가 작은 것부터(시연 주인공 `org_hanbit`이 맨 앞, 운영 조직이 맨 뒤). `order`가 없는 조직은 그 뒤에 ID 순 |
+| `GET /orgs` | 조직 목록. 조직 레코드의 `order`가 작은 것부터(시연 주인공 `org_hanbit`이 맨 앞, 운영 조직이 맨 뒤). `order`가 없는 조직은 그 뒤에 ID 순. token 모드에서는 자기 조직과 대화 상대만 |
 | `GET /orgs/{orgId}/streams`, `PUT /orgs/{orgId}/streams/{streamId}` | 흐름 조회와 수정(현행 처리 입력 포함) |
 | `GET /vendors/{orgId}`, `PUT /vendors/{orgId}` | 업체 프로필(허가, 매입 기준, 노선·차량, 가드레일, 모델 선택) |
 | `POST /sessions` | `{emitterOrgId}`로 진단을 만든다. `emitterOrgId`가 없으면 요청한 조직이다 |

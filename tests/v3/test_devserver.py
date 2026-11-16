@@ -167,7 +167,7 @@ def test_cors_allows_only_the_local_frontend(base):
         )
         assert status == 204 and body == b""
         assert headers["Access-Control-Allow-Origin"] == origin
-        assert headers["Access-Control-Allow-Headers"] == "X-Org-Id, Content-Type"
+        assert headers["Access-Control-Allow-Headers"] == "X-Org-Id, Authorization, Content-Type"
         assert "PUT" in headers["Access-Control-Allow-Methods"]
         status, headers, _ = call(base, "GET", "/orgs", headers={"Origin": origin})
         assert status == 200 and headers["Access-Control-Allow-Origin"] == origin

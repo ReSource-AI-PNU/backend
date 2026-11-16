@@ -379,3 +379,51 @@ def test_build_app_connects_azure_parts_only_when_configured(monkeypatch):
     api.build_app()
     assert search.backend_name() == "local"
     search.use_backend(None)
+
+
+# ── 요청한 조직: token 모드 ──────────────────────────────────────────
+# 아래 토큰은 테스트용으로 지어낸 글이다(실제 값이 아니다)
+ORG_TOKENS = {
+    EMITTER: "test-hanbit-" + "a" * 12,
+    OTHER_EMITTER: "test-daon-" + "b" * 14,
+    ADMIN: "test-admin-" + "d" * 13,
+}
+
+
+def bearer(org_id):
+    return {"Authorization": f"Bearer {ORG_TOKENS[org_id]}"}
+
+
+def test_token_mode_maps_the_bearer_token_and_ignores_the_org_header(client, monkeypatch):
+    import json
+
+    monkeypatch.setattr(settings, "v3_auth", "token")
+    monkeypatch.setattr(settings, "v3_org_tokens", json.dumps(ORG_TOKENS))
+    path = f"/api/v3/orgs/{EMITTER}/streams"
+    assert assert_error(client.get(path, headers=org(EMITTER)), 401)["code"] == "TOKEN_REQUIRED"
+    wrong = client.get(path, headers={"Authorization": "Bearer " + "z" * 24})
+    assert assert_error(wrong, 401)["code"] == "INVALID_TOKEN"
+    assert client.get(path, headers=bearer(EMITTER)).status_code == 200
+    # 다른 조직의 토큰에 조직 헤더를 붙여도 그 조직이 되지 않는다
+    spoofed = client.get(path, headers={**bearer(OTHER_EMITTER), **org(EMITTER)})
+    assert assert_error(spoofed, 403)["code"] == "FORBIDDEN"
+    admin = client.get("/api/v3/admin/status", headers={**bearer(EMITTER), **org(ADMIN)})
+    assert assert_error(admin, 403)["code"] == "FORBIDDEN"
+    assert client.get("/api/v3/admin/status", headers=bearer(ADMIN)).status_code == 200
+    # 조직 목록은 자기 조직과 대화 상대만
+    assert assert_error(client.get("/api/v3/orgs"), 401)["code"] == "TOKEN_REQUIRED"
+    mine = client.get("/api/v3/orgs", headers=bearer(EMITTER)).json()
+    assert [item["id"] for item in mine] == [EMITTER]
+    everyone = client.get("/api/v3/orgs", headers=bearer(ADMIN)).json()
+    assert {EMITTER, OTHER_EMITTER, ADMIN} <= {item["id"] for item in everyone}
+    assert client.get("/api/v3/health").json() == {"ok": True}
+
+
+def test_token_mode_without_tokens_is_a_configuration_error(monkeypatch):
+    monkeypatch.setattr(settings, "v3_auth", "token")
+    monkeypatch.setattr(settings, "v3_org_tokens", "")
+    with pytest.raises(ValueError):
+        api.current_auth()
+    monkeypatch.setattr(settings, "v3_auth", "entra")
+    with pytest.raises(ValueError):
+        api.current_auth()

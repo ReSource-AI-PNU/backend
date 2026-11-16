@@ -45,6 +45,12 @@ class Settings(BaseSettings):
     v3_vendor_agents: dict[str, str] = {}
     # 참이면 시연 되돌리기(POST /api/v3/demo/reset)를 누구나 부를 수 있다. 기본은 관리자 조직만.
     v3_demo_open: bool = False
+    # 요청한 조직을 정하는 방법. header(기본, 시연 전용: X-Org-Id를 믿는다) | token(조직별 서비스 토큰).
+    # header 모드는 공개 주소에 그대로 두면 조직 경계가 지켜지지 않는다.
+    v3_auth: str = "header"
+    # token 모드의 조직별 서비스 토큰. JSON 글 그대로 받는다: {"조직 ID": "토큰"}(값은 목록도 된다).
+    # Key Vault에서 주입한다. 읽고 확인하는 일은 app/v3/httpio.py의 org_tokens가 한다.
+    v3_org_tokens: str = ""
     # 탐지 모델(Azure ML 관리형 온라인 엔드포인트)의 채점 주소와 키. 비어 있으면 사진·영상 업로드는
     # "탐지 모델이 연결되지 않았습니다"로 답한다.
     v3_detector_endpoint: str = ""

@@ -3,7 +3,12 @@
 주의: 이 파일은 작성한 환경에서 실행해 보지 못했다(fastapi를 불러올 수 없었다).
 tests/v3/test_api.py가 CI에서 확인한다.
 
-- 요청하는 조직은 X-Org-Id 헤더로 받는다(시연용. 실제 인증은 아직 연결하지 않았다).
+- 요청하는 조직을 정하는 방법은 설정 V3_AUTH로 고른다(httpio.Auth).
+  - header(기본): X-Org-Id 헤더를 그대로 믿는다. 시연 전용이며 공개 주소에 그대로 두면 조직 경계가
+    지켜지지 않는다.
+  - token: 조직별 서비스 토큰. Authorization: Bearer <토큰>으로 조직을 정하고 X-Org-Id는 무시한다.
+    토큰과 조직의 짝은 설정 V3_ORG_TOKENS(JSON, Key Vault에서 주입)로 받고 hmac.compare_digest로
+    견준다. GET /orgs는 자기 조직과 대화 상대만 준다. Entra 인증은 아직 연결하지 않았다.
 - 오류는 {"error": {"code", "message"}}와 상태 코드로 낸다. 본문은 FastAPI 검증에 맡기지 않고
   직접 읽는다(검증 실패 응답의 모양을 계약과 같게 하려는 것).
 - 서비스 함수는 작업 스레드에서 부른다. 메모리 저장소일 때는 한 번에 하나씩만 부른다.
@@ -148,9 +153,13 @@ def build_app() -> service.App:
         logger.warning("Azure AI Search 설정이 틀려 로컬 검색으로 돈다: %s", error)
         search_client = None
     search.use_backend(search_client.search if search_client is not None else None)
+    auth = current_auth()  # 설정이 틀리면(모르는 모드, token인데 토큰 없음) 여기서 멈춘다
+    if auth.mode == httpio.AUTH_HEADER:
+        logger.warning("V3_AUTH=header: %s", httpio.HEADER_MODE_WARNING)
     return service.App(
         store,
         registry,
+        auth_mode=auth.mode,
         llm_factory=factory,
         vendor_gateway=make_vendor_gateway(),
         distance_provider=(
@@ -166,6 +175,11 @@ def build_app() -> service.App:
             }
         ),
     )
+
+
+def current_auth() -> httpio.Auth:
+    """설정 V3_AUTH, V3_ORG_TOKENS로 요청한 조직을 정하는 방법을 만든다. 설정이 틀리면 ValueError."""
+    return httpio.make_auth(settings.v3_auth, settings.v3_org_tokens)
 
 
 _state: service.App | None = None
@@ -225,11 +239,9 @@ def guarded(handler: Callable[..., Any]) -> Callable[..., Any]:
 
 
 # ── 요청 읽기 ────────────────────────────────────────────────────────
-def viewer_of(request: Request) -> str:
-    viewer = (request.headers.get("x-org-id") or "").strip()
-    if not viewer:
-        raise ApiError("ORG_REQUIRED", "X-Org-Id 헤더로 조직을 밝혀야 합니다.", 401)
-    return viewer
+def viewer_of(request: Request, *, required: bool = True) -> str:
+    """요청한 조직. header 모드는 X-Org-Id, token 모드는 Authorization: Bearer 토큰으로 정한다."""
+    return current_auth().viewer(request.headers, required=required)
 
 
 async def json_object(request: Request) -> dict[str, Any]:
@@ -270,15 +282,18 @@ async def health(request: Request):
 @router.post("/demo/reset")
 @guarded
 async def demo_reset(request: Request):
-    # 관리자만(설정 V3_DEMO_OPEN이 참이면 누구나). 헤더가 없으면 서비스가 401로 답한다
-    viewer = (request.headers.get("x-org-id") or "").strip() or None
+    # 관리자만(설정 V3_DEMO_OPEN이 참이면 누구나). 조직을 밝히지 않았으면 서비스가 401로 답한다
+    viewer = viewer_of(request, required=False) or None
     return await call(service.reset_demo, viewer)
 
 
 @router.get("/orgs")
 @guarded
 async def orgs(request: Request):
-    return await call(service.list_orgs)
+    # header 모드(시연 전용)는 누구에게나 모든 조직을 준다. token 모드는 자기 조직과 대화 상대만 준다
+    auth = current_auth()
+    viewer = auth.viewer(request.headers, required=auth.scoped) or None
+    return await call(service.list_orgs, viewer, auth.scoped)
 
 
 @router.get("/orgs/{org_id}/streams")
