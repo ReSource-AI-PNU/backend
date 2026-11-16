@@ -32,7 +32,7 @@ for i in $(seq 1 30); do
   sleep 10
 done
 
-CODE="$(curl -sS -o "$TMP/reset.json" -w '%{http_code}' --max-time 120 -X POST "$BASE/api/v3/demo/reset")"
+CODE="$(curl -sS -o "$TMP/reset.json" -w '%{http_code}' --max-time 120 -X POST -H "X-Org-Id: ${ADMIN_ORG_ID:-org_admin}" "$BASE/api/v3/demo/reset")"
 if [ "$CODE" != 200 ]; then
   echo "[seed-demo] 오류: /api/v3/demo/reset 이 $CODE 로 답했다" >&2
   head -c 600 "$TMP/reset.json" >&2 || true; echo >&2
