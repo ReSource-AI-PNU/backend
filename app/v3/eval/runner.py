@@ -214,6 +214,7 @@ class _Session:
                     "codes": list(result.codes),
                     "recorded": bool((message.meta.get("validation") or {}).get("ok")),
                     "attempts": int((message.meta.get("validation") or {}).get("attempts") or 1),
+                    "type": message.type,
                 }
         for document in self.app.store.list_documents(self.sid):
             key = f"doc#{document['id']}"
@@ -235,6 +236,7 @@ class _Session:
                 "codes": list(result.codes),
                 "recorded": bool((document.get("validation") or {}).get("ok")),
                 "attempts": 1,
+                "type": "document",
             }
 
     def _confirm_other(self, org: str) -> None:
@@ -800,7 +802,13 @@ def run_case(case: dict[str, Any], options: dict[str, Any] | None = None) -> dic
         "validator": {
             "checked": len(validated),
             "passed": sum(1 for v in validated.values() if v["ok"]),
-            "rewritten": sum(1 for v in validated.values() if v["attempts"] > 1),
+            # 한 번 거부된 뒤 다시 써서 나간 글과, 두 번 거부되어 handoff로 넘어간 것을 따로 센다
+            "rewritten": sum(
+                1 for v in validated.values() if v["attempts"] > 1 and v["type"] != "handoff"
+            ),
+            "handedOff": sum(
+                1 for v in validated.values() if v["attempts"] > 1 and v["type"] == "handoff"
+            ),
             "failed": failed,
         },
         "observed": {**seen, "tools": tools},
@@ -845,6 +853,7 @@ def summarize(results: list[dict[str, Any]]) -> dict[str, Any]:
         "validatorPassed": passed,
         "validatorPassRate": passed / checked if checked else None,
         "rewritten": sum(r["validator"]["rewritten"] for r in results),
+        "handedOff": sum(r["validator"]["handedOff"] for r in results),
         "forbiddenViolationCount": violations,
         "forbiddenClean": violations == 0,
         "forbiddenViolated": [r["id"] for r in results if r["forbiddenViolations"]],
