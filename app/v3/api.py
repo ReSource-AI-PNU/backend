@@ -24,6 +24,7 @@ from typing import Any
 from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse, Response
 from starlette.concurrency import run_in_threadpool
+from starlette.exceptions import HTTPException
 
 from app.core.config import settings
 from app.v3 import httpio, service
@@ -256,7 +257,14 @@ def required(body: dict[str, Any], key: str) -> Any:
 async def read_upload(request: Request, default_name: str) -> tuple[dict[str, str], str, bytes]:
     """(필드, 파일 이름, 내용). multipart/form-data의 file 필드나, 본문 그대로(필드는 질의 문자열)."""
     if request.headers.get("content-type", "").lower().startswith("multipart/form-data"):
-        form = await request.form()
+        try:
+            form = await request.form()
+        except HTTPException:
+            # starlette는 읽을 수 없는 multipart(경계 없음 등)를 HTTPException(400)으로 알린다.
+            # 그대로 두면 guarded가 500 INTERNAL로 바꾸므로 devserver와 같은 코드로 답한다.
+            raise service.ServiceError(
+                "INVALID_MULTIPART", "multipart/form-data 본문을 읽을 수 없습니다.", 400
+            ) from None
         upload = form.get("file")
         if upload is None or isinstance(upload, str):
             upload = next((value for value in form.values() if not isinstance(value, str)), None)

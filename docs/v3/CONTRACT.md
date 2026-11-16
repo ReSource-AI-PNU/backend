@@ -446,7 +446,7 @@ VendorProfile {"orgId": "org_saegil",
 | 코드 | 상태 | 조건 |
 |---|---|---|
 | `INVALID_JSON` | 400 | 본문이 JSON이 아니다 |
-| `INVALID_MULTIPART` | 400 | `multipart/form-data`에 경계(boundary)가 없다(`devserver`) |
+| `INVALID_MULTIPART` | 400 | `multipart/form-data`에 경계(boundary)가 없다. `api.py`는 starlette가 읽지 못한 multipart 본문 전부에 이 코드로 답한다 |
 | `ORG_REQUIRED` | 401 | 요청한 조직을 밝히지 않았다(header 모드에서 `X-Org-Id`가 없다) |
 | `TOKEN_REQUIRED` | 401 | token 모드인데 `Authorization: Bearer` 헤더가 없거나 모양이 틀렸다 |
 | `INVALID_TOKEN` | 401 | token 모드인데 토큰이 어느 조직의 것도 아니다 |
