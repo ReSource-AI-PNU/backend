@@ -7,7 +7,13 @@ from app.v3.evidence.registry import EvidenceForbidden, EvidenceNotFound, InMemo
 
 
 def make(eid="assumption:현행처리-혼합소각@v1", **kw):
-    base = dict(id=eid, kind=eid.split(":")[0], excerpt="가정", source="팀 가정", as_of="2026-11-16")
+    base = {
+        "id": eid,
+        "kind": eid.split(":")[0],
+        "excerpt": "가정",
+        "source": "팀 가정",
+        "as_of": "2026-11-16",
+    }
     return Evidence(**{**base, **kw})
 
 
@@ -24,8 +30,14 @@ def test_registry_access_and_versioning():
         reg.get(private.id, "org_b")
     with pytest.raises(EvidenceNotFound):
         reg.get("doc:org_a:없음:x", "org_a")
-    assert reg.put(make("doc:org_a:계약서:단가", value=250, unit="원/kg", access=("org_a",))).version == 1
-    assert reg.put(make("doc:org_a:계약서:단가", value=260, unit="원/kg", access=("org_a",))).version == 2
+    assert (
+        reg.put(make("doc:org_a:계약서:단가", value=250, unit="원/kg", access=("org_a",))).version
+        == 1
+    )
+    assert (
+        reg.put(make("doc:org_a:계약서:단가", value=260, unit="원/kg", access=("org_a",))).version
+        == 2
+    )
     assert [e.id for e in reg.list(org_id="org_b")] == []
 
 
@@ -43,7 +55,12 @@ def test_calc_id_is_deterministic():
 
 def test_message_round_trip():
     msg = Message(
-        "th_1", "org_a", "org_b", "offer", 5, "단가는 {{c1}}입니다.",
+        "th_1",
+        "org_a",
+        "org_b",
+        "offer",
+        5,
+        "단가는 {{c1}}입니다.",
         stream_ids=("st_sprue",),
         claims=(Claim("c1", "number", 300, ("doc:org_b:매입기준표:PP-A",), "원/kg"),),
     )

@@ -49,7 +49,7 @@ class Evidence:
         if not self.as_of:
             raise ValueError("기준일(as_of)이 비어 있다")
         if isinstance(self.value, bool):
-            raise ValueError("근거 값에 bool을 쓸 수 없다")
+            raise TypeError("근거 값에 bool을 쓸 수 없다")
         object.__setattr__(self, "access", tuple(self.access))
 
     def visible_to(self, org_id: str | None) -> bool:
