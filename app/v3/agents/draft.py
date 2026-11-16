@@ -566,6 +566,52 @@ def make_handoff(
     return message
 
 
+PERMIT_EXCLUDED = "허가 품목이 맞지 않습니다."
+
+
+def make_notice(
+    *,
+    kind: str,
+    thread_id: str,
+    sender: str,
+    recipient: str,
+    text: str,
+    stage: int,
+    stream_ids: tuple[str, ...] = (),
+    evidence: list[str] | None = None,
+    excluded: list[dict[str, Any]] | None = None,
+    asks: list[dict[str, str]] | None = None,
+    rejections: list[dict[str, Any]] | None = None,
+    attempts: int = 0,
+) -> Message:
+    """코드가 쓰는 알림(answer, question, counter). 대화를 닫지 않고 일부 흐름만 뺄 때 등에 쓴다.
+
+    본문은 코드가 쓴 문장이고 숫자와 claim이 없다. 모델이 쓴 답이 아니므로 구현 이름은 "code"다.
+    """
+    message = Message(
+        thread_id=thread_id,
+        sender=sender,
+        recipient=recipient,
+        type=kind,
+        stage=stage,
+        text=text,
+        stream_ids=stream_ids,
+    )
+    if evidence:
+        message.meta["reasonEvidence"] = list(dict.fromkeys(evidence))
+    if excluded:
+        message.meta["excluded"] = list(excluded)
+    if asks:
+        message.meta["asks"] = list(asks)
+    message.meta["validation"] = {
+        "ok": True,
+        "attempts": attempts,
+        "rejections": public_rejections(rejections),
+    }
+    message.meta["model"] = {"provider": "code", "name": "진행기(코드)"}
+    return message
+
+
 def make_decline(
     *,
     thread_id: str,

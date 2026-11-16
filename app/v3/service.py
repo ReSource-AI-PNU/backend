@@ -757,7 +757,12 @@ def _graph(
     for item in work["excluded"]:
         if item["streamId"] in stream_ids and item["vendorOrgId"] in vendors:
             edge(
-                item["streamId"], item["vendorOrgId"], "unmet", item["reason"], [], kind="excluded"
+                item["streamId"],
+                item["vendorOrgId"],
+                "unmet",
+                item["reason"],
+                item.get("evidence") or [],
+                kind="excluded",
             )
     if owner:
         for sid, required in sorted(work["requirements"].items()):

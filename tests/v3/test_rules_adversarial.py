@@ -1193,25 +1193,33 @@ def _drop_plastic_permit(app, vendor=SAEGIL):
     app.store.put_vendor_profile(profile)
 
 
+class _PermitChanges:
+    """새길자원이 첫 답을 읽기 전이나 낸 뒤에 허가 품목을 바꾸는 게이트웨이."""
+
+    def __init__(self, app, when, change):
+        self.app, self.when, self.change, self.done = app, when, change, False
+
+    def deliver(self, vendor_org, message, context):
+        if vendor_org == SAEGIL and self.when == "before_vendor_reads" and not self.done:
+            self.change(self.app)
+        reply = service.handle_vendor_message(self.app, vendor_org, message, context)
+        if vendor_org == SAEGIL and self.when == "after_vendor_replied" and not self.done:
+            self.change(self.app)
+        self.done = self.done or vendor_org == SAEGIL
+        return reply
+
+
+def _drop_all_permits(app, vendor=SAEGIL):
+    profile = app.store.get_vendor_profile(vendor)
+    profile["permits"] = [{"wasteItem": "폐유", "materials": [], "evidence": []}]
+    app.store.put_vendor_profile(profile)
+
+
 @pytest.mark.parametrize("when", ["before_vendor_reads", "after_vendor_replied"])
 def test_rule7_a_vendor_model_that_accepts_unpermitted_streams_is_closed_with_decline(when):
-    """연 뒤에 허가 품목이 바뀌었는데 모델이 받겠다고 한다. 근거와 함께 decline으로 닫힌다."""
-
-    class PermitChanges:
-        def __init__(self, app):
-            self.app, self.done = app, False
-
-        def deliver(self, vendor_org, message, context):
-            if vendor_org == SAEGIL and when == "before_vendor_reads" and not self.done:
-                _drop_plastic_permit(self.app)
-            reply = service.handle_vendor_message(self.app, vendor_org, message, context)
-            if vendor_org == SAEGIL and when == "after_vendor_replied" and not self.done:
-                _drop_plastic_permit(self.app)
-            self.done = self.done or vendor_org == SAEGIL
-            return reply
-
+    """연 뒤에 허가 품목이 모두 빠졌는데 모델이 받겠다고 한다. 근거와 함께 decline으로 닫힌다."""
     app = make_app(only_for("vendor", SAEGIL, scripted(*[GREEDY] * 40, pad=0)))
-    app.vendor_gateway = PermitChanges(app)
+    app.vendor_gateway = _PermitChanges(app, when, _drop_all_permits)
     view = to_approval(app)
     session_id = view["session"]["id"]
     thread = thread_of(view, SAEGIL)
@@ -1221,16 +1229,110 @@ def test_rule7_a_vendor_model_that_accepts_unpermitted_streams_is_closed_with_de
     decline = thread["messages"][-1]
     assert decline["from"] == (SAEGIL if when == "before_vendor_reads" else HANBIT)
     assert decline["model"]["provider"] == "code" and "허가 품목" in thread["statusReason"]
-    assert thread["reasonEvidence"], "닫는 이유의 근거(허가증)가 있어야 한다"
-    for evidence_id in thread["reasonEvidence"]:
-        assert app.registry.get(evidence_id, HANBIT).id.startswith("doc:org_saegil:허가증")
+    assert {x["streamId"] for x in decline["meta"]["excluded"]} == set(thread["streamIds"])
     assert all(a["vendorOrgId"] != SAEGIL for a in view["result"]["assignments"])
     assert thread["id"] not in {a["threadId"] for a in view["approvals"]}
     assert "허가와 관계없이" not in everything(app, session_id)
     assert_clean(app, session_id)
 
 
+@pytest.mark.parametrize("when", ["before_vendor_reads", "after_vendor_replied"])
+def test_rule7_only_the_unpermitted_streams_leave_the_thread(when):
+    """일부 흐름만 허가가 맞지 않게 됐다. 모델이 무엇을 내든 그 흐름만 빠지고 대화는 닫히지 않는다."""
+    app = make_app(only_for("vendor", SAEGIL, scripted(*[GREEDY] * 40, pad=0)))
+    app.vendor_gateway = _PermitChanges(app, when, _drop_plastic_permit)
+    view = to_approval(app)
+    session_id = view["session"]["id"]
+    thread = thread_of(view, SAEGIL)
+    assert thread["status"] != "declined"
+    kinds = [(m["type"], m["from"], m["model"]["provider"]) for m in thread["messages"]]
+    if when == "before_vendor_reads":
+        # 업체 측 코드가 허가 없는 흐름만 받지 않는다고 알린다. 끝까지 같은 초안만 내는 모델은 넘어간다
+        assert kinds[1] == ("answer", SAEGIL, "code")
+        assert thread["status"] == "handoff" and "허가" not in thread["statusReason"]
+        notice = thread["messages"][1]
+    else:
+        # 회사 측 코드가 받은 답을 붙이지 않고, 그 흐름만 빼고 남은 흐름의 조건을 다시 묻는다
+        assert kinds[1] == ("question", HANBIT, "code")
+        notice = thread["messages"][1]
+        assert notice["meta"]["asks"] == [{"streamId": "st_film", "field": "terms"}]
+    assert {x["streamId"] for x in notice["meta"]["excluded"]} == {"st_defect", "st_sprue"}
+    assert all(x["reason"] == "허가 품목이 맞지 않습니다." for x in notice["meta"]["excluded"])
+    assert all(m["type"] not in ("offer", "conditional", "counter") for m in thread["messages"])
+    excluded = {
+        e["from"]: e
+        for e in view["graph"]["edges"]
+        if e["kind"] == "excluded" and e["to"] == SAEGIL
+    }
+    assert {"st_defect", "st_sprue"} <= set(excluded) and "st_film" not in excluded
+    assert all(a["vendorOrgId"] != SAEGIL for a in view["result"]["assignments"])
+    assert thread["id"] not in {a["threadId"] for a in view["approvals"]}
+    assert "허가와 관계없이" not in everything(app, session_id)
+    assert_clean(app, session_id)
+
+
+@pytest.mark.parametrize("when", ["before_vendor_reads", "after_vendor_replied"])
+def test_rule7_the_permitted_streams_of_the_same_thread_still_get_their_offer(when):
+    """두 번 허가 없는 흐름을 받겠다던 모델이 그 뒤로 제대로 답하면 남은 흐름은 합의까지 간다."""
+    app = make_app(only_for("vendor", SAEGIL, scripted(GREEDY, GREEDY)))
+    app.vendor_gateway = _PermitChanges(app, when, _drop_plastic_permit)
+    view = to_approval(app)
+    session_id = view["session"]["id"]
+    thread = thread_of(view, SAEGIL)
+    assert thread["status"] == "agreed" and thread["assignedStreamIds"] == ["st_film"]
+    terms = [m for m in thread["messages"] if m["type"] in ("offer", "conditional", "counter")]
+    assert terms and all(
+        [i["streamId"] for i in m["meta"]["terms"]["items"]] == ["st_film"] for m in terms
+    )
+    offers = app.store.get_session(session_id)["work"]["offers"][thread["id"]]
+    assert sorted(offers) == ["st_film"]
+    by_stream = {a["streamId"]: a for a in view["result"]["assignments"]}
+    assert by_stream["st_film"]["vendorOrgId"] == SAEGIL
+    assert by_stream["st_sprue"]["vendorOrgId"] != SAEGIL
+    assert by_stream["st_defect"]["vendorOrgId"] != SAEGIL
+    view = approve_all(app, view)
+    assert thread_of(view, SAEGIL)["status"] == "confirmed"
+    documents = [d for d in view["documents"] if d["threadId"] == thread["id"]]
+    assert documents and all(d["streamIds"] == ["st_film"] for d in documents)
+    assert all("스프루" not in d["rendered"] for d in documents)
+    assert_clean(app, session_id)
+
+
+def test_rule7_permit_lost_between_offer_and_optimisation_drops_only_those_offers():
+    """제안을 받은 뒤 최적안을 내기 전에 일부 허가가 빠졌다. 그 제안만 지우고 나머지는 남긴다."""
+
+    class Late:
+        def __init__(self, app):
+            self.app, self.count = app, 0
+
+        def deliver(self, vendor_org, message, context):
+            reply = service.handle_vendor_message(self.app, vendor_org, message, context)
+            if vendor_org == SAEGIL:
+                self.count += 1
+                if self.count == 2:  # 두 번째(마지막) 답을 낸 뒤
+                    _drop_plastic_permit(self.app)
+            return reply
+
+    app = make_app()
+    app.vendor_gateway = Late(app)
+    view = to_approval(app)
+    session_id = view["session"]["id"]
+    thread = thread_of(view, SAEGIL)
+    assert thread["status"] == "agreed" and thread["assignedStreamIds"] == ["st_film"]
+    offers = app.store.get_session(session_id)["work"]["offers"][thread["id"]]
+    assert sorted(offers) == ["st_film"]
+    summaries = [e["summary"] for e in view["events"] if e["threadId"] == thread["id"]]
+    assert any("만 이 대화에서 뺐습니다" in s and "스프루·런너" in s for s in summaries)
+    assert all(
+        a["vendorOrgId"] != SAEGIL
+        for a in view["result"]["assignments"]
+        if a["streamId"] != "st_film"
+    )
+    assert_clean(app, session_id)
+
+
 def test_rule7_permit_lost_after_agreement_closes_instead_of_confirming():
+    """합의 뒤에 허가 품목이 모두 빠졌다. 확정하지 않고 근거와 함께 닫는다."""
     app = make_app()
     view = to_approval(app)
     session_id = view["session"]["id"]
@@ -1240,8 +1342,8 @@ def test_rule7_permit_lost_after_agreement_closes_instead_of_confirming():
         "st_sprue",
     }
     service.approve(app, session_id, thread["id"], HANBIT)
-    service.update_vendor(  # 업체가 허가 품목을 고쳐 폐플라스틱이 빠졌다
-        app, SAEGIL, {"permits": [{"wasteItem": "포장재", "materials": ["LDPE", "LLDPE"]}]}, SAEGIL
+    service.update_vendor(  # 업체가 허가 품목을 고쳐 이 대화의 흐름이 모두 빠졌다
+        app, SAEGIL, {"permits": [{"wasteItem": "폐유", "materials": []}]}, SAEGIL
     )
     error = raises("PERMIT_MISMATCH", service.approve, app, session_id, thread["id"], SAEGIL)
     assert error.status == 409
@@ -1263,6 +1365,45 @@ def test_rule7_permit_lost_after_agreement_closes_instead_of_confirming():
         e for e in view["events"] if e["detail"].get("arguments", {}).get("reason") == "recheck"
     ]
     assert rechecks and all(e["detail"]["tool"] == "match_permit" for e in rechecks)
+    assert_clean(app, session_id)
+
+
+def test_rule7_permit_partly_lost_after_agreement_drops_that_stream_and_asks_again():
+    """합의 뒤에 일부 흐름의 허가만 빠졌다. 대화는 닫지 않고 그 흐름만 빼며, 승인은 다시 받는다."""
+    app = make_app()
+    view = to_approval(app)
+    session_id = view["session"]["id"]
+    thread = thread_of(view, SAEGIL)
+    assert set(thread["assignedStreamIds"]) == {"st_film", "st_sprue"}
+    service.approve(app, session_id, thread["id"], HANBIT)
+    service.update_vendor(  # 폐플라스틱 허가만 빠졌다(포장재는 남는다)
+        app, SAEGIL, {"permits": [{"wasteItem": "포장재", "materials": ["LDPE", "LLDPE"]}]}, SAEGIL
+    )
+    error = raises("PERMIT_MISMATCH", service.approve, app, session_id, thread["id"], SAEGIL)
+    assert error.status == 409 and "그 흐름만" in error.message
+    view = service.get_view(app, session_id, HANBIT)
+    kept = thread_of(view, SAEGIL)
+    assert kept["status"] == "agreed" and kept["assignedStreamIds"] == ["st_film"]
+    assert all(m["type"] not in ("decline", "confirm") for m in kept["messages"])
+    approval = next(a for a in view["approvals"] if a["threadId"] == kept["id"])
+    # 앞서 한 배출 기업 승인은 빠지기 전의 조건에 대한 것이다
+    assert approval["emitter"] is False and approval["vendor"] is False
+    assert approval["streamIds"] == ["st_film"] and approval["blocked"] is False
+    by_stream = {a["streamId"]: a for a in view["result"]["assignments"]}
+    assert by_stream["st_film"]["vendorOrgId"] == SAEGIL
+    assert by_stream["st_sprue"]["vendorOrgId"] != SAEGIL  # 다른 제안으로 옮겨 가거나 확인 필요
+    edges = [
+        e
+        for e in view["graph"]["edges"]
+        if e["kind"] == "excluded" and (e["from"], e["to"]) == ("st_sprue", SAEGIL)
+    ]
+    assert edges and edges[0]["evidence"]
+    assert view["session"]["status"] == "awaiting_approval"
+    # 남은 조건으로 다시 승인하면 확정되고 문서에는 남은 흐름만 있다
+    view = approve_all(app, view)
+    assert view["session"]["status"] == "confirmed"
+    documents = [d for d in view["documents"] if d["threadId"] == kept["id"]]
+    assert len(documents) == 2 and all(d["streamIds"] == ["st_film"] for d in documents)
     assert_clean(app, session_id)
 
 

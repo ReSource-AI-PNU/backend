@@ -19,6 +19,7 @@ from app.v3.a2a.policy import check_disclosure
 from app.v3.a2a.thread import Thread, ThreadError
 from app.v3.agents import questions
 from app.v3.agents.draft import (
+    PERMIT_EXCLUDED,
     RULES,
     TOOL_HINT,
     AgentTools,
@@ -27,6 +28,7 @@ from app.v3.agents.draft import (
     build_message,
     make_decline,
     make_handoff,
+    make_notice,
     public_rejections,
     rejection,
     response_schema,
@@ -403,6 +405,75 @@ class VendorAgent:
             )
         ]
 
+    def _permit_fallback(
+        self,
+        thread: Thread,
+        profile: dict[str, Any],
+        tools: AgentTools,
+        streams: dict[str, dict],
+        allowed: tuple[str, ...],
+        outcome: Outcome,
+    ) -> Message | None:
+        """모델이 허가 없는 흐름에 조건을 내려다 두 번 거부된 뒤에 코드가 쓰는 답.
+
+        - 이 대화에 허가가 맞는 흐름이 하나도 없으면 근거와 함께 decline으로 닫는다.
+        - 일부만 맞지 않으면 대화를 닫지 않는다. 그 흐름만 받지 않는다고 알리고(excluded) 나머지는
+          이어 간다. 모델이 무엇을 내든 코드가 그렇게 한다.
+        - 이미 그렇게 알린 뒤에도 같은 초안이 거부되면 None(담당자에게 넘긴다).
+        """
+        vendor_org = thread.vendor_org
+        unmatched = [
+            sid
+            for sid in thread.stream_ids
+            if sid in streams
+            and (tools.run("match_permit", {"streamId": sid}, "code").get("output") or {}).get(
+                "matched"
+            )
+            is not True
+        ]
+        if not unmatched:
+            return None
+        evidence = [e for p in profile.get("permits") or [] for e in p.get("evidence") or []]
+        excluded = [{"streamId": sid, "reason": PERMIT_EXCLUDED} for sid in unmatched]
+        kept = [sid for sid in thread.stream_ids if sid in streams and sid not in unmatched]
+        if not kept:
+            return make_decline(
+                thread_id=thread.id,
+                sender=vendor_org,
+                recipient=thread.emitter_org,
+                reason="허가 품목이 맞지 않는 흐름이 있어 이 대화를 닫습니다.",
+                stage=4,
+                stream_ids=tuple(unmatched),
+                evidence=evidence,
+                excluded=excluded,
+                rejections=outcome.rejections,
+                attempts=outcome.attempts,
+            )
+        told = {
+            x.get("streamId")
+            for m in thread.messages
+            if m.sender == vendor_org
+            for x in m.meta.get("excluded") or []
+            if isinstance(x, dict) and x.get("reason") == PERMIT_EXCLUDED
+        }
+        if set(unmatched) <= told or "answer" not in allowed:
+            return None
+        names = ", ".join(str(streams[sid].get("name") or sid) for sid in unmatched)
+        return make_notice(
+            kind="answer",
+            thread_id=thread.id,
+            sender=vendor_org,
+            recipient=thread.emitter_org,
+            text=f"허가 품목이 맞지 않는 흐름은 받지 않습니다: {names}. "
+            "나머지 흐름은 이 대화에서 이어서 답하겠습니다.",
+            stage=4,
+            stream_ids=tuple(unmatched),
+            evidence=evidence,
+            excluded=excluded,
+            rejections=outcome.rejections,
+            attempts=outcome.attempts,
+        )
+
     def _guard_any(self, guard: dict[str, Any], message: Message) -> list[dict[str, Any]]:
         """메시지 종류와 관계없이 거는 가드레일.
 
@@ -626,32 +697,12 @@ class VendorAgent:
             reply.meta["validation"]["rejections"] = public_rejections(
                 reply.meta["validation"]["rejections"]
             )
-        elif any(r.get("code") == "PERMIT_MISMATCH" for r in outcome.rejections):
-            # 허가 품목이 맞지 않는 흐름에 조건을 내려다 두 번 거부됐다. 근거와 함께 닫는다
-            unmatched = [
-                sid
-                for sid in thread.stream_ids
-                if sid in by_id
-                and (tools.run("match_permit", {"streamId": sid}, "code").get("output") or {}).get(
-                    "matched"
-                )
-                is not True
-            ]
-            reply = make_decline(
-                thread_id=thread.id,
-                sender=vendor_org,
-                recipient=thread.emitter_org,
-                reason="허가 품목이 맞지 않는 흐름이 있어 이 대화를 닫습니다.",
-                stage=4,
-                stream_ids=tuple(unmatched),
-                evidence=[e for p in profile.get("permits") or [] for e in p.get("evidence") or []],
-                excluded=[
-                    {"streamId": sid, "reason": "허가 품목이 맞지 않습니다."} for sid in unmatched
-                ],
-                rejections=outcome.rejections,
-                attempts=outcome.attempts,
-            )
         else:
+            reply = None
+            if any(r.get("code") == "PERMIT_MISMATCH" for r in outcome.rejections):
+                # 허가 품목이 맞지 않는 흐름에 조건을 내려다 두 번 거부됐다
+                reply = self._permit_fallback(thread, profile, tools, by_id, allowed, outcome)
+        if reply is None:
             reply = make_handoff(
                 thread_id=thread.id,
                 sender=vendor_org,
