@@ -52,7 +52,7 @@ class Settings(BaseSettings):
 
     @field_validator("database_url")
     @classmethod
-    def _use_installed_driver(cls, value: str) -> str:
+    def use_installed_driver(cls, value: str) -> str:
         """Key Vault의 database-url은 postgresql:// 꼴이다. 설치된 드라이버(psycopg 3)로 붙게 고친다."""
         for prefix in ("postgresql://", "postgres://"):
             if value.startswith(prefix):

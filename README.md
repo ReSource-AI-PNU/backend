@@ -284,7 +284,7 @@ PY
 ### 로컬 실행
 
 ```bash
-# 1) 표준 라이브러리 서버: 의존성 없이 뜬다. 메모리 저장, 규칙 정책(모델 미연결)
+# 1) 표준 라이브러리 서버: FastAPI 없이 같은 서비스 함수를 낸다
 python3 -m app.v3.devserver
 
 # 2) FastAPI: 기존 /api/v1과 함께 /api/v3를 낸다
@@ -363,7 +363,7 @@ IMAGE_TAG=<이전 SHA> bash infra/deploy.sh backend    # 되돌리기
 ### 시연 당일 순서
 
 1. `bash infra/start.sh`: 멈춰 둔 PostgreSQL과 VM을 켠다. PostgreSQL이 `Ready`가 될 때까지 몇 분 걸린다.
-2. 상태 확인: `curl https://<API 주소>/api/v1/health`가 `{"status":"ok"}`를 주는지, `curl https://<API 주소>/api/v3/admin/status -H 'X-Org-Id: org_hanbit'`에서 저장소와 모델 연결을 본다.
+2. 상태 확인: `curl https://<API 주소>/api/v1/health`가 `{"status":"ok"}`를 주는지, `curl https://<API 주소>/api/v3/admin/status -H 'X-Org-Id: org_hanbit'`로 색인·기준값 상태를 본다.
 3. `bash infra/seed-demo.sh https://<API 주소>`: 시연 시작 상태로 되돌린다(진행 중인 진단은 지워진다).
 4. 미리 접속해 깨우기: 프런트 주소를 브라우저로 열고 진단 화면까지 한 번 들어가 본다. 멈춰 있던 앱은 첫 요청이 느리다.
 5. 시연이 끝나면 `bash infra/stop.sh`.
