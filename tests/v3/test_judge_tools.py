@@ -464,3 +464,32 @@ def test_reference_prices_are_shown_but_never_used_in_profit():
         used = {e for c in r["claims"] for e in c["evidence"]}
         used |= {i for e in r["evidence"] for i in reg.get(e).meta["inputEvidence"]}
         assert not [e for e in used if e.startswith("ref:가격조사")]
+
+
+def test_current_cost_stays_private_and_exclusions_apply():
+    reg = registry()
+    mine = stream(
+        currentTreatment={
+            "method": "혼합 소각",
+            "unitCostKrwPerKg": 250,
+            "evidence": [],
+        },
+        contaminants=[{"name": "종이 라벨", "ratio": 0.04}],
+    )
+    r = run(reg, "judge_route", stream=mine, vendor=vendor())
+    for key in ("currentUnitCost", "monthlyNow", "difference"):
+        assert reg.get(claim(r, key)["evidence"][0]).access == (EMITTER,)
+    assert reg.get(claim(r, "unitPrice")["evidence"][0]).access == (EMITTER, VENDOR)
+    assert any(c["key"] == "mixture" and "종이 라벨" in c["text"] for c in r["checks"])
+
+    base = run(reg, "optimize_assignment", streams=[stream()], vendors=[vendor()])
+    assert base["output"]["assignments"][0]["vendorOrgId"] == VENDOR
+    cut = run(
+        reg,
+        "optimize_assignment",
+        streams=[stream()],
+        vendors=[vendor()],
+        exclude=[{"streamId": "st_sprue", "vendorOrgId": VENDOR}],
+    )
+    assert cut["output"]["assignments"][0]["route"] == "keep"
+    assert cut["evidence"] != base["evidence"]

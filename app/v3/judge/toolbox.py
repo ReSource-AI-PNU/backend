@@ -112,7 +112,7 @@ _SPECS = [
         "optimize_assignment",
         6,
         "흐름을 업체나 현행 유지에 배정해 회사 측 월 순비용을 최소화한다.",
-        _schema({"streams": ARR, "vendors": ARR}, {"carbonWeight": NUM}),
+        _schema({"streams": ARR, "vendors": ARR}, {"carbonWeight": NUM, "exclude": ARR}),
         optimize_assignment,
     ),
 ]

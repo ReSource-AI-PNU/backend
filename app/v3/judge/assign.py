@@ -21,7 +21,8 @@ def _carbon_per_kg(rec: Recorder, item: str):
     return (float(after_ef.value) - float(now_ef.value)) / 1000, [now_ef.id, after_ef.id]
 
 
-def optimize_assignment(registry, *, org_id, today, streams, vendors, carbonWeight=0):
+def optimize_assignment(registry, *, org_id, today, streams, vendors, carbonWeight=0, exclude=None):
+    """exclude는 [{"streamId", "vendorOrgId"}]. 업체가 거절했거나 제안하지 않은 짝을 뺀다."""
     orgs = sorted({str(s.get("orgId")) for s in streams})
     if len(orgs) > 1:
         raise ValueError("한 번에 한 배출 기업의 흐름만 배정할 수 있다")
@@ -30,6 +31,9 @@ def optimize_assignment(registry, *, org_id, today, streams, vendors, carbonWeig
     weight = num(carbonWeight) or 0.0
     vendors = sorted(vendors, key=lambda v: str(v.get("orgId")))  # 입력 순서가 달라도 같은 근거 ID
     args = {"streams": streams, "vendors": vendors, "carbonWeight": weight}
+    excluded = sorted({(str(x.get("streamId")), str(x.get("vendorOrgId"))) for x in exclude or []})
+    if excluded:
+        args["exclude"] = [list(pair) for pair in excluded]
     rec = Recorder("optimize_assignment", registry, org_id, today, args)
     vendors = sorted(vendors, key=lambda v: str(v.get("orgId")))
     output = {"assignments": [], "totals": {}, "carbonInObjective": weight > 0, "skipped": []}
@@ -64,6 +68,8 @@ def optimize_assignment(registry, *, org_id, today, streams, vendors, carbonWeig
             {"vendor": None, "value": -cost * kg, "ev": cost_ev, "criterion": None, "carbon": 0.0}
         ]
         for vendor in vendors:
+            if (str(stream.get("id")), str(vendor.get("orgId"))) in excluded:
+                continue
             if permit_match(stream, vendor)[0] is not True:
                 continue
             criterion, checks = best_criterion(stream, vendor, q)

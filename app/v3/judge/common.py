@@ -57,7 +57,8 @@ class Recorder:
     def basis(self, key: str) -> Evidence | None:
         return basis.resolve(self.registry, self.org_id, key)
 
-    def number(self, key, value, unit, formula, input_evidence=(), label="") -> dict:
+    def number(self, key, value, unit, formula, input_evidence=(), label="", private=False) -> dict:
+        """private이면 calc 근거를 부른 조직만 본다(현행 처리 단가처럼 상대에게 열지 않는 값)."""
         value = rnd(value)
         inputs = self.visible(input_evidence)
         evidence_id = ids.calc_id(self.tool, self.inputs, key)
@@ -71,7 +72,7 @@ class Recorder:
                 excerpt=formula,
                 source=f"판단 도구 {self.tool}",
                 as_of=self.today,
-                access=self.access,
+                access=(self.org_id,) if private and self.org_id else self.access,
                 meta={
                     "tool": self.tool,
                     "inputs": self.inputs,
@@ -274,7 +275,11 @@ def stream_cautions(stream: dict) -> list[tuple]:
                 "재질을 확인할 자료가 없습니다. 반입 전에 어떤 방법으로 재질을 확인하는지 알려 주세요.",
             )
         )
-    mixed = [c.get("label") for c in stream.get("contaminants") or [] if not c.get("removed")]
+    mixed = [
+        c.get("label") or c.get("name")
+        for c in stream.get("contaminants") or []
+        if not c.get("removed")
+    ]
     if stream.get("singleMaterial") is False or mixed:
         names = ", ".join(str(m) for m in mixed if m) or "다른 재질"
         out.append(

@@ -36,9 +36,19 @@ def baseline(rec: Recorder, stream: dict, kg: float, after: float | None, prefix
             "current_cost", "conditional", "현행 처리 단가가 없어 현행 대비를 내지 못했습니다."
         )
         return info, None
-    rec.number(f"{prefix}currentUnitCost", cost, "원/kg", f"현행({method}) kg당 처리비", cost_ev)
+    # 현행 처리 단가와 거기서 나온 값은 상대 업체에 열지 않는다
+    rec.number(
+        f"{prefix}currentUnitCost",
+        cost,
+        "원/kg",
+        f"현행({method}) kg당 처리비",
+        cost_ev,
+        private=True,
+    )
     now = -cost * kg
-    rec.number(f"{prefix}monthlyNow", now, "원/월", "−현행 처리비 × 월 발생량", cost_ev)
+    rec.number(
+        f"{prefix}monthlyNow", now, "원/월", "−현행 처리비 × 월 발생량", cost_ev, private=True
+    )
     if assumed:
         rec.check(
             "current_assumed",
@@ -49,7 +59,12 @@ def baseline(rec: Recorder, stream: dict, kg: float, after: float | None, prefix
         )
     if after is not None:
         rec.number(
-            f"{prefix}difference", after - now, "원/월", "추천 경로 월 손익 − 현행 월 손익", cost_ev
+            f"{prefix}difference",
+            after - now,
+            "원/월",
+            "추천 경로 월 손익 − 현행 월 손익",
+            cost_ev,
+            private=True,
         )
         if assumed:
             for i, scenario in enumerate(defaults.sensitivity_scenarios()):
@@ -62,6 +77,7 @@ def baseline(rec: Recorder, stream: dict, kg: float, after: float | None, prefix
                     "원/월",
                     f"{scenario['label']}의 현행 대비 차이",
                     [alt.id],
+                    private=True,
                 )
                 info["sensitivity"].append({"label": scenario["label"], "difference": claim["id"]})
     return info, now
