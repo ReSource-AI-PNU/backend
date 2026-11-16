@@ -11,6 +11,7 @@ from typing import Any
 
 from app.v3 import ids
 from app.v3 import names as naming
+from app.v3.a2a.guardrails import WEEKDAYS
 from app.v3.a2a.message import PLACEHOLDER, Message
 from app.v3.a2a.policy import (
     QuestionPolicy,
@@ -21,7 +22,6 @@ from app.v3.a2a.policy import (
 from app.v3.a2a.thread import Thread, ThreadError
 from app.v3.agents import questions
 from app.v3.agents.company import CompanyAgent
-from app.v3.a2a.guardrails import WEEKDAYS
 from app.v3.agents.draft import (
     ACCEPT,
     ASK_USER,

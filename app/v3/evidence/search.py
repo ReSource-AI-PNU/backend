@@ -124,7 +124,9 @@ def _from_backend(
             continue  # 색인에만 남은 근거나 볼 수 없는 근거는 내보내지 않는다
         if kinds is not None and current.kind not in kinds:
             continue
-        results.append({"evidence": shown(current, org_id), "score": float(hit.get("score") or 0.0)})
+        results.append(
+            {"evidence": shown(current, org_id), "score": float(hit.get("score") or 0.0)}
+        )
     return results[:limit]
 
 

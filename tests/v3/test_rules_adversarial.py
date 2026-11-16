@@ -158,10 +158,11 @@ def unvalidated_messages(app, session_id):
     for raw in app.store.list_threads(session_id=session_id):
         for item in raw["messages"]:
             message = Message.from_dict({**item, "threadId": raw["id"]})
-            result = validate_message(
-                message, app.registry, today=TODAY, names=names_of(app, raw)
-            )
-            if not result.ok or (item.get("meta") or {}).get("validation", {}).get("ok") is not True:
+            result = validate_message(message, app.registry, today=TODAY, names=names_of(app, raw))
+            if (
+                not result.ok
+                or (item.get("meta") or {}).get("validation", {}).get("ok") is not True
+            ):
                 bad.append((raw["id"], item["seq"], item["type"], result.codes))
     return bad
 
@@ -190,7 +191,10 @@ def assert_clean(app, session_id, *marks, emitter=HANBIT):
 def _doc_tokens(app, document):
     from app.v3.evidence.validator import ALLOWED_TOKENS, name_tokens
 
-    return (*ALLOWED_TOKENS, *name_tokens(names_of(app, app.store.get_thread(document["threadId"]))))
+    return (
+        *ALLOWED_TOKENS,
+        *name_tokens(names_of(app, app.store.get_thread(document["threadId"]))),
+    )
 
 
 def run_to_end(app, emitter=HANBIT):
@@ -276,16 +280,26 @@ def _invented_clause(output, briefing):
 
 
 def _numbers_beside_the_text(output, briefing):
-    # 본문은 그대로 두고, 화면에 함께 나가는 다른 칸에 값을 싣는다
+    # 본문은 그대로 두고, 화면에 함께 나가는 다른 칸(이유, 받지 않는 이유, 조건 문장)에 값을 싣는다
     sid = (output.get("streamIds") or briefing["thread"]["streamIds"])[0]
     name = next(s["name"] for s in briefing["streams"] if s["id"] == sid)
     output["reason"] = f"{SENTENCE} 실제 단가는 13,579원입니다"
-    output["excluded"] = [
-        {"streamId": sid, "reason": "kg당 13,579원 미만이라 제외", "memo": "13579원", "n": 13579}
-    ]
+    output["excluded"] = [{"streamId": sid, "reason": "kg당 13,579원 미만이라 제외"}]
     if isinstance(output.get("terms"), dict):
         output["terms"].setdefault("conditions", []).append(f"{name}: 단가를 13,579원으로 낮출 것")
+    return output
+
+
+def _junk_beside_the_text(output, briefing):
+    # 정해 두지 않은 칸과 모양으로 값을 싣는다
+    sid = (output.get("streamIds") or briefing["thread"]["streamIds"])[0]
+    output["excluded"] = [{"streamId": sid, "reason": 13579, "memo": "13579원", "n": 13579}]
+    output["asks"] = [{"streamId": sid, "field": "13,579원"}]
+    output["memo"] = "단가 13,579원"
+    if isinstance(output.get("terms"), dict):
         output["terms"]["days"] = [*(output["terms"].get("days") or []), "13,579원 요일"]
+        output["terms"]["conditions"] = [{"text": "13,579원"}, 13579]
+        output["terms"]["unitPriceKrwPerKg"] = 13579
     return output
 
 
@@ -298,7 +312,12 @@ BAD_DRAFTS = {
     "claims_written_by_model": _claims_written_by_model,
     "invented_clause": _invented_clause,
     "numbers_beside_the_text": _numbers_beside_the_text,
+    "junk_beside_the_text": _junk_beside_the_text,
 }
+
+
+# 회사 측 메시지에는 조건·받지 않는 흐름 칸이 없다. 그 칸에 실은 것은 거부가 아니라 버려진다
+DROPPED = {("company", "junk_beside_the_text")}
 
 
 @pytest.mark.parametrize("kind", sorted(BAD_DRAFTS))
@@ -309,6 +328,9 @@ def test_rule1_a_stubborn_bad_model_never_gets_a_number_out(kind, role, org):
     session_id, view = run_to_end(app)
     assert llm.calls, "나쁜 모델이 실제로 불렸어야 한다"
     assert_clean(app, session_id)
+    if (role, kind) in DROPPED:
+        assert view["session"]["status"] == "confirmed"
+        return
     saegil = thread_of(view, SAEGIL)
     assert saegil["status"] == "handoff"
     assert saegil["messages"][-1]["type"] == "handoff"
@@ -325,9 +347,12 @@ def test_rule1_a_stubborn_bad_model_never_gets_a_number_out(kind, role, org):
 @pytest.mark.parametrize("role, org", [("vendor", SAEGIL), ("company", HANBIT)])
 def test_rule1_a_rejected_draft_leaves_only_the_fact_of_rejection(kind, role, org):
     """한 번 틀리고 다시 쓴 경우: 나간 것은 다시 쓴 메시지뿐이고, 거부된 초안은 기록에 본문이 없다."""
-    app, llm = bad_app(role, org, BAD_DRAFTS[kind], times=1)
+    app, _ = bad_app(role, org, BAD_DRAFTS[kind], times=1)
     session_id, view = run_to_end(app)
     assert_clean(app, session_id)
+    if (role, kind) in DROPPED:
+        assert view["session"]["status"] == "confirmed"
+        return
     rewritten = [
         m
         for t in view["threads"]
@@ -338,11 +363,31 @@ def test_rule1_a_rejected_draft_leaves_only_the_fact_of_rejection(kind, role, or
     assert rewritten[0]["validation"]["rejections"]
     assert view["session"]["status"] == "confirmed"
     refused = [
-        e
-        for e in view["events"]
-        if e["kind"] == "validation" and e["detail"].get("ok") is False
+        e for e in view["events"] if e["kind"] == "validation" and e["detail"].get("ok") is False
     ]
     assert refused and all("text" not in e["detail"] for e in refused)
+
+
+def test_rule1_every_rejection_code_has_a_public_sentence_without_values():
+    from app.v3.evidence.validator import CODES
+
+    codes = [*CODES, "UNKNOWN_CLAIM_REF", "TYPE_NOT_ALLOWED", "APPROVAL_REQUIRED", "THREAD_RULE",
+             "UNKNOWN_STREAM", "PERMIT_MISMATCH", "TOO_MANY_TOOL_ROUNDS", "INVALID_OUTPUT",
+             "MODEL_ERROR"]  # fmt: skip
+    assert all(code in draft_module.PUBLIC_MESSAGES for code in codes)
+    raw = [
+        {
+            "code": code,
+            "message": "값 13,579원",
+            "claimId": "c13579",
+            "detail": {"found": ["13,579"]},
+        }
+        for code in [*codes, "GUARDRAIL_PRICE_BELOW_FLOOR", "OTHER_EMITTER_NAMED", "단가 13,579원"]
+    ]
+    shown = draft_module.public_rejections(raw)
+    assert len(shown) == len(raw) and "13" not in dump(shown)
+    assert shown[-1]["code"] == "REJECTED"  # 모르는 코드는 글자 그대로 옮기지 않는다
+    assert [s["code"] for s in shown[: len(codes)]] == codes
 
 
 def test_rule1_model_text_in_tool_arguments_does_not_reach_the_record():
@@ -431,7 +476,7 @@ def test_rule1_assumptions_are_shown_as_assumptions(confirmed_demo):
         if assumed:
             assert current["method"] == "혼합 소각"
     # 근거 패널에서도 가정값이라고 나온다
-    panel = service.get_evidence(app, sorted(listed)[0], HANBIT)["evidence"]
+    panel = service.get_evidence(app, min(listed), HANBIT)["evidence"]
     assert panel["kind"] == "assumption" and panel["kindLabel"] == "가정값"
 
 
@@ -460,7 +505,11 @@ def confirmed_demo():
 
 def _calc_ids(app, session_id):
     return [
-        (e["detail"].get("tool"), e["detail"].get("orgId"), tuple(e["detail"].get("evidence") or []))
+        (
+            e["detail"].get("tool"),
+            e["detail"].get("orgId"),
+            tuple(e["detail"].get("evidence") or []),
+        )
         for e in app.store.list_events(session_id)
         if e["kind"] == "tool_call"
     ]
@@ -542,8 +591,13 @@ def test_rule2_tools_are_deterministic_under_a_different_hash_seed():
     for seed in ("0", "1", "4242"):
         env = {**os.environ, "PYTHONHASHSEED": seed}
         env["PYTHONPATH"] = os.pathsep.join([str(ROOT), env.get("PYTHONPATH", "")])
-        done = subprocess.run(  # noqa: S603 - 같은 인터프리터로 이 저장소의 코드를 돌린다
-            [sys.executable, "-c", code], capture_output=True, text=True, env=env, cwd=ROOT
+        done = subprocess.run(
+            [sys.executable, "-c", code],
+            capture_output=True,
+            text=True,
+            env=env,
+            cwd=ROOT,
+            check=False,
         )
         assert done.returncode == 0, done.stderr[-2000:]
         digests.add(done.stdout.strip().splitlines()[-1])
@@ -698,14 +752,14 @@ def test_rule5_streams_to_the_same_vendor_are_merged_in_weight_and_volume():
     defect = _stream(app, "st_defect", monthlyKg=300, origin="PCR")
     for alone in (sprue, defect):  # 따로 보면 둘 다 최소 물량에 못 미친다
         assert _loading(app, [alone])[1]["min_volume"] != "met"
-    result, checks, values = _loading(app, [sprue, defect])
+    _, checks, values = _loading(app, [sprue, defect])
     assert checks["min_volume"] == "met"
     assert values["totalKg"] == pytest.approx(600)
     expected_m3 = 300 / sprue["bulkDensityKgPerM3"] + 300 / defect["bulkDensityKgPerM3"]
     assert values["totalM3"] == pytest.approx(expected_m3)
     assert values["perPickupM3"] == pytest.approx(expected_m3 / values["pickupsPerMonth"])
     # 순서를 바꿔도 같은 값이다
-    again, again_checks, again_values = _loading(app, [defect, sprue])
+    _, again_checks, again_values = _loading(app, [defect, sprue])
     assert (again_checks, again_values) == (checks, values)
     # 다른 공장의 흐름은 합치지 않는다
     with pytest.raises(ValueError, match="한 공장"):
@@ -839,7 +893,9 @@ def test_rule6_no_view_message_search_or_chain_shows_the_other_emitter(two_emitt
         assert [m for m in marks if m in dump(panel)] == [], evidence.id
     # 상대의 근거와 진단은 있는지도 알려 주지 않는다
     for evidence_id in sorted(_owned(app, other)):
-        assert raises("EVIDENCE_NOT_FOUND", service.get_evidence, app, evidence_id, me).status == 404
+        assert (
+            raises("EVIDENCE_NOT_FOUND", service.get_evidence, app, evidence_id, me).status == 404
+        )
     assert raises("SESSION_NOT_FOUND", service.get_view, app, sessions[other], me).status == 404
     assert raises("FORBIDDEN", service.list_streams, app, other, me).status == 403
 
@@ -847,7 +903,7 @@ def test_rule6_no_view_message_search_or_chain_shows_the_other_emitter(two_emitt
 def test_rule6_vendor_bundles_both_emitters_but_tells_neither(two_emitters):
     """업체는 묶음 노선 계산에 양쪽 물량을 쓰지만, 그 계산은 업체만 보고 메시지에는 실리지 않는다."""
     app, sessions, order = two_emitters
-    first, second = order
+    second = order[1]
     bundled = [
         e
         for e in app.registry.list(org_id=None)
@@ -917,7 +973,9 @@ def test_rule6_disclosure_check_reads_what_rides_beside_the_text():
         leaking = replace(message, meta=meta)
         assert check_disclosure(leaking, app.registry, app.store), meta
     # 다른 배출 기업의 근거를 인용한 claim도 걸린다
-    claim = Claim("kg", "number", 900, ("measure:org_daon:st_daon_pp:월발생량@2026-11-10",), "kg/월")
+    claim = Claim(
+        "kg", "number", 900, ("measure:org_daon:st_daon_pp:월발생량@2026-11-10",), "kg/월"
+    )
     quoting = replace(message, text="{{kg}}", claims=(claim,))
     problems = check_disclosure(quoting, app.registry, app.store)
     assert [p["code"] for p in problems] == ["OTHER_EMITTER_EVIDENCE"]
@@ -944,7 +1002,9 @@ def test_rule6_and_1_company_side_does_not_trust_a_remote_vendor(forged):
                 meta["validation"] = {
                     "ok": True,
                     "attempts": "13,579",
-                    "rejections": [{"code": "단가 13,579원", "message": "13,579원", "detail": {"x": 13579}}],
+                    "rejections": [
+                        {"code": "단가 13,579원", "message": "13,579원", "detail": {"x": 13579}}
+                    ],
                 }
                 meta["asks"] = [{"streamId": "st_sprue", "field": "13,579원"}]
                 meta["memo"] = "다온산업 13,579원"
@@ -1052,7 +1112,10 @@ def test_rule7_permit_lost_after_agreement_closes_instead_of_confirming():
     view = to_approval(app)
     session_id = view["session"]["id"]
     thread = thread_of(view, SAEGIL)
-    assert thread["status"] == "agreed" and set(thread["assignedStreamIds"]) == {"st_film", "st_sprue"}
+    assert thread["status"] == "agreed" and set(thread["assignedStreamIds"]) == {
+        "st_film",
+        "st_sprue",
+    }
     service.approve(app, session_id, thread["id"], HANBIT)
     service.update_vendor(  # 업체가 허가 품목을 고쳐 폐플라스틱이 빠졌다
         app, SAEGIL, {"permits": [{"wasteItem": "포장재", "materials": ["LDPE", "LLDPE"]}]}, SAEGIL
@@ -1073,7 +1136,9 @@ def test_rule7_permit_lost_after_agreement_closes_instead_of_confirming():
     assert any("허가 품목" in c["text"] for c in film["checks"] if c["key"] == "handoff")
     raises("NOT_AGREED", service.approve, app, session_id, closed["id"], HANBIT)
     # 다시 계산한 것은 실제 도구 호출로 실행 기록에 남는다
-    rechecks = [e for e in view["events"] if e["detail"].get("arguments", {}).get("reason") == "recheck"]
+    rechecks = [
+        e for e in view["events"] if e["detail"].get("arguments", {}).get("reason") == "recheck"
+    ]
     assert rechecks and all(e["detail"]["tool"] == "match_permit" for e in rechecks)
     assert_clean(app, session_id)
 
@@ -1226,11 +1291,31 @@ def _vendor_message(kind, text, claims=(), **meta):
     "kind, text, claim, code",
     [
         # 조건(terms)이 없는 answer로 하한 아래 단가를 말한다
-        ("answer", "{{p}}에 받겠습니다.", Claim("p", "number", 100, ("x",), "원/kg"), "PRICE_BELOW_FLOOR"),
+        (
+            "answer",
+            "{{p}}에 받겠습니다.",
+            Claim("p", "number", 100, ("x",), "원/kg"),
+            "PRICE_BELOW_FLOOR",
+        ),
         # 단위를 바꿔 적어도 같은 단가다(원/t)
-        ("answer", "{{p}}에 받겠습니다.", Claim("p", "number", 100000, ("x",), "원/t"), "PRICE_BELOW_FLOOR"),
-        ("question", "{{p}}은 어떠신가요.", Claim("p", "number", 900, ("x",), "원/kg"), "PRICE_ABOVE_CEILING"),
-        ("answer", "월 {{n}} 수거합니다.", Claim("n", "number", 1, ("x",), "회/월"), "PICKUPS_BELOW_MINIMUM"),
+        (
+            "answer",
+            "{{p}}에 받겠습니다.",
+            Claim("p", "number", 100000, ("x",), "원/t"),
+            "PRICE_BELOW_FLOOR",
+        ),
+        (
+            "question",
+            "{{p}}은 어떠신가요.",
+            Claim("p", "number", 900, ("x",), "원/kg"),
+            "PRICE_ABOVE_CEILING",
+        ),
+        (
+            "answer",
+            "월 {{n}} 수거합니다.",
+            Claim("n", "number", 1, ("x",), "회/월"),
+            "PICKUPS_BELOW_MINIMUM",
+        ),
         ("answer", "수거는 일요일에 합니다.", None, "DAY_NOT_ALLOWED"),
         ("decline", "토 요일이라면 받겠습니다.", None, "DAY_NOT_ALLOWED"),
     ],
@@ -1290,7 +1375,7 @@ def _outside(kind):
      "price_not_declared"],
 )  # fmt: skip
 def test_rule9_terms_outside_the_guardrails_never_leave(kind):
-    app, llm = bad_app("vendor", SAEGIL, _outside(kind))
+    app, _ = bad_app("vendor", SAEGIL, _outside(kind))
     session_id, view = run_to_end(app)
     thread = thread_of(view, SAEGIL)
     assert thread["status"] == "handoff"
@@ -1308,13 +1393,14 @@ def test_rule9_raised_floor_blocks_the_table_price_too():
     app = make_app()
     price = app.store.get_vendor_profile(SAEGIL)["criteria"][0]["unitPriceKrwPerKg"]
     service.update_vendor(
-        app, SAEGIL, {"guardrails": {"floorPriceKrwPerKg": price + 1, "ceilingPriceKrwPerKg": price * 2}}, SAEGIL
+        app,
+        SAEGIL,
+        {"guardrails": {"floorPriceKrwPerKg": price + 1, "ceilingPriceKrwPerKg": price * 2}},
+        SAEGIL,
     )
     view = to_approval(app)  # 규칙 정책이 기준표 단가를 그대로 내려 해도 가드레일이 막는다
     thread = thread_of(view, SAEGIL)
-    offered = [
-        m for m in thread["messages"] if m["type"] in ("offer", "conditional", "counter")
-    ]
+    offered = [m for m in thread["messages"] if m["type"] in ("offer", "conditional", "counter")]
     for message in offered:
         for item in message["meta"]["terms"]["items"]:
             claim = next(c for c in message["claims"] if c["id"] == item["claimId"])
@@ -1346,10 +1432,20 @@ def test_rule9_stored_terms_carry_the_validated_price():
 @pytest.mark.parametrize("talker", ["company", "vendor", "both"])
 def test_rule9_twelve_turns_then_handoff_whoever_keeps_talking(talker):
     def company_again(output, briefing):
-        return draft("question", "조건을 한 번 더 알려 주세요.", stage=4, streams=briefing["thread"]["streamIds"][:1])
+        return draft(
+            "question",
+            "조건을 한 번 더 알려 주세요.",
+            stage=4,
+            streams=briefing["thread"]["streamIds"][:1],
+        )
 
     def vendor_again(output, briefing):
-        return draft("question", "흐름의 상태를 한 번 더 알려 주세요.", stage=4, streams=briefing["thread"]["streamIds"][:1])
+        return draft(
+            "question",
+            "흐름의 상태를 한 번 더 알려 주세요.",
+            stage=4,
+            streams=briefing["thread"]["streamIds"][:1],
+        )
 
     company = scripted(*[mutating(company_again, role_task=("reply",))] * 400, pad=0)
     vendor = scripted(*[mutating(vendor_again)] * 400, pad=0)
@@ -1388,7 +1484,11 @@ def test_rule9_a_model_that_never_stops_asking_gets_two_batches_of_three():
         wanted += [
             {"streamId": briefing["streams"][0]["id"], "field": "ceoPhoneNumber"},
             {"streamId": "st_daon_pp", "field": "monthlyKg"},
-            {"streamId": briefing["streams"][0]["id"], "field": "moisturePct", "text": "단가 13,579원?"},
+            {
+                "streamId": briefing["streams"][0]["id"],
+                "field": "moisturePct",
+                "text": "단가 13,579원?",
+            },
         ]
         asked.append(len(wanted))
         return {"content": dump(draft("ask_user", "", stage=4, userQuestions=wanted))}
@@ -1607,7 +1707,9 @@ def test_rule11_a_model_that_never_answered_is_not_shown_as_used():
     codes = [r["code"] for r in handoff["validation"]["rejections"]]
     assert codes == ["MODEL_ERROR", "MODEL_ERROR"]
     assert "연결 실패" not in everything(app, session_id)  # 오류 글도 화면으로 옮기지 않는다
-    tools = [e for e in view["events"] if e["kind"] == "tool_call" and e["threadId"] == thread["id"]]
+    tools = [
+        e for e in view["events"] if e["kind"] == "tool_call" and e["threadId"] == thread["id"]
+    ]
     assert all(e["detail"]["calledBy"] == "orchestrator" for e in tools)
 
 
@@ -1650,7 +1752,7 @@ def test_rule11_the_record_lists_exactly_the_tool_calls_that_ran(monkeypatch):
         for evidence_id in event["detail"]["evidence"]:  # 남긴 calc 근거는 실제로 있다
             assert app.registry.get(evidence_id, None).kind in ("calc", "assumption")
     failed = [e for e in events if e["detail"].get("status") == "error"]
-    assert len(failed) == 4 and all(e["detail"]["evidence"] if "evidence" in e["detail"] else True for e in failed)
+    assert len(failed) == 4 and all(not e["detail"].get("evidence") for e in failed)
     assert all("실패" in e["summary"] for e in failed)
 
 
@@ -1675,8 +1777,8 @@ SECRET_PATTERNS = [
 
 
 def _tracked_files():
-    done = subprocess.run(  # noqa: S603, S607 - 저장소가 추적하는 파일 목록
-        ["git", "ls-files"], capture_output=True, text=True, cwd=ROOT
+    done = subprocess.run(
+        ["git", "ls-files"], capture_output=True, text=True, cwd=ROOT, check=False
     )
     if done.returncode != 0:
         pytest.skip("git 저장소가 아니다")
@@ -1685,7 +1787,11 @@ def _tracked_files():
 
 def _text_files():
     for path in _tracked_files():
-        if path.suffix in TEXT_SUFFIXES or path.name in ("Dockerfile", ".env.example", ".gitignore"):
+        if path.suffix in TEXT_SUFFIXES or path.name in (
+            "Dockerfile",
+            ".env.example",
+            ".gitignore",
+        ):
             try:
                 yield path, path.read_text(encoding="utf-8")
             except (UnicodeDecodeError, OSError):
@@ -1707,7 +1813,9 @@ def test_chapter4_no_secret_values_are_tracked():
     assert forbidden == []  # 키 파일과 교육 노트북은 저장소에 없다
     example = (ROOT / ".env.example").read_text(encoding="utf-8")
     for line in example.splitlines():
-        if re.match(r"\s*[A-Z0-9_]*(KEY|SECRET|PASSWORD|TOKEN|CONNECTION_STRING)[A-Z0-9_]*\s*=", line):
+        if re.match(
+            r"\s*[A-Z0-9_]*(KEY|SECRET|PASSWORD|TOKEN|CONNECTION_STRING)[A-Z0-9_]*\s*=", line
+        ):
             assert line.split("=", 1)[1].strip() == "", line  # 키 이름만 있고 값은 비어 있다
 
 
@@ -1768,7 +1876,15 @@ def test_chapter4_nothing_is_sent_outside_the_app():
 
 def test_chapter4_no_training_data_and_no_ultralytics():
     names = [str(p.relative_to(ROOT)) for p in _tracked_files()]
-    media = [n for n in names if re.search(r"\.(jpe?g|png|bmp|gif|mp4|avi|mov|zip|tar|gz|pt|pth|onnx|npy|npz|parquet)$", n, re.I)]
+    media = [
+        n
+        for n in names
+        if re.search(
+            r"\.(jpe?g|png|bmp|gif|mp4|avi|mov|zip|tar|gz|pt|pth|onnx|npy|npz|parquet)$",
+            n,
+            re.IGNORECASE,
+        )
+    ]
     assert media == []  # AI허브 데이터(사진·영상)와 그 시각화, 모델 가중치가 저장소에 없다
     for name in names:
         if re.search(r"(^|/)(requirements[^/]*\.txt|pyproject\.toml|setup\.cfg|Dockerfile)$", name):
@@ -1781,7 +1897,8 @@ def test_chapter4_no_training_data_and_no_ultralytics():
 CORE = [
     p
     for p in sorted((ROOT / "app/v3").rglob("*.py"))
-    if p.relative_to(ROOT / "app/v3").parts[0] in ("judge", "evidence", "a2a", "agents", "intake", "demo")
+    if p.relative_to(ROOT / "app/v3").parts[0]
+    in ("judge", "evidence", "a2a", "agents", "intake", "demo")
     or p.name in ("service.py", "store.py", "ids.py", "names.py", "feedback.py")
 ]
 # 시계를 읽는 곳은 이 둘뿐이고 둘 다 주입할 수 있다: 저장소의 기록 시각, App의 오늘 날짜(today 인자)

@@ -27,7 +27,6 @@ from app.v3.agents.draft import (
     build_message,
     make_decline,
     make_handoff,
-    model_label,
     public_rejections,
     rejection,
     response_schema,
@@ -117,6 +116,7 @@ SYSTEM_PROMPT = "\n".join(
         "응답 JSON: type, stage, streamIds, text, claimRefs, toolCalls, terms, asks, excluded, reason.",
     ]
 )
+
 
 def public_profile(profile: dict[str, Any], *, fleet_cost: bool = True) -> dict[str, Any]:
     """판단 도구에 넘기는 업체 프로필. 하한·상한 단가와 자동 거절 조건, 모델 설정은 뺀다."""
@@ -562,7 +562,9 @@ class VendorAgent:
             # 받지 않는 흐름은 이 대화의 흐름 ID와 이유 문장만 남긴다(다른 항목은 싣지 않는다)
             excluded = [
                 {"streamId": x["streamId"], "reason": str(x.get("reason") or "").strip()}
-                for x in (output.get("excluded") if isinstance(output.get("excluded"), list) else [])
+                for x in (
+                    output.get("excluded") if isinstance(output.get("excluded"), list) else []
+                )
                 if isinstance(x, dict) and x.get("streamId") in thread.stream_ids
             ]
             if excluded:
