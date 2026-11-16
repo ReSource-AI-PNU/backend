@@ -442,6 +442,29 @@ def test_rule1_values_without_evidence_stay_null_and_cannot_be_filled_in():
     assert_clean(app, session_id)
 
 
+def test_rule1_a_name_cannot_smuggle_an_amount():
+    """흐름 이름에 든 숫자는 이름으로 봐 주지만, 수치와 단위가 붙은 이름은 값으로 본다."""
+    from app.v3.evidence.validator import name_tokens
+
+    assert name_tokens(["PP 2차 분쇄품", "(주)제2공장", "3호기 스프루"]) == (
+        "PP 2차 분쇄품",
+        "(주)제2공장",
+        "3호기 스프루",
+    )
+    assert (
+        name_tokens(["단가 999원 보장", "수분 0.5% 이하품", "월 ５００kg", "13579", "500 톤"]) == ()
+    )
+    app = make_app()
+    service.update_stream(app, HANBIT, "st_sprue", {"name": "스프루 단가 999원 보장"}, HANBIT)
+    session_id, view = run_to_end(app)
+    # 그 이름을 본문에 쓴 메시지는 나가지 못한다(이름을 빌려 값을 내보낼 수 없다)
+    for thread in view["threads"]:
+        for message in thread["messages"]:
+            assert "999원" not in message["text"]
+    assert all(t["status"] == "handoff" for t in view["threads"] if "st_sprue" in t["streamIds"])
+    assert unvalidated_messages(app, session_id) == []
+
+
 def test_rule1_every_claim_validates_for_whoever_is_looking(confirmed_demo):
     """배출 기업 뷰와 업체 뷰 각각에서, 뷰의 모든 claim을 보는 조직 기준으로 다시 검증한다."""
     app, session_id = confirmed_demo

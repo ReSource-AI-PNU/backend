@@ -236,6 +236,13 @@ def permit_match(stream: dict, vendor: dict):
     return False, evidence
 
 
+def subject(word: str) -> str:
+    """주격 조사를 붙인다: 받침이 있으면 '이', 없으면 '가'(오염도가, 수분이)."""
+    last = word[-1] if word else ""
+    final = "가" <= last <= "힣" and (ord(last) - ord("가")) % 28 != 0
+    return f"{word}{'이' if final else '가'}"
+
+
 def criterion_checks(stream: dict, criterion: dict, q: dict) -> list[tuple]:
     """매입 기준 하나와 흐름을 대조한다. (key, status, text, ask) 목록. 본문에 숫자를 넣지 않는다."""
     out = []
@@ -262,7 +269,7 @@ def criterion_checks(stream: dict, criterion: dict, q: dict) -> list[tuple]:
                 )
             )
         elif value <= limit:
-            out.append((field, "met", f"{name}가 매입 기준 상한 안에 있습니다.", None))
+            out.append((field, "met", f"{subject(name)} 매입 기준 상한 안에 있습니다.", None))
             source = _ESTIMATED.get(q.get(basis_key))
             if source:
                 # 사진 추정이나 담당자 답만으로는 충족을 확정하지 않는다(추정 물량과 같은 원칙).
@@ -271,15 +278,15 @@ def criterion_checks(stream: dict, criterion: dict, q: dict) -> list[tuple]:
                     (
                         basis_check,
                         "conditional",
-                        f"{name}가 측정값이 아니라 {source}입니다. 반입 검수에서 확인합니다.",
+                        f"{subject(name)} 측정값이 아니라 {source}입니다. 반입 검수에서 확인합니다.",
                         (
-                            f"{name}가 {source}입니다. 반입 검수에서 매입 기준 상한 안으로 "
+                            f"{subject(name)} {source}입니다. 반입 검수에서 매입 기준 상한 안으로 "
                             "확인되면 같은 조건으로 받을 수 있는지 알려 주세요."
                         ),
                     )
                 )
         else:
-            out.append((field, "unmet", f"{name}가 매입 기준 상한을 넘습니다.", None))
+            out.append((field, "unmet", f"{subject(name)} 매입 기준 상한을 넘습니다.", None))
     want, have = criterion.get("form"), stream.get("form")
     if want:
         if not have:

@@ -43,7 +43,8 @@
 - 수치 근거는 `value`(숫자)와 `unit`을 가진다.
 - 조항 근거(`law`, 그리고 원문을 가진 `doc`·`ref`)는 `excerpt`에 원문을 글자 그대로 담는다. 인용 대조는 이 원문의 부분 문자열로 한다.
 - `calc` 근거의 `meta`는 `{"tool": 이름, "inputs": 입력, "formula": 계산식 설명, "inputEvidence": [근거 ID]}`를 담는다. 화면의 "계산 사슬"은 `inputEvidence`를 따라간다.
-- `access`는 볼 수 있는 조직 ID 목록이고 `"*"`는 공개다.
+- `access`는 볼 수 있는 조직 ID 목록이고 `"*"`는 공개다. 조직에게 근거를 내보낼 때(`search.get_evidence`, `search_evidence`, `evidence_chain`)는 이 목록에서 보는 조직과 근거를 가진 조직(`meta.ownerOrgId`)만 남긴다. 업체의 매입 기준 근거는 그 업체와 대화한 배출 기업 모두에게 열려 있어, 목록을 그대로 내면 한 배출 기업이 같은 업체와 거래하는 다른 배출 기업을 알게 된다.
+- 판단 도구는 호출마다 호출 기록을 calc 근거로 남긴다: `calc:<도구>:<입력 지문>:call`. 값은 없고 `excerpt`에 판정과 검사 결과, `meta`에 `{"tool", "inputs", "status", "checks": [{key, status}], "inputEvidence", "call": true}`가 있다. 숫자를 내지 않는 호출(`match_permit`, `check_requirements`)도 근거 저장소에 남는다. 도구 결과의 `evidence` 마지막 항목이 이 기록이다.
 
 ID는 `app/v3/ids.py`의 함수로만 만든다.
 
@@ -94,6 +95,10 @@ def validate_message(message, registry, *, today) -> ValidationResult   # org_id
 우회 방지: 식별자 바로 뒤에 단위가 붙은 것(`st_320원`), 월·일이 범위를 벗어난 날짜 꼴(`2026-11-99`), 단위가 따라오는 한글 수(`삼백이십 원`)는 숫자로 본다. 인용(clause)은 10자 이상이거나 근거 원문 전체여야 한다(짧은 조각으로 숫자를 흘리는 것을 막는다).
 
 number claim에 근거가 여러 개면 첫 번째 근거가 값의 출처이고 나머지는 보조 근거다(존재와 접근만 확인한다).
+
+**본문 밖 문장도 검사한다.** `validate_message`는 메시지에 함께 실려 화면과 문서로 나가는 문장도 본문과 같은 규칙으로 본다(`validate_notes`, 문장 목록은 `Message.free_texts()`): 닫는 이유(`meta.reason`), 받지 않는 흐름의 이유(`meta.excluded[]`), 조건 문장과 요일(`meta.terms.conditions`, `meta.terms.days`). 자리표시자 밖 숫자가 있으면 `NUMBER_OUTSIDE_PLACEHOLDER`, 이 메시지의 claims에 없는 자리표시자가 있으면 `UNKNOWN_PLACEHOLDER`이고 `detail.where`에 자리가 적힌다.
+
+**거부 기록에는 값이 없다.** 메시지의 `validation.rejections`와 실행 기록의 `detail.rejections`는 `{"code", "message": 코드별 일반 문장, "claimId": null, "detail": {}, "attempt"}`다(`agents/draft.py`의 `public_rejections`). 거부된 초안에 들어 있던 숫자·조항·claim ID, 가드레일 수치는 싣지 않는다. 자세한 사유(`Rejection.message`, `detail`)는 다시 쓰는 모델에게만 돌려준다. 회사 측과 업체 측이 같다.
 
 `render.render_text(text, claims) -> str`은 자리표시자를 값과 단위로 바꾼 문장을 만든다(문서 내보내기용). 숫자는 천 단위 쉼표를 넣고 소수는 필요한 자리까지만 쓴다.
 
@@ -289,7 +294,9 @@ VendorProfile {"orgId": "org_saegil",
   - **적재 검사(`check_loading`)는 업체가 정해진 배정마다 늘 들어간다.** `min_volume`(최소 물량)과 `loading`(무게·부피 적재), 밀도나 부피 용량을 몰라 부피를 확인하지 못했으면 `loading_volume`. 다른 검사와 달리 충족(`met`)한 것도 나간다. `claims`에 합친 월 물량·최소 물량(`min_volume`), 월 수거 횟수·한 번 수거량·차량 적재 한도(`loading`)가 붙는다. 그 업체에 실제로 배정된 흐름만 합친 값이다. 충족하지 못한 적재 검사가 있으면 그 배정은 `calculated`가 아니다.
   - `contamination_basis`, `moisture_basis`: 값은 매입 기준 상한 안이지만 측정값이 아니라 사진 추정이나 담당자 답이다(조건부. "반입 검수에서 확인").
   - `handoff`: 이 흐름을 맡기로 합의한 대화가 담당자에게 넘어가 배정을 뺐다(`status`는 `needs_information`, `vendorOrgId`는 `null`).
-- `approvals[]`에는 승인할 수 있는 대화(`agreed`, `confirmed`)만 있다. 담당자에게 넘어간(`handoff`) 대화의 승인 칸은 나가지 않는다.
+- `approvals[]`에는 승인할 수 있는 대화(`agreed`, `confirmed`)만 있다. 담당자에게 넘어간(`handoff`) 대화의 승인 칸은 나가지 않는다. 합의한 뒤에 배정된 흐름의 자료(재질, 물량, 측정값 등)가 바뀌면 `blocked`가 되고 `blockedReason`에 `STREAM_CHANGED`가 적힌다. 막힐 때 앞서 한 승인은 양쪽 모두 지워진다.
+- `events[].detail.reportedBy`: 값이 `"vendor"`이면 업체 측 에이전트가 답과 함께 보낸 기록(도구 호출, 검증)이다. 회사 측은 정해 둔 항목만 옮기고 요약을 다시 쓴다. 실행됐다는 도구 호출은 그 도구의 calc 근거가 근거 저장소에 있을 때만 옮긴다.
+- `events[].detail.arguments`(도구 호출): 흐름 ID(`streamId`, `streamIds`), `route`, `transportPaidBy`, 숫자가 없는 검색어(`query`)만 남는다. 모델이 덧붙인 다른 인자는 싣지 않는다.
 - `session.status`: 합의한 대화가 모두 담당자에게 넘어가 승인할 대화가 남지 않으면 `awaiting_approval`에서 `idle`(`phase`는 `done`)로 바뀐다. 합의 없이 끝난 진단과 같은 상태다.
 - `questions[]`: `unknown`, `answerType`(`number | choice | text`), `unit`, `choices`
 - `unresolved[{streamId, field}]`: 질문 한도를 다 쓰고도 모르는 값
@@ -368,6 +375,7 @@ VendorProfile {"orgId": "org_saegil",
 | `*_NOT_FOUND` | 404 | 없거나 볼 수 없다(볼 수 없는 것은 있는지도 알려 주지 않는다) |
 | `INVALID_VALUE`, `INVALID_KIND`, `INVALID_ANSWER` | 422 | 값이 틀렸다 |
 | `NOT_AGREED`, `APPROVAL_BLOCKED`, `THREAD_NOT_CONFIRMED` | 409 | 지금 상태에서는 할 수 없다 |
+| `PERMIT_MISMATCH` | 409 | 승인하려는 대화의 업체 허가 품목이 합의 뒤에 바뀌어 흐름과 맞지 않는다. 승인하지 않고 그 대화를 근거와 함께 `decline`으로 닫았다 |
 
 이전에 `api.py`만 쓰던 `INVALID_REQUEST`(400)와 `FILE_TOO_LARGE`는 없어졌다. 업체 측 에이전트 서비스(`vendor_service.py`)도 같은 코드를 쓴다.
 

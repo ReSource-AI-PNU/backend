@@ -86,6 +86,8 @@ _HANGUL_NUMBER = re.compile(
     r"\s?(?:원|킬로그램|킬로|kg|톤|퍼센트|%|회)"
     r"(?=$|[\s.,;:!?)\]]|[이가을를은는의에도로과와씩당]|입니다|이며|이고)"
 )
+# 이름 안의 "숫자+단위". 이런 이름은 허용 낱말로 쓰지 않는다
+_NAME_WITH_AMOUNT = re.compile(r"\d\s?(?:원|kg|킬로|톤|t(?![A-Za-z])|%|퍼센트|회|개|건|km|m3)")
 # 인용은 이 길이 이상이어야 한다. 짧은 조각(숫자 한 토막 등)을 인용으로 내보내는 것을 막는다.
 MIN_QUOTE_CHARS = 10
 
@@ -193,14 +195,18 @@ def validate_text(
 def name_tokens(names: Iterable[Any]) -> tuple[str, ...]:
     """이름(조직, 흐름)에 든 숫자를 수치로 보지 않게 하는 허용 낱말.
 
-    이름은 코드가 저장소에서 읽어 넘긴다(모델이 정하지 못한다). 숫자만으로 된 이름은 수치와
-    구분할 수 없어 허용하지 않는다.
+    이름은 코드가 저장소에서 읽어 넘긴다(모델이 정하지 못한다). 숫자만으로 된 이름과 수치에
+    단위가 붙은 이름("단가 999원 보장")은 수치와 구분할 수 없어 허용하지 않는다.
     """
     out = []
     for name in names:
         text = str(name or "").strip()
-        if any(ch.isdigit() for ch in text) and re.search(r"[^\d\s.,%+\-−]", text):
-            out.append(text)
+        if not any(ch.isdigit() for ch in text) or not re.search(r"[^\d\s.,%+\-−]", text):
+            continue
+        if _NAME_WITH_AMOUNT.search(text.translate(_FULLWIDTH)):
+            # "단가 999원 보장"처럼 수치와 단위가 붙은 이름은 값과 구분할 수 없다. 허용하지 않는다
+            continue
+        out.append(text)
     return tuple(dict.fromkeys(out))
 
 
