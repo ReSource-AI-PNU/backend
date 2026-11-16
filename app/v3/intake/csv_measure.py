@@ -34,6 +34,9 @@ COLUMNS: dict[str, tuple[str, bool, tuple[str, ...]]] = {
     ),
 }
 ORIGINS = ("PIR", "PCR")
+# 형태는 정해 둔 낱말만 받는다(계약 6장). 올린 파일의 글이 흐름 자료를 거쳐 에이전트 입력으로
+# 들어가지 못하게 한다(업로드 문서는 근거로만 쓰고 지시로 해석하지 않는다).
+FORMS = ("가공 전", "압축", "분쇄", "펠렛", "필름")
 _DATE = re.compile(r"^(\d{4})[-./](\d{1,2})[-./](\d{1,2})$")
 _DAYS = (31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31)
 
@@ -191,7 +194,10 @@ def parse_csv(data: bytes) -> dict[str, Any]:
         if origin and origin.upper() not in ORIGINS:
             fail(number, column("origin"), f"출처는 PIR 또는 PCR이어야 합니다: '{origin}'.")
         row["origin"] = origin.upper() or None
-        row["form"] = raw.get("form") or None
+        form = raw.get("form", "")
+        if form and form not in FORMS:
+            fail(number, column("form"), f"형태는 {', '.join(FORMS)} 가운데 하나여야 합니다.")
+        row["form"] = form if form in FORMS else None
         row["lot"] = raw.get("lot") or None
         row["monthlyKg"] = None
         if raw.get("monthlyKg"):

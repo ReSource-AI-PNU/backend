@@ -16,6 +16,7 @@ from app.v3 import ids
 from app.v3.a2a.message import MESSAGE_TYPES, STAGES, Message
 from app.v3.agents.llm import LLM, LLMError
 from app.v3.agents.pool import ClaimPool, UnknownClaimRef
+from app.v3.evidence.validator import find_numbers
 from app.v3.judge.toolbox import TOOLS, call_tool
 
 MAX_ATTEMPTS = 2  # 첫 초안과 재작성 한 번
@@ -66,6 +67,53 @@ def response_schema(types: tuple[str, ...], extra: dict[str, Any] | None = None)
 
 def rejection(code: str, message: str, **detail: Any) -> dict[str, Any]:
     return {"code": code, "message": message, "claimId": None, "detail": detail}
+
+
+# 실행 기록과 메시지의 검증 결과에는 거부 사유를 코드와 일반 문장으로만 남긴다. 거부된 초안에
+# 들어 있던 숫자·조항(검증을 통과하지 못한 값), 가드레일 수치, 상대가 볼 수 없는 근거 ID가
+# 화면으로 나가지 않게 한다. 자세한 사유는 다시 쓰는 모델에게만 돌려준다.
+PUBLIC_MESSAGES = {
+    "NUMBER_OUTSIDE_PLACEHOLDER": "자리표시자 밖에 숫자가 있었습니다.",
+    "UNKNOWN_CLAIM_REF": "claim 풀에 없는 ID를 썼습니다.",
+    "UNKNOWN_PLACEHOLDER": "자리표시자에 맞는 claim이 없었습니다.",
+    "UNUSED_CLAIM": "본문에 쓰이지 않은 claim이 있었습니다.",
+    "CLAIM_WITHOUT_EVIDENCE": "근거가 없는 claim이 있었습니다.",
+    "VALUE_MISMATCH": "claim의 값이 근거와 달랐습니다.",
+    "UNIT_MISMATCH": "claim의 단위를 근거의 단위로 환산할 수 없었습니다.",
+    "QUOTE_MISMATCH": "조항 인용이 원문과 달랐습니다.",
+    "EVIDENCE_FORBIDDEN": "보내는 조직이 볼 수 없는 근거를 썼습니다.",
+    "EVIDENCE_NOT_FOUND": "근거 저장소에 없는 근거를 썼습니다.",
+    "EVIDENCE_EXPIRED": "유효 기간이 지난 근거를 썼습니다.",
+    "TYPE_NOT_ALLOWED": "지금 보낼 수 없는 종류의 메시지였습니다.",
+    "APPROVAL_REQUIRED": "양쪽 담당자 승인 전에 확정을 보내려 했습니다.",
+    "THREAD_RULE": "대화 규칙에 맞지 않는 메시지였습니다.",
+    "UNKNOWN_STREAM": "이 대화에 없는 흐름을 적었습니다.",
+    "PERMIT_MISMATCH": "허가 품목이 맞지 않는 흐름에 조건을 내려 했습니다.",
+    "TOO_MANY_TOOL_ROUNDS": "도구를 정해진 횟수보다 많이 부르려 했습니다.",
+    "INVALID_OUTPUT": "응답 형식이 맞지 않았습니다.",
+    "MODEL_ERROR": "모델 호출에 실패했습니다.",
+}
+
+
+def public_rejections(items: list[dict[str, Any]] | None) -> list[dict[str, Any]]:
+    out = []
+    for item in items or []:
+        if not isinstance(item, dict):
+            continue
+        code = str(item.get("code"))
+        if code.startswith("GUARDRAIL_"):
+            message = "업체 가드레일 밖의 조건이었습니다."
+        elif code.startswith("OTHER_EMITTER"):
+            message = "다른 배출 기업의 정보를 드러내는 내용이었습니다."
+        else:
+            message = PUBLIC_MESSAGES.get(code, "초안이 검사를 통과하지 못했습니다.")
+            if code not in PUBLIC_MESSAGES:
+                code = "REJECTED"  # 모르는 코드는 글자 그대로 옮기지 않는다
+        entry: dict[str, Any] = {"code": code, "message": message, "claimId": None, "detail": {}}
+        if isinstance(item.get("attempt"), int) and not isinstance(item.get("attempt"), bool):
+            entry["attempt"] = item["attempt"]
+        out.append(entry)
+    return out
 
 
 def model_label(llm: Any) -> dict[str, str]:
@@ -174,6 +222,25 @@ def build_message(
     )
 
 
+_ARGUMENT_WORDS = ("sell", "treat", "keep", "vendor", "emitter")
+
+
+def _id_arguments(arguments: Any) -> dict[str, Any]:
+    """실행 기록에 남길 도구 인자. 식별자 꼴(흐름 ID, 경로 이름)만 남기고 나머지는 뺀다."""
+    out: dict[str, Any] = {}
+    for key, value in (arguments if isinstance(arguments, dict) else {}).items():
+        if key == "streamId" and isinstance(value, str) and value.startswith("st_"):
+            out[key] = value
+        elif key == "streamIds" and isinstance(value, list):
+            out[key] = [v for v in value if isinstance(v, str) and v.startswith("st_")]
+        elif key in ("route", "transportPaidBy") and value in _ARGUMENT_WORDS:
+            out[key] = value
+        elif key == "query" and isinstance(value, str):
+            # 검색어는 모델이 쓴 글이다. 숫자가 들었으면 기록에 옮기지 않는다
+            out[key] = value if not find_numbers(value) else None
+    return out
+
+
 Resolver = Callable[[str, dict[str, Any]], tuple[dict[str, Any], str, dict[str, Any], bool]]
 
 
@@ -271,7 +338,9 @@ class AgentTools:
             if self._key(done["tool"], done["arguments"]) == key:
                 return done
         if name not in self.allowed or name not in TOOLS:
-            return self._failed(name, arguments, f"이 에이전트가 쓸 수 없는 도구입니다: {name}")
+            return self._failed(
+                name, arguments, f"이 에이전트가 쓸 수 없는 도구입니다: {name}", called_by
+            )
         try:
             real, prefix, tags, skip = self.resolver(name, arguments)
             result = call_tool(
@@ -283,7 +352,7 @@ class AgentTools:
                 distance_provider=self.distance_provider,
             )
         except (ValueError, KeyError, TypeError) as error:
-            return self._failed(name, arguments, str(error))
+            return self._failed(name, arguments, str(error), called_by)
         self.memo.append(
             {"name": name, "arguments": arguments, "digest": ids.digest(real), "result": result}
         )
@@ -294,7 +363,7 @@ class AgentTools:
             f"{name} · {result.get('status')}",
             tool=name,
             stage=TOOLS[name].stage,
-            arguments=arguments,
+            arguments=_id_arguments(arguments),
             status=result.get("status"),
             checks=[{"key": c["key"], "status": c["status"]} for c in result.get("checks") or []],
             evidence=list(result.get("evidence") or []),
@@ -303,16 +372,19 @@ class AgentTools:
         )
         return summary
 
-    def _failed(self, name: str, arguments: dict[str, Any], message: str) -> dict[str, Any]:
+    def _failed(
+        self, name: str, arguments: dict[str, Any], message: str, called_by: str = ""
+    ) -> dict[str, Any]:
         self.trace.add(
             self.actor,
             "tool_call",
-            f"{name} · 실패",
-            tool=name,
-            arguments=arguments,
+            f"{name if name in TOOLS else '알 수 없는 도구'} · 실패",
+            tool=name if name in TOOLS else None,
+            arguments=_id_arguments(arguments),
             status="error",
-            error=message,
+            error=message if name in TOOLS else "이 에이전트가 쓸 수 없는 도구입니다.",
             orgId=self.org_id,
+            calledBy=called_by,
         )
         return {"tool": name, "arguments": arguments, "status": "error", "error": message}
 
@@ -435,7 +507,8 @@ def run_draft(
                 attempts=attempts,
                 rejections=rejected,
             )
-        rejected = [*rejected, *[{**item, "attempt": attempts} for item in found]]
+        shown = public_rejections([{**item, "attempt": attempts} for item in found])
+        rejected = [*rejected, *shown]
         codes = ", ".join(dict.fromkeys(item["code"] for item in found))
         trace.add(
             "validator",
@@ -443,9 +516,11 @@ def run_draft(
             f"검증 거부({attempts}번째 초안): {codes}",
             ok=False,
             attempt=attempts,
-            rejections=found,
+            rejections=shown,
             model=label,
-            draftType=(output or {}).get("type"),
+            draftType=(output or {}).get("type")
+            if (output or {}).get("type") in (*MESSAGE_TYPES, ACCEPT, ASK_USER)
+            else None,
         )
         if attempts >= MAX_ATTEMPTS:
             return Outcome(
@@ -485,7 +560,43 @@ def make_handoff(
     message.meta["validation"] = {
         "ok": True,
         "attempts": attempts,
-        "rejections": list(rejections or []),
+        "rejections": public_rejections(rejections),
     }
     message.meta["model"] = model or {"provider": "code", "name": "진행기(코드)"}
+    return message
+
+
+def make_decline(
+    *,
+    thread_id: str,
+    sender: str,
+    recipient: str,
+    reason: str,
+    stage: int,
+    stream_ids: tuple[str, ...] = (),
+    evidence: list[str] | None = None,
+    excluded: list[dict[str, Any]] | None = None,
+    rejections: list[dict[str, Any]] | None = None,
+    attempts: int = 0,
+) -> Message:
+    """코드가 닫는 decline(허가 품목 불일치). 본문은 코드가 쓴 문장이고 근거 ID를 함께 남긴다."""
+    message = Message(
+        thread_id=thread_id,
+        sender=sender,
+        recipient=recipient,
+        type="decline",
+        stage=stage,
+        text=reason,
+        stream_ids=stream_ids,
+    )
+    message.meta["reason"] = reason
+    message.meta["reasonEvidence"] = list(dict.fromkeys(evidence or []))
+    if excluded:
+        message.meta["excluded"] = list(excluded)
+    message.meta["validation"] = {
+        "ok": True,
+        "attempts": attempts,
+        "rejections": public_rejections(rejections),
+    }
+    message.meta["model"] = {"provider": "code", "name": "진행기(코드)"}
     return message

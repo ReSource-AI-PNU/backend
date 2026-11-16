@@ -9,6 +9,7 @@
 
 from __future__ import annotations
 
+import re
 from typing import Any
 
 from app.v3 import ids
@@ -24,8 +25,10 @@ from app.v3.agents.draft import (
     Outcome,
     Trace,
     build_message,
+    make_decline,
     make_handoff,
     model_label,
+    public_rejections,
     rejection,
     response_schema,
     run_draft,
@@ -47,6 +50,8 @@ TOOLS = (
     "route_extra_cost",
 )
 SHARED_THREAD_STATUSES = ("agreed", "confirmed")
+# 글에 적힌 요일("월요일", "화·목요일"의 마지막 글자). 가드레일 밖 요일을 본문으로 약속하지 못하게 한다
+_WEEKDAY_WORD = re.compile(r"([월화수목금토일])\s?요일")
 
 TERMS_SCHEMA = {
     "type": "object",
@@ -113,41 +118,6 @@ SYSTEM_PROMPT = "\n".join(
     ]
 )
 
-# 상대(배출 기업)에게 보이는 기록에는 거부 사유를 코드와 일반 문장으로만 남긴다.
-# 가드레일 수치나 다른 배출 기업의 근거 ID가 실행 기록으로 새지 않게 한다.
-_PUBLIC_MESSAGES = {
-    "NUMBER_OUTSIDE_PLACEHOLDER": "본문에 자리표시자 밖 숫자가 있었습니다.",
-    "UNKNOWN_CLAIM_REF": "claim 풀에 없는 ID를 썼습니다.",
-    "UNKNOWN_PLACEHOLDER": "본문의 자리표시자에 맞는 claim이 없었습니다.",
-    "UNUSED_CLAIM": "본문에 쓰이지 않은 claim이 있었습니다.",
-    "VALUE_MISMATCH": "claim의 값이 근거와 달랐습니다.",
-    "QUOTE_MISMATCH": "조항 인용이 원문과 달랐습니다.",
-    "EVIDENCE_FORBIDDEN": "보내는 조직이 볼 수 없는 근거를 썼습니다.",
-    "EVIDENCE_NOT_FOUND": "근거 저장소에 없는 근거를 썼습니다.",
-    "EVIDENCE_EXPIRED": "유효 기간이 지난 근거를 썼습니다.",
-    "TYPE_NOT_ALLOWED": "지금 보낼 수 없는 종류의 메시지였습니다.",
-    "INVALID_OUTPUT": "응답 형식이 맞지 않았습니다.",
-    "MODEL_ERROR": "모델 호출에 실패했습니다.",
-}
-
-
-def public_rejections(items: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    out = []
-    for item in items:
-        code = str(item.get("code"))
-        if code.startswith("GUARDRAIL_"):
-            message = "업체 가드레일 밖의 조건이었습니다."
-        elif code.startswith("OTHER_EMITTER"):
-            message = "다른 배출 기업의 정보를 드러내는 내용이었습니다."
-        else:
-            message = _PUBLIC_MESSAGES.get(code, "초안이 검사를 통과하지 못했습니다.")
-        entry = {"code": code, "message": message, "claimId": None, "detail": {}}
-        if "attempt" in item:
-            entry["attempt"] = item["attempt"]
-        out.append(entry)
-    return out
-
-
 def public_profile(profile: dict[str, Any], *, fleet_cost: bool = True) -> dict[str, Any]:
     """판단 도구에 넘기는 업체 프로필. 하한·상한 단가와 자동 거절 조건, 모델 설정은 뺀다."""
     guard = profile.get("guardrails") or {}
@@ -168,6 +138,20 @@ def public_profile(profile: dict[str, Any], *, fleet_cost: bool = True) -> dict[
 
 def short(stream_id: str) -> str:
     return stream_id.removeprefix("st_")
+
+
+def _is_number(value: Any) -> bool:
+    return isinstance(value, (int, float)) and not isinstance(value, bool)
+
+
+def _price(claim: Any) -> float | None:
+    """claim이 kg당 금액이면 원/kg 값, 아니면 None."""
+    if not _is_number(claim.value):
+        return None
+    try:
+        return convert(float(claim.value), claim.unit, "원/kg")
+    except (UnitError, TypeError, ValueError):
+        return None
 
 
 class VendorAgent:
@@ -314,15 +298,9 @@ class VendorAgent:
                 continue
             items.append({"streamId": sid, "unitPriceKrwPerKg": price, "claimId": ref})
         declared = {item["claimId"] for item in items}
-        loose = [
-            c.id
-            for c in message.claims
-            if c.id not in declared
-            and (
-                (pool.get(c.id) and pool.get(c.id).tags.get("key")) == "unitPrice"
-                or (pool.get(c.id) and pool.get(c.id).tags.get("field")) == "unitPrice"
-            )
-        ]
+        # 풀의 표시와 관계없이 kg당 금액으로 읽히는 claim은 모두 단가로 본다(다른 이름의 claim으로
+        # 가드레일 검사를 비켜 가지 못하게 한다)
+        loose = [c.id for c in message.claims if c.id not in declared and _price(c) is not None]
         if loose:
             found.append(
                 rejection(
@@ -343,8 +321,19 @@ class VendorAgent:
                 )
             else:
                 pickups = float(claim.value)
-        days = [str(d) for d in raw.get("days") or []]
-        conditions = [str(c) for c in raw.get("conditions") or []]
+        days = [str(d) for d in (raw.get("days") if isinstance(raw.get("days"), list) else [])]
+        if any(d not in rails.WEEKDAYS for d in days):
+            found.append(
+                rejection(
+                    "GUARDRAIL_TERMS_REF",
+                    f"terms.days에는 요일({', '.join(rails.WEEKDAYS)})만 적을 수 있습니다.",
+                )
+            )
+            days = [d for d in days if d in rails.WEEKDAYS]
+        raw_conditions = raw.get("conditions")
+        conditions = [
+            str(c) for c in (raw_conditions if isinstance(raw_conditions, list) else []) if c
+        ]
         terms = {
             "items": items,
             "days": days,
@@ -383,6 +372,67 @@ class VendorAgent:
                 found["AUTO_DECLINE_STREAM"] = rejection(
                     "GUARDRAIL_AUTO_DECLINE_STREAM",
                     f"{reason} 이 흐름에는 조건을 낼 수 없습니다.",
+                )
+        return list(found.values())
+
+    def _permits(
+        self,
+        message: Message,
+        terms: dict[str, Any] | None,
+        tools: AgentTools,
+        streams: dict[str, dict],
+    ) -> list[dict[str, Any]]:
+        """허가 품목이 맞지 않는 흐름에는 조건을 낼 수 없다(모델이 대조를 건너뛰어도 코드가 한다)."""
+        if terms is None:
+            return []
+        bad = []
+        for sid in dict.fromkeys(item["streamId"] for item in terms["items"]):
+            if sid not in streams:
+                continue
+            done = tools.run("match_permit", {"streamId": sid}, "code")
+            if ((done.get("output") or {}).get("matched")) is not True:
+                bad.append(sid)
+        if not bad:
+            return []
+        return [
+            rejection(
+                "PERMIT_MISMATCH",
+                f"허가 품목이 맞지 않는 흐름({', '.join(bad)})에는 조건을 낼 수 없습니다. "
+                "그 흐름은 excluded에 이유와 함께 넣고, 받을 흐름이 없으면 decline으로 답하세요.",
+                streamIds=bad,
+            )
+        ]
+
+    def _guard_any(self, guard: dict[str, Any], message: Message) -> list[dict[str, Any]]:
+        """메시지 종류와 관계없이 거는 가드레일.
+
+        조건(terms)이 없는 answer·question이라도 가드레일 밖 단가나 수거 횟수를 인용하거나,
+        수거할 수 없는 요일을 글로 약속하면 내보내지 않는다.
+        """
+        found: dict[str, dict[str, Any]] = {}
+
+        def add(violations: list[rails.Violation]) -> None:
+            for violation in violations:
+                found[violation.code] = rejection(
+                    f"GUARDRAIL_{violation.code}",
+                    f"{violation.message} 가드레일 안의 조건으로 다시 쓰거나 다른 종류로 답하세요.",
+                )
+
+        for claim in message.claims:
+            price = _price(claim)
+            if price is not None:
+                add(rails.check_terms(guard, {"unitPriceKrwPerKg": price}))
+            elif claim.unit == "회/월" and _is_number(claim.value):
+                add(rails.check_terms(guard, {"pickupsPerMonth": float(claim.value)}))
+        texts = [message.text, *[text for _, text in message.free_texts()]]
+        named = [d for text in texts for d in _WEEKDAY_WORD.findall(text or "")]
+        if named:
+            add(rails.check_terms(guard, {"days": list(dict.fromkeys(named))}))
+            declared = (message.meta.get("terms") or {}).get("days") or []
+            if declared and any(d not in declared for d in named):
+                found["DAY_NOT_DECLARED"] = rejection(
+                    "GUARDRAIL_DAY_NOT_DECLARED",
+                    "글에 적은 요일이 terms.days에 없습니다. 조건의 요일은 terms.days와 같게 쓰세요.",
                 )
         return list(found.values())
 
@@ -509,7 +559,12 @@ class VendorAgent:
             asks = questions.clean_asks(output.get("asks"))
             if asks:
                 reply.meta["asks"] = asks
-            excluded = [dict(x) for x in output.get("excluded") or [] if isinstance(x, dict)]
+            # 받지 않는 흐름은 이 대화의 흐름 ID와 이유 문장만 남긴다(다른 항목은 싣지 않는다)
+            excluded = [
+                {"streamId": x["streamId"], "reason": str(x.get("reason") or "").strip()}
+                for x in (output.get("excluded") if isinstance(output.get("excluded"), list) else [])
+                if isinstance(x, dict) and x.get("streamId") in thread.stream_ids
+            ]
             if excluded:
                 reply.meta["excluded"] = excluded
             if isinstance(output.get("reason"), str) and output["reason"].strip():
@@ -523,13 +578,20 @@ class VendorAgent:
             except ThreadError as error:
                 found.append(rejection("THREAD_RULE", f"대화 규칙에 맞지 않습니다: {error}"))
             names = [org.get("name"), emitter.get("name"), *[x.get("name") for x in streams]]
-            result = validate_message(reply, self.registry, today=self.today, names=names)
-            found += [r.to_dict() for r in result.rejections]
+            # 조건(terms)을 먼저 붙인다. 조건 문장과 요일도 본문과 같은 근거 검증을 받는다
             terms, problems = self._terms(output, reply, pool)
-            found += problems
             if terms is not None:
                 reply.meta["terms"] = terms
+            result = validate_message(reply, self.registry, today=self.today, names=names)
+            found += [r.to_dict() for r in result.rejections]
+            found += problems
+            if terms is not None:
                 found += self._guard(guard, reply, terms, by_id)
+            known = {item["code"] for item in found}
+            if "GUARDRAIL_DAY_NOT_ALLOWED" in known:
+                known.add("GUARDRAIL_DAY_NOT_DECLARED")
+            found += [g for g in self._guard_any(guard, reply) if g["code"] not in known]
+            found += self._permits(reply, terms, tools, by_id)
             for problem in check_disclosure(reply, self.registry, self.store):
                 found.append(
                     rejection(
@@ -561,6 +623,31 @@ class VendorAgent:
             reply = outcome.message
             reply.meta["validation"]["rejections"] = public_rejections(
                 reply.meta["validation"]["rejections"]
+            )
+        elif any(r.get("code") == "PERMIT_MISMATCH" for r in outcome.rejections):
+            # 허가 품목이 맞지 않는 흐름에 조건을 내려다 두 번 거부됐다. 근거와 함께 닫는다
+            unmatched = [
+                sid
+                for sid in thread.stream_ids
+                if sid in by_id
+                and (tools.run("match_permit", {"streamId": sid}, "code").get("output") or {}).get(
+                    "matched"
+                )
+                is not True
+            ]
+            reply = make_decline(
+                thread_id=thread.id,
+                sender=vendor_org,
+                recipient=thread.emitter_org,
+                reason="허가 품목이 맞지 않는 흐름이 있어 이 대화를 닫습니다.",
+                stage=4,
+                stream_ids=tuple(unmatched),
+                evidence=[e for p in profile.get("permits") or [] for e in p.get("evidence") or []],
+                excluded=[
+                    {"streamId": sid, "reason": "허가 품목이 맞지 않습니다."} for sid in unmatched
+                ],
+                rejections=outcome.rejections,
+                attempts=outcome.attempts,
             )
         else:
             reply = make_handoff(

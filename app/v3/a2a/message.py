@@ -98,6 +98,28 @@ class Message:
         self.stream_ids = tuple(self.stream_ids)
         self.claims = tuple(self.claims)
 
+    def free_texts(self) -> list[tuple[str, str]]:
+        """본문 밖에 실려 화면과 문서로 나가는 문장: (자리, 글).
+
+        닫는 이유(meta.reason), 받지 않는 흐름의 이유(meta.excluded), 조건 문장과 요일
+        (meta.terms.conditions, days)이다. 본문과 같은 규칙으로 검사한다(근거 검증기, 정보 차단).
+        """
+        meta = self.meta if isinstance(self.meta, dict) else {}
+        out: list[tuple[str, str]] = []
+        if meta.get("reason") is not None:
+            out.append(("reason", str(meta["reason"])))
+        excluded = meta.get("excluded")
+        for item in excluded if isinstance(excluded, list) else [excluded] if excluded else []:
+            values = item.values() if isinstance(item, dict) else [item]
+            out += [("excluded", str(value)) for value in values if value is not None]
+        terms = meta.get("terms")
+        if isinstance(terms, dict):
+            for key in ("conditions", "days"):
+                found = terms.get(key)
+                for value in found if isinstance(found, list) else [found] if found else []:
+                    out.append((f"terms.{key}", str(value)))
+        return out
+
     def to_dict(self) -> dict[str, Any]:
         return {
             "threadId": self.thread_id,

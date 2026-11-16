@@ -189,7 +189,8 @@ def check_disclosure(message: Message, registry: Any, store: Any) -> list[dict[s
     others = {oid: org for oid, org in emitters.items() if oid != message.recipient}
     problems: list[dict[str, Any]] = []
 
-    text = message.text or ""
+    # 본문과, 본문 밖에 실려 화면으로 나가는 문장(닫는 이유, 받지 않는 이유, 조건 문장)을 함께 본다
+    text = "\n".join([message.text or "", *[found for _, found in message.free_texts()]])
     bare_text = _bare(text)
     for oid, org in others.items():
         name = str(org.get("name") or "")

@@ -212,14 +212,64 @@ def validate_message(
     names는 이 대화에 나오는 조직과 흐름의 이름이다. "(주)제2공장", "PP 2차 분쇄품"처럼 이름에
     든 숫자는 자리표시자 밖 숫자로 세지 않는다.
     """
-    return validate_text(
+    allowed = (*ALLOWED_TOKENS, *name_tokens(names))
+    result = validate_text(
         message.text,
         message.claims,
         registry,
         org_id=message.sender,
         today=today,
-        allowed_tokens=(*ALLOWED_TOKENS, *name_tokens(names)),
+        allowed_tokens=allowed,
     )
+    extra = validate_notes(message, allowed_tokens=allowed)
+    if not extra:
+        return result
+    return ValidationResult(ok=False, rejections=(*result.rejections, *extra))
+
+
+_NOTE_LABELS = {
+    "reason": "이유(reason)",
+    "excluded": "받지 않는 흐름의 이유(excluded)",
+    "terms.conditions": "조건 문장(terms.conditions)",
+    "terms.days": "수거 요일(terms.days)",
+}
+
+
+def validate_notes(
+    message: Message, *, allowed_tokens: Iterable[str] = ALLOWED_TOKENS
+) -> list[Rejection]:
+    """본문 밖에 실린 문장(닫는 이유, 받지 않는 이유, 조건 문장, 요일)도 본문과 같이 검사한다.
+
+    이 문장들도 화면과 문서에 그대로 나간다. 자리표시자 밖 숫자가 없어야 하고, 자리표시자는
+    이 메시지의 claims(본문에 쓰여 검증된 것)만 가리켜야 한다.
+    """
+    claim_ids = {c.id for c in message.claims}
+    out: list[Rejection] = []
+    for where, text in message.free_texts():
+        label = _NOTE_LABELS.get(where, where)
+        numbers = find_numbers(text, allowed_tokens=allowed_tokens)
+        if numbers:
+            shown = ", ".join(numbers[:8])
+            out.append(
+                Rejection(
+                    NUMBER_OUTSIDE_PLACEHOLDER,
+                    f"{label}에 자리표시자 밖 숫자({shown})가 있습니다. 숫자는 본문에 쓴 "
+                    "{{claimId}} 자리표시자로만 적으세요.",
+                    detail={"found": numbers, "where": where},
+                )
+            )
+        for name in dict.fromkeys(m.group(1) for m in PLACEHOLDER.finditer(text)):
+            if name not in claim_ids:
+                out.append(
+                    Rejection(
+                        UNKNOWN_PLACEHOLDER,
+                        f"{label}의 자리표시자 {{{{{name}}}}}에 맞는 claim이 이 메시지에 없습니다. "
+                        "본문에 쓴 claim만 가리키세요.",
+                        claim_id=name,
+                        detail={"where": where},
+                    )
+                )
+    return out
 
 
 def _check_claim(

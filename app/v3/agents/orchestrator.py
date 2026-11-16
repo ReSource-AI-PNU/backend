@@ -21,7 +21,17 @@ from app.v3.a2a.policy import (
 from app.v3.a2a.thread import Thread, ThreadError
 from app.v3.agents import questions
 from app.v3.agents.company import CompanyAgent
-from app.v3.agents.draft import ACCEPT, ASK_USER, Outcome, Trace, make_handoff, model_label
+from app.v3.a2a.guardrails import WEEKDAYS
+from app.v3.agents.draft import (
+    ACCEPT,
+    ASK_USER,
+    Outcome,
+    Trace,
+    make_decline,
+    make_handoff,
+    model_label,
+    public_rejections,
+)
 from app.v3.agents.pool import safe_id
 from app.v3.agents.vendor import public_profile
 from app.v3.demo.seed import share_evidence, share_stream, share_vendor_terms
@@ -75,6 +85,8 @@ def new_work() -> dict[str, Any]:
         "vendorModels": {},
         "cannotAsk": {},
         "handedOff": [],
+        "permitChecks": {},
+        "agreedBasis": {},
         "unresolved": [],
         "optimize": None,
         "result": None,
@@ -100,6 +112,11 @@ def claim_in(result: dict[str, Any] | None, key: str | None, new_id: str) -> dic
             # 사람이 읽는 이름과 구실은 도구의 claim 키에서 정한다
             return naming.annotate({**claim, "id": new_id}, key)
     return None
+
+
+def permit_digest(stream: dict[str, Any], vendor: dict[str, Any]) -> str:
+    """허가 품목 대조에 들어가는 값의 지문. 같으면 대조 결과도 같다."""
+    return ids.digest([stream.get("wasteItem"), stream.get("material"), vendor.get("permits")])
 
 
 def thread_names(store: Any, thread: Any) -> list[str]:
@@ -413,6 +430,11 @@ class Orchestrator:
                 )
                 ok, reason = can_open_thread(permit)
                 evidence = permit_evidence(permit)
+                work.setdefault("permitChecks", {}).setdefault(vendor_id, {})[sid] = {
+                    "digest": permit_digest(stream, publics[vendor_id]),
+                    "ok": ok,
+                    "evidence": evidence,
+                }
                 work["permits"].append(
                     {
                         "streamId": sid,
@@ -635,25 +657,117 @@ class Orchestrator:
         )
         actor = "company_agent" if sender == thread.emitter_org else "vendor_agent"
         self._append(session, thread, message, actor)
+        return self._release(session, thread, reassign=reassign, cause="handoff")
+
+    def _release(self, session, thread: Thread, *, reassign: bool, cause: str) -> bool:
+        """닫힌 대화의 승인과 배정을 지운다. 합의한 대화였으면 True(최적안을 다시 계산해야 한다)."""
         if any(a["threadId"] == thread.id for a in self.store.list_approvals(session["id"])):
             self.store.block_approval(session["id"], thread.id, None)
             for side in ("emitter", "vendor"):
                 self.store.set_approval(session["id"], thread.id, side, False)
         work = session["work"]
+        work.setdefault("agreedBasis", {}).pop(thread.id, None)
+        work["offers"].pop(thread.id, None)  # 닫힌 대화의 제안은 더 쓰지 않는다
         freed = work["assigned"].pop(thread.id, None)
         if not freed or work.get("result") is None:
             return False
-        # 합의한 대화가 넘어갔다. 그 배정은 결과 한 장에서 빠지고 흐름은 "확인 필요"가 된다
+        # 합의한 대화가 닫혔다. 그 배정은 결과 한 장에서 빠지고 흐름은 "확인 필요"가 된다
         handed = work.setdefault("handedOff", [])
         for sid in freed:
-            entry = {"streamId": sid, "vendorOrgId": thread.vendor_org, "threadId": thread.id}
+            entry = {
+                "streamId": sid,
+                "vendorOrgId": thread.vendor_org,
+                "threadId": thread.id,
+                "cause": cause,
+            }
             if entry not in handed:
                 handed.append(entry)
         if reassign:
-            self._reassign(session)
+            self._reassign(session, cause=cause)
         return True
 
-    def _reassign(self, session: dict[str, Any]) -> None:
+    # ── 허가 품목: 연 뒤에 맞지 않게 되면 근거와 함께 닫는다 ───────────
+    def _permit_failures(
+        self, session, thread: Thread, stream_ids: list[str]
+    ) -> tuple[list[str], list[str]]:
+        """지금의 업체 프로필로 허가 품목을 다시 대조한다. (맞지 않는 흐름, 허가증 근거).
+
+        대조는 판단 도구(match_permit)가 한다. 흐름의 품목·재질과 허가 품목이 지난번 대조와 같으면
+        다시 부르지 않는다.
+        """
+        work = session["work"]
+        profile = self.store.get_vendor_profile(thread.vendor_org)
+        permits = [e for p in profile.get("permits") or [] for e in p.get("evidence") or []]
+        for evidence_id in permits:  # 허가증 근거는 대조하기 전에 배출 기업에 연다
+            try:
+                share_evidence(self.registry, evidence_id, thread.emitter_org)
+            except (EvidenceNotFound, EvidenceForbidden):
+                continue
+        public = public_profile(profile, fleet_cost=False)
+        seen = work.setdefault("permitChecks", {}).setdefault(thread.vendor_org, {})
+        failed: list[str] = []
+        evidence: list[str] = []
+        for sid in stream_ids:
+            stream = self.store.get_stream(sid)
+            digest = permit_digest(stream, public)
+            done = seen.get(sid)
+            if not done or done["digest"] != digest:
+                permit = self._tool(
+                    session,
+                    "match_permit",
+                    {"stream": stream, "vendor": public},
+                    thread_id=thread.id,
+                    summary_ids={
+                        "streamId": sid,
+                        "vendorOrgId": thread.vendor_org,
+                        "reason": "recheck",
+                    },
+                )
+                ok, _ = can_open_thread(permit)
+                done = {"digest": digest, "ok": ok, "evidence": permit_evidence(permit)}
+                seen[sid] = done
+            if not done["ok"]:
+                failed.append(sid)
+                evidence += done["evidence"]
+        if failed:
+            evidence += permits
+        return failed, list(dict.fromkeys(evidence))
+
+    def _decline_for_permit(
+        self, session, thread: Thread, failed: list[str], evidence: list[str], *, reassign=True
+    ) -> bool:
+        """허가 품목이 맞지 않음을 연 뒤에 알았다. 회사 측이 근거와 함께 decline으로 닫는다."""
+        if thread.closed or thread.blocked:
+            return False
+        reason = "업체의 허가 품목이 이 대화의 흐름과 맞지 않아 근거와 함께 대화를 닫습니다."
+        message = make_decline(
+            thread_id=thread.id,
+            sender=thread.emitter_org,
+            recipient=thread.vendor_org,
+            reason=reason,
+            stage=4,
+            stream_ids=tuple(s for s in thread.stream_ids if s in failed),
+            evidence=evidence,
+            excluded=[{"streamId": sid, "reason": "허가 품목이 맞지 않습니다."} for sid in failed],
+        )
+        try:
+            thread.check(message)
+        except ThreadError:  # 턴 상한 등으로 decline을 보낼 수 없으면 담당자에게 넘긴다
+            return self._handoff(session, thread, thread.emitter_org, reason, reassign=reassign)
+        self._append(session, thread, message, "company_agent")
+        work = session["work"]
+        for sid in failed:
+            entry = {
+                "streamId": sid,
+                "vendorOrgId": thread.vendor_org,
+                "reason": "허가 품목이 맞지 않습니다.",
+                "stage": 4,
+            }
+            if entry not in work["excluded"]:
+                work["excluded"].append(entry)
+        return self._release(session, thread, reassign=reassign, cause="permit")
+
+    def _reassign(self, session: dict[str, Any], cause: str = "handoff") -> None:
         """합의한 대화가 담당자에게 넘어간 뒤: 그 업체를 빼고 최적안과 결과 한 장을 다시 만든다.
 
         - 넘어간 대화의 업체는 후보에서 뺀다. 이미 합의했거나 확정한 다른 대화의 배정은 그대로 둔다.
@@ -744,6 +858,7 @@ class Orchestrator:
                 )
             work["assigned"][thread.id] = new
             if sorted(new) != sorted(old):
+                work.setdefault("agreedBasis", {})[thread.id] = self._basis(session, thread)
                 self._loading_for(session, thread, new, streams, profiles)
                 self._verify(session, thread)
         work["result"] = self._result(session, streams)
@@ -763,7 +878,9 @@ class Orchestrator:
             session["id"],
             "system",
             "stage",
-            "합의한 대화가 담당자에게 넘어가 그 업체를 빼고 최적안을 다시 계산했습니다.",
+            "합의한 대화가 허가 품목 불일치로 닫혀 그 업체를 빼고 최적안을 다시 계산했습니다."
+            if cause == "permit"
+            else "합의한 대화가 담당자에게 넘어가 그 업체를 빼고 최적안을 다시 계산했습니다.",
             status=session["status"],
             resultStatus=work["result"]["status"],
             orgId=org_id,
@@ -811,10 +928,9 @@ class Orchestrator:
     def _receive(self, session, thread: Thread, reply: dict[str, Any]) -> None:
         """업체 측 답을 회사 측에서 다시 검사한 뒤에만 스레드에 붙인다."""
         work = session["work"]
-        meta = dict(reply.get("meta") or {})
-        self._flush(
-            session["id"], list(meta.pop("trace", None) or []), thread.id, thread.vendor_org
-        )
+        raw_meta = reply.get("meta") if isinstance(reply.get("meta"), dict) else {}
+        self._flush(session["id"], list(raw_meta.get("trace") or []), thread.id, thread.vendor_org)
+        meta = self._clean_meta(raw_meta, thread)
         reported = meta.get("validation") or {}
         problems: list[dict[str, Any]] = []
         message: Message | None = None
@@ -861,16 +977,35 @@ class Orchestrator:
                 stage=5,
             )
             return
+        if message.type in TERMS_TYPES:
+            # 조건을 낸 흐름의 허가 품목을 지금 프로필로 다시 대조한다. 맞지 않으면 그 답은 붙이지 않고
+            # 근거와 함께 닫는다(업체 측이 대조를 건너뛰었거나 보낸 뒤에 허가 품목이 바뀐 경우)
+            wanted = [
+                str(item.get("streamId"))
+                for item in (meta.get("terms") or {}).get("items") or []
+                if item.get("streamId") in thread.stream_ids
+            ]
+            failed, evidence = self._permit_failures(session, thread, list(dict.fromkeys(wanted)))
+            if failed:
+                self._decline_for_permit(session, thread, failed, evidence)
+                return
         message.meta["validation"] = {
             "ok": True,
-            "attempts": int(reported.get("attempts") or 1),
+            "attempts": reported.get("attempts") or 1,
             "rejections": list(reported.get("rejections") or []),
             "recheckedBy": thread.emitter_org,
         }
         if meta.get("model"):
             work["vendorModels"][thread.vendor_org] = meta["model"]
-        self._append(session, thread, message, "vendor_agent")
         claims = {c.id: c for c in message.claims}
+        for item in (message.meta.get("terms") or {}).get("items") or []:
+            # 조건의 단가는 업체가 적어 보낸 숫자가 아니라 검증된 claim에서 다시 읽어 적는다
+            claim = claims.get(item["claimId"])
+            try:
+                item["unitPriceKrwPerKg"] = convert(float(claim.value), claim.unit, "원/kg")
+            except (AttributeError, UnitError, TypeError, ValueError):
+                item["unitPriceKrwPerKg"] = None
+        self._append(session, thread, message, "vendor_agent")
         if message.type in TERMS_TYPES:
             terms = meta.get("terms") or {}
             offers = work["offers"].setdefault(thread.id, {})
@@ -901,6 +1036,66 @@ class Orchestrator:
                 }
                 if entry not in work["excluded"]:
                     work["excluded"].append(entry)
+
+    @staticmethod
+    def _clean_meta(raw: dict[str, Any], thread: Thread) -> dict[str, Any]:
+        """업체 측이 보낸 meta에서 정해 둔 항목만 정해 둔 모양으로 남긴다.
+
+        상대가 보낸 것은 믿지 않는다. 남긴 문장(이유, 조건)은 근거 검증기가 본문과 같이 검사한다.
+        """
+        meta: dict[str, Any] = {}
+        reported = raw.get("validation") if isinstance(raw.get("validation"), dict) else {}
+        attempts = reported.get("attempts")
+        meta["validation"] = {
+            "attempts": attempts
+            if isinstance(attempts, int) and not isinstance(attempts, bool)
+            else 1,
+            "rejections": public_rejections(
+                reported.get("rejections") if isinstance(reported.get("rejections"), list) else []
+            ),
+        }
+        model = raw.get("model")
+        if isinstance(model, dict) and model.get("provider"):
+            meta["model"] = {"provider": str(model["provider"]), "name": str(model.get("name"))}
+        if isinstance(raw.get("reason"), str) and raw["reason"].strip():
+            meta["reason"] = raw["reason"].strip()
+        if isinstance(raw.get("reasonEvidence"), list):
+            meta["reasonEvidence"] = [e for e in raw["reasonEvidence"] if isinstance(e, str)]
+        asks = questions.clean_asks(raw.get("asks"))
+        if asks:
+            meta["asks"] = asks
+        excluded = [
+            {"streamId": x["streamId"], "reason": str(x.get("reason") or "").strip()}
+            for x in (raw.get("excluded") if isinstance(raw.get("excluded"), list) else [])
+            if isinstance(x, dict) and x.get("streamId") in thread.stream_ids
+        ]
+        if excluded:
+            meta["excluded"] = excluded
+        terms = raw.get("terms")
+        if isinstance(terms, dict):
+            meta["terms"] = {
+                "items": [
+                    {"streamId": str(i.get("streamId")), "claimId": str(i.get("claimId"))}
+                    for i in (terms.get("items") if isinstance(terms.get("items"), list) else [])
+                    if isinstance(i, dict)
+                ],
+                "days": [
+                    d
+                    for d in (terms.get("days") if isinstance(terms.get("days"), list) else [])
+                    if d in WEEKDAYS
+                ],
+                "conditions": [
+                    c.strip()
+                    for c in (
+                        terms.get("conditions") if isinstance(terms.get("conditions"), list) else []
+                    )
+                    if isinstance(c, str) and c.strip()
+                ],
+            }
+            pickups = terms.get("pickupsPerMonth")
+            if isinstance(pickups, (int, float)) and not isinstance(pickups, bool):
+                meta["terms"]["pickupsPerMonth"] = pickups  # 화면에는 나가지 않는다(값은 claims에)
+        return meta
 
     # ── ④~⑤ 대화 ──────────────────────────────────────────────────────
     def _converse(self, session: dict[str, Any]) -> bool:
@@ -1045,6 +1240,13 @@ class Orchestrator:
             for t in self._threads(session["id"])
             if t.status == "open" and work["offers"].get(t.id)
         ]
+        for thread in list(live):  # 제안을 받은 뒤 허가 품목이 바뀌었으면 근거와 함께 닫는다
+            failed, evidence = self._permit_failures(
+                session, thread, sorted(work["offers"][thread.id])
+            )
+            if failed:
+                self._decline_for_permit(session, thread, failed, evidence, reassign=False)
+                live.remove(thread)
         work["stages"]["5"] = "running"
         costs = []
         for thread in live:
@@ -1111,6 +1313,7 @@ class Orchestrator:
                 streamIds=assigned[thread.id],
                 agreedSeq=thread.agreed_seq,
             )
+            work.setdefault("agreedBasis", {})[thread.id] = self._basis(session, thread)
             self._loading_for(session, thread, assigned[thread.id], streams, profiles)
             self._verify(session, thread)
         work["result"] = self._result(session, streams)
@@ -1132,11 +1335,23 @@ class Orchestrator:
             # 대화 뒤에 근거가 바뀌었거나 사라졌으면 그 메시지의 근거 확인은 실패다
             if message.meta.get("evidenceMarks", {}) != self._fingerprints(message):
                 failed.append(f"{thread.id}_m{message.seq}: EVIDENCE_CHANGED")
+        basis = (session["work"].get("agreedBasis") or {}).get(thread.id)
+        changed = basis is not None and basis != self._basis(session, thread)
+        if changed:
+            # 합의한 뒤에 흐름 자료(재질, 물량, 측정값 등)가 바뀌었다. 앞선 합의와 승인은 이전 자료 기준이다
+            failed.append(f"{thread.id}: STREAM_CHANGED")
         if failed:
             reason = "근거 확인에 실패한 항목이 있어 승인할 수 없습니다: " + ", ".join(
                 dict.fromkeys(failed)
             )
+            if changed:
+                reason += ". 합의한 뒤에 흐름 자료가 바뀌었습니다. 진단을 새로 진행해 주세요."
             self.store.block_approval(session["id"], thread.id, reason)
+            if any(thread.approvals.values()):
+                # 앞서 한 승인은 바뀌기 전의 내용에 대한 것이다. 스레드의 승인도 함께 지운다
+                for side in ("emitter", "vendor"):
+                    thread.approvals[side] = False
+                self.store.put_thread(thread)
             self._event(
                 session["id"],
                 "validator",
@@ -1154,6 +1369,27 @@ class Orchestrator:
             if current and current["blocked"]:
                 self.store.block_approval(session["id"], thread.id, None)
         return failed
+
+    def _basis(self, session, thread: Thread) -> str:
+        """합의한 내용의 지문: 배정된 흐름의 자료와 그 흐름에 받은 조건.
+
+        현행 처리 단가는 업체와 나눈 조건이 아니므로 넣지 않는다.
+        """
+        work = session["work"]
+        assigned = sorted(work["assigned"].get(thread.id) or [])
+        offers = work["offers"].get(thread.id) or {}
+        streams = []
+        for sid in assigned:
+            stream = dict(self.store.get_stream(sid))
+            stream.pop("currentTreatment", None)
+            streams.append(stream)
+        return ids.digest(
+            {
+                "streams": streams,
+                "offers": {sid: offers.get(sid) for sid in assigned},
+                "agreedSeq": thread.agreed_seq,
+            }
+        )
 
     def _result(self, session, streams: list[dict[str, Any]]) -> dict[str, Any]:
         """결과 한 장(계약 7장 result). 숫자는 모두 도구가 낸 claim이다."""
@@ -1268,8 +1504,13 @@ class Orchestrator:
                     {
                         "key": "handoff",
                         "status": "conditional",
-                        "text": f"{names.get(handed[sid]['vendorOrgId']) or '업체'}와 합의한 대화가 "
-                        "담당자에게 넘어가 이 흐름의 배정을 뺐습니다. 확인 필요.",
+                        "text": (
+                            f"{names.get(handed[sid]['vendorOrgId']) or '업체'}의 허가 품목이 맞지 "
+                            "않게 되어 합의한 대화를 닫고 이 흐름의 배정을 뺐습니다. 확인 필요."
+                            if handed[sid].get("cause") == "permit"
+                            else f"{names.get(handed[sid]['vendorOrgId']) or '업체'}와 합의한 대화가 "
+                            "담당자에게 넘어가 이 흐름의 배정을 뺐습니다. 확인 필요."
+                        ),
                         "evidence": [],
                     }
                 )
@@ -1458,6 +1699,17 @@ class Orchestrator:
             return session  # 이미 확정됐다. 다시 눌러도 달라지지 않는다
         if thread.status != "agreed":
             raise OrchestratorError("NOT_AGREED", "합의된 조건이 있는 대화만 승인할 수 있습니다.")
+        failed, evidence = self._permit_failures(
+            session, thread, sorted(session["work"]["assigned"].get(thread.id) or thread.stream_ids)
+        )
+        if failed:
+            # 합의한 뒤에 업체의 허가 품목이 바뀌어 맞지 않게 됐다. 확정하지 않고 근거와 함께 닫는다
+            self._decline_for_permit(session, thread, failed, evidence)
+            self._save(session)
+            raise OrchestratorError(
+                "PERMIT_MISMATCH",
+                "업체의 허가 품목이 흐름과 맞지 않게 되어 승인하지 않고 대화를 닫았습니다.",
+            )
         if self._verify(session, thread):
             self._save(session)
             raise OrchestratorError(
