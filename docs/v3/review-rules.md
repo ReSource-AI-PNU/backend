@@ -125,7 +125,7 @@
 ## 실행
 
 ```
-PYTHONPATH=<pydeps>:. python3 -m pytest -q tests/v3          # 684 passed, 10 skipped
+PYTHONPATH=<pydeps>:. python3 -m pytest -q tests/v3          # 854 passed, 10 skipped (2차 수정 뒤. 처음 검토 때는 684)
 python3 -m ruff check .                                     # All checks passed
-python3 -m ruff format --check app/v3 tests/v3 scripts/v3   # 134 files already formatted
+python3 -m ruff format --check app/v3 tests/v3 scripts/v3   # 147 files already formatted
 ```
