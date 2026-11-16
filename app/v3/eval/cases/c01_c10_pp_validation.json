@@ -1,0 +1,1174 @@
+{
+  "title": "PP 검증 사례 C01~C10 (docs/c-track/pp-validation-cases.md를 그대로 옮김)",
+  "synthetic": true,
+  "note": "사례의 회사, 업체, 수치는 모두 가상이다. 실제 업체·견적·측정이 아니다.",
+  "cases": [
+    {
+      "id": "C01",
+      "title": "가공 전 PP 사출 불량품(금속 인서트 혼입, 물량 추정)",
+      "review": "제품 정책 초안",
+      "source": "docs/c-track/pp-validation-cases.md#C01",
+      "tags": [
+        "PP",
+        "PIR",
+        "혼입",
+        "물량 추정",
+        "형태"
+      ],
+      "world": {
+        "streams": [
+          {
+            "id": "st_a",
+            "name": "PP 사출 불량품",
+            "material": "PP",
+            "origin": "PIR",
+            "form": "가공 전",
+            "monthlyKg": 500,
+            "monthlyKgBasis": "estimated",
+            "bulkDensityKgPerM3": 250,
+            "measure": {
+              "contaminationPct": 1.0,
+              "moisturePct": 0.3
+            },
+            "contaminants": [
+              "금속 인서트"
+            ]
+          }
+        ],
+        "vendors": [
+          {
+            "orgId": "org_press",
+            "permits": [
+              {
+                "wasteItem": "폐플라스틱",
+                "materials": [
+                  "PP",
+                  "PE"
+                ]
+              }
+            ],
+            "criteria": [
+              {
+                "id": "pc_pp_press",
+                "material": "PP",
+                "form": "압축",
+                "grade": "B",
+                "maxContaminationPct": 12,
+                "maxMoisturePct": 3,
+                "unitPriceKrwPerKg": 200,
+                "minMonthlyKg": 300
+              }
+            ],
+            "name": "(주)가상압축자원"
+          }
+        ]
+      },
+      "expect": {
+        "tools": [
+          {
+            "tool": "judge_route",
+            "stream": "st_a",
+            "vendor": "org_press",
+            "status": "conditional",
+            "checks": {
+              "form": "conditional",
+              "mixture": "conditional",
+              "monthly_kg_basis": "conditional"
+            },
+            "askContains": [
+              "금속 인서트"
+            ]
+          }
+        ],
+        "session": {
+          "status": "awaiting_approval"
+        },
+        "result": {
+          "status": "conditional"
+        },
+        "assignments": {
+          "st_a": {
+            "vendor": "org_press",
+            "status": "conditional",
+            "checks": [
+              "form",
+              "mixture",
+              "monthly_kg_basis"
+            ]
+          }
+        },
+        "threads": [
+          {
+            "vendor": "org_press",
+            "status": "agreed",
+            "hasTypes": [
+              "conditional"
+            ],
+            "noTypes": [
+              "offer"
+            ]
+          }
+        ]
+      },
+      "forbidden": [
+        {
+          "kind": "verdict",
+          "stream": "st_a",
+          "status": "calculated",
+          "tool": "judge_route",
+          "why": "압축품 단가 × 물량을 실제 매각액으로 확정하지 않는다"
+        },
+        {
+          "kind": "text",
+          "pattern": "보증",
+          "why": "재활용 가능을 보증하지 않는다"
+        },
+        {
+          "kind": "text",
+          "pattern": "혼입 비율(은|이)? *\\{\\{",
+          "why": "혼입 비율을 임의로 만들지 않는다"
+        }
+      ],
+      "synthetic": true
+    },
+    {
+      "id": "C02",
+      "title": "PP 압축품이나 품질·거래 단계 불명(오염 수치는 이미 모름)",
+      "review": "제품 정책 초안",
+      "source": "docs/c-track/pp-validation-cases.md#C02",
+      "tags": [
+        "PP",
+        "PIR",
+        "측정값 없음",
+        "모름"
+      ],
+      "world": {
+        "streams": [
+          {
+            "id": "st_a",
+            "name": "PP 압축품",
+            "material": "PP",
+            "origin": "PIR",
+            "form": "압축",
+            "monthlyKg": 500,
+            "monthlyKgBasis": "measured",
+            "bulkDensityKgPerM3": 250,
+            "measure": null,
+            "unknownFields": [
+              "contaminationPct",
+              "moisturePct"
+            ]
+          }
+        ],
+        "vendors": [
+          {
+            "orgId": "org_press",
+            "permits": [
+              {
+                "wasteItem": "폐플라스틱",
+                "materials": [
+                  "PP",
+                  "PE"
+                ]
+              }
+            ],
+            "criteria": [
+              {
+                "id": "pc_pp_press",
+                "material": "PP",
+                "form": "압축",
+                "grade": "B",
+                "maxContaminationPct": 12,
+                "maxMoisturePct": 3,
+                "unitPriceKrwPerKg": 200,
+                "minMonthlyKg": 300
+              }
+            ],
+            "name": "(주)가상압축자원"
+          }
+        ]
+      },
+      "expect": {
+        "tools": [
+          {
+            "tool": "judge_route",
+            "stream": "st_a",
+            "vendor": "org_press",
+            "status": "conditional",
+            "checks": {
+              "contaminationPct": "conditional",
+              "moisturePct": "conditional"
+            }
+          }
+        ],
+        "result": {
+          "status": "conditional"
+        },
+        "assignments": {
+          "st_a": {
+            "vendor": "org_press",
+            "status": "conditional",
+            "checks": [
+              "contaminationPct",
+              "moisturePct"
+            ]
+          }
+        },
+        "questions": {
+          "count": 0
+        }
+      },
+      "forbidden": [
+        {
+          "kind": "question",
+          "stream": "st_a",
+          "field": "contaminationPct",
+          "why": "이미 모름인 오염 수치를 다시 요구하지 않는다"
+        },
+        {
+          "kind": "question",
+          "stream": "st_a",
+          "field": "moisturePct",
+          "why": "이미 모름인 값을 다시 요구하지 않는다"
+        },
+        {
+          "kind": "verdict",
+          "stream": "st_a",
+          "status": "calculated",
+          "tool": "judge_route",
+          "why": "압축 상태 하나만으로 실제 가격 적용 가능을 확정하지 않는다"
+        }
+      ],
+      "synthetic": true
+    },
+    {
+      "id": "C03",
+      "title": "세척·파쇄한 PP(분쇄)는 압축·펠렛과 구분",
+      "review": "제품 정책 초안",
+      "source": "docs/c-track/pp-validation-cases.md#C03",
+      "tags": [
+        "PP",
+        "PIR",
+        "형태"
+      ],
+      "world": {
+        "streams": [
+          {
+            "id": "st_a",
+            "name": "PP 분쇄품",
+            "material": "PP",
+            "origin": "PIR",
+            "form": "분쇄",
+            "monthlyKg": 500,
+            "monthlyKgBasis": "measured",
+            "bulkDensityKgPerM3": 250,
+            "measure": {
+              "contaminationPct": 1.0,
+              "moisturePct": 0.3
+            }
+          }
+        ],
+        "vendors": [
+          {
+            "orgId": "org_press",
+            "permits": [
+              {
+                "wasteItem": "폐플라스틱",
+                "materials": [
+                  "PP",
+                  "PE"
+                ]
+              }
+            ],
+            "criteria": [
+              {
+                "id": "pc_pp_press",
+                "material": "PP",
+                "form": "압축",
+                "grade": "B",
+                "maxContaminationPct": 12,
+                "maxMoisturePct": 3,
+                "unitPriceKrwPerKg": 200,
+                "minMonthlyKg": 300
+              }
+            ],
+            "name": "(주)가상압축자원"
+          }
+        ]
+      },
+      "expect": {
+        "tools": [
+          {
+            "tool": "judge_route",
+            "stream": "st_a",
+            "vendor": "org_press",
+            "status": "conditional",
+            "checks": {
+              "form": "conditional"
+            },
+            "askContains": [
+              "전처리"
+            ]
+          }
+        ],
+        "result": {
+          "status": "conditional"
+        },
+        "assignments": {
+          "st_a": {
+            "vendor": "org_press",
+            "status": "conditional",
+            "checks": [
+              "form"
+            ]
+          }
+        }
+      },
+      "forbidden": [
+        {
+          "kind": "verdict",
+          "stream": "st_a",
+          "status": "calculated",
+          "tool": "judge_route",
+          "why": "분쇄만으로 매입 기준 일치를 확정하지 않는다"
+        },
+        {
+          "kind": "text",
+          "pattern": "순이익",
+          "why": "가공비·수율 없이 순이익을 확정하지 않는다"
+        }
+      ],
+      "synthetic": true
+    },
+    {
+      "id": "C04",
+      "title": "PP 압축품, 조건 진술이 모두 있는 경우",
+      "review": "제품 정책 초안",
+      "source": "docs/c-track/pp-validation-cases.md#C04",
+      "tags": [
+        "PP",
+        "PIR",
+        "측정값 있음",
+        "현행 없음"
+      ],
+      "world": {
+        "streams": [
+          {
+            "id": "st_a",
+            "name": "PP 압축품",
+            "material": "PP",
+            "origin": "PIR",
+            "form": "압축",
+            "monthlyKg": 500,
+            "monthlyKgBasis": "measured",
+            "bulkDensityKgPerM3": 250,
+            "measure": {
+              "contaminationPct": 1.0,
+              "moisturePct": 0.3
+            }
+          }
+        ],
+        "vendors": [
+          {
+            "orgId": "org_press",
+            "permits": [
+              {
+                "wasteItem": "폐플라스틱",
+                "materials": [
+                  "PP",
+                  "PE"
+                ]
+              }
+            ],
+            "criteria": [
+              {
+                "id": "pc_pp_press",
+                "material": "PP",
+                "form": "압축",
+                "grade": "B",
+                "maxContaminationPct": 12,
+                "maxMoisturePct": 3,
+                "unitPriceKrwPerKg": 200,
+                "minMonthlyKg": 300
+              }
+            ],
+            "name": "(주)가상압축자원"
+          }
+        ]
+      },
+      "expect": {
+        "tools": [
+          {
+            "tool": "judge_route",
+            "stream": "st_a",
+            "vendor": "org_press",
+            "status": "calculated",
+            "noAsks": true,
+            "claims": {
+              "monthlyAfter": 100000
+            },
+            "checks": {
+              "current_assumed": "met"
+            }
+          }
+        ],
+        "session": {
+          "status": "awaiting_approval"
+        },
+        "result": {
+          "status": "calculated"
+        },
+        "assignments": {
+          "st_a": {
+            "vendor": "org_press",
+            "route": "sell",
+            "status": "calculated",
+            "currentAssumed": true,
+            "unitPrice": 200
+          }
+        },
+        "questions": {
+          "count": 0
+        }
+      },
+      "forbidden": [
+        {
+          "kind": "text",
+          "pattern": "현재 시세|실제 견적입니다|운임 포함|품질을 인증",
+          "why": "품질 인증, 현재 시세·견적, 운임 포함으로 말하지 않는다"
+        }
+      ],
+      "synthetic": true
+    },
+    {
+      "id": "C05",
+      "title": "재질을 추정한 경우(PP 추정)",
+      "review": "제품 정책 초안",
+      "source": "docs/c-track/pp-validation-cases.md#C05",
+      "tags": [
+        "PP",
+        "PIR",
+        "재질 추정"
+      ],
+      "world": {
+        "streams": [
+          {
+            "id": "st_a",
+            "name": "PP 압축품",
+            "material": "PP",
+            "origin": "PIR",
+            "form": "압축",
+            "monthlyKg": 500,
+            "monthlyKgBasis": "measured",
+            "bulkDensityKgPerM3": 250,
+            "measure": {
+              "contaminationPct": 1.0,
+              "moisturePct": 0.3
+            },
+            "materialBasis": "estimated"
+          }
+        ],
+        "vendors": [
+          {
+            "orgId": "org_press",
+            "permits": [
+              {
+                "wasteItem": "폐플라스틱",
+                "materials": [
+                  "PP",
+                  "PE"
+                ]
+              }
+            ],
+            "criteria": [
+              {
+                "id": "pc_pp_press",
+                "material": "PP",
+                "form": "압축",
+                "grade": "B",
+                "maxContaminationPct": 12,
+                "maxMoisturePct": 3,
+                "unitPriceKrwPerKg": 200,
+                "minMonthlyKg": 300
+              }
+            ],
+            "name": "(주)가상압축자원"
+          }
+        ]
+      },
+      "expect": {
+        "tools": [
+          {
+            "tool": "judge_route",
+            "stream": "st_a",
+            "vendor": "org_press",
+            "status": "conditional",
+            "checks": {
+              "material_basis": "conditional"
+            }
+          }
+        ],
+        "result": {
+          "status": "conditional"
+        },
+        "assignments": {
+          "st_a": {
+            "vendor": "org_press",
+            "status": "conditional",
+            "checks": [
+              "material_basis"
+            ]
+          }
+        }
+      },
+      "forbidden": [
+        {
+          "kind": "verdict",
+          "stream": "st_a",
+          "status": "calculated",
+          "tool": "judge_route",
+          "why": "외관·용도만으로 PP를 확정하지 않는다"
+        }
+      ],
+      "synthetic": true
+    },
+    {
+      "id": "C06",
+      "title": "형태를 모르는 경우(가장 비싼 기준을 고르지 않는다)",
+      "review": "제품 정책 초안",
+      "source": "docs/c-track/pp-validation-cases.md#C06",
+      "tags": [
+        "PP",
+        "PIR",
+        "형태",
+        "모름"
+      ],
+      "world": {
+        "streams": [
+          {
+            "id": "st_a",
+            "name": "PP 형태 미확인",
+            "material": "PP",
+            "origin": "PIR",
+            "form": null,
+            "monthlyKg": 500,
+            "monthlyKgBasis": "measured",
+            "bulkDensityKgPerM3": 250,
+            "measure": {
+              "contaminationPct": 1.0,
+              "moisturePct": 0.3
+            }
+          }
+        ],
+        "vendors": [
+          {
+            "orgId": "org_press",
+            "permits": [
+              {
+                "wasteItem": "폐플라스틱",
+                "materials": [
+                  "PP",
+                  "PE"
+                ]
+              }
+            ],
+            "criteria": [
+              {
+                "id": "pc_pp_press",
+                "material": "PP",
+                "form": "압축",
+                "grade": "B",
+                "maxContaminationPct": 12,
+                "maxMoisturePct": 3,
+                "unitPriceKrwPerKg": 200,
+                "minMonthlyKg": 300
+              },
+              {
+                "id": "pc_pp_pellet",
+                "material": "PP",
+                "form": "펠렛",
+                "grade": "B",
+                "maxContaminationPct": 12,
+                "maxMoisturePct": 3,
+                "unitPriceKrwPerKg": 900,
+                "minMonthlyKg": 300
+              }
+            ],
+            "name": "(주)가상압축자원"
+          }
+        ]
+      },
+      "answers": {
+        "st_a.form": "unknown"
+      },
+      "expect": {
+        "tools": [
+          {
+            "tool": "judge_route",
+            "stream": "st_a",
+            "vendor": "org_press",
+            "status": "conditional",
+            "checks": {
+              "form": "conditional"
+            },
+            "askContains": [
+              "형태"
+            ],
+            "absentClaims": [
+              "unitPrice",
+              "monthlyAfter"
+            ]
+          },
+          {
+            "tool": "identify_stream",
+            "stream": "st_a",
+            "output": {
+              "form": null
+            },
+            "checks": {
+              "form": "conditional"
+            }
+          }
+        ],
+        "questions": {
+          "count": 1,
+          "asked": [
+            [
+              "st_a",
+              "form"
+            ]
+          ]
+        },
+        "unresolved": [
+          [
+            "st_a",
+            "form"
+          ]
+        ],
+        "streams": {
+          "st_a": {
+            "form": null
+          }
+        },
+        "result": {
+          "status": "needs_information"
+        },
+        "threads": [
+          {
+            "vendor": "org_press",
+            "status": "declined",
+            "noTypes": [
+              "offer",
+              "conditional",
+              "counter"
+            ]
+          }
+        ],
+        "assignments": {
+          "st_a": {
+            "vendor": null,
+            "status": "needs_information",
+            "unitPrice": null,
+            "checks": [
+              "unresolved"
+            ]
+          }
+        }
+      },
+      "forbidden": [
+        {
+          "kind": "tool_claim",
+          "tool": "judge_route",
+          "claim": "unitPrice",
+          "why": "형태를 모르는데 한 형태(가장 비싼 펠렛)의 단가를 고르지 않는다"
+        },
+        {
+          "kind": "money",
+          "stream": "st_a",
+          "fields": [
+            "unitPrice"
+          ],
+          "tools": false,
+          "why": "형태별 차이를 얻을 수 있는 금액으로 내지 않는다"
+        },
+        {
+          "kind": "verdict",
+          "stream": "st_a",
+          "status": "calculated",
+          "why": "형태 미확인을 확정으로 두지 않는다"
+        }
+      ],
+      "synthetic": true
+    },
+    {
+      "id": "C07",
+      "title": "다른 재질(ABS)·금속이 섞인 PP",
+      "review": "제품 정책 초안",
+      "source": "docs/c-track/pp-validation-cases.md#C07",
+      "tags": [
+        "PP",
+        "PIR",
+        "혼입",
+        "PP+ABS",
+        "금속"
+      ],
+      "world": {
+        "streams": [
+          {
+            "id": "st_a",
+            "name": "PP 사출품(혼입)",
+            "material": "PP",
+            "origin": "PIR",
+            "form": "압축",
+            "monthlyKg": 500,
+            "monthlyKgBasis": "measured",
+            "bulkDensityKgPerM3": 250,
+            "measure": {
+              "contaminationPct": 1.0,
+              "moisturePct": 0.3
+            },
+            "singleMaterial": false,
+            "contaminants": [
+              "ABS",
+              "금속 인서트"
+            ]
+          }
+        ],
+        "vendors": [
+          {
+            "orgId": "org_press",
+            "permits": [
+              {
+                "wasteItem": "폐플라스틱",
+                "materials": [
+                  "PP",
+                  "PE"
+                ]
+              }
+            ],
+            "criteria": [
+              {
+                "id": "pc_pp_press",
+                "material": "PP",
+                "form": "압축",
+                "grade": "B",
+                "maxContaminationPct": 12,
+                "maxMoisturePct": 3,
+                "unitPriceKrwPerKg": 200,
+                "minMonthlyKg": 300
+              }
+            ],
+            "name": "(주)가상압축자원"
+          }
+        ]
+      },
+      "expect": {
+        "tools": [
+          {
+            "tool": "judge_route",
+            "stream": "st_a",
+            "vendor": "org_press",
+            "status": "conditional",
+            "checks": {
+              "mixture": "conditional"
+            },
+            "askContains": [
+              "ABS",
+              "받을 수 있는지"
+            ]
+          }
+        ],
+        "result": {
+          "status": "conditional"
+        },
+        "assignments": {
+          "st_a": {
+            "vendor": "org_press",
+            "status": "conditional",
+            "checks": [
+              "mixture"
+            ]
+          }
+        }
+      },
+      "forbidden": [
+        {
+          "kind": "tool_route",
+          "routes": [
+            "pyrolysis",
+            "incinerate"
+          ],
+          "why": "혼입만으로 열분해·소각 경로를 확정하지 않는다"
+        },
+        {
+          "kind": "text",
+          "pattern": "유해",
+          "why": "폐기물 유해성을 판정하지 않는다"
+        },
+        {
+          "kind": "verdict",
+          "stream": "st_a",
+          "status": "calculated",
+          "tool": "judge_route",
+          "why": "혼입 상태의 수용을 확정하지 않는다"
+        }
+      ],
+      "synthetic": true
+    },
+    {
+      "id": "C08",
+      "title": "발생량을 모르는 경우",
+      "review": "제품 정책 초안",
+      "source": "docs/c-track/pp-validation-cases.md#C08",
+      "tags": [
+        "PP",
+        "PIR",
+        "물량 모름"
+      ],
+      "world": {
+        "streams": [
+          {
+            "id": "st_a",
+            "name": "PP 압축품",
+            "material": "PP",
+            "origin": "PIR",
+            "form": "압축",
+            "monthlyKg": null,
+            "monthlyKgBasis": "measured",
+            "bulkDensityKgPerM3": 250,
+            "measure": {
+              "contaminationPct": 1.0,
+              "moisturePct": 0.3
+            }
+          }
+        ],
+        "vendors": [
+          {
+            "orgId": "org_press",
+            "permits": [
+              {
+                "wasteItem": "폐플라스틱",
+                "materials": [
+                  "PP",
+                  "PE"
+                ]
+              }
+            ],
+            "criteria": [
+              {
+                "id": "pc_pp_press",
+                "material": "PP",
+                "form": "압축",
+                "grade": "B",
+                "maxContaminationPct": 12,
+                "maxMoisturePct": 3,
+                "unitPriceKrwPerKg": 200,
+                "minMonthlyKg": 300
+              }
+            ],
+            "name": "(주)가상압축자원"
+          }
+        ]
+      },
+      "answers": {
+        "st_a.monthlyKg": "unknown"
+      },
+      "expect": {
+        "tools": [
+          {
+            "tool": "judge_route",
+            "stream": "st_a",
+            "vendor": "org_press",
+            "status": "needs_information",
+            "noMoney": true
+          },
+          {
+            "tool": "cost_carbon",
+            "stream": "st_a",
+            "vendor": "org_press",
+            "origin": true,
+            "status": "needs_information",
+            "noMoney": true
+          },
+          {
+            "tool": "check_loading",
+            "streams": [
+              "st_a"
+            ],
+            "vendor": "org_press",
+            "status": "needs_information",
+            "noMoney": true
+          },
+          {
+            "tool": "judge_route",
+            "stream": "st_a",
+            "streamPatch": {
+              "monthlyKg": 0
+            },
+            "vendor": "org_press",
+            "status": "needs_information",
+            "noMoney": true
+          },
+          {
+            "tool": "optimize_assignment",
+            "streams": [
+              "st_a"
+            ],
+            "vendors": [
+              "org_press"
+            ],
+            "status": "needs_information",
+            "output": {
+              "assignments": []
+            }
+          }
+        ],
+        "questions": {
+          "count": 1,
+          "asked": [
+            [
+              "st_a",
+              "monthlyKg"
+            ]
+          ]
+        },
+        "unresolved": [
+          [
+            "st_a",
+            "monthlyKg"
+          ]
+        ],
+        "result": {
+          "status": "needs_information",
+          "totalDifference": null
+        },
+        "assignments": {
+          "st_a": {
+            "vendor": null,
+            "status": "needs_information"
+          }
+        }
+      },
+      "forbidden": [
+        {
+          "kind": "money",
+          "stream": "st_a",
+          "why": "0kg 대체나 임의 발생량으로 총액을 계산하지 않는다"
+        }
+      ],
+      "synthetic": true
+    },
+    {
+      "id": "C09",
+      "title": "답변 수정으로 재질·물량이 달라진 경우(PP 500kg 추정 → PE 800kg 측정)",
+      "review": "제품 정책 초안",
+      "source": "docs/c-track/pp-validation-cases.md#C09",
+      "tags": [
+        "PP",
+        "PE",
+        "수정",
+        "허가 불일치 아님"
+      ],
+      "session": false,
+      "world": {
+        "streams": [
+          {
+            "id": "st_a",
+            "name": "PP 압축품",
+            "material": "PP",
+            "origin": "PIR",
+            "form": "압축",
+            "monthlyKg": 500,
+            "monthlyKgBasis": "estimated",
+            "bulkDensityKgPerM3": 250,
+            "measure": {
+              "contaminationPct": 1.0,
+              "moisturePct": 0.3
+            }
+          }
+        ],
+        "vendors": [
+          {
+            "orgId": "org_press",
+            "permits": [
+              {
+                "wasteItem": "폐플라스틱",
+                "materials": [
+                  "PP",
+                  "PE"
+                ]
+              }
+            ],
+            "criteria": [
+              {
+                "id": "pc_pp_press",
+                "material": "PP",
+                "form": "압축",
+                "grade": "B",
+                "maxContaminationPct": 12,
+                "maxMoisturePct": 3,
+                "unitPriceKrwPerKg": 200,
+                "minMonthlyKg": 300
+              }
+            ],
+            "name": "(주)가상압축자원"
+          }
+        ]
+      },
+      "expect": {
+        "tools": [
+          {
+            "tool": "judge_route",
+            "stream": "st_a",
+            "vendor": "org_press",
+            "output": {
+              "acceptable": true
+            }
+          },
+          {
+            "tool": "judge_route",
+            "stream": "st_a",
+            "streamPatch": {
+              "material": "PE",
+              "monthlyKg": 800,
+              "monthlyKgBasis": "measured"
+            },
+            "vendor": "org_press",
+            "output": {
+              "acceptable": false
+            },
+            "absentClaims": [
+              "unitPrice",
+              "monthlyAfter"
+            ],
+            "claims": {
+              "monthlyKg": 800
+            }
+          }
+        ]
+      },
+      "forbidden": [
+        {
+          "kind": "text",
+          "pattern": "PP 가격",
+          "why": "PE로 고친 뒤에 PP 가격·판정을 유지하지 않는다"
+        }
+      ],
+      "note": "두 번째 호출이 수정 뒤의 입력이다. 금지 사항(수정 뒤 PP 단가 유지)은 두 번째 호출의 absentClaims로 본다. 이전 승인 상태 유지와 과거 기록 덮어쓰기는 tests/v3/test_judge_fixed_cases.py가 계산 근거 ID와 판으로 확인한다.",
+      "synthetic": true
+    },
+    {
+      "id": "C10",
+      "title": "실제 운송비를 물어보는 경우",
+      "review": "제품 정책 초안",
+      "source": "docs/c-track/pp-validation-cases.md#C10",
+      "tags": [
+        "PP",
+        "PIR",
+        "운송비",
+        "가정값"
+      ],
+      "world": {
+        "streams": [
+          {
+            "id": "st_a",
+            "name": "PP 압축품",
+            "material": "PP",
+            "origin": "PIR",
+            "form": "압축",
+            "monthlyKg": 500,
+            "monthlyKgBasis": "measured",
+            "bulkDensityKgPerM3": 250,
+            "measure": {
+              "contaminationPct": 1.0,
+              "moisturePct": 0.3
+            }
+          }
+        ],
+        "vendors": [
+          {
+            "orgId": "org_press",
+            "permits": [
+              {
+                "wasteItem": "폐플라스틱",
+                "materials": [
+                  "PP",
+                  "PE"
+                ]
+              }
+            ],
+            "criteria": [
+              {
+                "id": "pc_pp_press",
+                "material": "PP",
+                "form": "압축",
+                "grade": "B",
+                "maxContaminationPct": 12,
+                "maxMoisturePct": 3,
+                "unitPriceKrwPerKg": 200,
+                "minMonthlyKg": 300
+              }
+            ],
+            "name": "(주)가상압축자원"
+          }
+        ]
+      },
+      "expect": {
+        "tools": [
+          {
+            "tool": "cost_carbon",
+            "stream": "st_a",
+            "vendor": "org_press",
+            "origin": true,
+            "args": {
+              "pickupsPerMonth": 2,
+              "transportPaidBy": "emitter"
+            },
+            "status": "conditional",
+            "checks": {
+              "transport": "conditional"
+            },
+            "output": {
+              "transportAssumed": true
+            },
+            "textContains": [
+              "견적이 아닙니다"
+            ],
+            "askContains": [
+              "견적"
+            ]
+          },
+          {
+            "tool": "cost_carbon",
+            "stream": "st_a",
+            "vendor": "org_press",
+            "absentClaims": [
+              "monthlyTransport"
+            ]
+          }
+        ],
+        "assignments": {
+          "st_a": {
+            "vendor": "org_press",
+            "checks": [
+              "transport"
+            ]
+          }
+        }
+      },
+      "forbidden": [
+        {
+          "kind": "text",
+          "pattern": "운임(이|은)? 포함",
+          "why": "조사 가격에 운임이 포함됐다고 답하지 않는다"
+        },
+        {
+          "kind": "text",
+          "pattern": "확정 운임|실제 운임은",
+          "why": "가정 운임을 실제 견적으로 내지 않는다"
+        }
+      ],
+      "synthetic": true
+    }
+  ]
+}
