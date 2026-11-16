@@ -211,7 +211,7 @@ class Aggregator:
         judged_any = any(v["judged"] for v in per.values())
         if cond_on and judged_any:
             ja = sum(v["j_area"] for v in per.values())
-            notes = {"a71385_sorting": "선별장 test 기준 객체 단위 정확도 0.75, 이미지별 비율 오차 ±0.21",
+            notes = {"a71385_sorting": "선별장 test 기준 물체 단위 이물 판정 정확도 0.76, 사진별 비율 오차 ±0.20 (v4)",
                      "aihub137_field": (field_note or {}).get("note", "현장 사진: OWLv2 의사 라벨로 학습, 사람 라벨 검증 없음. 사용자 확인 권장"),
                      "sortwaste_conveyor": (field_note or {}).get("conveyor_note", "컨베이어: ZeroWaste 오염물 라벨로 검증" if field_note else "선별장과 다른 시설 영상이라 검증 안 된 참고값")}
             contamination = {"overall_ratio": round(sum(v["cont_area"] for v in per.values()) / ja, 3) if ja else 0.0,
