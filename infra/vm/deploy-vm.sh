@@ -18,6 +18,11 @@
 #   AUTH_DEV_LOGIN   true(기본. 시연용 로그인) | false
 #   OLLAMA_MODELS    VM에 받아 둘 Ollama 모델 (기본 "bge-m3 qwen2.5:7b". 시연 업체 한 곳이 qwen2.5:7b를 고른다)
 #   SEED             1이면 배포 끝에 POST /api/v3/demo/reset 을 관리자 토큰으로 부른다
+#   INDEX            1이면 배포 끝에 백엔드 컨테이너 안에서 근거 색인을 다시 만든다(scripts/v3/index_evidence.py
+#                    --create-index. 운영 DB의 근거를 질의와 같은 임베딩으로 올린다). SEED=1과 함께 주면 되돌린 뒤에 돈다
+#   AZURE_SEARCH_INDEX            근거 색인 이름 (기본 rsai-evidence)
+#   FOUNDRY_EMBEDDING_DEPLOYMENT  질의·색인 임베딩 배포 (기본 text-embedding-3-small, 1536차원).
+#                    Foundry 계정에 이 배포가 없으면 V3_EMBEDDINGS를 비워 벡터 없이 글과 시맨틱 랭커로 찾는다
 #
 # 비밀: Key Vault에서 읽어 VM의 /opt/rsai/env/*.env(권한 600)에만 쓴다. 화면과 명령줄에 값을 찍지 않는다.
 #       v3-org-tokens, auth-secret 이 Key Vault에 없으면 새로 만들어 Key Vault에만 둔다.
@@ -36,6 +41,10 @@ V3_AUTH="${V3_AUTH:-token}"
 AUTH_DEV_LOGIN="${AUTH_DEV_LOGIN:-true}"
 OLLAMA_MODELS="${OLLAMA_MODELS:-bge-m3 qwen2.5:7b}"
 SEED="${SEED:-}"
+INDEX="${INDEX:-}"
+SEARCH_INDEX="${AZURE_SEARCH_INDEX:-rsai-evidence}"
+EMBED_DEPLOYMENT="${FOUNDRY_EMBEDDING_DEPLOYMENT:-text-embedding-3-small}"
+EMBED_DIMENSIONS=1536  # text-embedding-3-small. 다른 모델을 고르면 색인을 그 차원으로 다시 만든다(INDEX=1)
 ADMIN_USER="${ADMIN_USER:-rsai}"
 TAGQ="tags.project=='resource-ai'"
 ORGS=(org_hanbit org_daon org_saegil org_namhae org_miso org_admin)
@@ -75,7 +84,13 @@ if ! kv_has detector-api-key; then
   kv_set_file detector-api-key "$TMP/det"; rm -f "$TMP/det"
 fi
 
-FOUNDRY_ENDPOINT="$(az cognitiveservices account list -g "$RG" --query "[?$TAGQ && kind=='AIServices'] | [0].properties.endpoint" -o tsv)"
+# AI 서비스의 주소는 태그(project=resource-ai)와 종류로 찾는다. 키는 아래 put_secret이 Key Vault에서 읽는다
+ai_account() { az cognitiveservices account list -g "$RG" --query "[?$TAGQ && kind=='$1'] | [0].$2" -o tsv; }
+FOUNDRY_ENDPOINT="$(ai_account AIServices properties.endpoint)"
+FOUNDRY_NAME="$(ai_account AIServices name)"
+DOCINTEL_ENDPOINT="$(ai_account FormRecognizer properties.endpoint)"
+CONTENT_SAFETY_ENDPOINT="$(ai_account ContentSafety properties.endpoint)"
+SEARCH_NAME="$(az search service list -g "$RG" --query "[?$TAGQ] | [0].name" -o tsv)"
 
 # 값을 작은따옴표로 감싸 Compose가 $ 등을 해석하지 않게 한다. 값에 작은따옴표가 있으면 멈춘다
 put() {
@@ -98,6 +113,29 @@ put "$B" OLLAMA_BASE_URL "http://ollama:11434"
 put "$B" OLLAMA_EMBED_MODEL bge-m3
 put_secret "$B" AZURE_STORAGE_CONNECTION_STRING storage-connection-string
 put_secret "$B" APPLICATIONINSIGHTS_CONNECTION_STRING appinsights-connection-string
+# 문서 추출(Document Intelligence)과 업로드 문서의 지시문 주입 검사(Content Safety Prompt Shields)
+if [ -n "$DOCINTEL_ENDPOINT" ]; then
+  put "$B" AZURE_DOCUMENT_INTELLIGENCE_ENDPOINT "$DOCINTEL_ENDPOINT"
+  put_secret "$B" AZURE_DOCUMENT_INTELLIGENCE_API_KEY docintel-key
+else say "Document Intelligence 리소스를 찾지 못했다. 문서는 글 파일만 읽는다"; fi
+if [ -n "$CONTENT_SAFETY_ENDPOINT" ]; then
+  put "$B" AZURE_CONTENT_SAFETY_ENDPOINT "$CONTENT_SAFETY_ENDPOINT"
+  put_secret "$B" AZURE_CONTENT_SAFETY_API_KEY contentsafety-key
+else say "Content Safety 리소스를 찾지 못했다. 업로드 문서의 주입 검사를 하지 않는다"; fi
+# 근거 검색(Azure AI Search). 질의 임베딩은 색인(INDEX=1이나 맥에서 돌린 index_evidence)과 같은 Foundry 배포다
+if [ -n "$SEARCH_NAME" ]; then
+  put "$B" AZURE_SEARCH_ENDPOINT "https://$SEARCH_NAME.search.windows.net"
+  put_secret "$B" AZURE_SEARCH_API_KEY search-admin-key
+  put "$B" AZURE_SEARCH_INDEX "$SEARCH_INDEX"
+  put "$B" AZURE_SEARCH_VECTOR_DIMENSIONS "$EMBED_DIMENSIONS"
+  if [ -n "$FOUNDRY_NAME" ] && az cognitiveservices account deployment show -g "$RG" -n "$FOUNDRY_NAME" \
+      --deployment-name "$EMBED_DEPLOYMENT" --query name -o tsv >/dev/null 2>&1; then
+    put "$B" V3_EMBEDDINGS foundry
+    put "$B" FOUNDRY_EMBEDDING_DEPLOYMENT "$EMBED_DEPLOYMENT"
+  else
+    say "Foundry 임베딩 배포 $EMBED_DEPLOYMENT 가 없다. 근거 검색은 벡터 없이 글과 시맨틱 랭커로만 한다"
+  fi
+else say "Azure AI Search 를 찾지 못했다. 근거 검색은 로컬 검색으로 돈다"; fi
 put_secret "$B" MODEL_BLOB_URL model-blob-url
 # 사진·영상 탐지: 같은 VM의 detector 서비스(app/ml/score_api.py). 두 이름에 같은 키를 넣는다
 put "$B" V3_DETECTOR_ENDPOINT "http://detector:8000/score"
@@ -187,5 +225,9 @@ r = httpx.post(\"http://localhost:8000/api/v3/demo/reset\", headers=headers, tim
 print(\"demo/reset\", r.status_code)
 r.raise_for_status()
 "' </dev/null
+fi
+if [ "$INDEX" = 1 ]; then
+  say "근거 색인 다시 만들기 (백엔드 컨테이너 안에서, 운영 DB의 근거)"
+  "${SSH[@]}" 'cd /opt/rsai && docker compose exec -T backend python -m scripts.v3.index_evidence --create-index' </dev/null
 fi
 say "끝: https://$FQDN"
