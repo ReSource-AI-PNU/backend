@@ -61,6 +61,9 @@ def make_llm_factory(
     anthropic_api_key_file: str = "",
     anthropic_model: str = "",
     all_vendors: bool = False,
+    reasoning_effort: str = "",
+    max_completion_tokens: str = "",
+    ollama_num_ctx: str = "",
 ) -> Callable[[str, str, dict[str, Any] | None], Any]:
     """llm_factory(role, org_id, model) -> LLM | None. None이면 service가 규칙 정책으로 돈다.
 
@@ -82,6 +85,9 @@ def make_llm_factory(
         "ANTHROPIC_API_KEY_FILE": anthropic_api_key_file,
         "ANTHROPIC_MODEL": anthropic_model,
         "V3_LLM_ALL_VENDORS": "1" if all_vendors else "",
+        "FOUNDRY_REASONING_EFFORT": reasoning_effort,
+        "FOUNDRY_MAX_COMPLETION_TOKENS": max_completion_tokens,
+        "OLLAMA_NUM_CTX": ollama_num_ctx,
     }
     built = build_llm_factory(mode, env, strict=False)
     if built is not None:
@@ -149,6 +155,9 @@ def build_app() -> service.App:
         anthropic_api_key_file=settings.anthropic_api_key_file,
         anthropic_model=settings.anthropic_model,
         all_vendors=settings.v3_llm_all_vendors,
+        reasoning_effort=settings.foundry_reasoning_effort,
+        max_completion_tokens=settings.foundry_max_completion_tokens,
+        ollama_num_ctx=settings.ollama_num_ctx,
     )
     factory = maf.factory_from_env(factory, os.environ)
     store = tracing.enable(store, os.environ.get("APPLICATIONINSIGHTS_CONNECTION_STRING", ""))

@@ -42,7 +42,11 @@ class Settings(BaseSettings):
     foundry_endpoint: str = ""  # 리소스 주소까지만 (뒤에 /openai/... 를 붙이지 않는다)
     foundry_deployment: str = ""
     foundry_api_key: str = ""
+    # 추론 강도 minimal | low | medium | high | none(보내지 않음). 비우면 low. 값 확인은 agents/factory.py
+    foundry_reasoning_effort: str = ""
+    foundry_max_completion_tokens: str = ""  # 응답 토큰 상한(추론 토큰 포함). 비우면 4000
     ollama_base_url: str = ""  # 업체가 오픈 모델을 고른 경우. VNet 안의 주소만 쓴다
+    ollama_num_ctx: str = ""  # Ollama 문맥 길이. 비우면 16384
     # V3_LLM=anthropic일 때. 키는 ANTHROPIC_API_KEY 값으로 주거나(Key Vault 주입) ANTHROPIC_API_KEY_FILE에
     # 키만 담은 파일의 경로로 준다(값이 비어 있을 때만 파일을 읽는다). 기록과 예외 문구에 싣지 않는다
     anthropic_api_key: str = ""

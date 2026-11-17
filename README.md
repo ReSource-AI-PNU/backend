@@ -334,7 +334,9 @@ MCP 도구의 입력은 `{"org_id", "today", "arguments"}`이고 `arguments`가 
 | `ANTHROPIC_API_KEY`, `ANTHROPIC_API_KEY_FILE`, `ANTHROPIC_MODEL` | `V3_LLM=anthropic`일 때 쓴다. 키는 값으로 주거나 키만 담은 파일의 경로로 준다(값이 비어 있을 때만 파일을 읽는다). 모델을 비우면 `claude-sonnet-5-5`다. 키가 없으면 경고를 남기고 규칙 정책으로 돈다(로컬 서버는 멈춘다) |
 | `V3_LLM_ALL_VENDORS` | `true`면 ollama를 고른 업체도(Ollama 주소가 없을 때) anthropic 모델이 답한다. 기본 `false` |
 | `FOUNDRY_ENDPOINT`, `FOUNDRY_DEPLOYMENT`, `FOUNDRY_API_KEY` | `V3_LLM=foundry`일 때 쓴다. 주소는 리소스 주소까지만 적는다. 셋 중 하나라도 비면 규칙 정책으로 돈다 |
+| `FOUNDRY_REASONING_EFFORT`, `FOUNDRY_MAX_COMPLETION_TOKENS` | 추론 강도(`minimal \| low \| medium \| high \| none`, 비우면 `low`. `none`이면 보내지 않는다)와 응답 토큰 상한(비우면 4000, 추론 토큰 포함). gpt-5 계열의 기본 강도는 느리고 상한을 추론에 다 써 본문이 빈 채로 올 수 있다 |
 | `OLLAMA_BASE_URL` | 업체가 오픈 모델을 고른 경우의 Ollama 주소(VNet 안). 비어 있으면 그 업체는 규칙 정책으로 돌고, 다른 모델로 바꿔 부르지 않는다 |
+| `OLLAMA_NUM_CTX` | Ollama 문맥 길이(비우면 16384). Ollama의 기본값은 에이전트 입력보다 짧아 앞부분이 잘린다 |
 | `VENDOR_ORG_ID`, `VENDOR_SERVICE_KEY` | 업체 측 에이전트 서비스가 대변하는 업체와 Bearer 서비스 키. 키가 없으면 모든 메시지를 거절한다 |
 | `V3_VENDOR_AGENTS` | 따로 띄운 업체 측 에이전트의 주소 `{"업체 조직 ID": "https://..."}`. 비어 있으면(기본) API 프로세스 안에서 부른다. 값을 주면 모든 업체 메시지가 HTTP로 가므로 업체마다 서비스가 있거나 `"*"` 주소가 있어야 하고, `VENDOR_SERVICE_KEY`가 같아야 한다 |
 | `V3_AUTH` | 요청한 조직을 정하는 방법. `header`(기본, 시연 전용: `X-Org-Id`를 믿는다) 또는 `token`(조직별 서비스 토큰). header 모드는 시연 전용이며 공개 주소에 그대로 두면 조직 경계가 지켜지지 않는다 |
