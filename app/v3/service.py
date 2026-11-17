@@ -3,16 +3,23 @@
 viewer는 요청한 조직 ID다. 권한이 없으면 ServiceError(code, message, status)를 낸다.
 조직 경계: 배출 기업은 자기 진단만 보고, 업체는 자기가 들어간(열린) 스레드와 그 흐름만 본다.
 다른 배출 기업의 흐름·근거·스레드는 어떤 함수로도 보이지 않는다.
+
+한 진단에는 진행(run, 답, 승인)이 한 번에 하나만 돈다. 진행하는 동안 실행 자리(store.claim_run)를
+차지하고 살아 있다고 적으며(live.Heartbeat), 자리가 살아 있으면 다른 진행은 409 RUN_IN_PROGRESS다.
+실시간 진행 기록은 stream_events가 보는 조직에 맞춰 GET /sessions/{id}와 같은 규칙으로 거른다.
 """
 
 from __future__ import annotations
 
+import contextlib
 import copy
+import logging
+from collections.abc import Iterator
 from dataclasses import replace
 from datetime import datetime
 from typing import Any
 
-from app.v3 import feedback, ids
+from app.v3 import feedback, ids, live
 from app.v3 import names as naming
 from app.v3.a2a.message import STAGES
 from app.v3.a2a.policy import evidence_owner
@@ -44,6 +51,8 @@ from app.v3.judge import basis
 from app.v3.judge.common import without_emitter_only
 from app.v3.judge.defaults import register_defaults
 from app.v3.store import InMemoryStore, NotFound
+
+logger = logging.getLogger(__name__)
 
 STREAM_FIELDS = (
     "name",
@@ -136,9 +145,30 @@ class App:
         self.vendor_memo: dict[str, list[dict[str, Any]]] = {}
         self.resumed = False  # 로컬 서버가 저장 파일에서 이전 진단을 이어 간 경우 True
         self._rule = RulePolicy()
+        # 업체 게이트웨이를 주지 않았으면 같은 프로세스에서 이 앱으로 답한다(scoped가 다시 묶는다)
+        self._local_gateway = vendor_gateway is None
         self.vendor_gateway = vendor_gateway or LocalVendorGateway(
             lambda org, message, context: handle_vendor_message(self, org, message, context)
         )
+        # 실행 자리: 이 간격마다 살아 있다고 적고, 이만큼 적지 않은 자리는 멈춘 것으로 본다(초).
+        # 시각은 wall_clock()으로 읽는다(테스트에서 바꿔 끼운다)
+        self.run_heartbeat = live.HEARTBEAT_SECONDS
+        self.run_stale_after = live.STALE_SECONDS
+        self.wall_clock = live.wall_clock
+
+    def scoped(self, store: Any, registry: Any) -> App:
+        """저장소와 레지스트리만 바꾼 얕은 복사. 같은 프로세스의 업체 게이트웨이도 새 앱을 부르게 한다."""
+        other = copy.copy(self)
+        other.store, other.registry = store, registry
+        if self._local_gateway:
+            other.vendor_gateway = LocalVendorGateway(
+                lambda org, message, context: handle_vendor_message(other, org, message, context)
+            )
+        return other
+
+    def with_lock(self, lock: Any) -> App:
+        """저장소와 레지스트리를 부를 때마다 lock을 잡는 앱(메모리 저장소에서 뒤에서 도는 실행이 쓴다)."""
+        return self.scoped(live.Locked(self.store, lock), live.Locked(self.registry, lock))
 
     @property
     def today(self) -> str:
@@ -699,7 +729,7 @@ def list_sessions(app: App, viewer: str) -> list[dict[str, Any]]:
                 "id": session["id"],
                 "emitterOrgId": session["emitterOrgId"],
                 "emitterName": app.store.get_org(session["emitterOrgId"])["name"],
-                "status": session["status"],
+                "status": _shown_status(app, session),
                 "createdAt": session.get("createdAt"),
                 "updatedAt": session.get("updatedAt") or session.get("createdAt"),
                 "as": "admin" if admin else ("emitter" if mine else "vendor"),
@@ -709,11 +739,42 @@ def list_sessions(app: App, viewer: str) -> list[dict[str, Any]]:
 
 
 def run_session(app: App, session_id: str, viewer: str) -> dict[str, Any]:
-    _, owner = _session_for(app, session_id, viewer)
-    if not owner:
-        raise ServiceError("FORBIDDEN", "진단은 배출 기업 담당자만 진행할 수 있습니다.", 403)
-    _wrap(Orchestrator(app).run, session_id)
+    """다음 멈춤 지점까지 이 요청 안에서 돌리고 진단 뷰를 준다. 다른 진행이 돌고 있으면 409."""
+    _check_runner(app, session_id, viewer)
+    with _exclusive(app, session_id, "sync") as run:
+        _execute(app, session_id, run["runId"])
     return get_view(app, session_id, viewer)
+
+
+def start_run(app: App, session_id: str, viewer: str) -> dict[str, Any]:
+    """뒤에서 돌릴 실행의 자리를 차지한다(POST /sessions/{id}/run?mode=async). 돌리는 것은 execute_run.
+
+    응답의 after는 이 실행이 남길 첫 진행 기록 바로 앞의 seq다(GET /stream?after=로 이 실행만 본다).
+    """
+    session = _check_runner(app, session_id, viewer)
+    run = _take_run(app, session_id, "async")
+    feed = live.Recorder(app.store)
+    first = feed.status({**session, "status": "running"})
+    feed.note(session_id, "진단을 진행합니다.", org_id=session["emitterOrgId"])
+    return {
+        "sessionId": session_id,
+        "status": "running",
+        "runId": run["runId"],
+        "after": max(int(first["seq"]) - 1, 0) if first else 0,
+    }
+
+
+def execute_run(app: App, session_id: str, run_id: str) -> None:
+    """start_run이 차지한 자리에서 다음 멈춤 지점까지 돌린다(뒤에서 도는 스레드가 부른다).
+
+    오류는 실행 기록(kind "error")과 진행 기록에 남기고 진단을 멈춘 상태로 돌려 둔 뒤 다시 낸다.
+    끝나면(오류여도) 자리를 비운다.
+    """
+    try:
+        with live.Heartbeat(app.store, session_id, run_id, app.run_heartbeat, app.wall_clock):
+            _execute(app, session_id, run_id)
+    finally:
+        _release(app, session_id, run_id)
 
 
 def answer_question(
@@ -722,7 +783,8 @@ def answer_question(
     _, owner = _session_for(app, session_id, viewer)
     if not owner:
         raise ServiceError("FORBIDDEN", "질문에는 배출 기업 담당자만 답할 수 있습니다.", 403)
-    _wrap(Orchestrator(app).answer, session_id, question_id, value)
+    with _exclusive(app, session_id, "answer"):
+        _wrap(Orchestrator(app).answer, session_id, question_id, value)
     return get_view(app, session_id, viewer)
 
 
@@ -730,8 +792,116 @@ def approve(app: App, session_id: str, thread_id: str, viewer: str) -> dict[str,
     session, _ = _session_for(app, session_id, viewer)
     if thread_id not in {t["id"] for t in _visible_threads(app, session, viewer)}:
         raise ServiceError("THREAD_NOT_FOUND", "그런 대화가 없습니다.", 404)
-    _wrap(Orchestrator(app).approve, session_id, thread_id, viewer)
+    with _exclusive(app, session_id, "approve"):
+        _wrap(Orchestrator(app).approve, session_id, thread_id, viewer)
     return get_view(app, session_id, viewer)
+
+
+# ── 실행 자리(한 진단에 진행 하나) ───────────────────────────────────
+
+
+def _check_runner(app: App, session_id: str, viewer: str) -> dict[str, Any]:
+    session, owner = _session_for(app, session_id, viewer)
+    if not owner:
+        raise ServiceError("FORBIDDEN", "진단은 배출 기업 담당자만 진행할 수 있습니다.", 403)
+    return session
+
+
+def _live_run(app: App, session_id: str) -> dict[str, Any] | None:
+    """살아 있는 실행 자리. 없거나 멈춘(heartbeat가 오래된) 자리면 None."""
+    run = app.store.get_run(session_id)
+    return run if live.alive(run, app.run_stale_after, app.wall_clock()) else None
+
+
+def _shown_status(app: App, session: dict[str, Any]) -> str:
+    """화면에 보일 상태. 실행 자리가 살아 있으면 running, 멈춘 실행이 남긴 running은 idle이다."""
+    if _live_run(app, session["id"]) is not None:
+        return "running"
+    return "idle" if session.get("status") == "running" else str(session.get("status"))
+
+
+def _take_run(app: App, session_id: str, mode: str) -> dict[str, Any]:
+    """실행 자리를 차지한다. 다른 진행이 살아 있으면 409 RUN_IN_PROGRESS.
+
+    멈춘 자리(프로세스가 죽어 heartbeat가 끊김)는 차지하고, 그랬다고 실행 기록에 남긴다.
+    """
+    before = app.store.get_run(session_id)
+    now = app.wall_clock()
+    run = {
+        "runId": app.store.next_id("run"),
+        "mode": mode,
+        "startedAt": app.store.now(),
+        "heartbeat": now,
+    }
+    if app.store.claim_run(session_id, run, now - app.run_stale_after) is not None:
+        raise ServiceError(
+            "RUN_IN_PROGRESS", "이 진단은 지금 진행 중입니다. 끝난 뒤에 다시 해 주세요.", 409
+        )
+    if before is not None and before.get("runId") != run["runId"]:
+        app.store.add_event(
+            session_id,
+            "system",
+            "error",
+            "앞선 진행이 응답하지 않아(서버 재시작 등) 멈춘 것으로 보고 이어서 진행합니다.",
+            detail={"runId": before.get("runId"), "reason": "stale", "takenBy": run["runId"]},
+        )
+    live.HUB.bump(session_id)
+    return run
+
+
+def _release(app: App, session_id: str, run_id: str) -> None:
+    try:
+        app.store.release_run(session_id, run_id)
+    finally:
+        live.HUB.bump(session_id)
+
+
+@contextlib.contextmanager
+def _exclusive(app: App, session_id: str, mode: str) -> Iterator[dict[str, Any]]:
+    """이 요청 안에서 끝나는 진행(동기 run, 답, 승인)이 실행 자리를 차지하고 끝나면 비운다."""
+    run = _take_run(app, session_id, mode)
+    try:
+        heartbeat = live.Heartbeat(
+            app.store, session_id, run["runId"], app.run_heartbeat, app.wall_clock
+        )
+        with heartbeat:
+            yield run
+    finally:
+        _release(app, session_id, run["runId"])
+
+
+def _execute(app: App, session_id: str, run_id: str) -> None:
+    orchestrator = Orchestrator(app)
+    try:
+        _wrap(orchestrator.run, session_id)
+    except Exception as error:
+        _run_failed(app, orchestrator, session_id, run_id, error)
+        raise
+    # 아무것도 바꾸지 않고 끝났어도(이미 승인 대기 등) 마지막 상태를 남긴다(같은 값이면 남지 않는다)
+    orchestrator.feed.status(app.store.get_session(session_id))
+
+
+def _run_failed(
+    app: App, orchestrator: Orchestrator, session_id: str, run_id: str, error: Exception
+) -> None:
+    """진행 중 오류: 실행 기록에 남기고, running으로 남은 진단을 멈춘 상태로 돌린다."""
+    text = "진행 중 오류가 나서 멈췄습니다. 다시 진행할 수 있습니다."
+    try:
+        session = app.store.get_session(session_id)
+        if session.get("status") == "running":
+            open_questions = [
+                q for q in app.store.list_questions(session_id) if not q.get("answered")
+            ]
+            session["status"] = "awaiting_answers" if open_questions else "idle"
+            session = app.store.put_session(session)
+        code = getattr(error, "code", None) or type(error).__name__
+        app.store.add_event(
+            session_id, "system", "error", text, detail={"runId": run_id, "error": str(code)}
+        )
+        orchestrator.feed.note(session_id, text, org_id=session["emitterOrgId"])
+        orchestrator.feed.status(session)
+    except Exception:  # 원래 오류를 가리지 않는다
+        logger.exception("진행 중 오류를 기록하지 못했다: %s", session_id)
 
 
 def handle_vendor_message(
@@ -853,10 +1023,10 @@ def _stream_view(
 # 대화 화면에 보여 줄 작성자 이름. 구현 이름(모델 배포 이름, "규칙 정책(모델 미연결)")은 쓰지 않는다.
 # 구현 이름은 messages[].model과 threads[].vendorModel(그대로 둔다)과 관리자 화면(GET /admin/status)에 있다
 AUTHOR_LABELS = {
-    ("company", "agent"): "회사 측 AI",
-    ("vendor", "agent"): "업체 측 AI",
-    ("company", "system"): "자동 안내",
-    ("vendor", "system"): "자동 안내",
+    ("company", "agent"): live.AGENT_LABELS["company"],  # 회사 측 AI
+    ("vendor", "agent"): live.AGENT_LABELS["vendor"],  # 업체 측 AI
+    ("company", "system"): live.SYSTEM_LABEL,  # 자동 안내
+    ("vendor", "system"): live.SYSTEM_LABEL,
 }
 
 
@@ -1202,9 +1372,13 @@ def _recheck(app: App, org_id: str) -> None:
 
 def get_view(app: App, session_id: str, viewer: str) -> dict[str, Any]:
     session, owner = _session_for(app, session_id, viewer)
-    if session.get("status") == "awaiting_approval" and not app.read_only:
+    if (
+        session.get("status") == "awaiting_approval"
+        and not app.read_only
+        and _live_run(app, session_id) is None
+    ):
         # 저장소를 직접 고친 변경까지 잡으려고 뷰를 만들 때도 다시 확인한다(바뀐 것이 없으면 아무것도 쓰지 않는다).
-        # 체험하기(읽기 전용)에서는 쓰지 않는다
+        # 체험하기(읽기 전용)에서는 쓰지 않고, 진행이 돌고 있으면 그 진행에 맡긴다(같은 대화를 함께 고치지 않게)
         Orchestrator(app).recheck(session_id)
     me = app.store.get_org(viewer)
     work = session["work"]
@@ -1230,42 +1404,19 @@ def get_view(app: App, session_id: str, viewer: str) -> dict[str, Any]:
         "session": {
             "id": session["id"],
             "emitterOrgId": session["emitterOrgId"],
-            "status": session["status"],
+            "status": _shown_status(app, session),
             "phase": session.get("phase"),
             "version": session.get("version"),
             "today": session.get("today"),
         },
         "viewer": {"orgId": viewer, "role": me.get("role")},
-        "stages": [
-            {
-                "stage": number,
-                "key": key,
-                "label": label,
-                "status": work["stages"].get(str(number), "waiting"),
-            }
-            for number, (key, label) in sorted(STAGES.items())
-        ],
+        "stages": _stages_view(work["stages"]),
         "streams": [_stream_view(app, s, session, viewer, owner) for s in streams],
         "threads": [_thread_view(app, t, session, viewer) for t in threads],
         "graph": _graph(app, session, threads, streams, viewer),
         "result": _result_view(session, viewer, owner),
         "questions": [
-            {
-                k: q.get(k)
-                for k in (
-                    "id",
-                    "batch",
-                    "streamId",
-                    "field",
-                    "text",
-                    "answered",
-                    "unknown",
-                    "answerType",
-                    "unit",
-                    "choices",
-                )
-            }
-            for q in (app.store.list_questions(session_id) if owner else [])
+            _question_view(q) for q in (app.store.list_questions(session_id) if owner else [])
         ],
         "unresolved": list(work.get("unresolved") or []) if owner else [],
         "approvals": [
@@ -1284,6 +1435,173 @@ def get_view(app: App, session_id: str, viewer: str) -> dict[str, Any]:
         "events": _events_view(app, events, viewer, owner),
         "feedback": _feedback_view(app, session, viewer, owner),
     }
+
+
+QUESTION_KEYS = (
+    "id",
+    "batch",
+    "streamId",
+    "field",
+    "text",
+    "answered",
+    "unknown",
+    "answerType",
+    "unit",
+    "choices",
+)
+
+
+def _question_view(question: dict[str, Any]) -> dict[str, Any]:
+    return {k: question.get(k) for k in QUESTION_KEYS}
+
+
+def _stages_view(stages: dict[str, Any]) -> list[dict[str, Any]]:
+    return [
+        {
+            "stage": number,
+            "key": key,
+            "label": label,
+            "status": (stages or {}).get(str(number), "waiting"),
+        }
+        for number, (key, label) in sorted(STAGES.items())
+    ]
+
+
+# ── 실시간 진행 (계약 8장 "실시간 진행") ─────────────────────────────
+
+
+def stream_events(app: App, session_id: str, viewer: str, after: int = 0) -> dict[str, Any]:
+    """seq가 after보다 큰 진행 기록을 보는 조직에 맞춰 준다. GET /sessions/{id}/stream이 되풀이해 부른다.
+
+    {"status", "running", "lastSeq", "events": [{"event", "id", "data"}]}. running은 실행 자리가
+    살아 있는지다. lastSeq는 읽은 기록의 마지막 seq다(보는 조직에게 걸러진 기록도 센다).
+    거르는 규칙은 get_view와 같다: 배출 기업(과 관리자)은 모든 기록, 업체는 자기와 열린 대화의 기록 가운데
+    두 당사자가 함께 보는 것(보낸 메시지, 넘김, 대화 열기·합의·승인·확정·문서)과 자기가 한 일만 본다.
+    질문 묶음은 배출 기업만 본다. 거부 코드(codes)는 관리자 조직에만 나간다.
+    """
+    _, owner = _session_for(app, session_id, viewer)
+    admin = app.store.get_org(viewer).get("role") == "admin"
+    # 자리 → 진단 → 기록 순으로 읽는다. 자리가 비었으면 그 앞에 쓴 기록은 모두 아래에서 읽힌다
+    running = _live_run(app, session_id) is not None
+    session = _session(app, session_id)
+    status = "running" if running else _shown_status(app, session)
+    entries = app.store.list_activity(session_id, after)
+    if not entries:  # 새 기록이 없다(스트림이 기다리는 동안 되풀이하는 읽기는 여기서 끝난다)
+        return {"status": status, "running": running, "lastSeq": int(after), "events": []}
+    threads = {t["id"]: t for t in app.store.list_threads(session_id=session_id)}
+    visible = {t["id"] for t in _visible_threads(app, session, viewer)}
+    questions = {q["id"]: q for q in app.store.list_questions(session_id)} if owner else {}
+    names: dict[str, str | None] = {}
+
+    def name_of(org_id: str | None) -> str | None:
+        if not org_id:
+            return None
+        if org_id not in names:
+            try:
+                names[org_id] = app.store.get_org(org_id).get("name")
+            except NotFound:
+                names[org_id] = None
+        return names[org_id]
+
+    events = []
+    for entry in entries:
+        kind = entry.get("event") or "activity"
+        data: dict[str, Any] | None
+        if kind == "status":
+            data = {
+                "seq": entry["seq"],
+                "at": entry.get("at"),
+                "status": entry.get("status"),
+                "phase": entry.get("phase"),
+                "stages": _stages_view(entry.get("stages") or {}),
+            }
+        elif kind == "question":
+            data = (
+                {
+                    "seq": entry["seq"],
+                    "at": entry.get("at"),
+                    "stage": entry.get("stage"),
+                    "questions": [
+                        _question_view(questions[q])
+                        for q in entry.get("questionIds") or []
+                        if q in questions
+                    ],
+                }
+                if owner
+                else None
+            )
+        else:
+            data = _activity_view(entry, viewer, owner, admin, visible, threads, name_of)
+        if data is not None:
+            events.append({"event": kind, "id": entry["seq"], "data": data})
+    return {
+        "status": status,
+        "running": running,
+        "lastSeq": int(entries[-1]["seq"]) if entries else int(after),
+        "events": events,
+    }
+
+
+def _activity_view(
+    entry: dict[str, Any],
+    viewer: str,
+    owner: bool,
+    admin: bool,
+    visible: set[str],
+    threads: dict[str, dict[str, Any]],
+    name_of,
+) -> dict[str, Any] | None:
+    thread_id = entry.get("threadId")
+    if not owner and (
+        thread_id not in visible or not (entry.get("shared") or entry.get("orgId") == viewer)
+    ):
+        return None
+    thread = threads.get(thread_id) if thread_id else None
+    vendor = (thread or {}).get("vendorOrgId") or entry.get("vendorOrgId")
+    side = entry.get("side")
+    author = (
+        _author(side, {"provider": "code"} if entry.get("authorKind") == "system" else None)
+        if side in ("company", "vendor")
+        else None
+    )
+    data: dict[str, Any] = {
+        "seq": entry["seq"],
+        "at": entry.get("at"),
+        "stage": entry.get("stage"),
+        "actor": entry.get("actor"),
+        "kind": entry.get("kind"),
+        "threadId": thread_id,
+        "vendorOrgId": vendor,
+        "vendorName": name_of(vendor),
+        "author": author,
+        "text": entry.get("text") or "",
+    }
+    if entry.get("attempt") is not None:
+        data["attempt"] = entry["attempt"]
+    kind = entry.get("kind")
+    if kind in ("sent", "handoff"):
+        message = None
+        if thread is not None and thread_id in visible:
+            found = next(
+                (m for m in thread["messages"] if m.get("seq") == entry.get("messageSeq")), None
+            )
+            message = _message_view(found, thread["emitterOrgId"]) if found else None
+        data["message"] = message
+        data["messageType"] = entry.get("messageType")
+        if kind == "sent":
+            data["evidenceCount"] = int(entry.get("evidenceCount") or 0)
+    elif kind == "rejected":
+        data["reasons"] = list(entry.get("reasons") or [live.DEFAULT_REASON])
+        if admin:
+            data["codes"] = list(entry.get("codes") or [])
+    elif kind == "tool":
+        name = entry.get("tool")
+        data["tool"] = {
+            "name": name,
+            "label": live.TOOL_LABELS.get(name or "", "판단 도구"),
+            "status": entry.get("toolStatus"),
+        }
+    return data
 
 
 def _feedback_view(app: App, session: dict[str, Any], viewer: str, owner: bool) -> dict[str, Any]:

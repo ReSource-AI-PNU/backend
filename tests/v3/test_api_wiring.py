@@ -26,7 +26,8 @@ EDGES = (
 # 계약 8장에는 있는데 api.py(FastAPI)에 아직 없는 경로. 지금은 없다(두 서버의 경로가 같다).
 KNOWN_API_GAPS: set[tuple[str, str]] = set()
 # 경로가 부르지 않는 서비스 함수: 시드는 서버가 뜰 때, 업체 진입점은 vendor_service가 부른다.
-NOT_ROUTED = {"seed", "handle_vendor_message"}
+# execute_run은 두 서버가 POST /sessions/{id}/run?mode=async 뒤에 띄운 스레드가 부른다.
+NOT_ROUTED = {"seed", "handle_vendor_message", "execute_run"}
 
 
 def public_service_functions():
@@ -126,8 +127,8 @@ def test_contract_routes_are_read():
     assert ("GET", "/evidence") in routes and ("PUT", "/orgs/{}/streams/{}") in routes
     assert ("POST", "/intake/documents/confirm") in routes and ("GET", "/health") in routes
     assert ("POST", "/intake/media") in routes
-    assert ("GET", "/sessions") in routes
-    assert len(routes) == 26
+    assert ("GET", "/sessions") in routes and ("GET", "/sessions/{}/stream") in routes
+    assert len(routes) == 27
 
 
 def test_devserver_routes_equal_the_contract():

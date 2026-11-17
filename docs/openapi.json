@@ -3626,6 +3626,46 @@
         }
       }
     },
+    "/api/v3/sessions/{session_id}/stream": {
+      "get": {
+        "tags": [
+          "v3"
+        ],
+        "summary": "Session Stream",
+        "operationId": "session_stream_api_v3_sessions__session_id__stream_get",
+        "parameters": [
+          {
+            "name": "session_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Session Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v3/sessions/{session_id}/answers": {
       "post": {
         "tags": [
