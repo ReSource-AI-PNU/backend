@@ -70,8 +70,12 @@ def test_invites_are_used_once_and_expire(accounts):
     base = {"orgId": "org_x", "createdBy": "usr_a", "createdAt": iso(NOW), "usedAt": None}
     accounts.add_invite({**base, "tokenHash": "h1", "expiresAt": iso(NOW + timedelta(days=7))})
     accounts.add_invite({**base, "tokenHash": "h2", "expiresAt": iso(NOW + timedelta(days=7))})
+    peeked = accounts.get_invite("h1")  # 읽기만 한다(쓰지 않는다)
+    assert peeked["orgId"] == "org_x" and peeked["usedAt"] is None
+    assert accounts.get_invite("없음") is None
     used = accounts.use_invite("h1", "usr_b", NOW)
     assert used["orgId"] == "org_x" and used["usedBy"] == "usr_b" and used["usedAt"] == iso(NOW)
+    assert accounts.get_invite("h1")["usedBy"] == "usr_b"
     assert accounts.use_invite("h1", "usr_c", NOW) is None  # 한 번만
     assert accounts.use_invite("없음", "usr_c", NOW) is None
     assert accounts.use_invite("h2", "usr_c", NOW + timedelta(days=7)) is None  # 만료

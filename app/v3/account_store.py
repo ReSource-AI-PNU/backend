@@ -53,6 +53,7 @@ class AccountStore(Protocol):
     ) -> list[dict[str, Any]]: ...
 
     def add_invite(self, invite: dict[str, Any]) -> dict[str, Any]: ...
+    def get_invite(self, token_hash: str) -> dict[str, Any] | None: ...
     def use_invite(self, token_hash: str, user_id: str, now: datetime) -> dict[str, Any] | None: ...
 
 
@@ -118,6 +119,12 @@ class InMemoryAccounts:
         with self._lock:
             self._invites[invite["tokenHash"]] = copy.deepcopy(invite)
         return copy.deepcopy(invite)
+
+    def get_invite(self, token_hash: str) -> dict[str, Any] | None:
+        """초대를 읽기만 한다(쓰지 않는다). 없으면 None."""
+        with self._lock:
+            invite = self._invites.get(token_hash)
+            return copy.deepcopy(invite) if invite else None
 
     def use_invite(self, token_hash: str, user_id: str, now: datetime) -> dict[str, Any] | None:
         """쓰지 않았고 만료되지 않은 초대면 쓴 것으로 적고 돌려준다. 아니면 None. 한 번만 쓸 수 있다."""

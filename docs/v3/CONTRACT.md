@@ -741,6 +741,7 @@ HTTP 오류 코드가 아니라 `approvals[].blockedCodes`(배열)와 `blockedRe
 | `POST /orgs` | 키, `X-User-Id` | `{name, kind: "emitter" \| "vendor", bizNo?, region?, address?, location?: [경도, 위도]}` → 201 조직. 만든 사람이 owner다 |
 | `GET /orgs/{orgId}/members` | 키, `X-User-Id`(그 조직의 구성원) | `[{userId, name, email, memberRole}]` |
 | `POST /orgs/{orgId}/invites` | 키, `X-User-Id`(그 조직의 owner) | 201 `{token, expiresAt}`. 구성원이 아니면 403 `NOT_A_MEMBER`, owner가 아니면 403 `OWNER_ONLY` |
+| `GET /invites/{token}` | 키 | 초대 화면(로그인 전)이 초대한 조직을 보인다. 200 `{orgName, kind, expiresAt, valid: true}`. 조직 ID, 만든 사람, 구성원은 싣지 않는다. 초대를 쓰지 않는다. 없거나 만료되었거나 이미 쓴 초대는 410 `INVITE_INVALID`(어느 쪽인지 밝히지 않는다) |
 | `POST /invites/{token}/accept` | 키, `X-User-Id` | 200 `{orgId, orgName, kind, memberRole: "member"}`. 없거나 만료되었거나 이미 쓴 초대는 410 `INVITE_INVALID`. 이미 구성원이면 초대를 쓰고 있던 소속을 그대로 준다 |
 | `GET /demo/orgs` | 키 | 체험하기로 볼 수 있는 시연 조직 `[{id, name, kind}]`(조직 목록의 `order` 순) |
 

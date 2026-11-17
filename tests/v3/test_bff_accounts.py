@@ -240,6 +240,17 @@ def test_invite_create_accept_and_expire(world):
     expires = datetime.fromisoformat(invite.json()["expiresAt"])
     assert expires == clock.now + timedelta(days=7) and len(token) >= 40
 
+    # 초대 화면(로그인 전)은 BFF 키만으로 초대한 조직을 본다. 조직 ID나 만든 사람은 싣지 않는다
+    peek = client.get(f"/api/v3/invites/{token}", headers=bff())
+    assert peek.status_code == 200, peek.text
+    assert peek.json() == {
+        "orgName": "(주)가상자원",
+        "kind": "vendor",
+        "expiresAt": invite.json()["expiresAt"],
+        "valid": True,
+    }
+    assert client.get(f"/api/v3/invites/{token}").status_code == 401  # BFF 키가 있어야 한다
+    assert error(client.get("/api/v3/invites/없는토큰", headers=bff()), 410) == "INVITE_INVALID"
     accepted = client.post(f"/api/v3/invites/{token}/accept", headers=bff(member))
     assert accepted.status_code == 200, accepted.text
     assert accepted.json() == {
@@ -250,6 +261,7 @@ def test_invite_create_accept_and_expire(world):
     }
     used = client.post(f"/api/v3/invites/{token}/accept", headers=bff(late))
     assert error(used, 410) == "INVITE_INVALID"
+    assert error(client.get(f"/api/v3/invites/{token}", headers=bff()), 410) == "INVITE_INVALID"
     assert error(client.post("/api/v3/invites/없는토큰/accept", headers=bff(late)), 410) == (
         "INVITE_INVALID"
     )
@@ -264,7 +276,9 @@ def test_invite_create_accept_and_expire(world):
     assert all(set(m) == {"userId", "name", "email", "memberRole"} for m in members)
     # 7일이 지나면 만료된다
     expiring = client.post(f"/api/v3/orgs/{org}/invites", headers=bff(owner)).json()["token"]
+    assert client.get(f"/api/v3/invites/{expiring}", headers=bff()).status_code == 200
     clock.now += timedelta(days=7, seconds=1)
+    assert error(client.get(f"/api/v3/invites/{expiring}", headers=bff()), 410) == "INVITE_INVALID"
     expired = client.post(f"/api/v3/invites/{expiring}/accept", headers=bff(late))
     assert error(expired, 410) == "INVITE_INVALID"
     assert client.get(f"/api/v3/orgs/{org}/streams", headers=bff(late, org)).status_code == 403

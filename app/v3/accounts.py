@@ -21,7 +21,7 @@ import secrets
 from datetime import timedelta
 from typing import Any
 
-from app.v3.account_store import EmailTaken, iso
+from app.v3.account_store import EmailTaken, iso, parse_iso
 from app.v3.service import App, ServiceError
 from app.v3.store import NotFound
 
@@ -330,6 +330,34 @@ def create_invite(app: App, user_id: str, org_id: str) -> dict[str, Any]:
         }
     )
     return {"token": token, "expiresAt": expires}
+
+
+def peek_invite(app: App, token: str) -> dict[str, Any]:
+    """초대 화면이 보일 초대한 조직. 로그인하지 않은 사람도 본다(BFF 키만 있으면 된다).
+
+    {orgName, kind, expiresAt, valid: true}만 준다. 조직 ID, 만든 사람, 구성원은 싣지 않는다. 없거나 만료됐거나
+    이미 쓴 초대는 accept_invite와 같은 410 INVITE_INVALID다(어느 쪽인지 밝히지 않는다).
+    """
+    invalid = ServiceError("INVITE_INVALID", "초대가 만료되었거나 이미 쓰였습니다.", 410)
+    if not token or len(token) > 200:
+        raise invalid
+    invite = app.accounts.get_invite(_token_hash(token))
+    if (
+        invite is None
+        or invite.get("usedAt")
+        or parse_iso(invite["expiresAt"]) <= app.accounts.now()
+    ):
+        raise invalid
+    try:
+        org = app.store.get_org(invite["orgId"])
+    except NotFound:
+        raise invalid from None
+    return {
+        "orgName": org.get("name"),
+        "kind": org.get("role"),
+        "expiresAt": invite["expiresAt"],
+        "valid": True,
+    }
 
 
 def accept_invite(app: App, user_id: str, token: str) -> dict[str, Any]:

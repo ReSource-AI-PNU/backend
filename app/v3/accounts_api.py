@@ -76,6 +76,14 @@ async def create_invite(org_id: str, request: Request):
     return created(await call(accounts.create_invite, _user_id(request), org_id))
 
 
+@router.get("/invites/{token}")
+@guarded
+async def invite(token: str, request: Request):
+    # 초대 화면(로그인 전)이 초대한 조직을 보인다. 사용자 없이 BFF 키만 본다
+    _bff(request)
+    return await call(accounts.peek_invite, token)
+
+
 @router.post("/invites/{token}/accept")
 @guarded
 async def accept_invite(token: str, request: Request):

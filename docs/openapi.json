@@ -4213,6 +4213,46 @@
         }
       }
     },
+    "/api/v3/invites/{token}": {
+      "get": {
+        "tags": [
+          "v3-accounts"
+        ],
+        "summary": "Invite",
+        "operationId": "invite_api_v3_invites__token__get",
+        "parameters": [
+          {
+            "name": "token",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Token"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v3/invites/{token}/accept": {
       "post": {
         "tags": [

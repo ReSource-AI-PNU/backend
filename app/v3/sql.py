@@ -750,6 +750,12 @@ class SqlAccounts:
             )
         return copy.deepcopy(invite)
 
+    def get_invite(self, token_hash: str) -> dict[str, Any] | None:
+        """초대를 읽기만 한다(쓰지 않는다). 없으면 None."""
+        with _transaction(self._engine) as db:
+            row = db.get(InviteRow, token_hash)
+            return _invite(row) if row is not None else None
+
     def use_invite(self, token_hash: str, user_id: str, now: Any) -> dict[str, Any] | None:
         """쓰지 않았고 만료되지 않은 초대면 쓴 것으로 적고 돌려준다. 아니면 None. 한 번만 쓸 수 있다."""
         with _transaction(self._engine) as db:
