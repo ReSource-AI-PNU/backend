@@ -50,6 +50,602 @@
         }
       }
     },
+    "/api/v1/feasibility/preview": {
+      "post": {
+        "tags": [
+          "feasibility"
+        ],
+        "summary": "Preview",
+        "description": "Calculate a synthetic preview without storing or changing a session.",
+        "operationId": "preview_api_v1_feasibility_preview_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/FeasibilityPreviewRequest"
+              },
+              "examples": {
+                "synthetic_factory": {
+                  "summary": "가상 PP 사출 공장 네 흐름",
+                  "description": "서버의 synthetic/demo 단가와 규칙으로 계산합니다.",
+                  "value": {
+                    "streams": [
+                      {
+                        "id": "st_d7ca23cd1c42",
+                        "name": "스프루·러너",
+                        "process": "사출 1·2라인",
+                        "media": [
+                          {
+                            "id": "sample_sprue",
+                            "kind": "sample",
+                            "name": "녹산_스프루·러너_시연.jpg",
+                            "url": "sample:sprue"
+                          }
+                        ],
+                        "classify": {
+                          "item": "폐플라스틱",
+                          "detail": "PP 사출 스프루·러너",
+                          "material": "PP",
+                          "singleMaterial": true,
+                          "confidence": 0.93,
+                          "estimatedKg": 580.0,
+                          "frames": 24,
+                          "detections": [
+                            {
+                              "id": "st_d7ca23cd1c42_main",
+                              "label": "PP 사출 스프루·러너",
+                              "kind": "item",
+                              "confidence": 0.93,
+                              "box": [
+                                0.08,
+                                0.2,
+                                0.84,
+                                0.66
+                              ],
+                              "source": "ai"
+                            }
+                          ],
+                          "model": {
+                            "name": "rtdetr-waste",
+                            "version": "v3.2"
+                          },
+                          "durationMs": 3600
+                        },
+                        "origin": "PIR",
+                        "originSource": "ai",
+                        "monthlyKg": 600.0,
+                        "monthlyKgConfirmed": true
+                      },
+                      {
+                        "id": "st_b548298c885c",
+                        "name": "불량 성형품",
+                        "process": "검사 공정",
+                        "media": [
+                          {
+                            "id": "sample_defect",
+                            "kind": "sample",
+                            "name": "녹산_불량성형품_시연.jpg",
+                            "url": "sample:defect"
+                          }
+                        ],
+                        "classify": {
+                          "item": "폐플라스틱",
+                          "detail": "PP 불량 하우징",
+                          "material": "PP",
+                          "singleMaterial": true,
+                          "confidence": 0.93,
+                          "estimatedKg": 390.0,
+                          "frames": 24,
+                          "detections": [
+                            {
+                              "id": "st_b548298c885c_main",
+                              "label": "PP 불량 하우징",
+                              "kind": "item",
+                              "confidence": 0.93,
+                              "box": [
+                                0.06,
+                                0.16,
+                                0.88,
+                                0.7
+                              ],
+                              "source": "ai"
+                            },
+                            {
+                              "id": "st_b548298c885c_c1",
+                              "label": "종이 라벨",
+                              "kind": "contaminant",
+                              "confidence": 0.82,
+                              "box": [
+                                0.3,
+                                0.3,
+                                0.16,
+                                0.14
+                              ],
+                              "source": "ai",
+                              "ratio": 0.04
+                            },
+                            {
+                              "id": "st_b548298c885c_c2",
+                              "label": "금속 인서트",
+                              "kind": "contaminant",
+                              "confidence": 0.75,
+                              "box": [
+                                0.62,
+                                0.52,
+                                0.12,
+                                0.12
+                              ],
+                              "source": "ai",
+                              "ratio": 0.02
+                            }
+                          ],
+                          "model": {
+                            "name": "rtdetr-waste",
+                            "version": "v3.2"
+                          },
+                          "durationMs": 3600
+                        },
+                        "origin": "PIR",
+                        "originSource": "ai",
+                        "monthlyKg": 400.0,
+                        "monthlyKgConfirmed": true
+                      },
+                      {
+                        "id": "st_491e0024fb5a",
+                        "name": "퍼지·색 혼합",
+                        "process": "색 교체·금형 세척",
+                        "media": [
+                          {
+                            "id": "sample_purge",
+                            "kind": "sample",
+                            "name": "녹산_퍼지·색혼합_시연.jpg",
+                            "url": "sample:purge"
+                          }
+                        ],
+                        "classify": {
+                          "item": "폐플라스틱",
+                          "detail": "PP+ABS 퍼지 덩어리",
+                          "material": "PP+ABS",
+                          "singleMaterial": false,
+                          "confidence": 0.81,
+                          "estimatedKg": 240.0,
+                          "frames": 24,
+                          "detections": [
+                            {
+                              "id": "st_491e0024fb5a_main",
+                              "label": "PP+ABS 퍼지 덩어리",
+                              "kind": "item",
+                              "confidence": 0.81,
+                              "box": [
+                                0.1,
+                                0.24,
+                                0.8,
+                                0.62
+                              ],
+                              "source": "ai"
+                            },
+                            {
+                              "id": "st_491e0024fb5a_c1",
+                              "label": "ABS 혼입",
+                              "kind": "contaminant",
+                              "confidence": 0.82,
+                              "box": [
+                                0.52,
+                                0.34,
+                                0.22,
+                                0.24
+                              ],
+                              "source": "ai",
+                              "ratio": 0.35
+                            },
+                            {
+                              "id": "st_491e0024fb5a_c2",
+                              "label": "탄화물",
+                              "kind": "contaminant",
+                              "confidence": 0.75,
+                              "box": [
+                                0.24,
+                                0.56,
+                                0.14,
+                                0.14
+                              ],
+                              "source": "ai",
+                              "ratio": 0.05
+                            }
+                          ],
+                          "model": {
+                            "name": "rtdetr-waste",
+                            "version": "v3.2"
+                          },
+                          "durationMs": 3600
+                        },
+                        "origin": "PIR",
+                        "originSource": "ai",
+                        "monthlyKg": 250.0,
+                        "monthlyKgConfirmed": true
+                      },
+                      {
+                        "id": "st_6b9310c74503",
+                        "name": "원자재 포장 필름",
+                        "process": "원료 입고",
+                        "media": [
+                          {
+                            "id": "sample_film",
+                            "kind": "sample",
+                            "name": "녹산_원자재포장필름_시연.jpg",
+                            "url": "sample:film"
+                          }
+                        ],
+                        "classify": {
+                          "item": "포장재",
+                          "detail": "LDPE 스트레치 필름",
+                          "material": "LDPE",
+                          "singleMaterial": true,
+                          "confidence": 0.93,
+                          "estimatedKg": 290.0,
+                          "frames": 24,
+                          "detections": [
+                            {
+                              "id": "st_6b9310c74503_main",
+                              "label": "LDPE 스트레치 필름",
+                              "kind": "item",
+                              "confidence": 0.93,
+                              "box": [
+                                0.06,
+                                0.2,
+                                0.88,
+                                0.66
+                              ],
+                              "source": "ai"
+                            },
+                            {
+                              "id": "st_6b9310c74503_c1",
+                              "label": "종이 태그",
+                              "kind": "contaminant",
+                              "confidence": 0.82,
+                              "box": [
+                                0.6,
+                                0.3,
+                                0.12,
+                                0.12
+                              ],
+                              "source": "ai",
+                              "ratio": 0.02
+                            },
+                            {
+                              "id": "st_6b9310c74503_c2",
+                              "label": "테이프",
+                              "kind": "contaminant",
+                              "confidence": 0.75,
+                              "box": [
+                                0.26,
+                                0.58,
+                                0.14,
+                                0.1
+                              ],
+                              "source": "ai",
+                              "ratio": 0.01
+                            }
+                          ],
+                          "model": {
+                            "name": "rtdetr-waste",
+                            "version": "v3.2"
+                          },
+                          "durationMs": 3600
+                        },
+                        "origin": "PCR",
+                        "originSource": "ai",
+                        "monthlyKg": 300.0,
+                        "monthlyKgConfirmed": true
+                      }
+                    ],
+                    "overrides": {}
+                  }
+                }
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FeasibilityResult"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/c/questions/evaluate": {
+      "post": {
+        "tags": [
+          "C 질문 정책"
+        ],
+        "summary": "Evaluate State",
+        "description": "질문 후보와 종료 상태를 평가한다. 외부 호출이나 상태 변경은 없다.",
+        "operationId": "evaluate_state_api_v1_c_questions_evaluate_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/StateRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/QuestionResult"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/c/questions/select": {
+      "post": {
+        "tags": [
+          "C 질문 정책"
+        ],
+        "summary": "Select",
+        "description": "Azure 선택 또는 규칙 기반 대체를 반환한다. 표시 횟수는 바꾸지 않는다.",
+        "operationId": "select_api_v1_c_questions_select_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/StateRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SelectionResult"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/c/questions/display": {
+      "post": {
+        "tags": [
+          "C 질문 정책"
+        ],
+        "summary": "Display",
+        "description": "동일 상태·동일 요청 재처리는 멱등이다. 호출자가 반환 상태를 보관해야 한다.",
+        "operationId": "display_api_v1_c_questions_display_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DisplayRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TransitionResult"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/c/questions/answer": {
+      "post": {
+        "tags": [
+          "C 질문 정책"
+        ],
+        "summary": "Answer",
+        "description": "한 질문에 답하거나 건너뛴다. 상태 저장·재전송 멱등성은 제공하지 않는다.",
+        "operationId": "answer_api_v1_c_questions_answer_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/app__api__c_questions__AnswerRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TransitionResult"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/models": {
+      "get": {
+        "tags": [
+          "classify"
+        ],
+        "summary": "Models",
+        "description": "현재 쓰는 식별 모델 (trained | zeroshot) 과 버전",
+        "operationId": "models_api_v1_models_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "type": "object",
+                  "title": "Response Models Api V1 Models Get"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/classify": {
+      "post": {
+        "tags": [
+          "classify"
+        ],
+        "summary": "Classify",
+        "operationId": "classify_api_v1_classify_post",
+        "requestBody": {
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_classify_api_v1_classify_post"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ClassifyOutput"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/classify/answer": {
+      "post": {
+        "tags": [
+          "classify"
+        ],
+        "summary": "Classify Answer",
+        "description": "① 되묻기 답(필름·수지·품목·혼합·출처·월 발생량)을 흐름에 반영하고 Correction 초안을 돌려준다.",
+        "operationId": "classify_answer_api_v1_classify_answer_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ClassifyAnswerIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ClassifyAnswerOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/companies": {
       "get": {
         "tags": [
@@ -676,7 +1272,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/AnswerRequest"
+                "$ref": "#/components/schemas/app__platform__models__AnswerRequest"
               }
             }
           }
@@ -2672,6 +3268,719 @@
           }
         }
       }
+    },
+    "/api/v3/health": {
+      "get": {
+        "tags": [
+          "v3"
+        ],
+        "summary": "Health",
+        "operationId": "health_api_v3_health_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v3/demo/reset": {
+      "post": {
+        "tags": [
+          "v3"
+        ],
+        "summary": "Demo Reset",
+        "operationId": "demo_reset_api_v3_demo_reset_post",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v3/orgs": {
+      "get": {
+        "tags": [
+          "v3"
+        ],
+        "summary": "Orgs",
+        "operationId": "orgs_api_v3_orgs_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v3/orgs/{org_id}/streams": {
+      "get": {
+        "tags": [
+          "v3"
+        ],
+        "summary": "Streams",
+        "operationId": "streams_api_v3_orgs__org_id__streams_get",
+        "parameters": [
+          {
+            "name": "org_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Org Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v3/orgs/{org_id}/streams/{stream_id}": {
+      "put": {
+        "tags": [
+          "v3"
+        ],
+        "summary": "Put Stream",
+        "operationId": "put_stream_api_v3_orgs__org_id__streams__stream_id__put",
+        "parameters": [
+          {
+            "name": "org_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Org Id"
+            }
+          },
+          {
+            "name": "stream_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Stream Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v3/vendors/{org_id}": {
+      "get": {
+        "tags": [
+          "v3"
+        ],
+        "summary": "Vendor",
+        "operationId": "vendor_api_v3_vendors__org_id__get",
+        "parameters": [
+          {
+            "name": "org_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Org Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "v3"
+        ],
+        "summary": "Put Vendor",
+        "operationId": "put_vendor_api_v3_vendors__org_id__put",
+        "parameters": [
+          {
+            "name": "org_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Org Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v3/sessions": {
+      "post": {
+        "tags": [
+          "v3"
+        ],
+        "summary": "Create Session",
+        "operationId": "create_session_api_v3_sessions_post",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v3/sessions/{session_id}": {
+      "get": {
+        "tags": [
+          "v3"
+        ],
+        "summary": "Session View",
+        "operationId": "session_view_api_v3_sessions__session_id__get",
+        "parameters": [
+          {
+            "name": "session_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Session Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v3/sessions/{session_id}/run": {
+      "post": {
+        "tags": [
+          "v3"
+        ],
+        "summary": "Run Session",
+        "operationId": "run_session_api_v3_sessions__session_id__run_post",
+        "parameters": [
+          {
+            "name": "session_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Session Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v3/sessions/{session_id}/answers": {
+      "post": {
+        "tags": [
+          "v3"
+        ],
+        "summary": "Answer",
+        "operationId": "answer_api_v3_sessions__session_id__answers_post",
+        "parameters": [
+          {
+            "name": "session_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Session Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v3/sessions/{session_id}/approvals": {
+      "post": {
+        "tags": [
+          "v3"
+        ],
+        "summary": "Approve",
+        "operationId": "approve_api_v3_sessions__session_id__approvals_post",
+        "parameters": [
+          {
+            "name": "session_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Session Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v3/sessions/{session_id}/corrections": {
+      "post": {
+        "tags": [
+          "v3"
+        ],
+        "summary": "Record Correction",
+        "operationId": "record_correction_api_v3_sessions__session_id__corrections_post",
+        "parameters": [
+          {
+            "name": "session_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Session Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v3/sessions/{session_id}/outcomes": {
+      "post": {
+        "tags": [
+          "v3"
+        ],
+        "summary": "Record Outcome",
+        "operationId": "record_outcome_api_v3_sessions__session_id__outcomes_post",
+        "parameters": [
+          {
+            "name": "session_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Session Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v3/evidence": {
+      "get": {
+        "tags": [
+          "v3"
+        ],
+        "summary": "Search Evidence",
+        "operationId": "search_evidence_api_v3_evidence_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v3/evidence/{evidence_id}": {
+      "get": {
+        "tags": [
+          "v3"
+        ],
+        "summary": "Evidence",
+        "operationId": "evidence_api_v3_evidence__evidence_id__get",
+        "parameters": [
+          {
+            "name": "evidence_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Evidence Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v3/intake/csv/template": {
+      "get": {
+        "tags": [
+          "v3"
+        ],
+        "summary": "Csv Template",
+        "operationId": "csv_template_api_v3_intake_csv_template_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v3/intake/csv": {
+      "post": {
+        "tags": [
+          "v3"
+        ],
+        "summary": "Upload Csv",
+        "operationId": "upload_csv_api_v3_intake_csv_post",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v3/intake/documents": {
+      "post": {
+        "tags": [
+          "v3"
+        ],
+        "summary": "Upload Document",
+        "operationId": "upload_document_api_v3_intake_documents_post",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v3/intake/media": {
+      "post": {
+        "tags": [
+          "v3"
+        ],
+        "summary": "Upload Media",
+        "operationId": "upload_media_api_v3_intake_media_post",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v3/intake/documents/confirm": {
+      "post": {
+        "tags": [
+          "v3"
+        ],
+        "summary": "Confirm Document",
+        "operationId": "confirm_document_api_v3_intake_documents_confirm_post",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v3/admin/status": {
+      "get": {
+        "tags": [
+          "v3"
+        ],
+        "summary": "Admin Status",
+        "operationId": "admin_status_api_v3_admin_status_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v3/admin/eval": {
+      "post": {
+        "tags": [
+          "v3"
+        ],
+        "summary": "Admin Eval",
+        "operationId": "admin_eval_api_v3_admin_eval_post",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v3/admin/retrain/export": {
+      "get": {
+        "tags": [
+          "v3"
+        ],
+        "summary": "Admin Retrain Export",
+        "operationId": "admin_retrain_export_api_v3_admin_retrain_export_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v3/admin/retrain/runs": {
+      "post": {
+        "tags": [
+          "v3"
+        ],
+        "summary": "Admin Retrain Runs",
+        "operationId": "admin_retrain_runs_api_v3_admin_retrain_runs_post",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
@@ -2719,42 +4028,6 @@
           "step"
         ],
         "title": "AdvanceRequest"
-      },
-      "AnswerRequest": {
-        "properties": {
-          "version": {
-            "type": "integer",
-            "minimum": 1.0,
-            "title": "Version"
-          },
-          "streamId": {
-            "type": "string",
-            "title": "Streamid"
-          },
-          "monthlyKg": {
-            "type": "number",
-            "maximum": 1000000.0,
-            "exclusiveMinimum": 0.0,
-            "title": "Monthlykg"
-          },
-          "origin": {
-            "type": "string",
-            "enum": [
-              "PIR",
-              "PCR"
-            ],
-            "title": "Origin"
-          }
-        },
-        "additionalProperties": false,
-        "type": "object",
-        "required": [
-          "version",
-          "streamId",
-          "monthlyKg",
-          "origin"
-        ],
-        "title": "AnswerRequest"
       },
       "Approval": {
         "properties": {
@@ -2833,6 +4106,59 @@
           "value"
         ],
         "title": "Assumption"
+      },
+      "Body_classify_api_v1_classify_post": {
+        "properties": {
+          "files": {
+            "items": {
+              "type": "string",
+              "contentMediaType": "application/octet-stream"
+            },
+            "type": "array",
+            "title": "Files",
+            "description": "사진 여러 장 또는 30초 이내 영상 1개"
+          },
+          "stream_id": {
+            "type": "string",
+            "title": "Stream Id"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name",
+            "description": "흐름 이름 (예: 스프루·러너)",
+            "default": ""
+          },
+          "process": {
+            "type": "string",
+            "title": "Process",
+            "description": "공정명 (예: 사출 1·2라인)",
+            "default": ""
+          },
+          "material_doc_text": {
+            "type": "string",
+            "title": "Material Doc Text",
+            "description": "원자재 명세·MSDS 에서 뽑은 텍스트 (선택, backend#9)",
+            "default": ""
+          },
+          "material_hint": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Material Hint",
+            "description": "사용자가 아는 수지 (예: PP)"
+          }
+        },
+        "type": "object",
+        "required": [
+          "files",
+          "stream_id"
+        ],
+        "title": "Body_classify_api_v1_classify_post"
       },
       "Bundle": {
         "properties": {
@@ -3238,6 +4564,199 @@
           "state"
         ],
         "title": "BundleMember"
+      },
+      "Candidate": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "enum": [
+              "material",
+              "material_basis",
+              "form",
+              "contamination",
+              "separation",
+              "process",
+              "sorting",
+              "color",
+              "trade_stage",
+              "region",
+              "quantity"
+            ],
+            "title": "Id"
+          },
+          "text": {
+            "type": "string",
+            "title": "Text"
+          },
+          "why": {
+            "type": "string",
+            "title": "Why"
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "choice",
+              "text",
+              "number"
+            ],
+            "title": "Kind"
+          },
+          "options": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Options",
+            "default": []
+          },
+          "reaskReason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reaskreason"
+          },
+          "revision": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Revision"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "id",
+          "text",
+          "why",
+          "kind",
+          "revision"
+        ],
+        "title": "Candidate"
+      },
+      "ClassifyAnswerIn": {
+        "properties": {
+          "stream": {
+            "$ref": "#/components/schemas/Stream"
+          },
+          "questionId": {
+            "type": "string",
+            "title": "Questionid",
+            "description": "classify-<종류>:<streamId> (item, film, resin, mixed, origin, contamination, kg)"
+          },
+          "answer": {
+            "type": "string",
+            "title": "Answer"
+          },
+          "by": {
+            "type": "string",
+            "title": "By",
+            "default": "담당자"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "stream",
+          "questionId",
+          "answer"
+        ],
+        "title": "ClassifyAnswerIn"
+      },
+      "ClassifyAnswerOut": {
+        "properties": {
+          "stream": {
+            "$ref": "#/components/schemas/Stream"
+          },
+          "corrections": {
+            "items": {
+              "$ref": "#/components/schemas/Correction"
+            },
+            "type": "array",
+            "title": "Corrections",
+            "description": "AI 값을 사람이 바꾼 기록. Session.corrections 에 더한다(재학습 입구는 박스 수정만 라벨로 쓴다)."
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "stream",
+          "corrections"
+        ],
+        "title": "ClassifyAnswerOut"
+      },
+      "ClassifyOutput": {
+        "properties": {
+          "streamId": {
+            "type": "string",
+            "title": "Streamid"
+          },
+          "classify": {
+            "$ref": "#/components/schemas/ClassifyResult"
+          },
+          "origin": {
+            "type": "string",
+            "enum": [
+              "PIR",
+              "PCR"
+            ],
+            "title": "Origin"
+          },
+          "originSource": {
+            "type": "string",
+            "enum": [
+              "ai",
+              "human"
+            ],
+            "title": "Originsource"
+          },
+          "originConfidence": {
+            "type": "number",
+            "title": "Originconfidence"
+          },
+          "originEvidence": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Originevidence"
+          },
+          "questions": {
+            "items": {
+              "$ref": "#/components/schemas/Question"
+            },
+            "type": "array",
+            "title": "Questions"
+          },
+          "inputDomain": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Inputdomain",
+            "description": "aihub137_field(현장 사진) / a71385_sorting(선별장) / sortwaste_conveyor / None(제로샷)"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "streamId",
+          "classify",
+          "origin",
+          "originSource",
+          "originConfidence",
+          "originEvidence",
+          "questions"
+        ],
+        "title": "ClassifyOutput",
+        "description": "① 결과. 프런트는 classify 를 Stream.classify 에, origin/originSource 를 Stream 에 넣고 questions 를 세션 질문에 합친다."
       },
       "ClassifyResult": {
         "properties": {
@@ -3648,6 +5167,79 @@
           "text"
         ],
         "title": "Conclusion"
+      },
+      "ContaminationField": {
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": [
+              "unanswered",
+              "unknown",
+              "value",
+              "conflict"
+            ],
+            "title": "Status",
+            "default": "unanswered"
+          },
+          "value": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "absent",
+                  "present"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Value"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "revision": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Revision",
+            "default": 0
+          },
+          "answeredRevision": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Answeredrevision"
+          },
+          "reaskReason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reaskreason"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "ContaminationField"
       },
       "Correction": {
         "properties": {
@@ -4141,6 +5733,105 @@
         ],
         "title": "DetectionOriginal"
       },
+      "DisplayRequest": {
+        "properties": {
+          "state": {
+            "$ref": "#/components/schemas/ReviewState",
+            "example": {
+              "material": {
+                "status": "value",
+                "value": "PP"
+              }
+            }
+          },
+          "batchId": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Batchid"
+          },
+          "selected": {
+            "items": {
+              "$ref": "#/components/schemas/Selection"
+            },
+            "type": "array",
+            "title": "Selected"
+          },
+          "snapshotId": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Snapshotid"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "state",
+          "batchId",
+          "selected",
+          "snapshotId"
+        ],
+        "title": "DisplayRequest"
+      },
+      "DisplayedBatch": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Id"
+          },
+          "questions": {
+            "items": {
+              "$ref": "#/components/schemas/DisplayedQuestion"
+            },
+            "type": "array",
+            "maxItems": 3,
+            "minItems": 1,
+            "title": "Questions"
+          },
+          "snapshotId": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Snapshotid"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "id",
+          "questions",
+          "snapshotId"
+        ],
+        "title": "DisplayedBatch"
+      },
+      "DisplayedQuestion": {
+        "properties": {
+          "selection": {
+            "$ref": "#/components/schemas/Selection"
+          },
+          "revision": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Revision"
+          },
+          "outcome": {
+            "type": "string",
+            "enum": [
+              "pending",
+              "answered",
+              "skipped"
+            ],
+            "title": "Outcome",
+            "default": "pending"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "selection",
+          "revision"
+        ],
+        "title": "DisplayedQuestion"
+      },
       "DocumentDraft": {
         "properties": {
           "id": {
@@ -4260,6 +5951,39 @@
           "reason"
         ],
         "title": "ExcludedCompany"
+      },
+      "FeasibilityPreviewRequest": {
+        "properties": {
+          "streams": {
+            "items": {
+              "$ref": "#/components/schemas/Stream"
+            },
+            "type": "array",
+            "minItems": 1,
+            "title": "Streams"
+          },
+          "overrides": {
+            "additionalProperties": {
+              "type": "string",
+              "enum": [
+                "reuse",
+                "sell",
+                "bundle",
+                "pyrolysis",
+                "incinerate"
+              ]
+            },
+            "type": "object",
+            "title": "Overrides"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "streams"
+        ],
+        "title": "FeasibilityPreviewRequest",
+        "description": "Shared streams and optional route overrides; prices remain server-side demo values."
       },
       "FeasibilityResult": {
         "properties": {
@@ -4414,6 +6138,64 @@
         "title": "FieldAction",
         "description": "경로에 필요한 현장 작업. 인건비는 월 손익에서 뺀다."
       },
+      "FormField": {
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": [
+              "unanswered",
+              "unknown",
+              "value",
+              "conflict"
+            ],
+            "title": "Status",
+            "default": "unanswered"
+          },
+          "value": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Value"
+          },
+          "revision": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Revision",
+            "default": 0
+          },
+          "answeredRevision": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Answeredrevision"
+          },
+          "reaskReason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reaskreason"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "FormField"
+      },
       "Guardrails": {
         "properties": {
           "minPerKg": {
@@ -4484,6 +6266,64 @@
           "bundle"
         ],
         "title": "InboxItem"
+      },
+      "InputField": {
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": [
+              "unanswered",
+              "unknown",
+              "value",
+              "conflict"
+            ],
+            "title": "Status",
+            "default": "unanswered"
+          },
+          "value": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Value"
+          },
+          "revision": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Revision",
+            "default": 0
+          },
+          "answeredRevision": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Answeredrevision"
+          },
+          "reaskReason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reaskreason"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "InputField"
       },
       "Invite": {
         "properties": {
@@ -6070,6 +7910,100 @@
         ],
         "title": "ProposalResult"
       },
+      "Quantity": {
+        "properties": {
+          "amount": {
+            "type": "number",
+            "minimum": 0.0,
+            "title": "Amount"
+          },
+          "unit": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Unit"
+          },
+          "period": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Period"
+          },
+          "basis": {
+            "type": "string",
+            "enum": [
+              "measured",
+              "estimated",
+              "unknown"
+            ],
+            "title": "Basis"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "amount",
+          "unit",
+          "period",
+          "basis"
+        ],
+        "title": "Quantity"
+      },
+      "QuantityField": {
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": [
+              "unanswered",
+              "unknown",
+              "value",
+              "conflict"
+            ],
+            "title": "Status",
+            "default": "unanswered"
+          },
+          "value": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Quantity"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "revision": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Revision",
+            "default": 0
+          },
+          "answeredRevision": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Answeredrevision"
+          },
+          "reaskReason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reaskreason"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "QuantityField"
+      },
       "Question": {
         "properties": {
           "id": {
@@ -6216,6 +8150,67 @@
         ],
         "title": "QuestionReply"
       },
+      "QuestionResult": {
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": [
+              "questions",
+              "awaiting_answers",
+              "complete",
+              "limit_reached",
+              "unsupported"
+            ],
+            "title": "Status"
+          },
+          "snapshotId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Snapshotid"
+          },
+          "candidates": {
+            "items": {
+              "$ref": "#/components/schemas/Candidate"
+            },
+            "type": "array",
+            "title": "Candidates",
+            "default": []
+          },
+          "unconfirmed": {
+            "items": {
+              "type": "string",
+              "enum": [
+                "material",
+                "material_basis",
+                "form",
+                "contamination",
+                "separation",
+                "process",
+                "sorting",
+                "color",
+                "trade_stage",
+                "region",
+                "quantity"
+              ]
+            },
+            "type": "array",
+            "title": "Unconfirmed",
+            "default": []
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "status"
+        ],
+        "title": "QuestionResult"
+      },
       "Reason": {
         "properties": {
           "text": {
@@ -6352,6 +8347,54 @@
           "decision"
         ],
         "title": "ReplyRequest"
+      },
+      "ReviewState": {
+        "properties": {
+          "material": {
+            "$ref": "#/components/schemas/InputField"
+          },
+          "materialBasis": {
+            "$ref": "#/components/schemas/InputField"
+          },
+          "form": {
+            "$ref": "#/components/schemas/FormField"
+          },
+          "contamination": {
+            "$ref": "#/components/schemas/ContaminationField"
+          },
+          "separation": {
+            "$ref": "#/components/schemas/InputField"
+          },
+          "process": {
+            "$ref": "#/components/schemas/InputField"
+          },
+          "sorting": {
+            "$ref": "#/components/schemas/InputField"
+          },
+          "color": {
+            "$ref": "#/components/schemas/InputField"
+          },
+          "tradeStage": {
+            "$ref": "#/components/schemas/InputField"
+          },
+          "region": {
+            "$ref": "#/components/schemas/InputField"
+          },
+          "quantity": {
+            "$ref": "#/components/schemas/QuantityField"
+          },
+          "batches": {
+            "items": {
+              "$ref": "#/components/schemas/DisplayedBatch"
+            },
+            "type": "array",
+            "title": "Batches",
+            "default": []
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "ReviewState"
       },
       "RoleUpdate": {
         "properties": {
@@ -6696,6 +8739,126 @@
         "title": "ScenarioLine",
         "description": "시나리오 안의 흐름별 내역"
       },
+      "Selection": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "enum": [
+              "material",
+              "material_basis",
+              "form",
+              "contamination",
+              "separation",
+              "process",
+              "sorting",
+              "color",
+              "trade_stage",
+              "region",
+              "quantity"
+            ],
+            "title": "Id"
+          },
+          "text": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Text"
+          },
+          "why": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Why"
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "choice",
+              "text",
+              "number"
+            ],
+            "title": "Kind"
+          },
+          "options": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Options",
+            "default": []
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "id",
+          "text",
+          "why",
+          "kind"
+        ],
+        "title": "Selection"
+      },
+      "SelectionResult": {
+        "properties": {
+          "evaluation": {
+            "$ref": "#/components/schemas/QuestionResult"
+          },
+          "selected": {
+            "items": {
+              "$ref": "#/components/schemas/Selection"
+            },
+            "type": "array",
+            "title": "Selected",
+            "default": []
+          },
+          "snapshotId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Snapshotid"
+          },
+          "source": {
+            "type": "string",
+            "enum": [
+              "azure",
+              "rule_fallback",
+              "not_selected"
+            ],
+            "title": "Source"
+          },
+          "fallbackReason": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "missing_config",
+                  "timeout",
+                  "connection_error",
+                  "service_error",
+                  "invalid_response",
+                  "refusal",
+                  "empty_response",
+                  "incomplete_response"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Fallbackreason"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "evaluation",
+          "source"
+        ],
+        "title": "SelectionResult"
+      },
       "SentTo": {
         "properties": {
           "name": {
@@ -6941,6 +9104,25 @@
           "corrections"
         ],
         "title": "Session"
+      },
+      "StateRequest": {
+        "properties": {
+          "state": {
+            "$ref": "#/components/schemas/ReviewState",
+            "example": {
+              "material": {
+                "status": "value",
+                "value": "PP"
+              }
+            }
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "state"
+        ],
+        "title": "StateRequest"
       },
       "Stream": {
         "properties": {
@@ -7504,6 +9686,23 @@
         ],
         "title": "TrainingRun"
       },
+      "TransitionResult": {
+        "properties": {
+          "state": {
+            "$ref": "#/components/schemas/ReviewState"
+          },
+          "evaluation": {
+            "$ref": "#/components/schemas/QuestionResult"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "state",
+          "evaluation"
+        ],
+        "title": "TransitionResult"
+      },
       "Trip": {
         "properties": {
           "visits": {
@@ -7676,6 +9875,102 @@
         ],
         "title": "WasteStream",
         "description": "회사 프로필에 적는 품목별 월 배출량. 진단의 Stream과 다르다."
+      },
+      "app__api__c_questions__AnswerRequest": {
+        "properties": {
+          "state": {
+            "$ref": "#/components/schemas/ReviewState",
+            "example": {
+              "material": {
+                "status": "value",
+                "value": "PP"
+              }
+            }
+          },
+          "batchId": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Batchid"
+          },
+          "questionId": {
+            "type": "string",
+            "enum": [
+              "material",
+              "material_basis",
+              "form",
+              "contamination",
+              "separation",
+              "process",
+              "sorting",
+              "color",
+              "trade_stage",
+              "region",
+              "quantity"
+            ],
+            "title": "Questionid"
+          },
+          "answer": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Answer"
+          },
+          "skip": {
+            "type": "boolean",
+            "title": "Skip",
+            "default": false
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "state",
+          "batchId",
+          "questionId"
+        ],
+        "title": "AnswerRequest"
+      },
+      "app__platform__models__AnswerRequest": {
+        "properties": {
+          "version": {
+            "type": "integer",
+            "minimum": 1.0,
+            "title": "Version"
+          },
+          "streamId": {
+            "type": "string",
+            "title": "Streamid"
+          },
+          "monthlyKg": {
+            "type": "number",
+            "maximum": 1000000.0,
+            "exclusiveMinimum": 0.0,
+            "title": "Monthlykg"
+          },
+          "origin": {
+            "type": "string",
+            "enum": [
+              "PIR",
+              "PCR"
+            ],
+            "title": "Origin"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "version",
+          "streamId",
+          "monthlyKg",
+          "origin"
+        ],
+        "title": "AnswerRequest"
       }
     }
   }
