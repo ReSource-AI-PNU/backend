@@ -13,6 +13,33 @@ bash infra/start.sh                             # 다시 켠다
 bash infra/teardown.sh                          # 태그가 붙은 리소스만 지운다 (확인을 받는다)
 ```
 
+## 앱 배포: 앱 VM (지금 쓰는 경로)
+
+App Service는 구독의 할당량이 0이라 만들 수 없고(B1·B2·F1·S1·P0v3 모두 `SubscriptionIsOverQuotaForSku`, East US 2·East US·Central US, 2026-11-18 사전 검증), Container Apps는 공급자가 등록되지 않았다. 그래서 CPU VM 한 대에 Docker Compose로 앱을 띄운다. 아래 `deploy.sh`·`appservice.bicep` 경로는 할당량이 풀리기 전까지 쓰지 않는다.
+
+```bash
+ssh-keygen -t ed25519 -N "" -f ~/.ssh/rsai_demo_vm          # 처음 한 번
+az deployment group what-if -g team_AIBIC2026_03_RG_EUS2 -f infra/vm.bicep \
+  -p sshPublicKey="$(cat ~/.ssh/rsai_demo_vm.pub)" sshSourcePrefix=<내 공용 IP>/32
+az deployment group create  -g team_AIBIC2026_03_RG_EUS2 -n rsai-app-vm -f infra/vm.bicep \
+  -p sshPublicKey="$(cat ~/.ssh/rsai_demo_vm.pub)" sshSourcePrefix=<내 공용 IP>/32
+bash infra/vm/deploy-vm.sh                 # 커밋된 소스를 VM에 올려 빌드하고 띄운다
+SEED=1 bash infra/vm/deploy-vm.sh          # 끝에 시연 시작 상태로 되돌린다
+```
+
+| 구성 | 내용 |
+|---|---|
+| `infra/vm.bicep` | VM `vm-rsai-demo-app`(Standard_D4as_v5, 4 vCPU·16GB, Ubuntu 22.04, 디스크 128GB), 공용 IP와 DNS 이름, 별도 VNet `vnet-rsai-demo-app`, NSG(80·443은 인터넷, 22는 `sshSourcePrefix`만). cloud-init이 Docker를 설치한다 |
+| `infra/vm/compose.yml` | Caddy(HTTPS, Let's Encrypt), frontend, backend(API), detector(탐지 채점 서버 `app/ml/score_api.py`, CPU 추론. Azure ML 엔드포인트 대신 `V3_DETECTOR_ENDPOINT`가 부른다), ollama(CPU: `qwen2.5:7b`, `bge-m3`). 인터넷에는 Caddy만 열리고 나머지는 Compose 네트워크 안에서만 닿는다 |
+| `infra/vm/deploy-vm.sh` | Key Vault에서 비밀을 읽어 VM의 `/opt/rsai/env/*.env`(권한 600)에만 쓰고, `git archive`한 소스를 올려 VM 안에서 이미지를 빌드한다. 마이그레이션 → 시작 → Ollama 모델 받기 → HTTPS 응답 확인 순서다 |
+
+- **설정:** `V3_LLM=foundry`(gpt-5-mini), `V3_AUTH=token`(조직별 토큰. Key Vault `v3-org-tokens`, 없으면 스크립트가 만든다), `AUTH_DEV_LOGIN=true`(시연용 로그인). 업체 측 에이전트 한 곳은 Ollama `qwen2.5:7b`를 CPU로 쓴다.
+- **모델 가중치:** Storage 비공개 컨테이너 `models`의 `models-v3mat-v4cond.tar.gz`(재질 v3, 상태 v4, 도메인 분류기). 읽기 전용 SAS 주소(2026-12-31까지)를 Key Vault `model-blob-url`에 둔다.
+- **끄고 켜기:** `stop.sh`가 VM을 할당 해제하고, `start.sh`가 다시 켠다(태그 `project=resource-ai`). 할당 해제 중에는 디스크 비용만 든다. Compose 서비스는 `restart: unless-stopped`라 VM이 켜지면 같이 올라온다.
+- **비용(정가):** VM 시간당 0.172달러(월 약 126), 공용 IP 시간당 약 0.005달러, 디스크 128GB StandardSSD.
+
+## Bicep 묶음
+
 묶음은 네 개다. `all`을 주면 한 번에 배포한다.
 
 | 묶음 | 내용 | 상태 (2026-11-16) |
@@ -60,7 +87,7 @@ bash infra/teardown.sh                          # 태그가 붙은 리소스만 
 
 ## 앱 설정 (`deploy.sh`와 `appservice.bicep`)
 
-미실행·미검증이다. `appservice.bicep`은 `bicep build`도 돌려 보지 못했다. 처음 쓸 때는 `az deployment group what-if`로 먼저 본다.
+**지금은 쓰지 않는다.** App Service 할당량이 0이고 Container Apps 공급자가 등록되지 않아, 앱은 위의 앱 VM 경로로 배포한다. 아래는 할당량이나 공급자 등록이 풀렸을 때를 위한 기록이다. 미실행·미검증이다. `appservice.bicep`은 `bicep build`도 돌려 보지 못했다. 처음 쓸 때는 `az deployment group what-if`로 먼저 본다.
 
 앱 설정은 배포할 때마다 통째로 바뀐다. 포털이나 `az webapp config appsettings set`으로 손수 넣은 값은 다음 배포에서 사라지므로 아래 이름으로 넣는다. 기본값은 모두 "끔"이다.
 

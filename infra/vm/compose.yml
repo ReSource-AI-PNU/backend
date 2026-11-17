@@ -1,0 +1,85 @@
+# 앱 VM(infra/vm.bicep)에서 돌리는 서비스. infra/vm/deploy-vm.sh 가 이 파일을 /opt/rsai 로 올린다.
+# 소스는 /opt/rsai/src/{backend,frontend}, 환경 변수 파일은 /opt/rsai/env/*.env(배포 때 Key Vault에서 만든다)다.
+# 인터넷에는 Caddy(80·443)만 열린다. 백엔드와 Ollama는 이 Compose 네트워크 안에서만 닿는다.
+name: rsai
+
+services:
+  caddy:
+    image: caddy:2
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      SITE_ADDRESS: ${SITE_ADDRESS:?SITE_ADDRESS가 필요하다}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      - frontend
+
+  # 브라우저는 프런트만 부른다. /api/v3 는 프런트 서버가 조직 토큰을 붙여 백엔드로 넘긴다.
+  frontend:
+    build:
+      context: ./src/frontend
+      args:
+        NEXT_PUBLIC_API_BASE: /api/v3
+        NEXT_PUBLIC_API_BASE_URL: /api/v1
+    image: rsai-frontend:local
+    restart: unless-stopped
+    env_file: ./env/frontend.env
+    volumes:
+      - frontend_db:/app/.mock-db
+    depends_on:
+      - backend
+
+  backend:
+    build:
+      context: ./src/backend
+      args:
+        EXTRAS: ml
+    image: rsai-backend:local
+    restart: unless-stopped
+    env_file: ./env/backend.env
+    environment:
+      APP_ROLE: api
+    volumes:
+      - backend_models:/app/models
+    depends_on:
+      - ollama
+
+  # 사진·영상 탐지(app/ml/score_api.py). 백엔드의 V3_DETECTOR_ENDPOINT가 http://detector:8000/score 를 부른다
+  detector:
+    image: rsai-backend:local
+    restart: unless-stopped
+    env_file: ./env/backend.env
+    environment:
+      APP_ROLE: detector
+    volumes:
+      - backend_models:/app/models
+
+  # 배포 때 한 번 돌리고 끝난다: docker compose run --rm -T migrate
+  migrate:
+    image: rsai-backend:local
+    env_file: ./env/backend.env
+    environment:
+      APP_ROLE: migrate
+    profiles:
+      - tools
+
+  # 업체 측 오픈 모델(qwen2.5:7b)과 bge-m3 임베딩. GPU가 없어 CPU로 돈다. 포트를 호스트에 열지 않는다.
+  ollama:
+    image: ollama/ollama:latest
+    restart: unless-stopped
+    environment:
+      OLLAMA_KEEP_ALIVE: 24h
+    volumes:
+      - ollama:/root/.ollama
+
+volumes:
+  caddy_data: {}
+  caddy_config: {}
+  frontend_db: {}
+  backend_models: {}
+  ollama: {}

@@ -1,0 +1,5 @@
+# SITE_ADDRESS(VM의 공용 이름)로 Let's Encrypt 인증서를 받아 HTTPS로 연다. 80은 443으로 넘긴다.
+{$SITE_ADDRESS} {
+	encode zstd gzip
+	reverse_proxy frontend:3000
+}
