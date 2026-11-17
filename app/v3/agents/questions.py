@@ -6,10 +6,12 @@
 from __future__ import annotations
 
 import math
+import re
 from typing import Any
 
 from app.v3 import ids
 from app.v3.a2a.policy import UNKNOWN
+from app.v3.agents.amounts import read_amount
 from app.v3.evidence.model import Evidence
 from app.v3.textutil import josa
 
@@ -73,6 +75,9 @@ FIELDS: dict[str, dict[str, Any]] = {
         "text": "{name}의 월 발생량은 대략 몇 kg인가요? 모르면 '모름'으로 답해 주세요.",
     },
 }
+
+# '모름'으로 읽는 답
+_UNKNOWN_WORDS = re.compile(r"unknown|(?:잘\s*)?(?:모름|몰라요?|모르겠(?:어요|습니다|음)?)\.?")
 
 # 메시지 meta.asks[].field에 올 수 있는 값(계약 7장). 업체가 배출 기업에 묻는 흐름 항목과,
 # 회사 측이 업체에 조건을 달라고 할 때의 "terms"다. 이 밖의 값은 메시지에 싣지 않는다.
@@ -172,14 +177,12 @@ def parse_answer(field: str, value: Any) -> Any:
         raise ValueError("물을 수 없는 항목입니다.")
     if value is None or (isinstance(value, str) and not value.strip()):
         raise ValueError("답이 비어 있습니다. 모르면 '모름'으로 답해 주세요.")
-    if isinstance(value, str) and value.strip().lower() in (UNKNOWN, "모름"):
+    if isinstance(value, str) and _UNKNOWN_WORDS.fullmatch(value.strip().lower()):
         return UNKNOWN
     if spec["answerType"] == "number":
-        try:
-            number = float(str(value).replace(",", "").replace("%", "").replace("kg", "").strip())
-        except ValueError:
-            raise ValueError("숫자로 답해 주세요. 모르면 '모름'으로 답해 주세요.") from None
-        if isinstance(value, bool) or not math.isfinite(number) or number < 0:
+        # "2 퍼센트", "650 킬로", "0.65톤", "약 2%"처럼 적은 답도 항목의 단위로 읽는다(amounts)
+        number = read_amount(value, spec.get("unit"), spec["label"])
+        if not math.isfinite(number) or number < 0:
             raise ValueError("0 이상의 숫자로 답해 주세요.")
         if spec.get("unit") == "%" and number > 100:
             raise ValueError("0에서 100 사이의 값으로 답해 주세요.")

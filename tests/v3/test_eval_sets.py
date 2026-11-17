@@ -16,10 +16,9 @@ from scripts.v3.eval import build_test_v1
 ROOT = Path(__file__).resolve().parents[2]
 SCENARIOS = sets.load_scenarios()
 VARIANTS = sets.load_variants()
-# 규칙 정책에서 관계를 지키지 못하는 변형(실제 발견). 담당자 답을 "2 퍼센트", "2프로 정도",
-# "650 킬로", "대략 650kg"처럼 적으면 답 형식 검사(agents/questions.parse_answer)가 숫자로 읽지
-# 못해 실행이 멈춘다. 고치면 이 목록을 비우고 리포트를 다시 만든다.
-KNOWN_PARAPHRASE_FAILURES = {"V013", "V017", "V023", "V025", "V043", "V049", "V061", "V067"}
+# 고친 발견: 담당자 답을 "2 퍼센트", "2프로 정도"처럼 적으면 답 형식 검사가 숫자로 읽지 못해
+# 변형 8건(V013, V017, V023, V025, V043, V049, V061, V067)이 멈췄다. 이제 agents/amounts.py가 단위를
+# 읽는다(tests/v3/test_answer_amounts.py).
 
 
 def test_test_v1_is_frozen():
@@ -90,13 +89,9 @@ def test_rule_policy_reaches_the_expected_end_state_on_test_v1(outcome):
 def test_variants_keep_their_relations_under_the_rule_policy(outcome):
     base = {t["caseId"]: t for t in outcome["trials"]}
     results = metamorphic.run_variants(VARIANTS, base)
-    broken = {r["id"] for r in results if not r["consistent"]}
-    assert broken == KNOWN_PARAPHRASE_FAILURES
-    assert all(
-        r["relation"] == "paraphrase" and "숫자로 답해" in (r["error"] or "")
-        for r in results
-        if r["id"] in broken
-    )
+    broken = {r["id"]: r["error"] for r in results if not r["consistent"]}
+    assert broken == {}
+    assert len(results) == 80 and all(r["error"] is None for r in results)
 
 
 def test_relation_checker_catches_a_changed_assignment():
