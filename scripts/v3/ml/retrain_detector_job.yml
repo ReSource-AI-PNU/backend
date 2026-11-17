@@ -1,0 +1,83 @@
+# 미실행(Azure ML 필요). 탐지 모델(RT-DETRv2) 재학습 파이프라인: 학습 → 비교·게이트.
+#   az ml job create -f scripts/v3/ml/retrain_detector_job.yml -g team_AIBIC2026_03_RG_EUS2 -w team-workspace \
+#     --set inputs.corrections.path=<corrections.json> inputs.images.path=<교정된 이미지 폴더> \
+#           inputs.baseline_run=<지금 배포한 모델의 MLflow 실행 ID> \
+#           inputs.metric=<비교할 지표 이름> inputs.min_corrections=<최소 교정 건수>
+# 로컬에 YAML 파서와 az ml이 없어 문법 검사를 하지 못했다(눈으로만 확인).
+#
+# 아직 정해지지 않은 것(값을 지어내지 않고 인자로 남겼다):
+# - 학습 코드: 탐지 모델 학습 스크립트는 비전 저장소(로컬 전용)의 ml/에 있고 이 저장소에는 없다.
+#   Azure ML 이전은 다른 작업 범위다. 아래 train 단계의 code와 command는 그 스크립트가 옮겨진 뒤
+#   실제 경로와 인자로 바꿔야 한다(지금 적힌 train_detector.py는 자리만 잡아 둔 이름이다).
+# - GPU 컴퓨팅 이름(rsai-gpu), 비교 지표 이름과 최소 교정 건수: 0단계 승인과 팀 결정이 필요하다.
+# - 학습 원본(AI허브 데이터)은 재배포가 금지돼 있어 저장소와 공개 Blob에 두지 않는다. 작업 영역의
+#   비공개 데이터 자산으로만 준다.
+#
+# - corrections: GET /api/v3/admin/retrain/export 의 detectionCorrections(사람이 고친 박스·재질·출처).
+#   photoEvidence로 원본 이미지를 찾는다. hasPhoto가 false인 기록은 학습에 쓰지 않는다.
+# - 게이트를 통과하지 못하면 등록하지 않는다. gate.json을 POST /api/v3/admin/retrain/runs로 올린다.
+$schema: https://azuremlschemas.azureedge.net/latest/pipelineJob.schema.json
+type: pipeline
+experiment_name: rsai-detector
+display_name: rsai-detector-retrain
+description: 사람이 고친 박스·재질·출처를 더해 탐지 모델을 다시 학습하고 지금 모델과 견준다.
+settings:
+  default_compute: azureml:rsai-gpu
+inputs:
+  base_dataset:
+    type: uri_folder
+    path: azureml:rsai-detector-train@latest
+  images:
+    type: uri_folder
+    path: ./corrected_images
+  corrections:
+    type: uri_file
+    path: ./corrections.json
+  baseline_run: ""
+  metric: ""
+  min_corrections: 0
+jobs:
+  train:
+    type: command
+    code: ./detector
+    environment: azureml:rsai-detector-train@latest
+    inputs:
+      base_dataset: ${{parent.inputs.base_dataset}}
+      images: ${{parent.inputs.images}}
+      corrections: ${{parent.inputs.corrections}}
+    outputs:
+      run_info:
+        type: uri_folder
+    command: >-
+      python train_detector.py
+      --data ${{inputs.base_dataset}}
+      --corrected-images ${{inputs.images}}
+      --corrections ${{inputs.corrections}}
+      && echo $AZUREML_RUN_ID > ${{outputs.run_info}}/run_id.txt
+  gate:
+    type: command
+    compute: azureml:rsai-cpu
+    code: ../../..
+    environment: azureml://registries/azureml/environments/sklearn-1.5/labels/latest
+    inputs:
+      corrections: ${{parent.inputs.corrections}}
+      run_info: ${{parent.jobs.train.outputs.run_info}}
+      baseline_run: ${{parent.inputs.baseline_run}}
+      metric: ${{parent.inputs.metric}}
+      min_corrections: ${{parent.inputs.min_corrections}}
+    outputs:
+      result:
+        type: uri_folder
+    command: >-
+      PYTHONPATH=. python scripts/v3/ml/compare_and_gate.py gate-detector
+      --candidate-run $(cat ${{inputs.run_info}}/run_id.txt)
+      --baseline-run ${{inputs.baseline_run}}
+      --metric ${{inputs.metric}}
+      --corrections ${{inputs.corrections}}
+      --min-corrections ${{inputs.min_corrections}}
+      --register
+      --out ${{outputs.result}}/gate.json
+tags:
+  project: resource-ai
+  env: demo
+  managed-by: agent

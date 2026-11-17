@@ -1,0 +1,1029 @@
+{
+  "title": "최소 물량과 합산, 적재, 질문 한도, 현행 처리 유무",
+  "synthetic": true,
+  "note": "사례의 회사, 업체, 수치는 모두 가상이다. 실제 업체·견적·측정이 아니다.",
+  "cases": [
+    {
+      "id": "C33",
+      "title": "한 흐름만으로는 최소 물량에 못 미치는 경우",
+      "review": "초안",
+      "tags": [
+        "PP",
+        "최소 물량 미달"
+      ],
+      "world": {
+        "streams": [
+          {
+            "id": "st_a",
+            "name": "PP 압축품",
+            "material": "PP",
+            "origin": "PIR",
+            "form": "압축",
+            "monthlyKg": 200,
+            "monthlyKgBasis": "measured",
+            "bulkDensityKgPerM3": 250,
+            "measure": {
+              "contaminationPct": 1.0,
+              "moisturePct": 0.3
+            }
+          }
+        ],
+        "vendors": [
+          {
+            "orgId": "org_v1",
+            "permits": [
+              {
+                "wasteItem": "폐플라스틱",
+                "materials": [
+                  "PP",
+                  "PE"
+                ]
+              }
+            ],
+            "criteria": [
+              {
+                "id": "pc_pp_b",
+                "material": "PP",
+                "form": null,
+                "grade": "B",
+                "maxContaminationPct": 8,
+                "maxMoisturePct": 2,
+                "unitPriceKrwPerKg": 200,
+                "minMonthlyKg": 500
+              }
+            ]
+          }
+        ]
+      },
+      "note": "설계 판단(확정): 최소 물량에 못 미쳐 '기존 노선에 묶어 수거'하는 조건이 붙는 답은 offer가 아니라 conditional로 온다. 그 제안은 배정되지 않고 대안으로만 남는다.",
+      "expect": {
+        "tools": [
+          {
+            "tool": "check_loading",
+            "streams": [
+              "st_a"
+            ],
+            "vendor": "org_v1",
+            "status": "conditional",
+            "checks": {
+              "min_volume": "conditional"
+            },
+            "claims": {
+              "totalKg": 200,
+              "minMonthlyKg": 500
+            },
+            "askContains": [
+              "노선"
+            ]
+          }
+        ],
+        "threads": [
+          {
+            "vendor": "org_v1",
+            "status": "open",
+            "hasTypes": [
+              "conditional"
+            ],
+            "noTypes": [
+              "offer"
+            ]
+          }
+        ],
+        "assignments": {
+          "st_a": {
+            "vendor": null,
+            "route": "keep",
+            "alternatives": [
+              "org_v1"
+            ]
+          }
+        }
+      },
+      "forbidden": [
+        {
+          "kind": "assigned",
+          "stream": "st_a",
+          "why": "최소 물량에 못 미치는 흐름을 배정으로 확정하지 않는다"
+        }
+      ],
+      "synthetic": true
+    },
+    {
+      "id": "C34",
+      "title": "두 흐름을 합치면 최소 물량을 넘는 경우",
+      "review": "초안",
+      "tags": [
+        "PP",
+        "최소 물량",
+        "합산 통과",
+        "여러 흐름"
+      ],
+      "world": {
+        "streams": [
+          {
+            "id": "st_a",
+            "name": "PP 압축품",
+            "material": "PP",
+            "origin": "PIR",
+            "form": "압축",
+            "monthlyKg": 300,
+            "monthlyKgBasis": "measured",
+            "bulkDensityKgPerM3": 250,
+            "measure": {
+              "contaminationPct": 1.0,
+              "moisturePct": 0.3
+            }
+          },
+          {
+            "id": "st_b",
+            "name": "PP 스프루",
+            "material": "PP",
+            "origin": "PIR",
+            "form": "압축",
+            "monthlyKg": 300,
+            "monthlyKgBasis": "measured",
+            "bulkDensityKgPerM3": 250,
+            "measure": {
+              "contaminationPct": 1.0,
+              "moisturePct": 0.3
+            }
+          }
+        ],
+        "vendors": [
+          {
+            "orgId": "org_v1",
+            "permits": [
+              {
+                "wasteItem": "폐플라스틱",
+                "materials": [
+                  "PP",
+                  "PE"
+                ]
+              }
+            ],
+            "criteria": [
+              {
+                "id": "pc_pp_b",
+                "material": "PP",
+                "form": null,
+                "grade": "B",
+                "maxContaminationPct": 8,
+                "maxMoisturePct": 2,
+                "unitPriceKrwPerKg": 200,
+                "minMonthlyKg": 500
+              }
+            ]
+          }
+        ]
+      },
+      "expect": {
+        "tools": [
+          {
+            "tool": "check_loading",
+            "streams": [
+              "st_a"
+            ],
+            "vendor": "org_v1",
+            "checks": {
+              "min_volume": "conditional"
+            }
+          },
+          {
+            "tool": "check_loading",
+            "streams": [
+              "st_a",
+              "st_b"
+            ],
+            "vendor": "org_v1",
+            "status": "calculated",
+            "checks": {
+              "min_volume": "met",
+              "loading": "met"
+            },
+            "claims": {
+              "totalKg": 600
+            }
+          }
+        ],
+        "result": {
+          "status": "calculated"
+        },
+        "assignments": {
+          "st_a": {
+            "vendor": "org_v1",
+            "status": "calculated"
+          },
+          "st_b": {
+            "vendor": "org_v1",
+            "status": "calculated"
+          }
+        },
+        "threads": [
+          {
+            "vendor": "org_v1",
+            "status": "agreed",
+            "assigned": [
+              "st_a",
+              "st_b"
+            ]
+          }
+        ]
+      },
+      "forbidden": [
+        {
+          "kind": "text",
+          "pattern": "최소 물량.{0,12}못 미",
+          "from": "org_v1",
+          "why": "합친 물량이 최소 물량을 넘는데 미달이라고 하지 않는다"
+        }
+      ],
+      "synthetic": true
+    },
+    {
+      "id": "C35",
+      "title": "두 흐름을 합쳐도 최소 물량에 못 미치는 경우",
+      "review": "초안",
+      "tags": [
+        "PP",
+        "최소 물량 미달",
+        "여러 흐름"
+      ],
+      "world": {
+        "streams": [
+          {
+            "id": "st_a",
+            "name": "PP 압축품",
+            "material": "PP",
+            "origin": "PIR",
+            "form": "압축",
+            "monthlyKg": 200,
+            "monthlyKgBasis": "measured",
+            "bulkDensityKgPerM3": 250,
+            "measure": {
+              "contaminationPct": 1.0,
+              "moisturePct": 0.3
+            }
+          },
+          {
+            "id": "st_b",
+            "name": "PP 스프루",
+            "material": "PP",
+            "origin": "PIR",
+            "form": "압축",
+            "monthlyKg": 200,
+            "monthlyKgBasis": "measured",
+            "bulkDensityKgPerM3": 250,
+            "measure": {
+              "contaminationPct": 1.0,
+              "moisturePct": 0.3
+            }
+          }
+        ],
+        "vendors": [
+          {
+            "orgId": "org_v1",
+            "permits": [
+              {
+                "wasteItem": "폐플라스틱",
+                "materials": [
+                  "PP",
+                  "PE"
+                ]
+              }
+            ],
+            "criteria": [
+              {
+                "id": "pc_pp_b",
+                "material": "PP",
+                "form": null,
+                "grade": "B",
+                "maxContaminationPct": 8,
+                "maxMoisturePct": 2,
+                "unitPriceKrwPerKg": 200,
+                "minMonthlyKg": 500
+              }
+            ]
+          }
+        ]
+      },
+      "expect": {
+        "tools": [
+          {
+            "tool": "check_loading",
+            "streams": [
+              "st_a",
+              "st_b"
+            ],
+            "vendor": "org_v1",
+            "status": "conditional",
+            "checks": {
+              "min_volume": "conditional"
+            },
+            "claims": {
+              "totalKg": 400
+            }
+          }
+        ],
+        "assignments": {
+          "st_a": {
+            "vendor": null,
+            "route": "keep"
+          },
+          "st_b": {
+            "vendor": null,
+            "route": "keep"
+          }
+        }
+      },
+      "forbidden": [
+        {
+          "kind": "assigned",
+          "stream": "st_a",
+          "why": "합쳐도 최소 물량에 못 미치면 배정으로 확정하지 않는다"
+        },
+        {
+          "kind": "assigned",
+          "stream": "st_b",
+          "why": "합쳐도 최소 물량에 못 미치면 배정으로 확정하지 않는다"
+        }
+      ],
+      "synthetic": true
+    },
+    {
+      "id": "C36",
+      "title": "PIR 흐름과 PCR 흐름을 합쳐 최소 물량을 넘는 경우(출처와 무관)",
+      "review": "초안",
+      "tags": [
+        "PP",
+        "PIR",
+        "PCR",
+        "최소 물량",
+        "합산 통과"
+      ],
+      "world": {
+        "streams": [
+          {
+            "id": "st_a",
+            "name": "PP 압축품",
+            "material": "PP",
+            "origin": "PIR",
+            "form": "압축",
+            "monthlyKg": 300,
+            "monthlyKgBasis": "measured",
+            "bulkDensityKgPerM3": 250,
+            "measure": {
+              "contaminationPct": 1.0,
+              "moisturePct": 0.3
+            }
+          },
+          {
+            "id": "st_b",
+            "name": "회수 PP 용기",
+            "material": "PP",
+            "origin": "PCR",
+            "form": "압축",
+            "monthlyKg": 300,
+            "monthlyKgBasis": "measured",
+            "bulkDensityKgPerM3": 250,
+            "measure": {
+              "contaminationPct": 1.0,
+              "moisturePct": 0.3
+            }
+          }
+        ],
+        "vendors": [
+          {
+            "orgId": "org_v1",
+            "permits": [
+              {
+                "wasteItem": "폐플라스틱",
+                "materials": [
+                  "PP",
+                  "PE"
+                ]
+              }
+            ],
+            "criteria": [
+              {
+                "id": "pc_pp_b",
+                "material": "PP",
+                "form": null,
+                "grade": "B",
+                "maxContaminationPct": 8,
+                "maxMoisturePct": 2,
+                "unitPriceKrwPerKg": 200,
+                "minMonthlyKg": 500
+              }
+            ]
+          }
+        ]
+      },
+      "expect": {
+        "tools": [
+          {
+            "tool": "check_loading",
+            "streams": [
+              "st_a"
+            ],
+            "vendor": "org_v1",
+            "status": "conditional",
+            "checks": {
+              "min_volume": "conditional"
+            }
+          },
+          {
+            "tool": "check_loading",
+            "streams": [
+              "st_b"
+            ],
+            "vendor": "org_v1",
+            "status": "conditional",
+            "checks": {
+              "min_volume": "conditional"
+            }
+          },
+          {
+            "tool": "check_loading",
+            "streams": [
+              "st_a",
+              "st_b"
+            ],
+            "vendor": "org_v1",
+            "status": "calculated",
+            "checks": {
+              "min_volume": "met"
+            }
+          }
+        ],
+        "assignments": {
+          "st_a": {
+            "vendor": "org_v1",
+            "status": "calculated"
+          },
+          "st_b": {
+            "vendor": "org_v1",
+            "status": "calculated"
+          }
+        }
+      },
+      "forbidden": [
+        {
+          "kind": "verdict",
+          "stream": "st_b",
+          "status": "needs_information",
+          "why": "출처가 PCR이라는 이유로 최소 물량 검사를 달리 하지 않는다"
+        }
+      ],
+      "synthetic": true
+    },
+    {
+      "id": "C37",
+      "title": "한 번에 실을 부피가 차량 용량을 넘는 경우",
+      "review": "초안",
+      "tags": [
+        "PP",
+        "적재 부피 초과"
+      ],
+      "world": {
+        "streams": [
+          {
+            "id": "st_a",
+            "name": "PP 발포 완충재",
+            "material": "PP",
+            "origin": "PIR",
+            "form": "압축",
+            "monthlyKg": 500,
+            "monthlyKgBasis": "measured",
+            "bulkDensityKgPerM3": 10,
+            "measure": {
+              "contaminationPct": 1.0,
+              "moisturePct": 0.3
+            }
+          }
+        ],
+        "vendors": [
+          {
+            "orgId": "org_v1",
+            "permits": [
+              {
+                "wasteItem": "폐플라스틱",
+                "materials": [
+                  "PP",
+                  "PE"
+                ]
+              }
+            ],
+            "criteria": [
+              {
+                "id": "pc_pp_b",
+                "material": "PP",
+                "form": null,
+                "grade": "B",
+                "maxContaminationPct": 8,
+                "maxMoisturePct": 2,
+                "unitPriceKrwPerKg": 200,
+                "minMonthlyKg": 300
+              }
+            ]
+          }
+        ]
+      },
+      "expect": {
+        "tools": [
+          {
+            "tool": "check_loading",
+            "streams": [
+              "st_a"
+            ],
+            "vendor": "org_v1",
+            "status": "conditional",
+            "checks": {
+              "min_volume": "met",
+              "loading": "conditional"
+            },
+            "claims": {
+              "totalM3": 50,
+              "perPickupM3": 25,
+              "capacityM3": 20
+            },
+            "askContains": [
+              "횟수"
+            ]
+          }
+        ],
+        "assignments": {
+          "st_a": {
+            "vendor": null,
+            "route": "keep"
+          }
+        }
+      },
+      "forbidden": [
+        {
+          "kind": "assigned",
+          "stream": "st_a",
+          "why": "한 번에 실을 수 없는 물량을 배정으로 확정하지 않는다"
+        }
+      ],
+      "synthetic": true
+    },
+    {
+      "id": "C38",
+      "title": "물을 것이 많은 경우(질문은 3개씩 2묶음까지)",
+      "review": "초안",
+      "tags": [
+        "PP",
+        "질문 한도",
+        "모름",
+        "여러 흐름"
+      ],
+      "world": {
+        "streams": [
+          {
+            "id": "st_a",
+            "name": "PP 압축품",
+            "material": "PP",
+            "origin": null,
+            "form": null,
+            "monthlyKg": 500,
+            "monthlyKgBasis": "measured",
+            "bulkDensityKgPerM3": 250,
+            "measure": null
+          },
+          {
+            "id": "st_b",
+            "name": "PP 스프루",
+            "material": "PP",
+            "origin": null,
+            "form": null,
+            "monthlyKg": 500,
+            "monthlyKgBasis": "measured",
+            "bulkDensityKgPerM3": 250,
+            "measure": null
+          },
+          {
+            "id": "st_c",
+            "name": "PP 런너",
+            "material": "PP",
+            "origin": null,
+            "form": null,
+            "monthlyKg": 500,
+            "monthlyKgBasis": "measured",
+            "bulkDensityKgPerM3": 250,
+            "measure": null
+          }
+        ],
+        "vendors": [
+          {
+            "orgId": "org_v1",
+            "permits": [
+              {
+                "wasteItem": "폐플라스틱",
+                "materials": [
+                  "PP",
+                  "PE"
+                ]
+              }
+            ],
+            "criteria": [
+              {
+                "id": "pc_pp_b",
+                "material": "PP",
+                "form": null,
+                "grade": "B",
+                "maxContaminationPct": 8,
+                "maxMoisturePct": 2,
+                "unitPriceKrwPerKg": 200,
+                "minMonthlyKg": 300
+              }
+            ]
+          }
+        ]
+      },
+      "expect": {
+        "questions": {
+          "count": 6
+        },
+        "result": {
+          "status": "conditional"
+        },
+        "stages": {
+          "1": "needs_check"
+        }
+      },
+      "forbidden": [
+        {
+          "kind": "verdict",
+          "status": "calculated",
+          "why": "모르는 값이 남았는데 전체 판정을 확정으로 두지 않는다"
+        }
+      ],
+      "synthetic": true
+    },
+    {
+      "id": "C39",
+      "title": "겉보기 밀도를 몰라 부피 적재를 확인하지 못하는 경우",
+      "review": "초안",
+      "tags": [
+        "PP",
+        "적재",
+        "밀도 모름"
+      ],
+      "world": {
+        "streams": [
+          {
+            "id": "st_a",
+            "name": "PP 압축품",
+            "material": "PP",
+            "origin": "PIR",
+            "form": "압축",
+            "monthlyKg": 500,
+            "monthlyKgBasis": "measured",
+            "bulkDensityKgPerM3": null,
+            "measure": {
+              "contaminationPct": 1.0,
+              "moisturePct": 0.3
+            }
+          }
+        ],
+        "vendors": [
+          {
+            "orgId": "org_v1",
+            "permits": [
+              {
+                "wasteItem": "폐플라스틱",
+                "materials": [
+                  "PP",
+                  "PE"
+                ]
+              }
+            ],
+            "criteria": [
+              {
+                "id": "pc_pp_b",
+                "material": "PP",
+                "form": null,
+                "grade": "B",
+                "maxContaminationPct": 8,
+                "maxMoisturePct": 2,
+                "unitPriceKrwPerKg": 200,
+                "minMonthlyKg": 300
+              }
+            ]
+          }
+        ]
+      },
+      "expect": {
+        "tools": [
+          {
+            "tool": "check_loading",
+            "streams": [
+              "st_a"
+            ],
+            "vendor": "org_v1",
+            "status": "conditional",
+            "checks": {
+              "loading_volume": "conditional",
+              "min_volume": "met"
+            },
+            "absentClaims": [
+              "totalM3",
+              "perPickupM3"
+            ]
+          }
+        ],
+        "assignments": {
+          "st_a": {
+            "vendor": "org_v1",
+            "route": "sell"
+          }
+        }
+      },
+      "forbidden": [
+        {
+          "kind": "tool_claim",
+          "tool": "check_loading",
+          "claim": "totalM3",
+          "why": "밀도를 모르는데 부피를 지어내지 않는다"
+        }
+      ],
+      "synthetic": true
+    },
+    {
+      "id": "C40",
+      "title": "현행 처리와 단가를 입력한 경우",
+      "review": "초안",
+      "tags": [
+        "PP",
+        "현행 있음"
+      ],
+      "world": {
+        "streams": [
+          {
+            "id": "st_a",
+            "name": "PP 압축품",
+            "material": "PP",
+            "origin": "PIR",
+            "form": "압축",
+            "monthlyKg": 500,
+            "monthlyKgBasis": "measured",
+            "bulkDensityKgPerM3": 250,
+            "measure": {
+              "contaminationPct": 1.0,
+              "moisturePct": 0.3
+            },
+            "currentTreatment": {
+              "unitCostKrwPerKg": 300,
+              "method": "위탁 소각"
+            }
+          }
+        ],
+        "vendors": [
+          {
+            "orgId": "org_v1",
+            "permits": [
+              {
+                "wasteItem": "폐플라스틱",
+                "materials": [
+                  "PP",
+                  "PE"
+                ]
+              }
+            ],
+            "criteria": [
+              {
+                "id": "pc_pp_b",
+                "material": "PP",
+                "form": null,
+                "grade": "B",
+                "maxContaminationPct": 8,
+                "maxMoisturePct": 2,
+                "unitPriceKrwPerKg": 200,
+                "minMonthlyKg": 300
+              }
+            ]
+          }
+        ]
+      },
+      "expect": {
+        "result": {
+          "status": "calculated",
+          "sensitivity": false
+        },
+        "assignments": {
+          "st_a": {
+            "vendor": "org_v1",
+            "status": "calculated",
+            "currentAssumed": false,
+            "monthlyNow": -150000,
+            "monthlyAfter": 100000,
+            "difference": 250000,
+            "absentChecks": [
+              "current_assumed"
+            ]
+          }
+        }
+      },
+      "forbidden": [
+        {
+          "kind": "evidence_cited",
+          "evidence": "assumption:current.cost",
+          "why": "입력한 현행 단가가 있는데 가정값을 쓰지 않는다"
+        },
+        {
+          "kind": "evidence_cited",
+          "evidence": "doc:org_eval:위탁계약서",
+          "from": "org_v1",
+          "result": false,
+          "why": "현행 처리 단가는 업체에 알리지 않는다"
+        }
+      ],
+      "synthetic": true
+    },
+    {
+      "id": "C41",
+      "title": "현행 처리를 입력하지 않은 경우(혼합 소각 가정값과 민감도)",
+      "review": "초안",
+      "tags": [
+        "PP",
+        "현행 없음",
+        "가정값"
+      ],
+      "world": {
+        "streams": [
+          {
+            "id": "st_a",
+            "name": "PP 압축품",
+            "material": "PP",
+            "origin": "PIR",
+            "form": "압축",
+            "monthlyKg": 500,
+            "monthlyKgBasis": "measured",
+            "bulkDensityKgPerM3": 250,
+            "measure": {
+              "contaminationPct": 1.0,
+              "moisturePct": 0.3
+            }
+          }
+        ],
+        "vendors": [
+          {
+            "orgId": "org_v1",
+            "permits": [
+              {
+                "wasteItem": "폐플라스틱",
+                "materials": [
+                  "PP",
+                  "PE"
+                ]
+              }
+            ],
+            "criteria": [
+              {
+                "id": "pc_pp_b",
+                "material": "PP",
+                "form": null,
+                "grade": "B",
+                "maxContaminationPct": 8,
+                "maxMoisturePct": 2,
+                "unitPriceKrwPerKg": 200,
+                "minMonthlyKg": 300
+              }
+            ]
+          }
+        ]
+      },
+      "expect": {
+        "tools": [
+          {
+            "tool": "judge_route",
+            "stream": "st_a",
+            "vendor": "org_v1",
+            "checks": {
+              "current_assumed": "met"
+            },
+            "claims": {
+              "currentUnitCost": 250,
+              "monthlyNow": -125000,
+              "sensitivityA": 100000
+            }
+          }
+        ],
+        "result": {
+          "status": "calculated",
+          "sensitivity": true
+        },
+        "assignments": {
+          "st_a": {
+            "vendor": "org_v1",
+            "currentAssumed": true,
+            "monthlyNow": -125000,
+            "difference": 225000,
+            "checks": [
+              "current_assumed"
+            ]
+          }
+        }
+      },
+      "forbidden": [
+        {
+          "kind": "evidence_cited",
+          "evidence": "doc:org_eval:위탁계약서",
+          "why": "없는 계약서를 근거로 대지 않는다"
+        }
+      ],
+      "synthetic": true
+    },
+    {
+      "id": "C42",
+      "title": "현행 처리가 업체 처리비보다 싼 경우(현행 유지)",
+      "review": "초안",
+      "tags": [
+        "PP+ABS",
+        "현행 있음",
+        "처리비",
+        "현행 유지"
+      ],
+      "world": {
+        "streams": [
+          {
+            "id": "st_a",
+            "name": "퍼지 덩어리",
+            "material": "PP+ABS",
+            "origin": "PIR",
+            "form": "가공 전",
+            "monthlyKg": 250,
+            "monthlyKgBasis": "measured",
+            "bulkDensityKgPerM3": 250,
+            "measure": {
+              "contaminationPct": 30.0,
+              "moisturePct": 1.0
+            },
+            "currentTreatment": {
+              "unitCostKrwPerKg": 50,
+              "method": "자가 처리"
+            }
+          }
+        ],
+        "vendors": [
+          {
+            "orgId": "org_v1",
+            "permits": [
+              {
+                "wasteItem": "폐플라스틱",
+                "materials": [
+                  "PP+ABS"
+                ]
+              }
+            ],
+            "criteria": [
+              {
+                "id": "pc_mixed",
+                "material": "PP+ABS",
+                "form": null,
+                "grade": "등외",
+                "maxContaminationPct": 50,
+                "maxMoisturePct": 5,
+                "unitPriceKrwPerKg": -80,
+                "minMonthlyKg": 200
+              }
+            ]
+          }
+        ]
+      },
+      "expect": {
+        "result": {
+          "status": "calculated"
+        },
+        "assignments": {
+          "st_a": {
+            "vendor": null,
+            "route": "keep",
+            "status": "calculated",
+            "difference": 0,
+            "alternatives": [
+              "org_v1"
+            ]
+          }
+        },
+        "threads": [
+          {
+            "vendor": "org_v1",
+            "status": "open",
+            "hasTypes": [
+              "offer"
+            ]
+          }
+        ]
+      },
+      "forbidden": [
+        {
+          "kind": "assigned",
+          "stream": "st_a",
+          "why": "현행보다 비용이 느는 업체에 배정하지 않는다"
+        }
+      ],
+      "synthetic": true
+    }
+  ]
+}

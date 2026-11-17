@@ -257,3 +257,130 @@ PY
 
 일반 pytest는 Azure 호출을 모의 처리하며 실제 연결 성공 여부를 뜻하지 않는다.
 별도의 Foundry 수동 검증은 앞 절의 실행 명령을 사용한다.
+
+## 설계안 v3 (`app/v3`)
+
+배출 기업과 처리 업체를 대변하는 두 에이전트가 근거를 확인하며 대화해 흐름마다 업체·조건·비용을 찾는다. 모듈 사이의 약속은 `docs/v3/CONTRACT.md`(근거, 판단 도구, 진단 뷰, HTTP API)와 `docs/v3/RUNTIME.md`(두 에이전트와 진행 순서)에 있다. 시연 데이터의 회사와 수치는 모두 가상이다.
+
+### 구조
+
+핵심은 표준 라이브러리만 쓰고, 프레임워크는 가장자리에만 둔다.
+
+| 경로 | 내용 |
+|---|---|
+| `app/v3/evidence/` | 근거 레코드와 레지스트리, 단위 환산, 근거 검증기, 자리표시자 렌더링, 검색, 법령·기준값 시드 |
+| `app/v3/judge/` | 판단 도구 10개(①~⑥)와 도구 등록부 `toolbox.py` |
+| `app/v3/a2a/` | A2A 메시지, 스레드 상태와 12턴 상한, 업체 가드레일, 질문 정책 |
+| `app/v3/agents/`, `service.py` | 모델 클라이언트, 두 에이전트와 진행기, 프레임워크와 무관한 서비스 함수 |
+| `app/v3/intake/`, `demo/` | 측정값 CSV·등급 모델·문서 추출, 시연 데이터 |
+| `app/v3/store.py` | 저장소 인터페이스와 메모리·JSON 파일 구현 |
+| `app/v3/api.py` | FastAPI 라우터 `/api/v3` (계약 8장). `app/main.py`가 기존 `/api/v1`과 함께 싣는다 |
+| `app/v3/sql.py` | SQLAlchemy 저장(`SqlRegistry`, `SqlStore`). 테이블 `v3_evidence`, `v3_records`, `v3_events` (`migrations/versions/0004_v3.py`) |
+| `app/v3/vendor_service.py` | 업체 측 에이전트를 따로 띄우는 서비스 (`POST /a2a/messages`, `GET /healthz`) |
+| `app/v3/mcp_server.py` | 판단 도구 MCP 서버 (streamable HTTP, `/mcp`) |
+
+`api.py`, `sql.py`, `vendor_service.py`, `mcp_server.py`와 `infra/`의 배포 파일은 작성한 환경에서 실행해 보지 못했다(fastapi, sqlalchemy, mcp, az를 쓸 수 없었다). CI의 `tests/v3/test_api.py`, `test_sql.py`, `test_vendor_service.py`, `test_mcp_server.py`가 처음으로 돌려 본다.
+
+### 로컬 실행
+
+```bash
+# 1) 표준 라이브러리 서버: FastAPI 없이 같은 서비스 함수를 낸다
+python3 -m app.v3.devserver
+
+# 2) FastAPI: 기존 /api/v1과 함께 /api/v3를 낸다
+uv sync --extra dev --extra mcp-server
+uv run uvicorn app.main:app --reload --port 8000
+
+curl -X POST http://localhost:8000/api/v3/demo/reset                      # 시연 시작 상태
+curl http://localhost:8000/api/v3/orgs
+curl -X POST http://localhost:8000/api/v3/sessions -H 'X-Org-Id: org_hanbit' \
+  -H 'Content-Type: application/json' -d '{"emitterOrgId": "org_hanbit"}'
+curl -X POST http://localhost:8000/api/v3/sessions/ses_1/run -H 'X-Org-Id: org_hanbit'
+```
+
+요청하는 조직을 정하는 방법은 `V3_AUTH`로 고른다. 오류는 `{"error": {"code", "message"}}`로 온다.
+
+- `V3_AUTH=header`(기본): `X-Org-Id` 헤더를 그대로 믿는다. **header 모드는 시연 전용이며 공개 주소에 그대로 두면 조직 경계가 지켜지지 않는다.** 헤더만 바꾸면 다른 조직의 진단을 보고 승인할 수 있고, `GET /api/v3/orgs`는 누구에게나 모든 조직을 준다.
+- `V3_AUTH=token`: 조직별 서비스 토큰. `Authorization: Bearer <토큰>`으로 조직을 정하고 `X-Org-Id`는 무시한다. 토큰과 조직의 짝은 `V3_ORG_TOKENS`(JSON `{"조직 ID": "토큰"}`, 값은 목록도 된다. 16자 이상, 조직마다 다른 값)로 받고 Key Vault에서 주입한다. 비교는 `hmac.compare_digest`로 한다. `GET /api/v3/orgs`는 자기 조직과 대화 상대만 준다. 토큰이 없으면 401 `TOKEN_REQUIRED`, 틀리면 401 `INVALID_TOKEN`이다.
+- Entra 로그인과는 아직 연결하지 않았다. token 모드는 조직 단위 식별이고 담당자 개인은 가리지 않는다.
+
+로컬 서버도 같은 옵션을 받는다: `python3 -m app.v3.devserver --auth token --org-tokens 토큰.json`(파일은 `{"조직 ID": "토큰"}` 꼴이고 저장소에 넣지 않는다).
+
+`DATABASE_URL`이 있으면 PostgreSQL(또는 SQLite)에 저장한다. 테이블은 마이그레이션으로 만든다.
+
+```bash
+DATABASE_URL=sqlite:///./v3.db uv run alembic upgrade head
+DATABASE_URL=sqlite:///./v3.db uv run uvicorn app.main:app --port 8000
+```
+
+업체 측 에이전트와 MCP 서버는 따로 띄울 수 있다. 근거와 업체 프로필을 API와 나눠 쓰려면 같은 `DATABASE_URL`을 준다(메모리 저장으로는 프로세스마다 따로 논다).
+
+```bash
+VENDOR_ORG_ID=org_saegil VENDOR_SERVICE_KEY=<서비스 키> \
+  uv run uvicorn app.v3.vendor_service:app --port 8100
+uv run python -m app.v3.mcp_server --port 8200          # http://127.0.0.1:8200/mcp
+```
+
+MCP 도구의 입력은 `{"org_id", "today", "arguments"}`이고 `arguments`가 `toolbox`의 입력 스키마 그대로다. 127.0.0.1이 아닌 주소로 띄우려면 `MCP_SERVICE_KEY`가 있어야 한다.
+
+### 환경 변수
+
+| 이름 | 쓰임 |
+|---|---|
+| `DATABASE_URL` | 있으면 SQL 저장, 없으면 메모리 저장. `postgresql://`로 줘도 psycopg 3로 붙는다 |
+| `V3_LLM` | `rule`(기본. 규칙 정책, 모델 미연결) 또는 `foundry` |
+| `FOUNDRY_ENDPOINT`, `FOUNDRY_DEPLOYMENT`, `FOUNDRY_API_KEY` | `V3_LLM=foundry`일 때 쓴다. 주소는 리소스 주소까지만 적는다. 셋 중 하나라도 비면 규칙 정책으로 돈다 |
+| `OLLAMA_BASE_URL` | 업체가 오픈 모델을 고른 경우의 Ollama 주소(VNet 안). 비어 있으면 그 업체는 규칙 정책으로 돌고, 다른 모델로 바꿔 부르지 않는다 |
+| `VENDOR_ORG_ID`, `VENDOR_SERVICE_KEY` | 업체 측 에이전트 서비스가 대변하는 업체와 Bearer 서비스 키. 키가 없으면 모든 메시지를 거절한다 |
+| `V3_VENDOR_AGENTS` | 따로 띄운 업체 측 에이전트의 주소 `{"업체 조직 ID": "https://..."}`. 비어 있으면(기본) API 프로세스 안에서 부른다. 값을 주면 모든 업체 메시지가 HTTP로 가므로 업체마다 서비스가 있거나 `"*"` 주소가 있어야 하고, `VENDOR_SERVICE_KEY`가 같아야 한다 |
+| `V3_AUTH` | 요청한 조직을 정하는 방법. `header`(기본, 시연 전용: `X-Org-Id`를 믿는다) 또는 `token`(조직별 서비스 토큰). header 모드는 시연 전용이며 공개 주소에 그대로 두면 조직 경계가 지켜지지 않는다 |
+| `V3_ORG_TOKENS` | `V3_AUTH=token`일 때의 조직별 토큰 JSON `{"조직 ID": "토큰"}`. Key Vault에서 주입한다. token 모드인데 비어 있거나 모양이 틀리면 요청을 처리하지 않는다(500) |
+| `V3_DEMO_OPEN` | `true`면 시연 되돌리기(`POST /api/v3/demo/reset`)를 누구나 부를 수 있다. 기본은 `false`(관리자 조직 `org_admin`만. 조직이 하나도 없는 빈 저장소의 첫 시드는 누구나) |
+| `V3_DETECTOR_ENDPOINT`, `V3_DETECTOR_API_KEY`, `V3_DETECTOR_DEPLOYMENT` | 탐지 모델(Azure ML 관리형 온라인 엔드포인트)의 채점 주소와 키, 선택으로 배포 이름. 주소가 비어 있으면(기본) 사진·영상 업로드(`POST /api/v3/intake/media`)는 `detectorUnavailable: true`로 답한다 |
+| `MCP_SERVICE_KEY`, `MCP_HOST`, `MCP_PORT` | MCP 서버의 Bearer 서비스 키와 주소 |
+| `APP_ROLE` | 컨테이너에서 띄울 서비스: `api`(기본), `vendor-agent`, `mcp`, `migrate` |
+
+### 테스트
+
+```bash
+uv sync --extra dev --extra mcp-server
+uv run pytest -q tests/v3          # 핵심 + 가장자리
+uv run ruff check .
+```
+
+네이티브 확장을 쓸 수 없는 환경에서는 핵심 테스트만 돌고 가장자리 테스트 네 파일은 건너뛴다.
+
+```bash
+PYTHONPATH=<pytest와 ruff가 있는 경로>:. python3 -m pytest -q tests/v3
+```
+
+### 컨테이너와 배포
+
+이미지는 하나고 `APP_ROLE`로 띄울 서비스를 고른다. 추론 extra(torch)를 빼려면 `--build-arg EXTRAS=`로 만든다.
+
+```bash
+docker build -t rsai-backend .                        # ml extra 포함
+docker build -t rsai-backend --build-arg EXTRAS= .    # 추론 없이 가볍게
+docker run -e APP_ROLE=mcp -e MCP_SERVICE_KEY=<서비스 키> -p 8000:8000 rsai-backend
+```
+
+**MCP 서버 이미지와 Agent Framework 이미지는 분리한다.** 판단 도구 MCP 서버(`app/v3/mcp_server.py`, `v3` extra)는 MCP Python SDK 1.x(`mcp>=1.10,<2`)의 저수준 API로 쓰여 있고, Microsoft Agent Framework의 MCP 도구는 `mcp>=2.2,<3`을 요구한다. 두 범위가 겹치지 않아 한 이미지에 함께 설치할 수 없다. SDK 2.x에서는 `@server.list_tools()`·`@server.call_tool()` 장식자가 `Server(on_list_tools=, on_call_tool=)`로 바뀌고 `inputSchema`가 `input_schema`가 되는 등 이 서버가 쓰는 API가 달라져 같은 코드가 돌지 않는다(공식 v1→v2 이전 안내서로 확인, 2026-11-17. 실제 2.x로 돌려 보지는 못했다). 그래서 범위를 넓히지 않았다.
+
+- `APP_ROLE=mcp` 이미지: `v3` extra만 넣는다(`mcp` 1.x). Agent Framework 패키지를 넣지 않는다.
+- `V3_AGENT_FRAMEWORK`를 켜는 API 이미지: `agent-framework-foundry`, `azure-identity`를 넣고 `v3` extra는 넣지 않는다. MCP 서버에는 HTTP(`/mcp`)로만 닿으므로 SDK 버전이 달라도 된다.
+- 지금 `Dockerfile`은 이미지 하나를 `APP_ROLE`로 나눠 쓰므로, Agent Framework를 켜려면 이미지를 따로 만들어야 한다(아직 만들지 않았다).
+
+`infra/deploy.sh`는 `az acr build`로 이미지를 만들고(태그는 커밋 SHA), 새 이미지로 `alembic upgrade head`를 돌린 뒤에 앱을 바꾼다. 마이그레이션이 실패하면 앱을 바꾸지 않는다. Container Apps를 쓸 수 없는 동안에는 App Service(`infra/appservice.bicep`)에 배포한다. `main`에 병합되면 `.github/workflows/deploy.yml`이 CI 통과 뒤에 같은 스크립트를 돌린다(OIDC 설정이 끝난 뒤부터).
+
+```bash
+bash infra/deploy.sh backend        # backend | frontend | vendor-agent | mcp | all
+IMAGE_TAG=<이전 SHA> bash infra/deploy.sh backend    # 되돌리기
+```
+
+### 시연 당일 순서
+
+1. `bash infra/start.sh`: 멈춰 둔 PostgreSQL과 VM을 켠다. PostgreSQL이 `Ready`가 될 때까지 몇 분 걸린다.
+2. 상태 확인: `curl https://<API 주소>/api/v1/health`가 `{"status":"ok"}`를 주는지, `curl https://<API 주소>/api/v3/admin/status -H 'X-Org-Id: org_hanbit'`로 색인·기준값 상태를 본다.
+3. `bash infra/seed-demo.sh https://<API 주소>`: 시연 시작 상태로 되돌린다(진행 중인 진단은 지워진다).
+4. 미리 접속해 깨우기: 프런트 주소를 브라우저로 열고 진단 화면까지 한 번 들어가 본다. 멈춰 있던 앱은 첫 요청이 느리다.
+5. 시연이 끝나면 `bash infra/stop.sh`.

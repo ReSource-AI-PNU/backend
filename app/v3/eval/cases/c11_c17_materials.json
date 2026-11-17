@@ -1,0 +1,766 @@
+{
+  "title": "재질·출처 (PE, LDPE, PP+ABS, 금속, 목재, 출처·재질 모름)",
+  "synthetic": true,
+  "note": "사례의 회사, 업체, 수치는 모두 가상이다. 실제 업체·견적·측정이 아니다.",
+  "cases": [
+    {
+      "id": "C11",
+      "title": "PE 분쇄품, 측정값 있음, 양쪽 승인까지",
+      "review": "초안",
+      "tags": [
+        "PE",
+        "PIR",
+        "측정값 있음",
+        "승인",
+        "문서"
+      ],
+      "world": {
+        "streams": [
+          {
+            "id": "st_a",
+            "name": "PE 분쇄품",
+            "material": "PE",
+            "origin": "PIR",
+            "form": "분쇄",
+            "monthlyKg": 500,
+            "monthlyKgBasis": "measured",
+            "bulkDensityKgPerM3": 250,
+            "measure": {
+              "contaminationPct": 1.0,
+              "moisturePct": 0.3
+            }
+          }
+        ],
+        "vendors": [
+          {
+            "orgId": "org_v1",
+            "permits": [
+              {
+                "wasteItem": "폐플라스틱",
+                "materials": [
+                  "PP",
+                  "PE"
+                ]
+              }
+            ],
+            "criteria": [
+              {
+                "id": "pc_pe_b",
+                "material": "PE",
+                "form": null,
+                "grade": "B",
+                "maxContaminationPct": 8,
+                "maxMoisturePct": 2,
+                "unitPriceKrwPerKg": 260,
+                "minMonthlyKg": 300
+              }
+            ]
+          }
+        ]
+      },
+      "approve": true,
+      "expect": {
+        "tools": [
+          {
+            "tool": "judge_route",
+            "stream": "st_a",
+            "vendor": "org_v1",
+            "status": "calculated",
+            "claims": {
+              "unitPrice": 260,
+              "monthlyAfter": 130000
+            },
+            "output": {
+              "route": "sell"
+            }
+          }
+        ],
+        "session": {
+          "status": "confirmed"
+        },
+        "result": {
+          "status": "calculated"
+        },
+        "assignments": {
+          "st_a": {
+            "vendor": "org_v1",
+            "route": "sell",
+            "status": "calculated",
+            "unitPrice": 260,
+            "monthlyAfter": 130000
+          }
+        },
+        "threads": [
+          {
+            "vendor": "org_v1",
+            "status": "confirmed",
+            "lastType": "confirm"
+          }
+        ],
+        "questions": {
+          "count": 0
+        },
+        "documents": 2
+      },
+      "forbidden": [
+        {
+          "kind": "text",
+          "pattern": "(?m)^.*(계약서|확약서|확정서)\\s*$",
+          "why": "문서는 요청서와 계획서로만 만든다(계약서라는 제목의 문서를 만들지 않는다)"
+        }
+      ],
+      "synthetic": true
+    },
+    {
+      "id": "C12",
+      "title": "LDPE 포장 필름(PCR), 사진 추정과 질문으로 받은 수분",
+      "review": "초안",
+      "tags": [
+        "LDPE",
+        "PCR",
+        "사진 추정",
+        "수분 질문"
+      ],
+      "world": {
+        "streams": [
+          {
+            "id": "st_a",
+            "name": "포장 필름",
+            "material": "LDPE",
+            "origin": "PCR",
+            "form": "필름",
+            "monthlyKg": 300,
+            "monthlyKgBasis": "measured",
+            "bulkDensityKgPerM3": 60,
+            "measure": null,
+            "wasteItem": "포장재",
+            "photo": {
+              "contaminationPct": 3.0,
+              "found": "종이 태그"
+            }
+          }
+        ],
+        "vendors": [
+          {
+            "orgId": "org_v1",
+            "permits": [
+              {
+                "wasteItem": "포장재",
+                "materials": [
+                  "LDPE",
+                  "LLDPE"
+                ]
+              }
+            ],
+            "criteria": [
+              {
+                "id": "pc_film_b",
+                "material": "LDPE",
+                "form": "필름",
+                "grade": "B",
+                "maxContaminationPct": 5,
+                "maxMoisturePct": 3,
+                "unitPriceKrwPerKg": 150,
+                "minMonthlyKg": 250
+              }
+            ]
+          }
+        ]
+      },
+      "answers": {
+        "st_a.moisturePct": 2.0
+      },
+      "expect": {
+        "tools": [
+          {
+            "tool": "identify_stream",
+            "stream": "st_a",
+            "status": "needs_information",
+            "checks": {
+              "moisture": "conditional"
+            },
+            "output": {
+              "grade": null
+            }
+          }
+        ],
+        "questions": {
+          "count": 1,
+          "asked": [
+            [
+              "st_a",
+              "moisturePct"
+            ]
+          ]
+        },
+        "streams": {
+          "st_a": {
+            "grade": "B",
+            "gradeBasis": "photo_estimate"
+          }
+        },
+        "assignments": {
+          "st_a": {
+            "vendor": "org_v1",
+            "route": "sell",
+            "status": "conditional",
+            "unitPrice": 150,
+            "checks": [
+              "contamination_basis",
+              "moisture_basis",
+              "vendor_condition"
+            ]
+          }
+        },
+        "result": {
+          "status": "conditional"
+        },
+        "threads": [
+          {
+            "vendor": "org_v1",
+            "status": "agreed",
+            "hasTypes": [
+              "conditional"
+            ],
+            "noTypes": [
+              "offer"
+            ]
+          }
+        ]
+      },
+      "forbidden": [
+        {
+          "kind": "question",
+          "stream": "st_a",
+          "field": "contaminationPct",
+          "why": "사진 추정값이 있는데 오염도를 다시 묻지 않는다"
+        },
+        {
+          "kind": "text",
+          "pattern": "측정(값|한) 수분",
+          "why": "담당자가 답한 수분을 측정값이라고 하지 않는다"
+        }
+      ],
+      "synthetic": true,
+      "note": "설계 판단(확정): 사진 추정 오염 비율과 담당자가 답한 수분은 매입 기준 상한 안이어도 충족을 '확정'으로 두지 않는다. 측정값이 없으면 조건부이고 '반입 검수에서 확인' 조건이 붙는다(추정 물량과 같은 원칙)."
+    },
+    {
+      "id": "C13",
+      "title": "PP+ABS 퍼지 덩어리, 처리비를 내는 경로",
+      "review": "초안",
+      "tags": [
+        "PP+ABS",
+        "PIR",
+        "처리비",
+        "현행 있음"
+      ],
+      "world": {
+        "streams": [
+          {
+            "id": "st_a",
+            "name": "퍼지 덩어리",
+            "material": "PP+ABS",
+            "origin": "PIR",
+            "form": "가공 전",
+            "monthlyKg": 250,
+            "monthlyKgBasis": "measured",
+            "bulkDensityKgPerM3": 250,
+            "measure": {
+              "contaminationPct": 30.0,
+              "moisturePct": 1.0
+            },
+            "currentTreatment": {
+              "unitCostKrwPerKg": 250
+            }
+          }
+        ],
+        "vendors": [
+          {
+            "orgId": "org_v1",
+            "permits": [
+              {
+                "wasteItem": "폐플라스틱",
+                "materials": [
+                  "PP",
+                  "ABS",
+                  "PP+ABS"
+                ]
+              }
+            ],
+            "criteria": [
+              {
+                "id": "pc_mixed",
+                "material": "PP+ABS",
+                "form": null,
+                "grade": "등외",
+                "maxContaminationPct": 50,
+                "maxMoisturePct": 5,
+                "unitPriceKrwPerKg": -80,
+                "minMonthlyKg": 200
+              }
+            ],
+            "guardrails": {
+              "floorPriceKrwPerKg": -150,
+              "ceilingPriceKrwPerKg": -50
+            }
+          }
+        ]
+      },
+      "expect": {
+        "tools": [
+          {
+            "tool": "judge_route",
+            "stream": "st_a",
+            "vendor": "org_v1",
+            "status": "calculated",
+            "output": {
+              "route": "treat"
+            },
+            "claims": {
+              "unitPrice": -80,
+              "monthlyAfter": -20000
+            }
+          }
+        ],
+        "result": {
+          "status": "calculated"
+        },
+        "assignments": {
+          "st_a": {
+            "vendor": "org_v1",
+            "route": "treat",
+            "status": "calculated",
+            "unitPrice": -80,
+            "monthlyAfter": -20000,
+            "monthlyNow": -62500,
+            "difference": 42500,
+            "currentAssumed": false
+          }
+        }
+      },
+      "forbidden": [
+        {
+          "kind": "tool_route",
+          "routes": [
+            "sell"
+          ],
+          "why": "처리비를 내는 조건을 매각으로 표시하지 않는다"
+        }
+      ],
+      "synthetic": true
+    },
+    {
+      "id": "C14",
+      "title": "금속 스크랩, 배출계수가 없어 탄소는 확인 필요",
+      "review": "초안",
+      "tags": [
+        "금속",
+        "PIR",
+        "탄소 확인 필요"
+      ],
+      "world": {
+        "streams": [
+          {
+            "id": "st_a",
+            "name": "철 스크랩",
+            "material": "철",
+            "origin": "PIR",
+            "form": "가공 전",
+            "monthlyKg": 400,
+            "monthlyKgBasis": "measured",
+            "bulkDensityKgPerM3": 1200,
+            "measure": {
+              "contaminationPct": 1.0,
+              "moisturePct": 0.2
+            },
+            "wasteItem": "금속 스크랩"
+          }
+        ],
+        "vendors": [
+          {
+            "orgId": "org_v1",
+            "permits": [
+              {
+                "wasteItem": "금속 스크랩",
+                "materials": [
+                  "철"
+                ]
+              }
+            ],
+            "criteria": [
+              {
+                "id": "pc_fe",
+                "material": "철",
+                "form": null,
+                "grade": "B",
+                "maxContaminationPct": 8,
+                "maxMoisturePct": 2,
+                "unitPriceKrwPerKg": 350,
+                "minMonthlyKg": 300
+              }
+            ]
+          }
+        ]
+      },
+      "expect": {
+        "tools": [
+          {
+            "tool": "cost_carbon",
+            "stream": "st_a",
+            "vendor": "org_v1",
+            "origin": true,
+            "status": "conditional",
+            "checks": {
+              "carbon": "conditional"
+            },
+            "absentClaims": [
+              "carbonDifference",
+              "kauValue"
+            ],
+            "claims": {
+              "monthlyRevenue": 140000
+            }
+          }
+        ],
+        "assignments": {
+          "st_a": {
+            "vendor": "org_v1",
+            "route": "sell",
+            "status": "calculated",
+            "unitPrice": 350,
+            "carbon": null,
+            "checks": [
+              "carbon"
+            ]
+          }
+        }
+      },
+      "forbidden": [
+        {
+          "kind": "tool_claim",
+          "tool": "cost_carbon",
+          "claim": "carbonDifference",
+          "why": "배출계수가 없는 품목의 탄소를 지어내지 않는다"
+        }
+      ],
+      "synthetic": true
+    },
+    {
+      "id": "C15",
+      "title": "폐목재, 받을 수 있는 업체가 없는 경우",
+      "review": "초안",
+      "tags": [
+        "목재",
+        "허가 불일치",
+        "현행 없음"
+      ],
+      "world": {
+        "streams": [
+          {
+            "id": "st_a",
+            "name": "목재 팔레트",
+            "material": "목재",
+            "origin": "PIR",
+            "form": "가공 전",
+            "monthlyKg": 600,
+            "monthlyKgBasis": "measured",
+            "bulkDensityKgPerM3": 400,
+            "measure": {
+              "contaminationPct": 2.0,
+              "moisturePct": 2.5
+            },
+            "wasteItem": "폐목재"
+          }
+        ],
+        "vendors": [
+          {
+            "orgId": "org_v1",
+            "permits": [
+              {
+                "wasteItem": "폐플라스틱",
+                "materials": [
+                  "PP",
+                  "PE"
+                ]
+              }
+            ],
+            "criteria": [
+              {
+                "id": "pc_pp_b",
+                "material": "PP",
+                "form": null,
+                "grade": "B",
+                "maxContaminationPct": 8,
+                "maxMoisturePct": 2,
+                "unitPriceKrwPerKg": 200,
+                "minMonthlyKg": 300
+              }
+            ]
+          }
+        ]
+      },
+      "expect": {
+        "tools": [
+          {
+            "tool": "match_permit",
+            "stream": "st_a",
+            "vendor": "org_v1",
+            "status": "calculated",
+            "output": {
+              "matched": false,
+              "openThread": false
+            },
+            "checks": {
+              "permit": "unmet"
+            }
+          }
+        ],
+        "threads": [
+          {
+            "vendor": "org_v1",
+            "status": "not_opened",
+            "streams": [
+              "st_a"
+            ],
+            "reasonEvidence": true
+          }
+        ],
+        "result": {
+          "status": "calculated"
+        },
+        "assignments": {
+          "st_a": {
+            "vendor": null,
+            "route": "keep",
+            "status": "calculated",
+            "currentAssumed": true,
+            "monthlyNow": -72000,
+            "unitPrice": null
+          }
+        }
+      },
+      "forbidden": [
+        {
+          "kind": "thread_opened",
+          "vendor": "org_v1",
+          "why": "허가 품목이 맞지 않는 업체와는 대화를 열지 않는다"
+        }
+      ],
+      "synthetic": true
+    },
+    {
+      "id": "C16",
+      "title": "출처(PIR·PCR)를 모르는 경우, 질문으로 받는다",
+      "review": "초안",
+      "tags": [
+        "PP",
+        "출처 모름",
+        "질문"
+      ],
+      "world": {
+        "streams": [
+          {
+            "id": "st_a",
+            "name": "PP 압축품",
+            "material": "PP",
+            "origin": null,
+            "form": "압축",
+            "monthlyKg": 500,
+            "monthlyKgBasis": "measured",
+            "bulkDensityKgPerM3": 250,
+            "measure": {
+              "contaminationPct": 1.0,
+              "moisturePct": 0.3
+            }
+          }
+        ],
+        "vendors": [
+          {
+            "orgId": "org_v1",
+            "permits": [
+              {
+                "wasteItem": "폐플라스틱",
+                "materials": [
+                  "PP",
+                  "PE"
+                ]
+              }
+            ],
+            "criteria": [
+              {
+                "id": "pc_pp_b",
+                "material": "PP",
+                "form": null,
+                "grade": "B",
+                "maxContaminationPct": 8,
+                "maxMoisturePct": 2,
+                "unitPriceKrwPerKg": 200,
+                "minMonthlyKg": 300
+              }
+            ]
+          }
+        ]
+      },
+      "answers": {
+        "st_a.origin": "PCR"
+      },
+      "expect": {
+        "tools": [
+          {
+            "tool": "identify_stream",
+            "stream": "st_a",
+            "status": "conditional",
+            "checks": {
+              "origin": "conditional"
+            }
+          }
+        ],
+        "questions": {
+          "count": 1,
+          "asked": [
+            [
+              "st_a",
+              "origin"
+            ]
+          ]
+        },
+        "streams": {
+          "st_a": {
+            "origin": "PCR"
+          }
+        },
+        "result": {
+          "status": "calculated"
+        },
+        "assignments": {
+          "st_a": {
+            "vendor": "org_v1",
+            "route": "sell",
+            "status": "calculated"
+          }
+        }
+      },
+      "forbidden": [
+        {
+          "kind": "question",
+          "stream": "st_a",
+          "field": "form",
+          "why": "이미 아는 값을 다시 묻지 않는다"
+        }
+      ],
+      "synthetic": true
+    },
+    {
+      "id": "C17",
+      "title": "재질을 모르는 경우(담당자도 모름)",
+      "review": "초안",
+      "tags": [
+        "재질 모름",
+        "모름",
+        "허가 불일치"
+      ],
+      "world": {
+        "streams": [
+          {
+            "id": "st_a",
+            "name": "재질 미확인 사출품",
+            "material": null,
+            "origin": "PIR",
+            "form": "압축",
+            "monthlyKg": 500,
+            "monthlyKgBasis": "measured",
+            "bulkDensityKgPerM3": 250,
+            "measure": {
+              "contaminationPct": 1.0,
+              "moisturePct": 0.3
+            }
+          }
+        ],
+        "vendors": [
+          {
+            "orgId": "org_v1",
+            "permits": [
+              {
+                "wasteItem": "폐플라스틱",
+                "materials": [
+                  "PP",
+                  "PE"
+                ]
+              }
+            ],
+            "criteria": [
+              {
+                "id": "pc_pp_b",
+                "material": "PP",
+                "form": null,
+                "grade": "B",
+                "maxContaminationPct": 8,
+                "maxMoisturePct": 2,
+                "unitPriceKrwPerKg": 200,
+                "minMonthlyKg": 300
+              }
+            ]
+          }
+        ]
+      },
+      "answers": {
+        "st_a.material": "unknown"
+      },
+      "expect": {
+        "questions": {
+          "count": 1,
+          "asked": [
+            [
+              "st_a",
+              "material"
+            ]
+          ]
+        },
+        "unresolved": [
+          [
+            "st_a",
+            "material"
+          ]
+        ],
+        "threads": [
+          {
+            "vendor": "org_v1",
+            "status": "not_opened",
+            "streams": [
+              "st_a"
+            ]
+          }
+        ],
+        "result": {
+          "status": "needs_information"
+        },
+        "assignments": {
+          "st_a": {
+            "vendor": null,
+            "status": "needs_information",
+            "unitPrice": null,
+            "checks": [
+              "unresolved"
+            ]
+          }
+        }
+      },
+      "forbidden": [
+        {
+          "kind": "thread_opened",
+          "vendor": "org_v1",
+          "why": "재질을 모르면 허가 품목과 대조할 수 없으므로 대화를 열지 않는다"
+        },
+        {
+          "kind": "money",
+          "stream": "st_a",
+          "fields": [
+            "unitPrice"
+          ],
+          "why": "재질을 가정해 단가를 내지 않는다"
+        }
+      ],
+      "synthetic": true
+    }
+  ]
+}

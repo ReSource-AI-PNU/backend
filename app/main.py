@@ -3,6 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.api.router import router
 from app.core.config import settings
+from app.v3.api import router as v3_router
 
 app = FastAPI(
     title="Re:Source AI API",
@@ -19,3 +20,4 @@ app.add_middleware(
 )
 
 app.include_router(router)
+app.include_router(v3_router)  # 설계안 v3: /api/v3

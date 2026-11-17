@@ -1,0 +1,12 @@
+# 미실행(Azure ML 필요). 채점 환경. 버전은 학습에 쓴 것과 맞춘다.
+name: rsai-grade
+channels:
+  - conda-forge
+dependencies:
+  - python=3.10
+  - pip
+  - pip:
+      - mlflow
+      - azureml-inference-server-http
+      - scikit-learn
+      - pandas

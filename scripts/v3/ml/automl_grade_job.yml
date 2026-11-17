@@ -1,0 +1,34 @@
+# 미실행(Azure ML 필요). 등급 모델 AutoML 분류 작업.
+#   az ml job create -f scripts/v3/ml/automl_grade_job.yml -g team_AIBIC2026_03_RG_EUS2 -w team-workspace
+# 학습 데이터는 make_grade_dataset.py로 만든 합성 데이터다(모든 행 synthetic=true).
+# 합성 데이터 점수는 "합성 데이터 기준"이며, 실제 등급이 쌓이기 전에는 배포 게이트를 통과시키지 않는다.
+$schema: https://azuremlschemas.azureedge.net/latest/autoMLJob.schema.json
+type: automl
+task: classification
+experiment_name: rsai-grade
+display_name: rsai-grade-automl
+description: 재질, 오염도, 수분으로 등급(A/B/C/등외)을 분류한다. 합성 데이터 기준.
+compute: azureml:rsai-cpu
+primary_metric: accuracy
+target_column_name: grade
+n_cross_validations: 5
+training_data:
+  type: mltable
+  path: ./grade_training_mltable
+featurization:
+  mode: auto
+limits:
+  timeout_minutes: 30
+  trial_timeout_minutes: 10
+  max_trials: 15
+  max_concurrent_trials: 2
+  enable_early_termination: true
+training:
+  enable_onnx_compatible_models: false
+  enable_stack_ensemble: false
+  enable_vote_ensemble: true
+tags:
+  project: resource-ai
+  env: demo
+  managed-by: agent
+  data_basis: synthetic
