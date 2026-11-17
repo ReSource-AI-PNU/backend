@@ -6,6 +6,7 @@ claim 풀에서만 오고, 근거 검증기를 통과한 메시지만 나간다.
 
 from __future__ import annotations
 
+import json
 from typing import Any
 
 from app.v3 import ids
@@ -22,9 +23,11 @@ from app.v3.agents.draft import (
     Outcome,
     Trace,
     build_message,
+    enum_string,
     rejection,
     response_schema,
     run_draft,
+    turn_schema,
 )
 from app.v3.agents.llm import LLM
 from app.v3.agents.pool import ClaimPool
@@ -62,6 +65,34 @@ RESPONSE_SCHEMA = response_schema(
     },
 )
 
+EXAMPLES = (
+    # 규칙 정책이 실제로 낸 메시지를 줄인 것(형식 예시. 이름과 ID는 입력의 것으로 바꿔 쓴다)
+    {
+        "type": "inquiry",
+        "stage": 4,
+        "streamIds": ["st_sprue"],
+        "text": (
+            "(주)가나자원 담당자께, 다음 폐기물을 받을 수 있는지와 조건을 문의드립니다.\n"
+            "- 스프루·런너(PP, 가공 전): 월 발생량 {{st_sprue_monthlyKg}}, "
+            "오염도 {{st_sprue_contaminationPct}}(측정), 수분 확인 필요\n"
+            "조건을 정할 때 다음도 함께 알려 주세요.\n"
+            "- 스프루·런너: 반입 검수에서 매입 기준 상한 안으로 확인되면 같은 조건으로 받을 수 있는지"
+        ),
+        "toolCalls": [],
+    },
+    {
+        "type": "question",
+        "stage": 5,
+        "streamIds": ["st_defect"],
+        "text": (
+            "제안 감사합니다. 아직 조건을 받지 못한 폐기물이 있어 여쭙니다.\n"
+            "- 불량 사출품: 받을 수 있는지와 조건을 알려 주세요."
+        ),
+        "asks": [{"streamId": "st_defect", "field": "terms"}],
+        "toolCalls": [],
+    },
+)
+
 SYSTEM_PROMPT = "\n".join(
     [
         "당신은 폐기물을 내보내는 배출 기업을 대변하는 회사 측 에이전트다.",
@@ -73,7 +104,7 @@ SYSTEM_PROMPT = "\n".join(
         "- 양쪽 담당자가 승인하기 전에는 확정(confirm)을 보내지 않는다.",
         "- 담당자만 아는 값은 type을 ask_user로 하고 userQuestions에 항목을 적는다.",
         "- 상대가 낸 조건을 그대로 받아들이면 type을 accept로 한다(메시지는 나가지 않는다).",
-        "- 현행 처리 단가는 상대 업체에 알리지 않는다.",
+        "- 현행 처리 단가와 비용·탄소 계산 값은 상대 업체에 알리지 않는다.",
         (
             "- 상대가 offer나 conditional로 낸 조건에서 남은 것이 반입 검수에서 확인할 조건"
             "(오염도, 수분, 혼입물 분리)뿐이면 더 묻지 않고 accept한다. 조건은 승인 화면에 그대로 남는다."
@@ -87,13 +118,76 @@ SYSTEM_PROMPT = "\n".join(
         "- 본문에서 폐기물과 매입 기준은 이름으로 부른다. st_, pc_ 같은 식별자는 본문에 쓰지 않는다.",
         "",
         TOOL_HINT,
-        "응답 JSON: type, stage, streamIds, text, claimRefs, toolCalls (필요하면 asks, userQuestions).",
+        "응답 JSON: type, stage, streamIds, text, toolCalls (필요하면 asks, userQuestions, reason).",
+        "stage는 문의·답·질문이면 4, 조건을 다루면 5, 확정이면 6이다.",
+        "",
+        "형식 예시(값은 모두 {{id}}로 쓰고, 숫자는 한 글자도 없다):",
+        *[json.dumps(example, ensure_ascii=False) for example in EXAMPLES],
     ]
 )
 
 
 def short(stream_id: str) -> str:
     return stream_id.removeprefix("st_")
+
+
+def guide(
+    *,
+    task: str,
+    types: tuple[str, ...],
+    incoming: Any,
+    uncovered: list[str],
+    asked: bool,
+    cannot_ask_user: bool,
+    names: dict[str, str],
+    results: list[dict[str, Any]],
+) -> list[str]:
+    """이번 차례에 할 일(코드가 대화 상태에서 쓴다). 모델이 고를 수 있는 type은 types뿐이다."""
+    lines = [f"이번 차례에 쓸 수 있는 type: {', '.join(types)}."]
+    if task == "inquiry":
+        asks = [
+            f"{names.get(r['arguments'].get('streamId'), '')}: {c['ask']}"
+            for r in results
+            if r.get("tool") == "judge_route" and isinstance(r.get("arguments"), dict)
+            for c in r.get("checks") or []
+            if c.get("ask")
+        ]
+        lines.append(
+            "첫 문의(inquiry)다. streamIds에 thread.streamIds를 모두 넣는다. 흐름마다 이름과 "
+            "streams[].facts의 값을 {{id}}로 적고, facts에 없는 값은 '확인 필요'로 쓴다."
+        )
+        if asks:
+            lines.append("판단 도구가 업체에 확인하라고 한 것도 함께 묻는다: " + " / ".join(asks))
+        return lines
+    if task == "confirm":
+        lines.append(
+            "양쪽 담당자가 승인했다. confirm으로 state.agreed의 흐름과 조건(단가, 월 발생량)을 "
+            "{{id}}로 적어 확정을 알린다."
+        )
+        return lines
+    kind = getattr(incoming, "type", None)
+    if kind == "question":
+        lines.append(
+            "상대가 질문했다(incoming.asks). 물은 항목마다 streams[].facts의 {{id}}로 answer한다. "
+            "facts에 없고 unknownFields에도 없는 값은 담당자만 안다"
+            + (
+                ": '확인 필요'로 답한다(담당자에게 더 물을 수 없다)."
+                if cannot_ask_user
+                else ": type을 ask_user로 하고 userQuestions에 {streamId, field}를 적는다."
+            )
+        )
+    elif uncovered and not asked:
+        shown = ", ".join(names.get(sid, sid) for sid in uncovered)
+        lines.append(
+            f"아직 조건을 받지 못한 폐기물: {shown}. accept하지 않고 question으로 그 폐기물만 묻는다"
+            "(streamIds에 그 폐기물, asks에 {streamId, field: terms})."
+        )
+    elif kind in ("offer", "conditional", "counter", "answer"):
+        lines.append(
+            "문의한 폐기물은 모두 조건을 받았거나 제외됐다. 남은 조건이 반입 검수에서 확인할 것"
+            "(오염도, 수분, 혼입물 분리, 물량 정산)뿐이면 accept한다(text는 비워도 된다)."
+        )
+    return lines
 
 
 class CompanyAgent:
@@ -242,10 +336,53 @@ class CompanyAgent:
             for s in m.stream_ids
         }
 
+        names = {s["id"]: str(s.get("name") or s["id"]) for s in streams}
+        asked_now = bool(uncovered) and set(uncovered) <= asked_streams
+
+        def schema() -> dict[str, Any]:
+            asks = {
+                "type": "array",
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "streamId": enum_string(thread.stream_ids),
+                        "field": enum_string(questions.ASK_FIELDS),
+                    },
+                    "required": ["streamId", "field"],
+                },
+            }
+            wanted = {
+                "type": "array",
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "streamId": enum_string(thread.stream_ids),
+                        "field": enum_string(sorted(questions.FIELDS)),
+                    },
+                    "required": ["streamId", "field"],
+                },
+            }
+            extra: dict[str, Any] = {"asks": asks, "reason": {"type": "string"}}
+            if ASK_USER in pseudo:
+                extra["userQuestions"] = wanted
+            return turn_schema(
+                types=(*allowed, *pseudo), stream_ids=thread.stream_ids, tools=TOOLS, extra=extra
+            )
+
         def briefing(rejections: list[dict[str, Any]]) -> dict[str, Any]:
             return {
                 "role": "company",
                 "task": task,
+                "guide": guide(
+                    task=task,
+                    types=(*allowed, *pseudo),
+                    incoming=incoming,
+                    uncovered=uncovered,
+                    asked=asked_now,
+                    cannot_ask_user=bool(state.get("cannotAskUser")),
+                    names=names,
+                    results=tools.results,
+                ),
                 "today": self.today,
                 "org": {"id": self.org_id, "name": self.org.get("name")},
                 "counterpart": {"id": vendor_org.get("id"), "name": vendor_org.get("name")},
@@ -298,12 +435,12 @@ class CompanyAgent:
                     "offered": offered,
                     "excluded": excluded,
                     "uncovered": uncovered,
-                    "asked": bool(uncovered) and set(uncovered) <= asked_streams,
+                    "asked": asked_now,
                     "agreed": list(state.get("agreed") or []),
                     "cannotAskUser": bool(state.get("cannotAskUser")),
                 },
                 "userQuestionFields": sorted(questions.FIELDS),
-                "tools": list(TOOLS),
+                "tools": tools.catalog(),
                 "toolResults": tools.results,
                 "pool": pool.describe(),
                 "rejections": rejections,
@@ -358,7 +495,7 @@ class CompanyAgent:
             llm=self.llm,
             system=SYSTEM_PROMPT,
             briefing=briefing,
-            schema=RESPONSE_SCHEMA,
+            schema=schema,
             pool=pool,
             tools=tools,
             make=make,
