@@ -144,6 +144,7 @@ def call_tool(name, arguments, *, registry, org_id, today) -> dict
 |---|---|---|
 | ① | `identify_stream` | 흐름의 재질·출처·형태를 정리하고 등급을 낸다. 측정값이 있으면 측정 등급, 없으면 사진 추정 오염 비율과 질문으로 받은 수분으로 추정하고 `"basis": "photo_estimate"`를 붙인다. 둘이 다르면 확인 질문을 `checks`에 넣는다 |
 | ② | `judge_route` | 경로를 세 상태로 판정한다. 현행 처리와 단가를 입력으로 받고, 없으면 "혼합 소각" 가정값을 쓰며 현행 상태에 따른 민감도를 함께 낸다. 업체 매입 기준과 대조한다. 오염도가 사진 추정이거나 수분이 담당자 답이면 상한 안이어도 확정하지 않고 `contamination_basis`·`moisture_basis` 검사(조건부, "반입 검수에서 확인")를 붙인다 |
+| ② | `judge_reuse` | 경로 후보 가운데 공정 재투입. 입력은 `stream` 하나다. 공정에서 나온 것(PIR)이고 단일 재질이며 혼입물이 없을 때만 후보(`output.eligible: true`)로 본다. 측정 등급이 A가 아니면 후보에서 빼고(`eligible: false`), 오염도와 수분의 측정값이 없으면 후보이되 `reuse_quality`가 `conditional`이다. 신재 구입 단가와 다시 넣을 수 있는 양(`stream.reuse`)이 있으면 절감액을 계산하고(`reuseKg`, `monthlyRevenue`, `monthlyAfter`, `difference`), 없으면 `needs_information`과 `checks`의 `reuse_inputs`로 답한다. 업체가 끼지 않는 경로라 계산 근거는 배출 기업만 본다. `checks[].key`는 `reuse_origin`, `reuse_material`, `reuse_quality`, `reuse_inputs` |
 | ② | `check_loading` | 최소 물량과 적재 검사. 출처(PIR·PCR)와 관계없이 모든 외부 반출 경로에 똑같이 적용한다. 같은 업체로 가는 같은 공장의 흐름은 먼저 합치고, 무게와 부피를 함께 본다 |
 | ③ | `search_clauses` | 조항 검색 (law 근거) |
 | ③ | `check_requirements` | 흐름과 경로에 걸리는 요건을 판정한다. 인용은 원문 부분 문자열로만 한다 |
@@ -183,7 +184,9 @@ Stream  {"id": "st_sprue", "orgId": "org_hanbit", "name": "스프루·런너", "
          "measure": {"contaminationPct": 1.0, "moisturePct": 0.3, "measuredOn": "2026-11-10", "evidence": ["measure:..."]},
          "photo":   {"contaminationPct": 2.0, "evidence": ["model:..."],
                      "materialEstimate": {"class": "plastic_rigid", "label": "경질 플라스틱", "wasteItem": "폐플라스틱", "confidence": 0.9, "evidence": ["model:..."]}},
-         "currentTreatment": {"method": "혼합 소각", "unitCostKrwPerKg": 250, "evidence": ["doc:..."]}}
+         "currentTreatment": {"method": "혼합 소각", "unitCostKrwPerKg": 250, "evidence": ["doc:..."]},
+         "pretreatHoursPerMonth": 4, "laborCostKrwPerHour": 12000, "pretreatEvidence": ["human:..."],
+         "reuse": {"virginPriceKrwPerKg": 1500, "reusableKgPerMonth": 400, "regrindCostKrwPerKg": 120, "evidence": ["human:..."]}}
 
 VendorProfile {"orgId": "org_saegil",
          "permits": [{"wasteItem": "폐플라스틱", "materials": ["PP", "PE"], "evidence": ["doc:..."]}],
@@ -198,6 +201,12 @@ VendorProfile {"orgId": "org_saegil",
 
 등급은 `A`, `B`, `C`, `등외`다.
 
+흐름의 `pretreatHoursPerMonth`·`laborCostKrwPerHour`·`reuse`는 순비용 계산에만 쓰는 배출 기업의 입력이다(없으면 `null`). `PUT /orgs/{orgId}/streams/{streamId}`로 넣고, 넣은 값은 `human` 근거로 등록된다. 업체에는 가지 않는다(업체가 받는 흐름 목록과 뷰에 없다).
+
+- `pretreatHoursPerMonth`는 0 이상(시간/월), `laborCostKrwPerHour`는 0보다 큰 값(원/시간)이다. 작업 시간이 있을 때만 전처리 인건비를 계산하고, 시간당 인건비를 비우면 최저임금 기준값(`ref:최저임금:시간급@2026`)으로 계산한다. 작업 시간을 `null`로 보내면 둘 다 지운다.
+- `reuse`는 `virginPriceKrwPerKg`(0보다 큰 값), `reusableKgPerMonth`(0보다 큰 값)가 함께 있어야 하고 `regrindCostKrwPerKg`는 비우면 0이다. `null`로 보내면 지운다. 틀린 값은 422 `INVALID_VALUE`다.
+- 담당자 질문에 현행 처리비만 답했으면(`field: "currentCost"`) `currentTreatment.methodAssumed`가 `true`로 남는다. 처리 방법은 묻지 않았으므로 혼합 소각으로 보았다는 뜻이다.
+
 ## 7. 화면용 진단 뷰
 
 `service.get_view(session_id, org_id) -> dict`가 돌려주는 모양이고, 화면은 이것만 그린다. 숫자와 조항은 모두 claim 객체로 온다.
@@ -209,7 +218,9 @@ VendorProfile {"orgId": "org_saegil",
   "stages": [{"stage": 1, "key": "identify", "label": "식별·분류", "status": "waiting | running | done | needs_check"}],
   "streams": [{"id": "st_sprue", "name": "...", "material": "PP", "origin": "PIR", "form": "...",
                "monthlyKg": {"claim"}, "grade": {"value": "A", "basis": "measured | photo_estimate", "evidence": ["..."]},
-               "currentTreatment": {"method": "혼합 소각", "unitCost": {"claim"}, "assumed": true}}],
+               "currentTreatment": {"method": "혼합 소각", "unitCost": {"claim"}, "assumed": true},
+               "costInputs": {"pretreatHoursPerMonth": 4, "laborCostKrwPerHour": 12000,
+                              "reuse": {"virginPriceKrwPerKg": 1500, "reusableKgPerMonth": 400, "regrindCostKrwPerKg": 120}}}],
   "threads": [{"id": "th_1", "vendorOrgId": "org_saegil", "vendorName": "(주)새길자원", "vendorModel": {"provider": "foundry", "name": "gpt-5-mini"},
                "status": "not_opened | open | agreed | declined | handoff | confirmed", "statusReason": "...", "reasonEvidence": ["..."],
                "streamIds": ["st_sprue"], "turns": 4, "maxTurns": 12,
@@ -221,6 +232,9 @@ VendorProfile {"orgId": "org_saegil",
   "result": {"status": "calculated | conditional | needs_information",
              "assignments": [{"streamId": "st_sprue", "vendorOrgId": "org_saegil", "route": "sell", "status": "calculated",
                               "unitPrice": {"claim"}, "monthlyAfter": {"claim"}, "monthlyNow": {"claim"}, "difference": {"claim"},
+                              "revenue": {"claim"}, "transport": {"claim"}, "labor": {"claim"}, "transportPaidBy": "vendor | emitter | null",
+                              "reuse": {"eligible": true, "status": "calculated | conditional | needs_information", "reason": "...",
+                                        "monthlyAfter": {"claim"}, "difference": {"claim"}, "checks": []},
                               "carbon": {"claim"}, "checks": [], "alternatives": [{"vendorOrgId": "...", "route": "...", "monthlyAfter": {"claim"}, "note": "..."}]}],
              "totals": {"monthlyNow": {"claim"}, "monthlyAfter": {"claim"}, "difference": {"claim"}, "carbon": {"claim"}},
              "assumptions": [{"id": "assumption:...", "label": "현행 혼합 소각 처리비 (폐플라스틱)", "value": 250, "unit": "원/kg"}], "sensitivity": [{"label": "현행이 위탁 재활용일 때", "difference": {"claim"}}]},
@@ -233,6 +247,24 @@ VendorProfile {"orgId": "org_saegil",
 ```
 
 `{"claim"}`은 `{"id", "kind", "value", "unit", "evidence"}` 객체다. 값이 없으면 `null`을 넣고 화면은 "확인 필요"를 보여 준다.
+
+### 순비용의 내역과 공정 재투입
+
+`result.assignments[]`의 `monthlyAfter`는 옮긴 뒤의 월 순비용이고(받으면 양수), 아래 값으로 나뉜다. 넷 다 배출 기업이 보는 뷰에만 온다.
+
+| 필드 | 뜻 |
+|---|---|
+| `revenue` | 매각 수익. 처리비를 내는 경로면 음수다. `route`가 `reuse`면 신재 절감액(다시 넣는 양 × (신재 구입 단가 − 분쇄 비용))이다 |
+| `transport` | 배출 기업이 따로 내는 월 운반비. 업체가 내거나 조건을 모르면 `null` |
+| `labor` | 전처리 인건비(월 작업 시간 × 시간당 인건비). 작업 시간을 넣지 않았으면 `null` |
+| `transportPaidBy` | 운반비를 누가 내는가. `vendor`(업체 단가에 포함), `emitter`(배출 기업이 따로 냄), 업체가 조건을 밝히지 않았으면 `null` |
+
+- `route`에 `reuse`(공정 재투입)가 더해졌다: `sell | treat | keep | reuse`. `reuse`면 `vendorOrgId`·`threadId`·`unitPrice`가 `null`이다. 배정 최적화가 현행 유지, 재투입, 업체를 같은 기준(월 순비용)으로 견준다.
+- `reuse`는 `judge_reuse`의 결과다. `eligible`은 후보 여부(조건을 다 보지 못했으면 `null`), `reason`은 한 줄 이유, `monthlyAfter`·`difference`는 신재 구입 단가와 다시 넣을 수 있는 양을 넣었을 때만 온다(없으면 `null`), `checks[]`는 `key`가 `reuse_`로 시작하는 것만 싣는다(`{key, status, text, evidence}`). `judge_reuse`를 부르지 않은 흐름은 `reuse: null`이다.
+- 다시 넣지 못하는 양은 현행 처리 단가로 계산해 `monthlyAfter`에서 뺀다.
+- `streams[].costInputs`는 흐름 레코드의 `pretreatHoursPerMonth`, `laborCostKrwPerHour`, `reuse`(근거 ID는 빼고 세 값만)다. 자료 화면이 지금 값을 보여 줄 때 쓴다.
+- **업체가 보는 뷰에는 `revenue`·`transport`·`labor`·`reuse`가 `null`이고 `streams[].costInputs`는 필드 자체가 없다.** 재투입으로 간 흐름은 업체의 `assignments`에 나오지 않는다. `transportPaidBy`는 업체 자신의 조건이므로 남는다.
+- `questions[].field`에 `currentCost`(현행 처리비, 원/kg)가 더해졌다. 재질·품질 질문 뒤에 질문 한도가 남을 때만 묻고, 업체에 넘기는 질문 목록에서는 뺀다(`questions.PRIVATE_FIELDS`).
 
 ### 사람이 읽는 이름
 
@@ -322,7 +354,7 @@ VendorProfile {"orgId": "org_saegil",
 - `graph.edges[]`: `kind`(`permit | criterion | assignment | excluded | regulation | document`). `excluded` 엣지의 `evidence`에는 허가 품목 때문에 뺀 경우 허가증 근거가 실린다.
 - **업체가 보는 뷰의 `graph`.** 자기 매입 기준 노드(`type: "criterion"`)와, 흐름을 그 기준과 대조한 엣지(`kind: "criterion"`, 흐름 → 기준은 `met | conditional | unmet`과 첫 번째 확인할 것, 기준 → 업체는 "매입 기준표"), 최적안 배정 엣지(`kind: "assignment"`)가 들어간다. 같은 판단 도구(`judge_route`)의 결과에서 업체의 매입 기준·허가 품목과, 대화에서 업체에 열린 흐름 자료(오염도, 수분, 형태, 혼입물, 물량의 근거)를 대조한 검사만 쓴다. 배출 기업의 현행 처리와 비용·탄소에 관한 검사, 규정 엣지(`regulation`), 다른 업체의 기준은 넣지 않는다. 엣지의 `evidence`는 업체가 열 수 있는 근거뿐이다.
 - `result`: `referencePrices[{key, material, form, label, asOf, price: claim, note}]`(가격조사 참고 시세. 손익 계산에는 쓰지 않는다), `carbonInObjective`, `evidence`. `assignments[]`에는 `vendorName`, `threadId`, `carbonValue`(claim, KAU 환산), `currentAssumed`가 붙고, `checks[]`는 `{key, status, text, evidence}`에 업체가 내건 조건이면 `claims`가 붙는다(`text`의 자리표시자를 그 claims로 그린다). `alternatives[]`에는 `vendorName`, `unitPrice`(claim)가 붙는다. `sensitivity[]`는 흐름별이고 `streamId`가 붙는다.
-- `result.assignments[].checks[]`의 `key`: 경로 판단에서 온 `contaminationPct`, `moisturePct`, `contamination_basis`, `moisture_basis`, `form`, `monthly_kg_basis`, `material_basis`, `mixture`, `permit`, `current_assumed`, 비용·탄소에서 온 `transport`, `carbon`, 업체가 내건 조건 `vendor_condition`, 그리고 `price_differs`, `unresolved`, `skipped`, `handoff`, 적재 검사 `min_volume`, `loading`, `loading_volume`이다.
+- `result.assignments[].checks[]`의 `key`: 경로 판단에서 온 `contaminationPct`, `moisturePct`, `contamination_basis`, `moisture_basis`, `form`, `monthly_kg_basis`, `material_basis`, `mixture`, `permit`, `current_assumed`, `current_method`(현행 처리비만 답을 받아 처리 방법을 혼합 소각으로 보았을 때), 비용·탄소에서 온 `transport`, `carbon`, 업체가 내건 조건 `vendor_condition`, 그리고 `price_differs`, `unresolved`, `skipped`, `handoff`, 적재 검사 `min_volume`, `loading`, `loading_volume`이다.
   - **적재 검사(`check_loading`)는 업체가 정해진 배정마다 늘 들어간다.** `min_volume`(최소 물량)과 `loading`(무게·부피 적재), 밀도나 부피 용량을 몰라 부피를 확인하지 못했으면 `loading_volume`. 다른 검사와 달리 충족(`met`)한 것도 나간다. `claims`에 합친 월 물량·최소 물량(`min_volume`), 월 수거 횟수·한 번 수거량·차량 적재 한도(`loading`)가 붙는다. 그 업체에 실제로 배정된 흐름만 합친 값이다. 충족하지 못한 적재 검사가 있으면 그 배정은 `calculated`가 아니다.
   - `contamination_basis`, `moisture_basis`: 값은 매입 기준 상한 안이지만 측정값이 아니라 사진 추정이나 담당자 답이다(조건부. "반입 검수에서 확인").
   - `handoff`: 이 흐름을 맡기로 합의한 대화가 담당자에게 넘어가 배정을 뺐다(`status`는 `needs_information`, `vendorOrgId`는 `null`).
@@ -414,6 +446,8 @@ VendorProfile {"orgId": "org_saegil",
 - token 모드의 오류: 토큰이 없거나 `Bearer` 꼴이 아니면 401 `TOKEN_REQUIRED`, 토큰이 어느 조직의 것도 아니면 401 `INVALID_TOKEN`. `GET /health`만 토큰 없이 답한다. `POST /demo/reset`은 토큰이 없으면 서비스의 규칙(`V3_DEMO_OPEN`, 관리자 조직)대로 답한다.
 - `devserver`도 같은 옵션을 받는다: `--auth header|token`, `--org-tokens <JSON 파일>`.
 - `GET /admin/status`의 `auth`: `{"mode": "header | token", "demoOnly": true | false}`. 관리자 화면이 시연 전용 모드임을 보여 줄 때 쓴다.
+- token 모드의 토큰은 FastAPI와 `devserver` 모두 `V3_ORG_TOKENS_FILE`(JSON을 담은 파일 경로)이 있으면 그 파일에서 먼저 읽고, 없으면 `V3_ORG_TOKENS`에서 읽는다.
+- `GET /admin/status`의 `distance`: `{"provider": true | false, "kind": "KakaoDistance | AzureMapsDistance | null", "lastError": "마지막 실패 이유 | null"}`. `provider`가 `false`면 직선 거리에 우회 계수를 곱한 가정값으로 계산한다. `lastError`에 키는 실리지 않는다.
 - Entra 인증에는 연결하지 않았다. token 모드는 조직 단위 식별이고 담당자 개인은 가리지 않는다.
 
 | 메서드와 경로 | 내용 |
@@ -421,7 +455,7 @@ VendorProfile {"orgId": "org_saegil",
 | `GET /health` | `{"ok": true}`. 조직 헤더 없이 부른다 |
 | `POST /demo/reset` | 시연 데이터를 처음 상태로 되돌린다. 관리자만(아래 "관리자 조직") |
 | `GET /orgs` | 조직 목록. 조직 레코드의 `order`가 작은 것부터(시연 주인공 `org_hanbit`이 맨 앞, 운영 조직이 맨 뒤). `order`가 없는 조직은 그 뒤에 ID 순. token 모드에서는 자기 조직과 대화 상대만 |
-| `GET /orgs/{orgId}/streams`, `PUT /orgs/{orgId}/streams/{streamId}` | 흐름 조회와 수정(현행 처리 입력 포함) |
+| `GET /orgs/{orgId}/streams`, `PUT /orgs/{orgId}/streams/{streamId}` | 흐름 조회와 수정(현행 처리, 전처리 작업 시간·시간당 인건비, 공정 재투입 값 포함. 6장) |
 | `GET /vendors/{orgId}`, `PUT /vendors/{orgId}` | 업체 프로필(허가, 매입 기준, 노선·차량, 가드레일, 모델 선택) |
 | `POST /sessions` | `{emitterOrgId}`로 진단을 만든다. `emitterOrgId`가 없으면 요청한 조직이다 |
 | `GET /sessions` | 내가 당사자인 진단의 목록(최근 것이 앞). `[{id, emitterOrgId, emitterName, status, createdAt, updatedAt, as}]`. 배출 기업은 자기 진단, 업체는 자기에게 열린 대화가 있는 진단, 운영자는 전부. `as`는 `emitter`·`vendor`·`admin` |

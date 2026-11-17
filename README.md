@@ -330,17 +330,25 @@ MCP 도구의 입력은 `{"org_id", "today", "arguments"}`이고 `arguments`가 
 | 이름 | 쓰임 |
 |---|---|
 | `DATABASE_URL` | 있으면 SQL 저장, 없으면 메모리 저장. `postgresql://`로 줘도 psycopg 3로 붙는다 |
-| `V3_LLM` | `rule`(기본. 규칙 정책, 모델 미연결) 또는 `foundry` |
+| `V3_LLM` | `rule`(기본. 규칙 정책, 모델 미연결), `foundry`, `anthropic`. FastAPI와 로컬 서버가 같은 값을 읽는다. 그 밖의 값이면 서버가 뜨지 않는다 |
+| `ANTHROPIC_API_KEY`, `ANTHROPIC_API_KEY_FILE`, `ANTHROPIC_MODEL` | `V3_LLM=anthropic`일 때 쓴다. 키는 값으로 주거나 키만 담은 파일의 경로로 준다(값이 비어 있을 때만 파일을 읽는다). 모델을 비우면 `claude-sonnet-5-5`다. 키가 없으면 경고를 남기고 규칙 정책으로 돈다(로컬 서버는 멈춘다) |
+| `V3_LLM_ALL_VENDORS` | `true`면 ollama를 고른 업체도(Ollama 주소가 없을 때) anthropic 모델이 답한다. 기본 `false` |
 | `FOUNDRY_ENDPOINT`, `FOUNDRY_DEPLOYMENT`, `FOUNDRY_API_KEY` | `V3_LLM=foundry`일 때 쓴다. 주소는 리소스 주소까지만 적는다. 셋 중 하나라도 비면 규칙 정책으로 돈다 |
 | `OLLAMA_BASE_URL` | 업체가 오픈 모델을 고른 경우의 Ollama 주소(VNet 안). 비어 있으면 그 업체는 규칙 정책으로 돌고, 다른 모델로 바꿔 부르지 않는다 |
 | `VENDOR_ORG_ID`, `VENDOR_SERVICE_KEY` | 업체 측 에이전트 서비스가 대변하는 업체와 Bearer 서비스 키. 키가 없으면 모든 메시지를 거절한다 |
 | `V3_VENDOR_AGENTS` | 따로 띄운 업체 측 에이전트의 주소 `{"업체 조직 ID": "https://..."}`. 비어 있으면(기본) API 프로세스 안에서 부른다. 값을 주면 모든 업체 메시지가 HTTP로 가므로 업체마다 서비스가 있거나 `"*"` 주소가 있어야 하고, `VENDOR_SERVICE_KEY`가 같아야 한다 |
 | `V3_AUTH` | 요청한 조직을 정하는 방법. `header`(기본, 시연 전용: `X-Org-Id`를 믿는다) 또는 `token`(조직별 서비스 토큰). header 모드는 시연 전용이며 공개 주소에 그대로 두면 조직 경계가 지켜지지 않는다 |
 | `V3_ORG_TOKENS` | `V3_AUTH=token`일 때의 조직별 토큰 JSON `{"조직 ID": "토큰"}`. Key Vault에서 주입한다. token 모드인데 비어 있거나 모양이 틀리면 요청을 처리하지 않는다(500) |
+| `V3_ORG_TOKENS_FILE` | 위 JSON을 담은 파일의 경로. 있으면 `V3_ORG_TOKENS`보다 먼저 읽는다 |
+| `CORS_ORIGINS`, `V3_CORS_ORIGINS` | 브라우저에서 부를 수 있는 출처. `CORS_ORIGINS`는 JSON 목록이고, `V3_CORS_ORIGINS`는 거기에 더할 출처를 쉼표로 나눠 적는다(`http(s)://호스트[:포트]`). 로컬 서버는 `V3_CORS_ORIGINS`만 읽는다 |
+| `V3_DISTANCE`, `KAKAO_REST_API_KEY`, `AZURE_MAPS_KEY` | 도로 거리 제공자. `kakao`(카카오모빌리티 자동차 길찾기), `azure`(Azure Maps), `none`. 비우면(기본) `AZURE_MAPS_KEY`가 있을 때만 Azure Maps를 쓴다. 제공자가 없거나 호출이 실패하면 직선 거리에 우회 계수를 곱한 가정값으로 계산하고 가정값이라고 남긴다. 조회한 거리는 `ref:도로거리:...` 근거로 등록된다 |
 | `V3_DEMO_OPEN` | `true`면 시연 되돌리기(`POST /api/v3/demo/reset`)를 누구나 부를 수 있다. 기본은 `false`(관리자 조직 `org_admin`만. 조직이 하나도 없는 빈 저장소의 첫 시드는 누구나) |
 | `V3_DETECTOR_ENDPOINT`, `V3_DETECTOR_API_KEY`, `V3_DETECTOR_DEPLOYMENT` | 탐지 모델(Azure ML 관리형 온라인 엔드포인트)의 채점 주소와 키, 선택으로 배포 이름. 주소가 비어 있으면(기본) 사진·영상 업로드(`POST /api/v3/intake/media`)는 `detectorUnavailable: true`로 답한다 |
 | `MCP_SERVICE_KEY`, `MCP_HOST`, `MCP_PORT` | MCP 서버의 Bearer 서비스 키와 주소 |
 | `APP_ROLE` | 컨테이너에서 띄울 서비스: `api`(기본), `vendor-agent`, `mcp`, `migrate` |
+| `DATA_GO_KR_SERVICE_KEY` | 공공데이터포털 인증키. 서버는 읽지 않고 `scripts/v3/fetch_reference_prices.py`(가격조사 참고 시세를 받아 시드의 가격조사 행을 고쳐 쓴다)만 읽는다 |
+
+이름과 기본값의 정본은 `app/core/config.py`다. 배포할 때 어느 매개변수와 Key Vault 비밀로 넣는지는 `infra/README.md`의 "앱 설정" 표에 있다. 기준값의 출처(환경성적표지 평가계수의 혼합폐플라스틱 배출계수, 2026년 최저임금 10,320원, 가격조사, KAU)는 `docs/v3/sources.md`에 있다.
 
 ### 테스트
 
