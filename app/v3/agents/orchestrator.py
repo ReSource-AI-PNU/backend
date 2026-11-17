@@ -82,6 +82,22 @@ def block_codes(reason: str | None) -> list[str]:
     return list(dict.fromkeys(_BLOCK_CODE.findall(reason or "")))
 
 
+def discoverable_profiles(store: Any, emitter: dict[str, Any]) -> dict[str, dict[str, Any]]:
+    """배출 기업이 업체 탐색에서 견줄 업체 프로필 {업체 ID: 프로필}.
+
+    - 허가 품목이나 매입 기준이 하나도 없는 프로필(가입만 하고 아직 채우지 않은 업체)은 뺀다.
+    - 시연 배출 기업(demo: true)은 시연 업체만 본다. 체험하기로 열리는 시연 진단에 실제 업체가 섞이지
+      않게 하려는 것이다. 실제 배출 기업은 시연 업체와 가입한 업체를 모두 본다.
+    """
+    demo_only = bool(emitter.get("demo"))
+    demo_ids = {o["id"] for o in store.list_orgs() if o.get("demo")} if demo_only else set()
+    return {
+        p["orgId"]: p
+        for p in store.list_vendor_profiles()
+        if (p.get("permits") or p.get("criteria")) and (not demo_only or p["orgId"] in demo_ids)
+    }
+
+
 class OrchestratorError(RuntimeError):
     """진행기 규칙 위반. code는 서비스 오류 코드로 그대로 쓴다."""
 
@@ -644,7 +660,7 @@ class Orchestrator:
         work, org_id = session["work"], session["emitterOrgId"]
         emitter = self.store.get_org(org_id)
         streams = self.store.list_streams(org_id)
-        profiles = {p["orgId"]: p for p in self.store.list_vendor_profiles()}
+        profiles = discoverable_profiles(self.store, emitter)
         for profile in profiles.values():  # 허가증은 대조하기 전에 연다
             for permit in profile.get("permits") or []:
                 for evidence_id in permit.get("evidence") or []:
