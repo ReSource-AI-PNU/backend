@@ -1459,6 +1459,8 @@ def get_view(app: App, session_id: str, viewer: str) -> dict[str, Any]:
                 **a,
                 "blockedCodes": block_codes(a.get("blockedReason")),
                 "streamIds": list(work["assigned"].get(a["threadId"]) or []),
+                # 막으면서 지운 승인(emitter·vendor). 비어 있으면 지운 승인이 없다
+                "clearedApprovals": list(a.get("clearedApprovals") or []),
             }
             for a in app.store.list_approvals(session_id)
             # 승인할 수 있는 대화만 낸다. 담당자에게 넘어간 대화의 승인 칸은 보이지 않는다

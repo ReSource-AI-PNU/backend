@@ -353,7 +353,13 @@ class InMemoryStore:
         item["blocked"] = reason is not None
         item["blockedReason"] = reason
         if reason is not None:
+            # 막으면서 지운 승인(화면이 "앞서 한 승인을 지웠다"고 할지 정한다). 이미 막혀 있던 것을
+            # 다시 막을 때는 앞서 지운 것을 그대로 둔다
+            cleared = [side for side in ("emitter", "vendor") if item.get(side)]
+            item["clearedApprovals"] = cleared or list(item.get("clearedApprovals") or [])
             item["emitter"] = item["vendor"] = False
+        else:
+            item.pop("clearedApprovals", None)
         return self._upsert("approvals", session_id, item)
 
     def list_approvals(self, session_id: str) -> list[dict[str, Any]]:

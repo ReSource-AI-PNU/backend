@@ -244,19 +244,24 @@ def test_approvals_and_block(store):
     assert item["emitter"] and item["vendor"] and not item["blocked"]
     blocked = store.block_approval("ses_1", "th_1", "근거 확인 실패 항목이 있습니다.")
     assert blocked["blocked"] and not blocked["emitter"] and not blocked["vendor"]
+    # 막으면서 지운 승인을 남긴다. 다시 막아도 앞서 지운 것이 그대로다
+    assert blocked["clearedApprovals"] == ["emitter", "vendor"]
+    again = store.block_approval("ses_1", "th_1", "근거 확인 실패 항목이 있습니다.")
+    assert again["clearedApprovals"] == ["emitter", "vendor"]
+    # 승인한 적이 없는 대화를 막으면 지운 승인이 없다
+    assert store.block_approval("ses_1", "th_2", "막음")["clearedApprovals"] == []
+    store.block_approval("ses_1", "th_2", None)
     with pytest.raises(PermissionError):
         store.set_approval("ses_1", "th_1", "emitter")
     store.block_approval("ses_1", "th_1", None)
     store.set_approval("ses_1", "th_1", "emitter")
-    assert store.list_approvals("ses_1") == [
-        {
-            "threadId": "th_1",
-            "emitter": True,
-            "vendor": False,
-            "blocked": False,
-            "blockedReason": None,
-        }
-    ]
+    assert store.list_approvals("ses_1")[0] == {
+        "threadId": "th_1",
+        "emitter": True,
+        "vendor": False,
+        "blocked": False,
+        "blockedReason": None,
+    }
     with pytest.raises(ValueError, match="emitter"):
         store.set_approval("ses_1", "th_1", "admin")
 

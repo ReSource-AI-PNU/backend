@@ -395,7 +395,7 @@ VendorProfile {"orgId": "org_saegil",
   - **적재 검사(`check_loading`)는 업체가 정해진 배정마다 늘 들어간다.** `min_volume`(최소 물량)과 `loading`(무게·부피 적재), 밀도나 부피 용량을 몰라 부피를 확인하지 못했으면 `loading_volume`. 다른 검사와 달리 충족(`met`)한 것도 나간다. `claims`에 합친 월 물량·최소 물량(`min_volume`), 월 수거 횟수·한 번 수거량·차량 적재 한도(`loading`)가 붙는다. 그 업체에 실제로 배정된 흐름만 합친 값이다. 충족하지 못한 적재 검사가 있으면 그 배정은 `calculated`가 아니다.
   - `contamination_basis`, `moisture_basis`: 값은 매입 기준 상한 안이지만 측정값이 아니라 사진 추정이나 담당자 답이다(조건부. "반입 검수에서 확인").
   - `handoff`: 이 흐름을 맡기로 합의한 대화가 담당자에게 넘어가 배정을 뺐다(`status`는 `needs_information`, `vendorOrgId`는 `null`).
-- `approvals[]`에는 승인할 수 있는 대화(`agreed`, `confirmed`)만 있다. 담당자에게 넘어간(`handoff`) 대화의 승인 칸은 나가지 않는다. 합의한 뒤에 배정된 흐름의 자료(재질, 물량, 측정값 등)가 바뀌면 `blocked`가 되고 `blockedReason`에 `STREAM_CHANGED`가 적힌다. 막힐 때 앞서 한 승인은 양쪽 모두 지워진다.
+- `approvals[]`에는 승인할 수 있는 대화(`agreed`, `confirmed`)만 있다. 담당자에게 넘어간(`handoff`) 대화의 승인 칸은 나가지 않는다. 합의한 뒤에 배정된 흐름의 자료(재질, 물량, 측정값 등)가 바뀌면 `blocked`가 되고 `blockedReason`에 `STREAM_CHANGED`가 적힌다. 막힐 때 앞서 한 승인은 양쪽 모두 지워진다. `approvals[].clearedApprovals`(배열, 새 항목)에 그때 지운 승인 쪽(`emitter`, `vendor`)이 있고, 아무도 승인하지 않았으면 빈 배열이다. 화면은 이 배열이 비어 있지 않을 때만 "앞서 한 승인을 지웠다"고 알린다. 막힘이 풀리면 빈 배열이다.
 - `approvals[].blockedCodes`(배열, 새 항목): 막힌 사유 코드다. `blockedReason`(한국어 문장)에 들어 있는 코드를 처음 나온 순서대로 뽑은 것이고, 막히지 않았으면 빈 배열이다. 값은 8장 "승인을 막는 사유 코드"의 `EVIDENCE_CHANGED`, `STREAM_CHANGED`, `VENDOR_TERMS_CHANGED`와 근거 검증기의 거부 코드다. 화면은 문장을 뜯어 읽지 말고 이 배열을 본다.
 - **막힘은 관련된 모든 대화에, 승인을 누르기 전에 걸린다.** 근거나 흐름 자료가 바뀌면(측정값 CSV를 같은 측정일로 다시 올림, 흐름 수정, 업체 프로필 수정, 사진 업로드, 문서 추출값 확정) 그 조직이 들어간 승인 대기 진단의 합의한 대화를 모두 다시 확인하고, 뷰를 만들 때(`GET /sessions/{id}`)도 다시 확인한다. 그 근거를 메시지에 인용한 대화는 배정과 관계없이 모두 막힌다. 바뀐 것이 없으면 뷰를 여러 번 읽어도 저장소와 실행 기록은 그대로다.
 

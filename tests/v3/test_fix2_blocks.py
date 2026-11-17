@@ -59,6 +59,13 @@ def test_csv_reupload_blocks_every_agreed_thread_that_cites_the_measurement():
     assert all(
         not now[t]["emitter"] and not now[t]["vendor"] for t in cited
     )  # 앞선 승인도 지워진다
+    # 막으면서 지운 승인: 승인한 대화에만 있다(화면은 지운 승인이 있을 때만 "승인을 지웠다"고 한다)
+    cleared = {
+        t: approvals(service.get_view(app, session_id, HANBIT))[t]["clearedApprovals"]
+        for t in cited
+    }
+    assert cleared[assigned] == ["emitter"] and cleared[thread_of(view, MISO)["id"]] == ["vendor"]
+    assert cleared[thread_of(view, NAMHAE)["id"]] == []
     for viewer in (HANBIT, SAEGIL, NAMHAE, MISO):
         shown = approvals(service.get_view(app, session_id, viewer))
         assert shown and all(a["blocked"] for a in shown.values()), viewer
@@ -101,13 +108,14 @@ def test_only_the_threads_that_use_the_changed_stream_are_blocked():
     assert shown[film_thread]["blocked"] and shown[film_thread]["blockedCodes"] == [
         "STREAM_CHANGED"
     ]
+    assert shown[film_thread]["clearedApprovals"] == []  # 아무도 승인하지 않았다
     others = [a for t, a in shown.items() if t != film_thread]
     assert others and all(not a["blocked"] and a["blockedCodes"] == [] for a in others)
     # 흐름 자료가 합의한 때와 같아지면 풀린다
     app.store.put_stream(original)
     shown = approvals(service.get_view(app, session_id, HANBIT))
     assert not shown[film_thread]["blocked"] and shown[film_thread]["blockedReason"] is None
-    assert shown[film_thread]["blockedCodes"] == []
+    assert shown[film_thread]["blockedCodes"] == [] and shown[film_thread]["clearedApprovals"] == []
 
 
 def test_rechecking_writes_nothing_when_nothing_changed():
