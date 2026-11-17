@@ -99,6 +99,7 @@ put_secret "$B" APPLICATIONINSIGHTS_CONNECTION_STRING appinsights-connection-str
 put_secret "$B" MODEL_BLOB_URL model-blob-url
 # 사진·영상 탐지: 같은 VM의 detector 서비스(app/ml/score_api.py). 두 이름에 같은 키를 넣는다
 put "$B" V3_DETECTOR_ENDPOINT "http://detector:8000/score"
+put "$B" V3_INTERNAL_HTTP_HOSTS detector
 put_secret "$B" V3_DETECTOR_API_KEY detector-api-key
 put_secret "$B" DETECTOR_API_KEY detector-api-key
 put "$B" V3_AUTH "$V3_AUTH"
