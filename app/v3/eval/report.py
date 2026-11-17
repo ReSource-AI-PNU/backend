@@ -353,7 +353,7 @@ def latest_section(latest: dict[str, Any] | None) -> list[str]:
         (
             "- 데이터가 없어 재지 못한 층: L1(공장 현장 사진 200장과 오염 비율 정답), L3 의미 지표"
             "(판정 모델과 사람 라벨 100문장), L7(루브릭과 사람 라벨 120건). Prompt Shields 탐지율과 AI "
-            "Search(S2~S5)는 설정이 있을 때만 잰다."
+            "Search(S2~S6)는 설정이 있을 때만 잰다."
         ),
         "",
     ]
