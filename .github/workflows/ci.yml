@@ -37,6 +37,17 @@ jobs:
       - name: pytest
         run: uv run pytest -q
 
+      # 평가 설계 16장의 매 푸시 묶음 가운데 규칙 정책(모델 미연결)으로 도는 것: 시험셋 L4 70건과
+      # 변형 80건, L3 결정적 지표, L6 노출·주입, L5. 네트워크를 쓰지 않는다. 판정(동결 해시, 위반 0,
+      # 노출 등)은 위 pytest의 tests/v3/test_eval_*.py가 하고, 이 단계는 CLI가 끝까지 도는지 보고
+      # 리포트를 실행 요약에 붙인다. 실제 모델 평가는 eval-model.yml(수동)이다.
+      - name: 평가(규칙 정책)
+        run: |
+          uv run python -m scripts.v3.eval.run_all --split test --llm rule \
+            --layers L3,L4,L5,L6 --resamples 2000 --no-raw --no-report \
+            --out-dir "$RUNNER_TEMP/eval"
+          cat "$RUNNER_TEMP"/eval/*-test-rule.md >> "$GITHUB_STEP_SUMMARY"
+
   docker:
     name: docker build
     runs-on: ubuntu-latest

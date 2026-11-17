@@ -216,8 +216,23 @@ def run_layer(
     llm_factory: Callable[..., Any] | None = None,
     resamples: int = stats.RESAMPLES,
 ) -> dict[str, Any]:
-    if split not in ("test", "all", "dev"):
+    if split not in ("test", "dev"):
         raise ValueError(split)
+    if split == "dev":
+        return stats.layer(
+            "L6c",
+            "안전: 조직 간 노출(카나리아·탐침)",
+            unit="실행",
+            n=0,
+            status="not_measured",
+            metrics=[],
+            not_measured_items=[
+                (
+                    "노출 카나리아·탐침은 시험셋(test-v1)에만 있다. CI는 tests/v3/"
+                    "test_eval_leakage_negotiation.py로 매 푸시 돈다"
+                )
+            ],
+        )
     data = load_probes()
     results = run_probes(data, llm_factory=llm_factory)
     probes = [r for r in results if r["id"] != "BASE"]

@@ -1,0 +1,58 @@
+name: 평가(실제 모델)
+
+# 평가 설계 16장: 실제 모델 평가는 키가 필요하고 오래 걸려 ci.yml(10분 제한)과 따로 손으로 돌린다.
+# 비밀은 GitHub environment "eval"에 둔다. 결과 파일은 아티팩트로 올리고, 저장소에 넣을지는 사람이
+# 보고 정한다(여러 번 돌려 좋은 것을 고르지 않는다. 평가 설계 17장).
+on:
+  workflow_dispatch:
+    inputs:
+      split:
+        description: "dev | test"
+        default: "test"
+      repeats:
+        description: "시나리오 반복 n"
+        default: "4"
+      budget_calls:
+        description: "모델 호출 상한(닿으면 남은 칸은 미측정)"
+        default: "3000"
+      layers:
+        description: "층(쉼표로)"
+        default: "L2,L3,L4,L5,L6"
+
+permissions:
+  contents: read
+
+jobs:
+  eval:
+    runs-on: ubuntu-latest
+    timeout-minutes: 240
+    environment: eval
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: astral-sh/setup-uv@v10.3.3
+        with:
+          python-version: "3.12"
+          enable-cache: true
+
+      - name: 의존성 설치
+        run: uv sync --extra dev --locked
+
+      - name: 평가
+        env:
+          FOUNDRY_ENDPOINT: ${{ secrets.FOUNDRY_ENDPOINT }}
+          FOUNDRY_DEPLOYMENT: ${{ secrets.FOUNDRY_DEPLOYMENT }}
+          FOUNDRY_API_KEY: ${{ secrets.FOUNDRY_API_KEY }}
+          AZURE_CONTENT_SAFETY_ENDPOINT: ${{ secrets.AZURE_CONTENT_SAFETY_ENDPOINT }}
+          AZURE_CONTENT_SAFETY_API_KEY: ${{ secrets.AZURE_CONTENT_SAFETY_API_KEY }}
+        run: |
+          uv run python -m scripts.v3.eval.run_all --llm foundry \
+            --split "${{ inputs.split }}" --repeats "${{ inputs.repeats }}" \
+            --budget-calls "${{ inputs.budget_calls }}" --layers "${{ inputs.layers }}" \
+            --no-report --out-dir "$RUNNER_TEMP/eval"
+          cat "$RUNNER_TEMP"/eval/*-foundry.md >> "$GITHUB_STEP_SUMMARY"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: eval-${{ inputs.split }}-foundry
+          path: ${{ runner.temp }}/eval/

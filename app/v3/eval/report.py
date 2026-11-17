@@ -28,6 +28,12 @@ from app.v3.eval.world import DEFAULT_TODAY
 
 NOT_MEASURED = compliance.NOT_MEASURED
 REAL_PROVIDERS = ("foundry", "ollama")
+LATEST = Path(__file__).resolve().parents[3] / "docs" / "v3" / "eval" / "latest.json"
+
+
+def load_latest(path: Path = LATEST) -> dict[str, Any] | None:
+    """scripts/v3/eval/run_all.py가 쓴 층별 요약. 없으면 None."""
+    return json.loads(path.read_text(encoding="utf-8")) if path.exists() else None
 
 
 def collect(
@@ -71,6 +77,7 @@ def collect(
             "documents": sum(1 for r in rows if r["kind"] == "document"),
         },
         "notes": notes,
+        "latest": load_latest(),
     }
 
 
@@ -301,7 +308,89 @@ def render(data: dict[str, Any]) -> str:
         "```",
         "",
     ]
+    lines += latest_section(data.get("latest"))
     return "\n".join(lines)
+
+
+_STATUS = {"measured": "측정", "partial": "일부 측정", "not_measured": NOT_MEASURED}
+
+
+def _num(value: Any) -> str:
+    if value is None:
+        return NOT_MEASURED
+    if isinstance(value, float) and value != int(value):
+        return f"{value:.3f}"
+    return f"{value:,.0f}" if isinstance(value, (int, float)) else str(value)
+
+
+def latest_section(latest: dict[str, Any] | None) -> list[str]:
+    """평가 설계(층 L1~L7) 실행의 최신 요약. 숫자는 docs/v3/eval/latest.json에서만 온다."""
+    lines = ["## 9. 평가 설계 층별 결과 (docs/v3/eval/latest.json)", ""]
+    if not latest:
+        return [
+            *lines,
+            f"{NOT_MEASURED}. `python3 -m scripts.v3.eval.run_all`을 돌리지 않았다.",
+            "",
+        ]
+    lines += [
+        (
+            "평가 설계(부산대표 `docs/평가_설계.md`)의 층별 평가를 `scripts/v3/eval/run_all.py`로 돌린 "
+            "결과다. 자세한 표, 신뢰구간, 실패 목록은 `docs/v3/eval/`의 리포트에 있다."
+        ),
+        "",
+        "읽는 법:",
+        "",
+        (
+            "- **규칙 정책 실행은 AI 결과가 아니다.** 에이전트가 모델 없이 정해진 규칙으로 쓰므로 숫자는 "
+            "코드(검증기, 가드레일, 조직 필터, 배정)의 회귀 시험이다. 실제 모델 결과는 "
+            "`--llm foundry`로 따로 돌고, 아래 표의 '구현'이 모델일 때만 AI 결과다."
+        ),
+        (
+            "- **목표는 결과가 아니다.** '목표' 칸은 평가 설계 3장의 목표이고, 판정은 그 목표와 견준 "
+            "것이다. 규칙 정책의 '달성'은 모델이 그 목표를 이룬다는 뜻이 아니다."
+        ),
+        "- 기대값은 모두 전문가 검토 전 초안이고, 두 번째 작성자 대조와 이중 라벨은 아직 하지 않았다.",
+        (
+            "- 데이터가 없어 재지 못한 층: L1(공장 현장 사진 200장과 오염 비율 정답), L3 의미 지표"
+            "(판정 모델과 사람 라벨 100문장), L7(루브릭과 사람 라벨 120건). Prompt Shields 탐지율과 AI "
+            "Search(S2~S5)는 설정이 있을 때만 잰다."
+        ),
+        "",
+    ]
+    for split, run in latest["runs"].items():
+        lines += [
+            f"### {split} · {run['aiVersion']}",
+            "",
+            (
+                f"- 평가셋 {run['setVersion']}, 매니페스트 {run['manifestHash'] or '-'}, 커밋 "
+                f"{run['commit'] or '-'}, 반복 n={run['repeats']}, {run['reviewState']}"
+            ),
+            f"- 구현: {'모델' if run['isModel'] else '규칙 정책(모델 미연결)'}",
+            "",
+            "| 층 | 상태 | n | 주 지표 | 값 | 95% CI | 목표 | 판정 |",
+            "|---|---|---|---|---|---|---|---|",
+        ]
+        for code, layer in run["layers"].items():
+            shown = [m for m in layer["metrics"] if m.get("target")][:3] or layer["metrics"][:1]
+            if not shown:
+                lines.append(
+                    f"| {code} {layer['title']} | {_STATUS[layer['status']]} | {layer['n']} | - | "
+                    f"{NOT_MEASURED} | - | - | {NOT_MEASURED} |"
+                )
+                continue
+            for i, m in enumerate(shown):
+                ci = m.get("ci")
+                ci_text = "-" if not ci else f"[{_num(ci[0])}, {_num(ci[1])}]"
+                head = f"{code} {layer['title']}" if i == 0 else ""
+                status = _STATUS[layer["status"]] if i == 0 else ""
+                n = layer["n"] if i == 0 else ""
+                target = (m.get("target") or {}).get("text") or "-"
+                lines.append(
+                    f"| {head} | {status} | {n} | {_cell(m['label'])} | {_num(m['value'])} | "
+                    f"{ci_text} | {_cell(target)} | {m['verdict']} |"
+                )
+        lines.append("")
+    return lines
 
 
 def main(argv: list[str] | None = None) -> int:

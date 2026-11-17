@@ -139,3 +139,7 @@ python3 scripts/v3/eval/run_foundry_eval.py --data eval-groundedness.jsonl --out
 python3 -m app.v3.eval.report --out docs/v3/eval-report.md \
   --compliance foundry.json ollama.json --groundedness groundedness.json
 ```
+
+## 9. 평가 설계 층별 결과 (docs/v3/eval/latest.json)
+
+미측정. `python3 -m scripts.v3.eval.run_all`을 돌리지 않았다.

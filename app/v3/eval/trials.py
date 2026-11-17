@@ -372,11 +372,16 @@ def run_trials(
     budget_calls: int | None = None,
     keep_raw: bool = False,
     progress: Callable[[str], None] | None = None,
+    meter: Meter | None = None,
 ) -> dict[str, Any]:
-    """사례마다 repeats번 돈다. 같은 사례의 반복은 한데 모아 pass^k를 낸다."""
+    """사례마다 repeats번 돈다. 같은 사례의 반복은 한데 모아 pass^k를 낸다.
+
+    meter를 주면 그 계량(과 예산)을 이어 쓴다. 이때 llm_factory와 budget_calls는 meter의 것이다.
+    """
     if repeats < 1:
         raise ValueError("repeats는 1 이상이다")
-    meter = Meter(llm_factory, budget_calls)
+    meter = meter or Meter(llm_factory, budget_calls)
+    budget_calls = meter.budget_calls
     options = {
         "llm_factory": meter.factory,
         "registry_source": registry_source,
