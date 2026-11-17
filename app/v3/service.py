@@ -762,7 +762,7 @@ AUTHOR_LABELS = {
 }
 
 
-def author(side: str, model: dict[str, Any] | None = None) -> dict[str, str]:
+def _author(side: str, model: dict[str, Any] | None = None) -> dict[str, str]:
     """작성자 표시. side는 company | vendor, kind는 agent(에이전트가 씀) | system(코드가 쓴 안내)."""
     kind = "system" if (model or {}).get("provider") == "code" else "agent"
     return {"side": side, "kind": kind, "label": AUTHOR_LABELS[(side, kind)]}
@@ -784,7 +784,7 @@ def _message_view(message: dict[str, Any], emitter_org_id: str | None = None) ->
         "claims": message["claims"],
         "validation": message["validation"],
         "createdAt": message["createdAt"],
-        "author": author(side, meta.get("model")),
+        "author": _author(side, meta.get("model")),
         "model": meta.get("model"),
         "meta": {
             "asks": meta.get("asks") or [],
@@ -817,7 +817,7 @@ def _thread_view(app: App, thread: dict[str, Any], session: dict[str, Any], view
         "vendorOrgId": vendor,
         "vendorName": app.store.get_org(vendor).get("name"),
         "vendorModel": vendor_model(app, session, profile),
-        "vendorAuthor": author("vendor"),
+        "vendorAuthor": _author("vendor"),
         "status": thread["status"],
         "statusReason": thread["statusReason"],
         "reasonEvidence": _visible_ids(app, thread["reasonEvidence"], viewer),
