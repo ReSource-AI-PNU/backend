@@ -16,7 +16,7 @@ import copy
 import logging
 from collections.abc import Iterator
 from dataclasses import replace
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 from typing import Any
 
 from app.v3 import feedback, ids, live
@@ -67,6 +67,8 @@ STREAM_FIELDS = (
     "contaminants",
 )
 MODEL_PROVIDERS = ("foundry", "ollama")
+# 화면에 보이는 날짜(기준일)의 시간대 Asia/Seoul. 서머타임이 없어 UTC+9 고정이다(이미지에 tzdata가 없어도 된다)
+SEOUL = timezone(timedelta(hours=9), "Asia/Seoul")
 VENDOR_EVENT_KINDS = ("message", "handoff", "approval", "thread", "document")
 VENDOR_CHECK_KEYS = ("vendor_condition", "min_volume", "loading", "loading_volume")
 # 업체가 보는 판단 그래프에 쓰는 검사(judge_route). 업체의 매입 기준·허가 품목과, 대화에서 업체에 열린
@@ -173,7 +175,11 @@ class App:
 
     @property
     def today(self) -> str:
-        return self._today or datetime.now().date().isoformat()
+        """화면과 근거의 기준일. 사용자가 있는 한국 날짜다(서버 시계가 UTC여도 KST 06시 답은 그날이다).
+
+        저장소의 시각(createdAt 등)은 그대로 UTC다.
+        """
+        return self._today or datetime.now(SEOUL).date().isoformat()
 
     def llm_for(self, role: str, org_id: str, model: dict[str, Any] | None) -> Any:
         llm = self.llm_factory(role, org_id, model) if self.llm_factory else None

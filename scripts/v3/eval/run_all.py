@@ -27,6 +27,7 @@ import sys
 from pathlib import Path
 
 from app.v3.eval import report, stats, suite
+from app.v3.service import SEOUL
 
 OUT_DIR = suite.ROOT / "docs" / "v3" / "eval"
 EVAL_REPORT = suite.ROOT / "docs" / "v3" / "eval-report.md"
@@ -60,7 +61,7 @@ def main(argv: list[str] | None = None) -> int:
     )
     args = parser.parse_args(argv)
     repeats = args.repeats or (1 if args.llm == "rule" else 4)
-    date = args.date or dt.date.today().isoformat()
+    date = args.date or dt.datetime.now(SEOUL).date().isoformat()
 
     def say(message: str) -> None:
         sys.stderr.write(f"· {message}\n")
