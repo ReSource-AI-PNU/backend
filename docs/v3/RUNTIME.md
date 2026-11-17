@@ -133,6 +133,25 @@ class VendorGateway(Protocol):
 - `LocalVendorGateway`: 같은 프로세스에서 업체 측 에이전트를 부른다(로컬 시연, 테스트).
 - `HttpVendorGateway`: `POST {base}/a2a/messages`로 보낸다. 본문은 `{"message": {...}, "context": {...}}`, 답은 `{"message": {...}}`. 서비스 키는 `Authorization: Bearer` 헤더로 보낸다.
 
+**로컬에서 따로 띄우기 (실행 확인: 2026-11-18).** FastAPI 앱 `vendor_service.py`는 배포용이고 로컬에서 띄워 보지 못했다. 같은 일을 하는 표준 라이브러리 서버가 `app/v3/vendor_devserver.py`에 있다. 두 서버는 같은 서비스 함수(`handle_vendor_message`)를 부르고, 서비스 키와 본문 확인도 `httpio`의 같은 함수(`check_service_key`, `vendor_org_required`, `vendor_request`)로 한다.
+
+```bash
+export VENDOR_SERVICE_KEY=<임의의 긴 글>            # 두 프로세스에 같은 값
+# 1) 업체 측 에이전트(남해열분해)
+python3 -m app.v3.vendor_devserver --vendor org_namhae --port 8032 --store /tmp/rsai/demo.json
+# 2) 회사 측 서버. 주소가 있는 업체만 HTTP로 가고, 나머지 업체는 이 프로세스 안에서 답한다
+V3_VENDOR_AGENTS='{"org_namhae": "http://127.0.0.1:8032"}' \
+  python3 -m app.v3.devserver --port 8000 --store /tmp/rsai/demo.json --reset
+```
+
+- 두 프로세스는 같은 저장 파일 둘(`demo.json`, `demo.evidence.json`)을 본다. 배포에서 두 서비스가 같은 PostgreSQL을 보는 것을 로컬에서 흉내 낸 것이다(`app/v3/localshare.py`). 업체 측은 메시지를 받을 때마다 두 파일을 다시 읽고, 회사 측은 HTTP로 다녀온 뒤 근거 파일을 다시 읽는다. 회사 측이 답을 기다리는 동안에만 업체 측이 쓰므로 동시에 쓰지 않는다. 파일 잠금은 없다(로컬 전용).
+- `--store` 없이 `V3_VENDOR_AGENTS`를 주면 서버를 띄우지 않고 멈춘다(메모리 저장은 두 프로세스가 나눠 볼 수 없다). `VENDOR_SERVICE_KEY`가 없어도 멈춘다.
+- 업체 측 서버의 주소: `POST /a2a/messages`, `GET /healthz`(`{"status", "vendorOrgId", "handled"}`. `handled`는 지금까지 답한 메시지 수). 오류: 서비스 키가 설정되지 않음 503 `SERVICE_KEY_NOT_SET`, 키가 틀림 401 `UNAUTHORIZED`, 다른 업체에게 온 메시지 403 `WRONG_RECIPIENT`, 저장 파일이 아직 없음 503 `STORE_NOT_READY`.
+- 업체 측 서버는 시드를 올리거나 되돌리지 않는다. 대화의 첫 메시지를 받으면 그 대화의 도구 결과 메모를 버린다(회사 측이 시연을 되돌리면 대화 번호가 다시 시작하기 때문이다).
+- 회사 측 관리자 상태의 `vendorGateway`는 `SplitVendorGateway`로 나온다. 업체별 호출 수는 `app.vendor_gateway.calls`에 남는다.
+- **`V3_VENDOR_AGENTS`의 뜻이 두 서버에서 조금 다르다.** FastAPI 경로(`HttpVendorGateway`)는 값을 주면 모든 업체 메시지를 HTTP로 보내고 주소가 없는 업체는 닿지 못해 담당자에게 넘어간다(`"*"`로 나머지를 한 주소에 모을 수 있다). 로컬 서버는 주소가 없는 업체를 같은 프로세스에서 답하게 한다.
+- 실행 결과(규칙 정책, 기준일 2026-11-18, 회사 측 8033, 남해열분해 8032): 질문 3개에 답한 뒤 승인 대기까지 갔고, 남해열분해 대화의 업체 측 메시지 2개가 따로 띄운 프로세스에서 나왔다(`/healthz`의 `handled` 0 → 2, 그 프로세스 기록에 `POST /a2a/messages` 200이 두 번). 네 메시지 모두 회사 측 근거 검증을 통과했고, 배정과 월 손익 합계는 한 프로세스로 돌린 것과 같았다. 실제 모델(Foundry, Anthropic, Ollama)로는 이 경로를 돌리지 않았다.
+
 받은 답 메시지는 회사 측에서 다시 검증기를 통과시킨다. 보내는 쪽이 검증했다는 말을 믿지 않는다. `meta`는 정해 둔 항목(`validation`의 시도 횟수와 코드, `model`, `reason`, `reasonEvidence`, `asks`, `excluded`, `terms`)만 정해 둔 모양으로 남기고(`_clean_meta`), `terms.items`의 단가는 업체가 적어 보낸 숫자가 아니라 검증된 claim에서 다시 읽어 적는다. `trace`도 정해 둔 모양만 옮긴다(`reported_trace`): 요약은 코드가 다시 쓰고, 실행됐다는 도구 호출은 그 도구의 calc 근거가 근거 저장소에 있을 때만 남기며 `detail.reportedBy: "vendor"`를 붙인다.
 
 `context`는 `{"sessionId", "today", "thread": 스레드(메시지 포함), "streams": 그 스레드의 흐름(현행 처리 단가 제외), "emitter": {"id", "name", "location"}}`다. 답 메시지의 `meta`에는 `validation`(시도 횟수와 줄인 거부 사유), `model`(실제로 쓴 구현), `terms`, `excluded`, `trace`(업체 측 도구 호출과 검증 기록)가 붙고, 진행기가 `trace`를 실행 기록으로 옮긴다. `HttpVendorGateway`의 본문에는 `vendorOrgId`도 함께 간다.

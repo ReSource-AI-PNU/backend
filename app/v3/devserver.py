@@ -26,6 +26,10 @@
   또는 V3_ORG_TOKENS_FILE(그 JSON을 담은 파일 경로).
 - 브라우저가 부를 수 있는 출처는 http://localhost:3000, http://127.0.0.1:3000이다. 더하려면
   --cors-origins나 환경 변수 V3_CORS_ORIGINS에 쉼표로 나눠 적는다.
+- 업체 측 에이전트를 따로 띄운 프로세스가 답하게 하려면 환경 변수 V3_VENDOR_AGENTS
+  ({"업체 조직 ID": "http://127.0.0.1:8032"})와 VENDOR_SERVICE_KEY를 주고 --store로 저장 파일을 정한다.
+  그 업체의 프로세스는 `python3 -m app.v3.vendor_devserver --vendor <조직 ID> --store <같은 파일>`로
+  띄운다. 주소가 없는 업체는 이 프로세스 안에서 답한다.
 - /admin/* 은 관리자 조직(org_admin)만 부른다. 시연 되돌리기(POST /demo/reset)는 로컬 시연에서는
   누구나 부를 수 있다(App(demo_open=True)). --demo-closed를 주면 관리자만 부른다.
 """
@@ -45,7 +49,7 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import parse_qs, unquote, urlsplit
 
-from app.v3 import httpio, service
+from app.v3 import httpio, localshare, service
 from app.v3.agents.factory import (
     LLM_MODES,
     MODE_LABELS,
@@ -285,9 +289,12 @@ def make_handler(
     lock: threading.Lock | None = None,
     quiet: bool = True,
     auth: httpio.Auth | None = None,
+    router: Callable[[service.App, Request], Any] | None = None,
 ):
+    """router는 (앱, 요청) -> 답. 주지 않으면 이 파일의 route다(업체 측 에이전트 서버가 자기 것을 준다)."""
     guard = lock or threading.Lock()
     auth = auth or httpio.Auth()
+    handle = router or route
 
     class Handler(BaseHTTPRequestHandler):
         server_version = "ReSourceDev/3"
@@ -338,7 +345,7 @@ def make_handler(
                     self.command, url.path, parse_qs(url.query), self.headers, body, auth
                 )
                 with guard:  # 저장소가 동시 쓰기를 막지 않으므로 한 번에 한 요청만 처리한다
-                    result = route(app, request)
+                    result = handle(app, request)
             except service.ServiceError as error:
                 self._json(error.status, error.to_dict())
             except Exception:  # noqa: BLE001 - 서버는 죽지 않고 500으로 답한다
@@ -368,10 +375,13 @@ def make_server(
     port: int = 8000,
     quiet: bool = True,
     auth: httpio.Auth | None = None,
+    router: Callable[[service.App, Request], Any] | None = None,
 ):
     auth = auth or httpio.Auth()
     app.auth_mode = auth.mode  # 관리자 화면에 지금 모드를 보여 준다
-    server = ThreadingHTTPServer((host, port), make_handler(app, quiet=quiet, auth=auth))
+    server = ThreadingHTTPServer(
+        (host, port), make_handler(app, quiet=quiet, auth=auth, router=router)
+    )
     server.daemon_threads = True
     return server
 
@@ -406,16 +416,23 @@ def build_app(
 ) -> service.App:
     """앱을 만든다. store_path의 두 파일이 있고 reset이 아니면 시드로 덮어쓰지 않고 이어 간다."""
     resumed = False
+    settings = os.environ if env is None else env
+    try:
+        remote_vendors = localshare.vendor_agents(settings.get("V3_VENDOR_AGENTS"))
+    except ValueError as error:
+        raise SystemExit(str(error)) from None
     if store_path:
         evidence_path = evidence_file(store_path)
         # 저장소와 근거가 함께 있어야 이전 진단의 메시지가 인용한 근거를 다시 확인할 수 있다
         both = Path(store_path).exists() and evidence_path.exists()
-        store: Any = JsonFileStore(store_path)
-        registry: Any = JsonFileRegistry(evidence_path)
+        # 따로 띄운 업체 측 에이전트가 있으면 그 프로세스가 쓴 근거를 다시 읽을 수 있는 저장을 쓴다
+        store: Any = (localshare.ReloadingStore if remote_vendors else JsonFileStore)(store_path)
+        registry: Any = (localshare.ReloadingRegistry if remote_vendors else JsonFileRegistry)(
+            evidence_path
+        )
         resumed = both and not reset and bool(store.list_orgs())
     else:
         store, registry = InMemoryStore(), InMemoryRegistry()
-    settings = os.environ if env is None else env
     factory = llm_factory_from_env(llm, settings)
     app = service.App(
         store,
@@ -427,6 +444,12 @@ def build_app(
         detector=detector.client_from_env(settings),
     )
     app.resumed = resumed  # 이어 간 것인지(서버가 뜰 때 알려 준다)
+    if remote_vendors:
+        # V3_VENDOR_AGENTS에 주소가 있는 업체는 따로 띄운 프로세스(vendor_devserver.py)가 답한다
+        try:
+            app.vendor_gateway = localshare.split_gateway(app, settings)
+        except ValueError as error:
+            raise SystemExit(str(error)) from None
     if not resumed:
         if hasattr(registry, "clear"):
             registry.clear()  # 이전 실행의 근거가 남아 있으면 처음 상태가 아니다
@@ -548,9 +571,11 @@ def main(argv: list[str] | None = None) -> None:
         if auth.mode == httpio.AUTH_TOKEN
         else f"조직 식별: header(X-Org-Id). {httpio.HEADER_MODE_WARNING}"
     )
+    remote = getattr(app.vendor_gateway, "_urls", None)
+    where = f" · 따로 띄운 업체 측 에이전트: {', '.join(sorted(remote))}" if remote else ""
     sys.stderr.write(
         f"Re:Source AI v3 로컬 서버: http://{args.host}:{server.server_address[1]}{PREFIX} · "
-        f"모델: {mode} · {state} · {who}\n"
+        f"모델: {mode} · {state} · {who}{where}\n"
     )
     try:
         server.serve_forever()

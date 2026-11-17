@@ -277,6 +277,8 @@ PY
 | `app/v3/api.py` | FastAPI 라우터 `/api/v3` (계약 8장). `app/main.py`가 기존 `/api/v1`과 함께 싣는다 |
 | `app/v3/sql.py` | SQLAlchemy 저장(`SqlRegistry`, `SqlStore`). 테이블 `v3_evidence`, `v3_records`, `v3_events` (`migrations/versions/0004_v3.py`) |
 | `app/v3/vendor_service.py` | 업체 측 에이전트를 따로 띄우는 서비스 (`POST /a2a/messages`, `GET /healthz`) |
+| `app/v3/vendor_devserver.py`, `localshare.py` | 같은 서비스의 표준 라이브러리 판(로컬 실행용)과, 두 프로세스가 같은 저장 파일을 보게 하는 부품. 띄우는 법은 `docs/v3/RUNTIME.md` 5장 |
+| `app/v3/agents/factory.py` | 모델 고르기(`V3_LLM=rule\|foundry\|anthropic`). FastAPI 경로와 로컬 서버가 같이 쓴다 |
 | `app/v3/mcp_server.py` | 판단 도구 MCP 서버 (streamable HTTP, `/mcp`) |
 
 `api.py`, `sql.py`, `vendor_service.py`, `mcp_server.py`와 `infra/`의 배포 파일은 작성한 환경에서 실행해 보지 못했다(fastapi, sqlalchemy, mcp, az를 쓸 수 없었다). CI의 `tests/v3/test_api.py`, `test_sql.py`, `test_vendor_service.py`, `test_mcp_server.py`가 처음으로 돌려 본다.
