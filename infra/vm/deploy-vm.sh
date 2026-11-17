@@ -3,7 +3,10 @@
 # az 로그인과 SSH 키가 있는 곳(맥)에서 돌린다. VM 안에서 이미지를 빌드하므로 ACR 작업이나 레지스트리가 필요 없다.
 #
 #   bash infra/vm/deploy-vm.sh             # 커밋된 소스를 올리고 다시 빌드한 뒤 띄운다
-#   SEED=1 bash infra/vm/deploy-vm.sh      # 끝에 시연 시작 상태로 되돌린다(진행 중인 진단과 대화 기록이 지워진다)
+#   SEED=1 bash infra/vm/deploy-vm.sh      # 끝에 시연 시작 상태로 되돌린다
+#                                          # bff: 시연 조직만 되돌리고 시연 진단을 승인 대기까지 돌려 둔다(실제 계정·조직은 그대로)
+#                                          # token·header: 진행 중인 진단과 대화 기록이 모두 지워진다
+#   GRANT_ADMIN=a@b.c bash infra/vm/deploy-vm.sh  # bff: 끝에 그 이메일로 가입한 사용자를 관리자 조직(org_admin)에 넣는다
 #
 # 환경 변수
 #   RG               리소스 그룹 (기본 team_AIBIC2026_03_RG_EUS2)
@@ -14,13 +17,16 @@
 #   V3_LLM           rule(기본. 규칙 정책) | foundry | anthropic
 #                    실제 모델(foundry)은 2026-11-18 시험에서 초안이 근거 검증기에 거부되어(NUMBER_OUTSIDE_PLACEHOLDER 등)
 #                    대화가 담당자 인계로 끝났다. 프롬프트·출력 형식을 고치기 전까지 시연은 rule로 한다
-#   V3_AUTH          token(기본. 조직별 토큰, 공개 주소용) | header(시연 전용)
+#   V3_AUTH          bff(기본. 실제 계정·조직: 프런트 서버만 V3_BFF_KEY로 부르고 사용자·소속을 확인한다)
+#                    | token(조직별 토큰) | header(시연 전용)
 #   AUTH_DEV_LOGIN   true(기본. 시연용 로그인) | false
 #   OLLAMA_MODELS    VM에 받아 둘 Ollama 모델 (기본 "bge-m3 qwen2.5:7b". 시연 업체 한 곳이 qwen2.5:7b를 고른다)
-#   SEED             1이면 배포 끝에 POST /api/v3/demo/reset 을 관리자 토큰으로 부른다
+#   SEED             1이면 배포 끝에 시연 데이터를 되돌린다. bff는 백엔드 컨테이너에서 scripts.v3.accounts_admin reset-demo,
+#                    token·header는 POST /api/v3/demo/reset 을 관리자 토큰(또는 X-Org-Id)으로 부른다
+#   GRANT_ADMIN      bff에서만. 이미 가입한 사용자의 이메일. 그 사용자를 org_admin의 owner로 넣는다
 #
 # 비밀: Key Vault에서 읽어 VM의 /opt/rsai/env/*.env(권한 600)에만 쓴다. 화면과 명령줄에 값을 찍지 않는다.
-#       v3-org-tokens, auth-secret 이 Key Vault에 없으면 새로 만들어 Key Vault에만 둔다.
+#       v3-bff-key, v3-org-tokens, auth-secret 이 Key Vault에 없으면 새로 만들어 Key Vault에만 둔다.
 set -euo pipefail
 
 RG="${RG:-team_AIBIC2026_03_RG_EUS2}"
@@ -32,16 +38,21 @@ BACKEND_REF="${BACKEND_REF:-HEAD}"
 FRONTEND_DIR="${FRONTEND_DIR:-$ROOT/../frontend}"
 FRONTEND_REF="${FRONTEND_REF:-origin/main}"
 V3_LLM="${V3_LLM:-rule}"
-V3_AUTH="${V3_AUTH:-token}"
+V3_AUTH="${V3_AUTH:-bff}"
 AUTH_DEV_LOGIN="${AUTH_DEV_LOGIN:-true}"
 OLLAMA_MODELS="${OLLAMA_MODELS:-bge-m3 qwen2.5:7b}"
 SEED="${SEED:-}"
+GRANT_ADMIN="${GRANT_ADMIN:-}"
 ADMIN_USER="${ADMIN_USER:-rsai}"
 TAGQ="tags.project=='resource-ai'"
 ORGS=(org_hanbit org_daon org_saegil org_namhae org_miso org_admin)
 
 say() { echo "[deploy-vm] $*"; }
 die() { echo "[deploy-vm] 오류: $*" >&2; exit 1; }
+
+case "$V3_AUTH" in bff|token|header) ;; *) die "V3_AUTH는 bff | token | header 가운데 하나다: $V3_AUTH" ;; esac
+case "$GRANT_ADMIN" in *"'"*|*'"'*|*' '*) die "GRANT_ADMIN에 따옴표나 공백을 쓸 수 없다" ;; esac
+[ -z "$GRANT_ADMIN" ] || [ "$V3_AUTH" = bff ] || die "GRANT_ADMIN은 V3_AUTH=bff에서만 쓴다"
 
 [ -f "$SSH_KEY" ] || die "SSH 키가 없다: $SSH_KEY"
 FQDN="$(az network public-ip show -g "$RG" -n pip-rsai-demo-app --query dnsSettings.fqdn -o tsv)"
@@ -59,6 +70,11 @@ kv_get() { az keyvault secret show --vault-name "$KV" -n "$1" --query value -o t
 kv_has() { az keyvault secret show --vault-name "$KV" -n "$1" --query id -o tsv >/dev/null 2>&1; }
 kv_set_file() { az keyvault secret set --vault-name "$KV" -n "$1" --file "$2" --query id -o tsv >/dev/null; }
 
+if [ "$V3_AUTH" = bff ] && ! kv_has v3-bff-key; then
+  say "Key Vault에 v3-bff-key 가 없어 새로 만든다 (프런트 서버가 백엔드를 부를 때 쓰는 키)"
+  python3 -I -c 'import secrets; print(secrets.token_urlsafe(32))' >"$TMP/bff"
+  kv_set_file v3-bff-key "$TMP/bff"; rm -f "$TMP/bff"
+fi
 if ! kv_has v3-org-tokens; then
   say "Key Vault에 v3-org-tokens 가 없어 조직별 토큰을 새로 만든다"
   python3 -I -c 'import json,secrets,sys; print(json.dumps({o: secrets.token_urlsafe(32) for o in sys.argv[1:]}))' "${ORGS[@]}" >"$TMP/tokens"
@@ -114,9 +130,16 @@ put "$F" AUTH_URL "https://$FQDN"
 put "$F" AUTH_TRUST_HOST true
 put "$F" AUTH_DEV_LOGIN "$AUTH_DEV_LOGIN"
 put "$F" V3_BACKEND_URL "http://backend:8000/api/v3"
+put "$F" V3_AUTH "$V3_AUTH"
 if [ "$V3_AUTH" = token ]; then
   put_secret "$B" V3_ORG_TOKENS v3-org-tokens
   put_secret "$F" V3_ORG_TOKENS v3-org-tokens
+fi
+if [ "$V3_AUTH" = bff ]; then
+  # 백엔드와 프런트 서버가 같은 키를 갖는다. 키가 없으면 백엔드가 모든 요청을 503으로 거절하므로 멈춘다
+  kv_has v3-bff-key || die "Key Vault에 v3-bff-key 가 없다"
+  put_secret "$B" V3_BFF_KEY v3-bff-key
+  put_secret "$F" V3_BFF_KEY v3-bff-key
 fi
 
 say "소스 묶기: backend $(git -C "$BACKEND_DIR" rev-parse --short "$BACKEND_REF"), frontend $(git -C "$FRONTEND_DIR" rev-parse --short "$FRONTEND_REF")"
@@ -174,7 +197,10 @@ for i in $(seq 1 30); do
   sleep 10
 done
 
-if [ "$SEED" = 1 ]; then
+if [ "$SEED" = 1 ] && [ "$V3_AUTH" = bff ]; then
+  say "시연 조직 되돌리기 (실제 계정·조직은 그대로)"
+  "${SSH[@]}" 'cd /opt/rsai && docker compose exec -T backend python -m scripts.v3.accounts_admin reset-demo' </dev/null
+elif [ "$SEED" = 1 ]; then
   say "시연 시작 상태로 되돌리기"
   "${SSH[@]}" 'cd /opt/rsai && docker compose exec -T backend python -c "
 import json, os, httpx
@@ -187,5 +213,9 @@ r = httpx.post(\"http://localhost:8000/api/v3/demo/reset\", headers=headers, tim
 print(\"demo/reset\", r.status_code)
 r.raise_for_status()
 "' </dev/null
+fi
+if [ -n "$GRANT_ADMIN" ]; then
+  say "관리자 조직에 사용자 넣기"
+  "${SSH[@]}" "cd /opt/rsai && docker compose exec -T backend python -m scripts.v3.accounts_admin grant-admin '$GRANT_ADMIN'" </dev/null
 fi
 say "끝: https://$FQDN"

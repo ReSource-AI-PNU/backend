@@ -34,7 +34,7 @@ SEED=1 bash infra/vm/deploy-vm.sh          # 끝에 시연 시작 상태로 되�
 | `infra/vm/deploy-vm.sh` | Key Vault에서 비밀을 읽어 VM의 `/opt/rsai/env/*.env`(권한 600)에만 쓰고, `git archive`한 소스를 올려 VM 안에서 이미지를 빌드한다. 마이그레이션 → 시작 → Ollama 모델 받기 → HTTPS 응답 확인 순서다 |
 
 - **지역:** PostgreSQL·AI Search와 같은 Central US에 둔다. East US 2에 두었을 때 DB 왕복이 평균 39ms라 근거를 하나씩 읽는 진단 실행 한 번이 10분을 넘겼다.
-- **설정:** `V3_LLM=rule`(규칙 정책. 실제 모델 `foundry`는 초안이 근거 검증기에 거부되어 담당자 인계로 끝나므로, 프롬프트를 고치기 전까지 시연은 rule로 한다), `V3_AUTH=token`(조직별 토큰. Key Vault `v3-org-tokens`, 없으면 스크립트가 만든다), `AUTH_DEV_LOGIN=true`(시연용 로그인). 업체 측 에이전트 한 곳은 Ollama `qwen2.5:7b`를 CPU로 쓴다.
+- **설정:** `V3_LLM=rule`(규칙 정책. 실제 모델 `foundry`는 초안이 근거 검증기에 거부되어 담당자 인계로 끝나므로, 프롬프트를 고치기 전까지 시연은 rule로 한다), `V3_AUTH=bff`(기본. 실제 계정·조직: 프런트 서버만 Key Vault `v3-bff-key`로 백엔드를 부르고 백엔드가 사용자·소속을 확인한다. 키가 없으면 스크립트가 만들어 `backend.env`와 `frontend.env`의 `V3_BFF_KEY`에 넣는다. `V3_AUTH=token`이면 전처럼 `v3-org-tokens`), `AUTH_DEV_LOGIN=true`(시연용 로그인). bff에서 `SEED=1`은 시연 조직만 되돌리고(`scripts.v3.accounts_admin reset-demo`) 시연 진단을 승인 대기까지 돌려 둔다. 관리자는 가입한 뒤 `GRANT_ADMIN=<이메일>`로 배포하거나 백엔드 컨테이너에서 `python -m scripts.v3.accounts_admin grant-admin <이메일>`로 넣는다. 업체 측 에이전트 한 곳은 Ollama `qwen2.5:7b`를 CPU로 쓴다.
 - **모델 가중치:** Storage 비공개 컨테이너 `models`의 `models-v3mat-v4cond.tar.gz`(재질 v3, 상태 v4, 도메인 분류기). 읽기 전용 SAS 주소(2026-12-31까지)를 Key Vault `model-blob-url`에 둔다.
 - **끄고 켜기:** `stop.sh`가 VM을 할당 해제하고, `start.sh`가 다시 켠다(태그 `project=resource-ai`). 할당 해제 중에는 디스크 비용만 든다. Compose 서비스는 `restart: unless-stopped`라 VM이 켜지면 같이 올라온다.
 - **비용(정가):** VM 시간당 0.172달러(월 약 126), 공용 IP 시간당 약 0.005달러, 디스크 128GB StandardSSD.
