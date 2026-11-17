@@ -13,11 +13,13 @@
 | FOUNDRY_MAX_COMPLETION_TOKENS | 응답 토큰 상한(기본 4000. 추론 토큰을 포함한다) |
 | OLLAMA_BASE_URL | 업체가 ollama를 골랐을 때 그 업체의 모델 주소 |
 | OLLAMA_NUM_CTX | Ollama 문맥 길이(기본 16384. 에이전트 입력이 기본값 2048~4096보다 길다) |
-| V3_LLM_ALL_VENDORS | 1이면 ollama를 고른 업체도(주소가 없을 때) anthropic 모델이 답한다 |
+| V3_LLM_ALL_VENDORS | 1이면 ollama를 고른 업체도(주소가 없을 때) 주 모델(foundry 또는 anthropic)이 답한다 |
 
 - 돌려주는 값은 llm_factory(role, org_id, model) -> LLM | None 이다. None이면 service가 규칙 정책으로 돈다.
 - 업체가 ollama를 골랐는데 주소가 없으면 다른 모델로 바꿔 부르지 않고 None을 준다(쓰지 않은 모델을
-  쓴 것처럼 보이지 않게). V3_LLM_ALL_VENDORS=1은 anthropic에서만 이 규칙을 푼다. 그때도 화면에는
+  쓴 것처럼 보이지 않게). V3_LLM_ALL_VENDORS=1은 이 규칙을 풀어 주 모델(foundry·anthropic)이 답하게 한다. GPU 없이
+  CPU로 도는 Ollama는 실시간 대화에 너무 느려(2026-11-18 측정: 6천 토큰 프롬프트에 qwen2.5:7b 8분 30초)
+  배포에서는 Ollama 주소를 비우고 이 설정을 쓴다. 그때도 화면에는
   설정한 모델과 실제로 답한 모델이 따로 나온다.
 - 설정이 빠졌을 때: strict면 LlmConfigError로 멈추고(로컬 서버), 아니면 경고를 남기고 규칙 정책으로
   돈다(배포 경로. 서버는 뜨고, 관리자 화면과 대화에 "규칙 정책(모델 미연결)"로 나온다).
@@ -166,10 +168,12 @@ def build_llm_factory(
                 logger.warning("V3_LLM=anthropic인데 키 설정이 비어 있어 규칙 정책으로 돈다")
         if key:
             name = _value(env, "ANTHROPIC_MODEL") or ANTHROPIC_DEFAULT_MODEL
-            all_vendors = _value(env, "V3_LLM_ALL_VENDORS") == "1"
 
             def make_main() -> Any:
                 return AnthropicChat(key, name)
+
+    # ollama를 고른 업체도 주소가 없으면 주 모델로 답하게 할지 (주 모델이 있을 때만)
+    all_vendors = make_main is not None and _value(env, "V3_LLM_ALL_VENDORS") == "1"
 
     num_ctx: int | None = None
     if ollama:

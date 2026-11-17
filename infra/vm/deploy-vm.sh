@@ -14,13 +14,15 @@
 #   BACKEND_DIR      백엔드 저장소 (기본 이 저장소), BACKEND_REF (기본 HEAD)
 #   FRONTEND_DIR     프런트 저장소 (기본 ../frontend), FRONTEND_REF (기본 origin/main)
 #                    커밋된 내용만 올린다(git archive). 작업 폴더의 커밋하지 않은 변경은 올라가지 않는다
-#   V3_LLM           rule(기본. 규칙 정책) | foundry | anthropic
-#                    실제 모델(foundry)은 2026-11-18 시험에서 초안이 근거 검증기에 거부되어(NUMBER_OUTSIDE_PLACEHOLDER 등)
-#                    대화가 담당자 인계로 끝났다. 프롬프트·출력 형식을 고치기 전까지 시연은 rule로 한다
+#   V3_LLM           foundry(기본. Foundry gpt-5-mini, 구조화 출력·추론 강도 low) | rule(규칙 정책) | anthropic
+#                    2026-11-18 출력 형식을 고친 뒤 시연 시나리오의 초안 첫 시도 통과율 99~100%, 세 업체 모두 합의
 #   V3_AUTH          bff(기본. 실제 계정·조직: 프런트 서버만 V3_BFF_KEY로 부르고 사용자·소속을 확인한다)
 #                    | token(조직별 토큰) | header(시연 전용)
 #   AUTH_DEV_LOGIN   true(기본. 시연용 로그인) | false
-#   OLLAMA_MODELS    VM에 받아 둘 Ollama 모델 (기본 "bge-m3 qwen2.5:7b". 시연 업체 한 곳이 qwen2.5:7b를 고른다)
+#   USE_OLLAMA       1이면 Ollama를 고른 업체(시연의 남해열분해)가 VM의 Ollama로 답한다. 기본은 비움: GPU 없이 CPU로는
+#                    6천 토큰 프롬프트에 qwen2.5:7b 8분 30초·3b 4분 10초가 걸려(2026-11-18 측정) 실시간 대화가 안 되므로,
+#                    Ollama 주소를 비우고 V3_LLM_ALL_VENDORS=1로 주 모델(Foundry)이 답하게 한다(운영 화면에는 설정과 실제가 따로 보인다)
+#   OLLAMA_MODELS    USE_OLLAMA=1일 때 VM에 받아 둘 Ollama 모델 (기본 "bge-m3 qwen2.5:7b")
 #   SSH_SOURCE       SSH를 허용할 공용 IP (기본: 지금 이 컴퓨터의 공용 IP. NSG 규칙과 다르면 맞춘다)
 #   SEED             1이면 배포 끝에 시연 데이터를 되돌린다. bff는 백엔드 컨테이너에서 scripts.v3.accounts_admin reset-demo,
 #                    token·header는 POST /api/v3/demo/reset 을 관리자 토큰(또는 X-Org-Id)으로 부른다
@@ -43,10 +45,12 @@ BACKEND_DIR="${BACKEND_DIR:-$ROOT}"
 BACKEND_REF="${BACKEND_REF:-HEAD}"
 FRONTEND_DIR="${FRONTEND_DIR:-$ROOT/../frontend}"
 FRONTEND_REF="${FRONTEND_REF:-origin/main}"
-V3_LLM="${V3_LLM:-rule}"
+V3_LLM="${V3_LLM:-foundry}"
 V3_AUTH="${V3_AUTH:-bff}"
 AUTH_DEV_LOGIN="${AUTH_DEV_LOGIN:-true}"
+USE_OLLAMA="${USE_OLLAMA:-}"
 OLLAMA_MODELS="${OLLAMA_MODELS:-bge-m3 qwen2.5:7b}"
+[ "$USE_OLLAMA" = 1 ] || OLLAMA_MODELS=""
 SEED="${SEED:-}"
 GRANT_ADMIN="${GRANT_ADMIN:-}"
 INDEX="${INDEX:-}"
@@ -126,8 +130,12 @@ put "$B" V3_LLM "$V3_LLM"
 put "$B" FOUNDRY_ENDPOINT "$FOUNDRY_ENDPOINT"
 put "$B" FOUNDRY_DEPLOYMENT "${FOUNDRY_DEPLOYMENT:-gpt-5-mini}"
 put_secret "$B" FOUNDRY_API_KEY foundry-api-key
-put "$B" OLLAMA_BASE_URL "http://ollama:11434"
-put "$B" OLLAMA_EMBED_MODEL bge-m3
+if [ "$USE_OLLAMA" = 1 ]; then
+  put "$B" OLLAMA_BASE_URL "http://ollama:11434"
+  put "$B" OLLAMA_EMBED_MODEL bge-m3
+else
+  put "$B" V3_LLM_ALL_VENDORS 1
+fi
 put_secret "$B" AZURE_STORAGE_CONNECTION_STRING storage-connection-string
 put_secret "$B" APPLICATIONINSIGHTS_CONNECTION_STRING appinsights-connection-string
 # 문서 추출(Document Intelligence)과 업로드 문서의 지시문 주입 검사(Content Safety Prompt Shields)
