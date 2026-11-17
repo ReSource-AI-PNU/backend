@@ -48,6 +48,7 @@ INDEX=1 bash infra/vm/deploy-vm.sh         # 끝에 백엔드 컨테이너 안�
   ```
 - **추적:** 이미지에는 `tracing` extra(`azure-monitor-opentelemetry`)가 `EXTRAS`와 상관없이 들어간다. 실행 기록의 span은 Application Insights `appi-rsai-demo`의 `dependencies` 표에 `rsai.*` 이름으로 쌓인다.
 - **모델 가중치:** Storage 비공개 컨테이너 `models`의 `models-v3mat-v4cond.tar.gz`(재질 v3, 상태 v4, 도메인 분류기). 읽기 전용 SAS 주소(2026-12-31까지)를 Key Vault `model-blob-url`에 둔다.
+- **SSH:** NSG는 22를 한 주소에서만 연다. 배포하는 컴퓨터의 공용 IP가 바뀌면 `deploy-vm.sh`가 시작할 때 규칙을 지금 IP로 바꾼다(`SSH_SOURCE`로 직접 줄 수도 있다).
 - **끄고 켜기:** `stop.sh`가 VM을 할당 해제하고, `start.sh`가 다시 켠다(태그 `project=resource-ai`). 할당 해제 중에는 디스크 비용만 든다. Compose 서비스는 `restart: unless-stopped`라 VM이 켜지면 같이 올라온다.
 - **비용(정가):** VM 시간당 0.172달러(월 약 126), 공용 IP 시간당 약 0.005달러, 디스크 128GB StandardSSD.
 

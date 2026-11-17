@@ -21,6 +21,7 @@
 #                    | token(조직별 토큰) | header(시연 전용)
 #   AUTH_DEV_LOGIN   true(기본. 시연용 로그인) | false
 #   OLLAMA_MODELS    VM에 받아 둘 Ollama 모델 (기본 "bge-m3 qwen2.5:7b". 시연 업체 한 곳이 qwen2.5:7b를 고른다)
+#   SSH_SOURCE       SSH를 허용할 공용 IP (기본: 지금 이 컴퓨터의 공용 IP. NSG 규칙과 다르면 맞춘다)
 #   SEED             1이면 배포 끝에 시연 데이터를 되돌린다. bff는 백엔드 컨테이너에서 scripts.v3.accounts_admin reset-demo,
 #                    token·header는 POST /api/v3/demo/reset 을 관리자 토큰(또는 X-Org-Id)으로 부른다
 #   GRANT_ADMIN      bff에서만. 이미 가입한 사용자의 이메일. 그 사용자를 org_admin의 owner로 넣는다
@@ -210,6 +211,17 @@ done
 docker image prune -f >/dev/null
 docker compose ps --format '{{.Service}}\t{{.State}}\t{{.Status}}'
 REMOTE
+
+# 배포하는 곳의 공용 IP가 바뀌면 SSH(22)가 NSG에 막힌다. 허용 주소를 지금 IP로 맞춘다(SSH_SOURCE로 직접 줄 수 있다)
+MYIP="${SSH_SOURCE:-$(curl -s --max-time 10 https://api.ipify.org || true)}"
+if [ -n "$MYIP" ]; then
+  CUR_SRC="$(az network nsg rule show -g "$RG" --nsg-name nsg-rsai-demo-app -n AllowSshFromAdmin --query sourceAddressPrefix -o tsv 2>/dev/null || true)"
+  if [ -n "$CUR_SRC" ] && [ "$CUR_SRC" != "$MYIP/32" ]; then
+    say "SSH 허용 주소를 $MYIP/32 로 바꾼다 (전: $CUR_SRC)"
+    az network nsg rule update -g "$RG" --nsg-name nsg-rsai-demo-app -n AllowSshFromAdmin --source-address-prefixes "$MYIP/32" -o none
+    sleep 5
+  fi
+fi
 
 say "VM 준비 확인 (cloud-init의 Docker 설치를 기다린다)"
 for i in $(seq 1 30); do
