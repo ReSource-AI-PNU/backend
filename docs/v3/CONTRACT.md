@@ -430,6 +430,7 @@ VendorProfile {"orgId": "org_saegil",
 - `events[].detail.arguments`(도구 호출): 흐름 ID(`streamId`, `streamIds`), `route`, `transportPaidBy`, 숫자가 없는 검색어(`query`)만 남는다. 모델이 덧붙인 다른 인자는 싣지 않는다.
 - `session.status`: 합의한 대화가 모두 담당자에게 넘어가 승인할 대화가 남지 않으면 `awaiting_approval`에서 `idle`(`phase`는 `done`)로 바뀐다. 합의 없이 끝난 진단과 같은 상태다.
 - `questions[]`: `unknown`, `answerType`(`number | choice | text`), `unit`, `choices`
+- `questionBatch`(새 항목, 배출 기업에게만): 답을 기다리는 질문 묶음의 요약 `{batch, maxBatches, maxPerBatch, count, open, last, intro, note}`이고, 기다리는 질문이 없으면 `null`이다. 질문은 묶음당 최대 3개, 진단당 최대 2묶음이다. 화면의 머리 문장은 `intro`를 쓴다(첫 묶음: "찾기 전에 n가지를 여쭙겠습니다.", 둘째 묶음: "n가지만 더 여쭙겠습니다. 이번이 마지막 질문입니다."). 첫 묶음 뒤에도 질문이 올 수 있으므로 첫 묶음에 "…만"이라고 쓰지 않는다. `note`는 첫 묶음일 때 "답을 보고 한 번 더 여쭐 수 있습니다."이다.
 - `unresolved[{streamId, field}]`: 질문 한도를 다 쓰고도 모르는 값
 - `approvals[]`: `streamIds`
 - `documents[]`: `threadId`, `streamIds`, `rendered`(자리표시자를 값으로 바꾼 글), `createdAt`

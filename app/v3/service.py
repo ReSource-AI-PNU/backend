@@ -22,7 +22,7 @@ from typing import Any
 from app.v3 import feedback, ids, live
 from app.v3 import names as naming
 from app.v3.a2a.message import STAGES
-from app.v3.a2a.policy import evidence_owner
+from app.v3.a2a.policy import QuestionPolicy, evidence_owner
 from app.v3.a2a.thread import Thread
 from app.v3.account_store import InMemoryAccounts, LoginLimiter
 from app.v3.agents.draft import model_label
@@ -1453,6 +1453,7 @@ def get_view(app: App, session_id: str, viewer: str) -> dict[str, Any]:
         "questions": [
             _question_view(q) for q in (app.store.list_questions(session_id) if owner else [])
         ],
+        "questionBatch": _question_batch(app.store.list_questions(session_id)) if owner else None,
         "unresolved": list(work.get("unresolved") or []) if owner else [],
         "approvals": [
             {
@@ -1490,6 +1491,36 @@ QUESTION_KEYS = (
 
 def _question_view(question: dict[str, Any]) -> dict[str, Any]:
     return {k: question.get(k) for k in QUESTION_KEYS}
+
+
+def _question_batch(questions: list[dict[str, Any]]) -> dict[str, Any] | None:
+    """답을 기다리는 질문 묶음의 요약과 화면 머리 문장. 기다리는 질문이 없으면 None.
+
+    질문은 묶음당 최대 3개, 진단당 최대 2묶음이다(QuestionPolicy). 첫 묶음 뒤에 질문이 더 올 수 있으므로
+    첫 묶음 머리에 "…만"이라고 쓰지 않고, 둘째 묶음은 마지막이라고 밝힌다. count는 이 묶음의 질문 수다.
+    """
+    waiting = [q for q in questions if not q.get("answered")]
+    if not waiting:
+        return None
+    policy = QuestionPolicy()
+    batch = min(int(q.get("batch") or 1) for q in waiting)
+    count = sum(1 for q in questions if int(q.get("batch") or 1) == batch)
+    last = batch >= policy.max_batches
+    intro = (
+        f"{count}가지만 더 여쭙겠습니다. 이번이 마지막 질문입니다."
+        if last
+        else f"찾기 전에 {count}가지를 여쭙겠습니다."
+    )
+    return {
+        "batch": batch,
+        "maxBatches": policy.max_batches,
+        "maxPerBatch": policy.max_per_batch,
+        "count": count,
+        "open": sum(1 for q in waiting if int(q.get("batch") or 1) == batch),
+        "last": last,
+        "intro": intro,
+        "note": None if last else "답을 보고 한 번 더 여쭐 수 있습니다.",
+    }
 
 
 def _stages_view(stages: dict[str, Any]) -> list[dict[str, Any]]:
