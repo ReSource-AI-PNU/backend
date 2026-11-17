@@ -274,6 +274,20 @@ def register_model_run(app, run, viewer) -> dict                    # 재학습 
   - 실행 확인(2026-11-18, 로컬 서버 8031, `V3_AUTH=token` + `V3_ORG_TOKENS_FILE`): 토큰 없음과 `X-Org-Id`만 보낸 요청은 401 `TOKEN_REQUIRED`, 틀린 토큰은 401 `INVALID_TOKEN`, 다른 배출 기업의 토큰으로 흐름을 부르면 403, 그 토큰으로 남의 진단을 부르면 404, 자기 토큰은 200이었다. FastAPI 경로는 로컬에서 띄우지 못해 CI의 테스트(`tests/v3/test_api.py`)로만 확인한다.
   - 화면(브라우저)이 토큰을 직접 들고 있으면 안 된다. 프런트 서버가 로그인한 사용자의 조직에 맞는 토큰을 붙여 대신 부르는 구조(BFF)가 필요하다.
 - 업로드는 `multipart/form-data`(`file`, `orgId`, 문서는 `kind`)로 받는다.
+- **도로 거리 제공자는 환경 변수 `V3_DISTANCE`로 고른다**(`app/v3/judge/distance.py`의 `distance_provider_from_env`. FastAPI 경로, 로컬 서버, 업체 측 에이전트 서버가 같이 쓴다).
+
+  | `V3_DISTANCE` | 쓰는 것 | 필요한 값 |
+  |---|---|---|
+  | (비움) | `AZURE_MAPS_KEY`가 있으면 Azure Maps, 없으면 제공자 없음 | |
+  | `kakao` | 카카오모빌리티 자동차 길찾기(`GET https://apis-navi.kakaomobility.com/v1/directions`) | `KAKAO_REST_API_KEY` |
+  | `azure` | Azure Maps Route Matrix | `AZURE_MAPS_KEY` |
+  | `none` | 제공자 없음 | |
+
+  - 제공자가 없거나 호출이 실패하면(키 오류, 한도 초과, 닿지 못하는 지점, 고유 지점 8개 초과) 판단 도구는 직선 거리 × 우회 계수(가정값)로 계산하고 결과에 "가정값"이라고 남긴다. 일부만 도로 거리인 행렬은 만들지 않는다.
+  - 카카오 길찾기는 읽기 전용 조회다. 좌표 두 개(경도,위도)만 보내고 거리를 받는다. 조직 이름과 물량은 보내지 않는다. 한 쌍씩 묻는 API라서 n개 지점에 n×(n-1)번 부르고, 같은 쌍은 프로세스 안에서 한 번만 묻는다(무료 한도는 카카오 콘솔에서 확인한다).
+  - 실제 호출 확인(2026-11-18, 한 번): 시연 좌표 [128.826, 35.0871] → [128.8721, 35.1493]에 HTTP 200, `routes[0].result_code` 0, `summary.distance` 10,793 m였다. 같은 쌍의 직선 거리 × 1.3 가정값은 약 10.5 km다. Azure Maps 쪽은 실제 호출을 하지 못했다.
+  - `KakaoDistance.evidence(points, as_of, access)`가 받은 쌍마다 근거 레코드(`ref:도로거리:카카오길찾기-<쌍 해시>@<조회일>`, km, 출처, 좌표)를 만든다. **아직 판단 도구가 이 근거를 계산 근거의 입력으로 잇지 않는다**(`judge/common.py`의 `distance_matrix`가 제공자의 결과에 근거 ID를 붙이지 않는다. Azure Maps도 같다). 그래서 지금은 도로 거리로 계산한 값이 "가정값"으로 표시되지 않을 뿐, 근거 패널에서 거리의 출처까지 따라갈 수는 없다.
+  - 로컬 서버는 고른 제공자의 키가 없으면 멈추고, FastAPI 경로는 경고를 남기고 가정값 경로로 돈다.
 
 ## 9. 평가 (8단계)
 

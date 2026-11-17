@@ -43,6 +43,10 @@ class Settings(BaseSettings):
     anthropic_model: str = ""  # 비우면 claude-sonnet-5-5
     # 참이면 ollama를 고른 업체도(주소가 없을 때) anthropic 모델이 답한다. 화면에는 둘 다 나온다
     v3_llm_all_vendors: bool = False
+    # 도로 거리 제공자: kakao | azure | none. 비우면 AZURE_MAPS_KEY가 있을 때 Azure Maps를 쓴다.
+    # 없거나 호출이 실패하면 직선 거리 × 우회 계수(가정값)로 계산하고 결과에 가정값이라고 남긴다
+    v3_distance: str = ""
+    kakao_rest_api_key: str = ""  # 카카오모빌리티 자동차 길찾기(읽기 전용 거리 조회)
     # 업체 측 에이전트 서비스 (app/v3/vendor_service.py)
     vendor_org_id: str = ""
     vendor_service_key: str = ""

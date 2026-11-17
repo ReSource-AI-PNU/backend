@@ -16,6 +16,9 @@
   ANTHROPIC_MODEL(기본 claude-sonnet-5-5). 화면에는 실제로 답한 모델 이름이 그대로 나온다.
   업체가 ollama를 골랐고 OLLAMA_BASE_URL이 없으면 그 업체는 규칙 정책으로 돈다. V3_LLM_ALL_VENDORS=1을
   주면 그 업체도 이 모델이 답한다(설정한 모델과 답한 모델이 다르다는 것은 화면에 따로 나온다).
+- 도로 거리는 환경 변수 V3_DISTANCE로 고른다: kakao(KAKAO_REST_API_KEY, 카카오모빌리티 길찾기) |
+  azure(AZURE_MAPS_KEY) | none. 비어 있으면 AZURE_MAPS_KEY가 있을 때만 Azure Maps를 쓴다. 제공자가
+  없거나 호출이 실패하면 직선 거리 × 우회 계수(가정값)로 계산하고 결과에 가정값이라고 남긴다.
 - 사진·영상 업로드(POST /intake/media)는 V3_DETECTOR_ENDPOINT(와 V3_DETECTOR_API_KEY)가 있을 때만
   탐지 모델을 부른다. 없으면 {"detectorUnavailable": true}로 답한다(탐지 결과를 지어내지 않는다).
 - 요청하는 조직은 X-Org-Id 헤더로 밝힌다(--auth header, 기본). 이 모드는 시연 전용이며 공개 주소에
@@ -59,6 +62,7 @@ from app.v3.agents.factory import (
 )
 from app.v3.evidence.registry import InMemoryRegistry, JsonFileRegistry
 from app.v3.intake import detector
+from app.v3.judge.distance import distance_provider_from_env
 from app.v3.store import InMemoryStore, JsonFileStore
 
 PREFIX = "/api/v3"
@@ -434,12 +438,18 @@ def build_app(
     else:
         store, registry = InMemoryStore(), InMemoryRegistry()
     factory = llm_factory_from_env(llm, settings)
+    try:
+        # V3_DISTANCE=kakao|azure|none과 키. 고른 제공자의 키가 없으면 로컬 서버는 멈춘다
+        distance_provider = distance_provider_from_env(settings, strict=True)
+    except ValueError as error:
+        raise SystemExit(str(error)) from None
     app = service.App(
         store,
         registry,
         llm_factory=factory,
         today=today,
         demo_open=demo_open,
+        distance_provider=distance_provider,
         # V3_DETECTOR_ENDPOINT가 없으면 None이고, 사진·영상 업로드는 "미연결"이라고 답한다
         detector=detector.client_from_env(settings),
     )

@@ -365,6 +365,25 @@ def test_build_app_reads_the_anthropic_settings(monkeypatch):
     assert fields.anthropic_api_key_file == "/run/secrets/key" and not fields.v3_llm_all_vendors
 
 
+def test_build_app_picks_the_distance_provider_from_settings(monkeypatch):
+    """V3_DISTANCE=kakao와 KAKAO_REST_API_KEY로 카카오 길찾기를, 비어 있으면 이전처럼 Azure Maps를 쓴다."""
+    from app.v3.judge.distance import AzureMapsDistance, KakaoDistance
+
+    monkeypatch.setattr(settings, "database_url", "")
+    monkeypatch.setattr(settings, "v3_llm", "rule")
+    monkeypatch.setattr(settings, "azure_maps_key", "")
+    monkeypatch.setattr(settings, "kakao_rest_api_key", "kakao-test")
+    monkeypatch.setattr(settings, "v3_distance", "")
+    assert api.build_app().distance_provider is None
+    monkeypatch.setattr(settings, "v3_distance", "kakao")
+    assert isinstance(api.build_app().distance_provider, KakaoDistance)
+    monkeypatch.setattr(settings, "kakao_rest_api_key", "")
+    assert api.build_app().distance_provider is None  # 키가 없으면 가정값 경로(서버는 뜬다)
+    monkeypatch.setattr(settings, "v3_distance", "")
+    monkeypatch.setattr(settings, "azure_maps_key", "maps-test")
+    assert isinstance(api.build_app().distance_provider, AzureMapsDistance)
+
+
 def test_database_url_uses_installed_driver():
     """Key Vault의 database-url(postgresql://)을 그대로 넣어도 psycopg 3로 붙는다."""
     plain = Settings(database_url="postgresql://user:pw@db.invalid:5432/app?sslmode=require")

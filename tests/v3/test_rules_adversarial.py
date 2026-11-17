@@ -2211,8 +2211,10 @@ def test_chapter4_nothing_is_sent_outside_the_app():
         r"(^|\.)(azure\.com|azure\.net|microsoft\.com|windows\.net|law\.go\.kr|example(\.com)?|"
         r"localhost|127\.0\.0\.1|opentelemetry\.io|w3\.org|json-schema\.org|data\.go\.kr|"
         r"visualstudio\.com|ai\.azure\.com|go\.kr|modelcontextprotocol\.io|invalid|"
-        # 모델 API(로컬에서 실제 모델로 돌려 볼 때만 부른다: devserver --llm anthropic)
-        r"anthropic\.com)$"
+        # 모델 API(실제 모델로 돌릴 때만 부른다: V3_LLM=anthropic)
+        r"anthropic\.com|"
+        # 도로 거리 조회(읽기 전용: 좌표 두 개를 보내고 거리를 받는다. V3_DISTANCE=kakao일 때만 부른다)
+        r"kakaomobility\.com)$"
     )
     assert sorted(h for h in hosts if not allowed.search(h.rstrip("."))) == []
     # 올바로시스템은 연동하지 않는다고 적은 글 말고는 나오지 않는다

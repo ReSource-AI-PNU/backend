@@ -26,6 +26,7 @@ from typing import Any
 
 from app.v3 import devserver, httpio, localshare, service
 from app.v3.agents.factory import LLM_MODES, MODE_LABELS, LlmConfigError, normalize_mode
+from app.v3.judge.distance import distance_provider_from_env
 
 
 class VendorAgent:
@@ -92,11 +93,17 @@ def build_vendor_app(
 ) -> service.App:
     """회사 측 서버와 같은 저장 파일을 보는 앱. 시드를 올리지 않는다."""
     settings = os.environ if env is None else env
+    try:
+        distance_provider = distance_provider_from_env(settings, strict=True)
+    except ValueError as error:
+        raise SystemExit(str(error)) from None
     return service.App(
         localshare.ReloadingStore(store_path),
         localshare.ReloadingRegistry(devserver.evidence_file(store_path)),
         llm_factory=devserver.llm_factory_from_env(llm, settings),
         today=today,
+        # 업체 측 에이전트는 노선 추가 운송비를 계산할 때 도로 거리를 쓴다(V3_DISTANCE, 회사 측과 같다)
+        distance_provider=distance_provider,
     )
 
 

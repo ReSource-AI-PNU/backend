@@ -113,6 +113,8 @@ def build_app() -> service.App:
     Azure 연결부는 설정이 있을 때만 켠다(이 부분은 로컬 미실행):
     - APPLICATIONINSIGHTS_CONNECTION_STRING: 실행 기록을 OpenTelemetry span으로 내보낸다(tracing.py).
     - AZURE_MAPS_KEY: 판단 도구의 도로 거리(judge/distance.py). 없으면 직선 거리 가정값 경로다.
+      V3_DISTANCE=kakao와 KAKAO_REST_API_KEY를 주면 카카오모빌리티 길찾기로 도로 거리를 받는다
+      (이쪽은 실제 호출로 확인했다).
     - AZURE_SEARCH_ENDPOINT, AZURE_SEARCH_API_KEY: 근거 검색의 순위를 Azure AI Search에서 받는다
       (evidence/search.py의 선택 계층). 없거나 설정이 틀리면 로컬 검색이다.
     - V3_AGENT_FRAMEWORK=chat|agent + FOUNDRY_PROJECT_ENDPOINT: Foundry로 가는 모델 호출을
@@ -124,7 +126,7 @@ def build_app() -> service.App:
     from app.v3.agents import maf
     from app.v3.evidence import search, search_azure
     from app.v3.intake import detector
-    from app.v3.judge.distance import AzureMapsDistance
+    from app.v3.judge.distance import distance_provider_from_env
 
     if settings.database_url:
         from app.platform.db import engine
@@ -173,8 +175,14 @@ def build_app() -> service.App:
         auth_mode=auth.mode,
         llm_factory=factory,
         vendor_gateway=make_vendor_gateway(),
-        distance_provider=(
-            AzureMapsDistance(settings.azure_maps_key) if settings.azure_maps_key else None
+        # V3_DISTANCE=kakao|azure|none. 비어 있으면 AZURE_MAPS_KEY가 있을 때 Azure Maps다.
+        # 고른 제공자의 키가 없으면 경고를 남기고 직선 거리 가정값 경로로 돈다
+        distance_provider=distance_provider_from_env(
+            {
+                "V3_DISTANCE": settings.v3_distance,
+                "AZURE_MAPS_KEY": settings.azure_maps_key,
+                "KAKAO_REST_API_KEY": settings.kakao_rest_api_key,
+            }
         ),
         demo_open=settings.v3_demo_open,
         # 탐지 모델(Azure ML 엔드포인트). 주소가 없으면 None이고 업로드는 "미연결"이라고 답한다
