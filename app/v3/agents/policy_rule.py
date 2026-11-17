@@ -72,7 +72,10 @@ class _Base:
         self.b = briefing
         self.streams = {s["id"]: s for s in briefing.get("streams") or []}
         self.pool = {c["id"]: c for c in briefing.get("pool") or []}
-        self.results = [r for r in briefing.get("toolResults") or [] if r.get("status") != "error"]
+        given = briefing.get("toolResults") or []
+        self.results = [r for r in given if r.get("status") != "error"]
+        # 실패한 호출도 부른 것이다(같은 입력이면 다시 불러도 같은 이유로 실패한다)
+        self.failed = [r for r in given if r.get("status") == "error"]
         self.refs: list[str] = []
         self.incoming = briefing.get("incoming") or {}
         self.thread = briefing.get("thread") or {}
@@ -90,6 +93,16 @@ class _Base:
         claim = self.pool.get(str(claim_id)) or {}
         unit = claim.get("unit")
         return particle(str(unit) if unit else format_value(claim.get("value")), pair)
+
+    def tried(self, tool: str, **arguments: Any) -> bool:
+        """결과가 있거나, 불렀다가 실패한 호출인가."""
+        if self.result(tool, **arguments) is not None:
+            return True
+        return any(
+            item.get("tool") == tool
+            and all((item.get("arguments") or {}).get(k) == v for k, v in arguments.items())
+            for item in self.failed
+        )
 
     def result(self, tool: str, **arguments: Any) -> dict[str, Any] | None:
         for item in self.results:
@@ -311,7 +324,8 @@ class _Vendor(_Base):
 
         calls = []
         for tool in ("check_loading", "route_extra_cost"):
-            if self.result(tool, streamIds=acceptable) is None:
+            # 배출 기업 위치가 없으면 노선 비용은 계산하지 못한다(실패한 호출). 다시 부르지 않는다
+            if not self.tried(tool, streamIds=acceptable):
                 calls.append({"name": tool, "arguments": {"streamIds": acceptable}})
         if calls:
             return {"type": "answer", "stage": 5, "streamIds": stream_ids, "toolCalls": calls}

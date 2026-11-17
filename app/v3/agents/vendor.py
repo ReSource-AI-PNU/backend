@@ -208,6 +208,15 @@ def short(stream_id: str) -> str:
     return stream_id.removeprefix("st_")
 
 
+def _tried(results: list[dict[str, Any]], tool: str, **arguments: Any) -> bool:
+    """불렀던 호출인가(실패한 호출 포함. 같은 입력이면 다시 불러도 같은 이유로 실패한다)."""
+    return any(
+        item.get("tool") == tool
+        and all((item.get("arguments") or {}).get(k) == v for k, v in arguments.items())
+        for item in results
+    )
+
+
 def _result(results: list[dict[str, Any]], tool: str, **arguments: Any) -> dict[str, Any] | None:
     for item in results:
         given = item.get("arguments") or {}
@@ -311,7 +320,7 @@ def guide(
         )
         return lines
     if any(
-        _result(results, tool, streamIds=acceptable) is None
+        not _tried(results, tool, streamIds=acceptable)
         for tool in ("check_loading", "route_extra_cost")
     ):
         lines.append(

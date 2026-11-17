@@ -529,7 +529,8 @@ class AgentTools:
         arguments = dict(arguments or {})
         key = self._key(name, arguments)
         for done in self.results:
-            if self._key(done["tool"], done["arguments"]) == key:
+            # 실패한 호출은 다시 부르면 다시 실행한다(실행 기록에도 다시 남는다)
+            if self._key(done["tool"], done["arguments"]) == key and done.get("status") != "error":
                 return done
         if name not in self.allowed or name not in TOOLS:
             return self._failed(
@@ -580,7 +581,14 @@ class AgentTools:
             orgId=self.org_id,
             calledBy=called_by,
         )
-        return {"tool": name, "arguments": arguments, "status": "error", "error": message}
+        failed = {"tool": name, "arguments": arguments, "status": "error", "error": message}
+        if name in TOOLS:
+            # 같은 입력으로 다시 불러도 같은 이유로 실패한다. 결과 목록에 남겨 에이전트가 부른 것을 알게 한다
+            # (규칙 정책과 안내가 같은 도구를 거듭 부르다 도구 횟수 상한에 걸리지 않게 한다)
+            key = self._key(name, arguments)
+            self.results = [r for r in self.results if self._key(r["tool"], r["arguments"]) != key]
+            self.results.append({**failed, "output": None, "checks": [], "claims": {}})
+        return failed
 
 
 def run_draft(
