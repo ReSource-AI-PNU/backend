@@ -75,3 +75,13 @@ def test_configured_but_failing_shield_raises():
     )
     with pytest.raises(ShieldError):
         check_document("문서", odd)
+
+
+def test_client_from_env_needs_both_endpoint_and_key():
+    from app.v3.intake.shields import ENV_ENDPOINT, ENV_KEY, client_from_env
+
+    assert client_from_env({}) is None
+    assert client_from_env({ENV_ENDPOINT: "https://cs.example/"}) is None
+    assert client_from_env({ENV_KEY: "key"}) is None
+    client = client_from_env({ENV_ENDPOINT: " https://cs.example/ ", ENV_KEY: "key"})
+    assert client is not None and client.configured and client.endpoint == "https://cs.example"

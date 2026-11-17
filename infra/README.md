@@ -25,6 +25,7 @@ az deployment group create  -g team_AIBIC2026_03_RG_EUS2 -n rsai-app-vm -f infra
   -p sshPublicKey="$(cat ~/.ssh/rsai_demo_vm.pub)" sshSourcePrefix=<내 공용 IP>/32
 bash infra/vm/deploy-vm.sh                 # 커밋된 소스를 VM에 올려 빌드하고 띄운다
 SEED=1 bash infra/vm/deploy-vm.sh          # 끝에 시연 시작 상태로 되돌린다
+INDEX=1 bash infra/vm/deploy-vm.sh         # 끝에 백엔드 컨테이너 안에서 근거 색인을 다시 만든다(운영 DB의 근거)
 ```
 
 | 구성 | 내용 |
@@ -34,7 +35,18 @@ SEED=1 bash infra/vm/deploy-vm.sh          # 끝에 시연 시작 상태로 되�
 | `infra/vm/deploy-vm.sh` | Key Vault에서 비밀을 읽어 VM의 `/opt/rsai/env/*.env`(권한 600)에만 쓰고, `git archive`한 소스를 올려 VM 안에서 이미지를 빌드한다. 마이그레이션 → 시작 → Ollama 모델 받기 → HTTPS 응답 확인 순서다 |
 
 - **지역:** PostgreSQL·AI Search와 같은 Central US에 둔다. East US 2에 두었을 때 DB 왕복이 평균 39ms라 근거를 하나씩 읽는 진단 실행 한 번이 10분을 넘겼다.
-- **설정:** `V3_LLM=rule`(규칙 정책. 실제 모델 `foundry`는 초안이 근거 검증기에 거부되어 담당자 인계로 끝나므로, 프롬프트를 고치기 전까지 시연은 rule로 한다), `V3_AUTH=token`(조직별 토큰. Key Vault `v3-org-tokens`, 없으면 스크립트가 만든다), `AUTH_DEV_LOGIN=true`(시연용 로그인). 업체 측 에이전트 한 곳은 Ollama `qwen2.5:7b`를 CPU로 쓴다.
+- **설정:** `V3_LLM=rule`(규칙 정책. 실제 모델 `foundry`는 초안이 근거 검증기에 거부되어 담당자 인계로 끝나므로, 프롬프트를 고치기 전까지 시연은 rule로 한다), `V3_AUTH=bff`(기본. 실제 계정·조직: 프런트 서버만 Key Vault `v3-bff-key`로 백엔드를 부르고 백엔드가 사용자·소속을 확인한다. 키가 없으면 스크립트가 만들어 `backend.env`와 `frontend.env`의 `V3_BFF_KEY`에 넣는다. `V3_AUTH=token`이면 전처럼 `v3-org-tokens`), `AUTH_DEV_LOGIN=true`(시연용 로그인). bff에서 `SEED=1`은 시연 조직만 되돌리고(`scripts.v3.accounts_admin reset-demo`) 시연 진단을 승인 대기까지 돌려 둔다. 관리자는 가입한 뒤 `GRANT_ADMIN=<이메일>`로 배포하거나 백엔드 컨테이너에서 `python -m scripts.v3.accounts_admin grant-admin <이메일>`로 넣는다. 업체 측 에이전트 한 곳은 Ollama `qwen2.5:7b`를 CPU로 쓴다.
+- **Azure AI 연결:** `deploy-vm.sh`가 `backend.env`에 Document Intelligence(`AZURE_DOCUMENT_INTELLIGENCE_ENDPOINT`, 키 `docintel-key`), Content Safety Prompt Shields(`AZURE_CONTENT_SAFETY_ENDPOINT`, 키 `contentsafety-key`), AI Search(`AZURE_SEARCH_ENDPOINT`, `AZURE_SEARCH_INDEX=rsai-evidence`, 키 `search-admin-key`), 임베딩(`V3_EMBEDDINGS=foundry`, `FOUNDRY_EMBEDDING_DEPLOYMENT=text-embedding-3-small`, `AZURE_SEARCH_VECTOR_DIMENSIONS=1536`), `APPLICATIONINSIGHTS_CONNECTION_STRING`을 넣는다. 주소는 태그와 종류로 찾고 키는 Key Vault에서 읽는다. 리소스를 찾지 못하면 그 연결만 빠지고 앱은 로컬 경로로 돈다.
+- **임베딩:** 설계는 Ollama `bge-m3`였지만 Ollama는 VM 안에서만 닿아 맥에서 색인할 수 없다. 색인과 질의가 같은 모델을 쓰도록 둘 다 Foundry `text-embedding-3-small`(배포 이름 같음, GlobalStandard, 용량 50, 1536차원)로 한다. 색인 `rsai-evidence`는 2026-11-18 맥에서 시드 근거 48건(법령 26, 기준값 11, 가정값 11)으로 만들었다. 다시 만들 때는 `INDEX=1`(VM 안, 운영 DB)이나 맥에서 아래처럼 한다(키는 Key Vault에서 환경 변수로만 읽는다).
+
+  ```bash
+  AZURE_SEARCH_ENDPOINT=https://srch-rsai-demo-o7xpbt.search.windows.net AZURE_SEARCH_VECTOR_DIMENSIONS=1536 \
+  V3_EMBEDDINGS=foundry FOUNDRY_EMBEDDING_DEPLOYMENT=text-embedding-3-small FOUNDRY_ENDPOINT=<Foundry 주소> \
+  AZURE_SEARCH_API_KEY="$(az keyvault secret show --vault-name kv-rsai-demo-o7xpbt -n search-admin-key --query value -o tsv)" \
+  FOUNDRY_API_KEY="$(az keyvault secret show --vault-name kv-rsai-demo-o7xpbt -n foundry-api-key --query value -o tsv)" \
+  uv run python -m scripts.v3.index_evidence --create-index
+  ```
+- **추적:** 이미지에는 `tracing` extra(`azure-monitor-opentelemetry`)가 `EXTRAS`와 상관없이 들어간다. 실행 기록의 span은 Application Insights `appi-rsai-demo`의 `dependencies` 표에 `rsai.*` 이름으로 쌓인다.
 - **모델 가중치:** Storage 비공개 컨테이너 `models`의 `models-v3mat-v4cond.tar.gz`(재질 v3, 상태 v4, 도메인 분류기). 읽기 전용 SAS 주소(2026-12-31까지)를 Key Vault `model-blob-url`에 둔다.
 - **끄고 켜기:** `stop.sh`가 VM을 할당 해제하고, `start.sh`가 다시 켠다(태그 `project=resource-ai`). 할당 해제 중에는 디스크 비용만 든다. Compose 서비스는 `restart: unless-stopped`라 VM이 켜지면 같이 올라온다.
 - **비용(정가):** VM 시간당 0.172달러(월 약 126), 공용 IP 시간당 약 0.005달러, 디스크 128GB StandardSSD.

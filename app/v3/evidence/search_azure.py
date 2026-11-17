@@ -2,7 +2,8 @@
 
 HTTP는 urllib로 하고, transport와 embed를 주입받는다.
 - transport(method, url, headers, body) -> (status, body_bytes)
-- embed(texts) -> 벡터 목록 (색인과 질의에 같은 모델을 쓴다. 설계는 Ollama bge-m3, 1024차원)
+- embed(texts) -> 벡터 목록 (색인과 질의에 같은 모델을 쓴다. 설계는 Ollama bge-m3, 1024차원이고
+  배포는 Ollama가 VM 안에만 있어 Foundry text-embedding-3-small, 1536차원을 쓴다)
 """
 
 from __future__ import annotations

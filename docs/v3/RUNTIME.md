@@ -213,12 +213,12 @@ def register_model_run(app, run, viewer) -> dict                    # 재학습 
 - 계산 근거의 입력 원본(`meta.inputs`)은 계산한 조직에게만 보이고, 다른 조직에게는 `{"hidden": true}`로 나간다.
 - 메시지와 문서에 실린 claim의 근거는 받는 쪽에도 연다. 허가증 근거는 허가 품목을 대조하기 전에, 매입 기준 근거는 스레드를 열 때 배출 기업에 연다.
 
-근거 검색(`GET /evidence?q=`): 기본은 로컬 어휘 검색이다. `AZURE_SEARCH_ENDPOINT`와 `AZURE_SEARCH_API_KEY`가 있으면 순위만 Azure AI Search(하이브리드 + 시맨틱)에서 받고, 내용은 레지스트리에서 다시 읽어 조직이 볼 수 없는 근거와 색인에만 남은 근거를 걸러 낸다. 색인이 실패하면 로컬 검색으로 답한다. 판단 도구(`search_clauses`)는 이 검색을 쓰지 않아 결과가 바뀌지 않는다. 색인은 `scripts/v3/index_evidence.py`로 올린다.
+근거 검색(`GET /evidence?q=`): 기본은 로컬 어휘 검색이다. `AZURE_SEARCH_ENDPOINT`와 `AZURE_SEARCH_API_KEY`가 있으면 순위만 Azure AI Search(하이브리드 + 시맨틱)에서 받고, 내용은 레지스트리에서 다시 읽어 조직이 볼 수 없는 근거와 색인에만 남은 근거를 걸러 낸다. 색인이 실패하면 로컬 검색으로 답한다. 판단 도구(`search_clauses`)는 이 검색을 쓰지 않아 결과가 바뀌지 않는다. 색인은 `scripts/v3/index_evidence.py`로 올린다. 질의 임베딩은 색인 스크립트와 같은 이름의 설정(`V3_EMBEDDINGS`, `FOUNDRY_EMBEDDING_DEPLOYMENT` 또는 `OLLAMA_EMBED_MODEL`, `AZURE_SEARCH_INDEX`, `AZURE_SEARCH_VECTOR_DIMENSIONS`)을 `app/core/config.py`의 Settings에서 읽어 같은 함수(`search_azure.embeddings_from_env`)로 만든다. 배포(앱 VM)는 `foundry` + `text-embedding-3-small`(1536차원)이다. 색인한 뒤 새로 생긴 근거(문서 확인, 측정값 등 조직 근거)는 다시 색인하기 전까지 Azure 순위에 나오지 않는다.
 
 자료 올리기:
 
 - `upload_csv`는 흐름 이름이 같은 흐름에 측정값을 붙이고 measure 근거로 등록한다. 이름이 맞는 흐름이 없는 행은 `unmatched`로 돌려준다. 글 칸 가운데 흐름 자료로 들어가는 `출처`와 `형태`는 정해 둔 낱말만 받는다(`형태`: 가공 전, 압축, 분쇄, 펠렛, 필름. 다른 글은 그 행의 오류다). 올린 파일의 글이 흐름 자료를 거쳐 에이전트 입력으로 들어가지 않게 하려는 것이다.
-- `upload_document`는 Document Intelligence가 설정돼 있으면 그것으로, 없으면 UTF-8 글 파일만 읽는다(`extraction: "text_only"`). Prompt Shields가 설정되지 않았으면 `shieldUnavailable: true`를 그대로 돌려준다. 주입이 탐지되면 문서를 쓰지 않고 올린 조직의 진행 중인 스레드를 모두 `handoff`로 넘긴다.
+- `upload_document`는 Document Intelligence(`AZURE_DOCUMENT_INTELLIGENCE_ENDPOINT`, `_API_KEY`)가 설정돼 있으면 PDF·사진·Office 문서를 prebuilt-layout으로 읽고(`extraction: "document_intelligence"`), UTF-8 글 파일은 그대로 읽는다(`"text"`. Document Intelligence는 글 파일을 받지 않는다). 설정이 없으면 UTF-8 글 파일만 읽는다(`"text_only"`, 그 밖의 형식은 503). 문서 글은 Prompt Shields(`AZURE_CONTENT_SAFETY_ENDPOINT`, `_API_KEY`)로 검사하고, 설정되지 않았으면 `shieldUnavailable: true`를 그대로 돌려준다. 주입이 탐지되면 문서를 쓰지 않고 올린 조직의 진행 중인 스레드를 모두 `handoff`로 넘긴다.
 - 뽑은 값은 `confirm_document`로 담당자가 확인한 것만 doc 근거가 된다.
 - `upload_media`는 사진·영상을 탐지 모델(Azure ML 관리형 온라인 엔드포인트, `intake/detector.py`의 `DetectorClient`)에 보내 재질 추정과 이물 비율을 model 근거로 등록하고 흐름의 `photo`에 붙인다. 엔드포인트가 설정되지 않았으면 `detectorUnavailable: true`를 돌려주고 아무것도 등록하지 않는다. 탐지 모델의 엔드포인트는 아직 배포되지 않았고, 가짜 transport로만 확인했다.
 
@@ -244,7 +244,7 @@ def register_model_run(app, run, viewer) -> dict                    # 재학습 
 
 ## 7. 실행 기록
 
-모든 메시지, 도구 호출, 검증 결과, handoff, 승인은 `store`의 events에 남는다. 계약 7장의 `kind`에 `thread`(스레드 개설·미개설·합의·확정), `question`(담당자 질문과 답), `document`(문서 생성), `stage`(진단 생성)를 더했다. 업체가 보는 뷰에는 자기 스레드의 메시지·handoff·승인·스레드·문서 기록과 자기가 한 도구 호출·검증 기록만 나간다. 화면의 대화와 실행 기록은 이 기록을 그대로 보여 준다. 다만 기록에 실린 근거 ID 가운데 보는 조직이 열 수 없는 것은 뷰를 만들 때 빼고 개수(`detail.hiddenEvidenceCount`)만 남긴다(상대 쪽 계산 근거의 ID에는 도구 이름과 값의 종류가 드러난다). OpenTelemetry로 내보내는 것은 `tracing.py`가 한다: `APPLICATIONINSIGHTS_CONNECTION_STRING`이 있으면 `api.build_app`이 저장소를 `TracingStore`로 감싸고, `add_event`로 저장된 이벤트마다 span 하나(`rsai.<kind>`, 속성 `rsai.*`)를 낸다. 저장된 이벤트만 옮기므로 화면과 추적이 같은 기록을 본다. 내보내기가 실패해도 진단은 계속된다.
+모든 메시지, 도구 호출, 검증 결과, handoff, 승인은 `store`의 events에 남는다. 계약 7장의 `kind`에 `thread`(스레드 개설·미개설·합의·확정), `question`(담당자 질문과 답), `document`(문서 생성), `stage`(진단 생성)를 더했다. 업체가 보는 뷰에는 자기 스레드의 메시지·handoff·승인·스레드·문서 기록과 자기가 한 도구 호출·검증 기록만 나간다. 화면의 대화와 실행 기록은 이 기록을 그대로 보여 준다. 다만 기록에 실린 근거 ID 가운데 보는 조직이 열 수 없는 것은 뷰를 만들 때 빼고 개수(`detail.hiddenEvidenceCount`)만 남긴다(상대 쪽 계산 근거의 ID에는 도구 이름과 값의 종류가 드러난다). OpenTelemetry로 내보내는 것은 `tracing.py`가 한다: `APPLICATIONINSIGHTS_CONNECTION_STRING`이 있으면 `api.build_app`이 저장소를 `TracingStore`로 감싸고, `add_event`로 저장된 이벤트마다 span 하나(`rsai.<kind>`, 속성 `rsai.*`)를 낸다. 저장된 이벤트만 옮기므로 화면과 추적이 같은 기록을 본다. 내보내기가 실패해도 진단은 계속된다. 필요한 패키지는 `tracing` extra(`azure-monitor-opentelemetry`)이고 Docker 이미지에는 늘 들어간다. extra가 없으면(테스트, 로컬 개발) 경고만 남기고 추적을 켜지 않는다.
 
 ## 8. 로컬 서버
 
@@ -268,7 +268,8 @@ def register_model_run(app, run, viewer) -> dict                    # 재학습 
 
   | 환경 변수 | 값 | 읽는 곳 |
   |---|---|---|
-  | `V3_AUTH` | `header`(기본, 시연 전용) \| `token` | FastAPI, 로컬 서버(`--auth`를 주지 않았을 때) |
+  | `V3_AUTH` | `header`(기본, 시연 전용) \| `token` \| `bff`(FastAPI만. 실제 계정·조직, CONTRACT 9장) | FastAPI, 로컬 서버(`--auth`를 주지 않았을 때. `bff`면 로컬 서버는 뜨지 않는다) |
+  | `V3_BFF_KEY` | 프런트 서버가 `Authorization: Bearer`로 보내는 키 | FastAPI(`V3_AUTH=bff`) |
   | `V3_ORG_TOKENS` | JSON 글 한 줄. `{"org_hanbit": "토큰", "org_saegil": ["새 토큰", "옛 토큰"]}` | FastAPI, 로컬 서버 |
   | `V3_ORG_TOKENS_FILE` | 위 JSON을 담은 파일의 경로 | 로컬 서버만(`--org-tokens`와 같다) |
 

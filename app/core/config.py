@@ -67,9 +67,13 @@ class Settings(BaseSettings):
     v3_vendor_agents: dict[str, str] = {}
     # 참이면 시연 되돌리기(POST /api/v3/demo/reset)를 누구나 부를 수 있다. 기본은 관리자 조직만.
     v3_demo_open: bool = False
-    # 요청한 조직을 정하는 방법. header(기본, 시연 전용: X-Org-Id를 믿는다) | token(조직별 서비스 토큰).
+    # 요청한 조직을 정하는 방법. header(기본, 시연 전용: X-Org-Id를 믿는다) | token(조직별 서비스 토큰)
+    # | bff(프런트 서버만 부른다: V3_BFF_KEY + X-User-Id + X-Org-Id, 계정과 조직 소속을 확인한다).
     # header 모드는 공개 주소에 그대로 두면 조직 경계가 지켜지지 않는다.
     v3_auth: str = "header"
+    # bff 모드에서 프런트 서버(BFF)가 Authorization: Bearer로 보내는 키. Key Vault(v3-bff-key)에서 주입한다.
+    # bff 모드인데 비어 있으면 모든 요청을 503으로 거절한다
+    v3_bff_key: str = ""
     # token 모드의 조직별 서비스 토큰. JSON 글 그대로 받는다: {"조직 ID": "토큰"}(값은 목록도 된다).
     # Key Vault에서 주입한다. 읽고 확인하는 일은 app/v3/httpio.py의 org_tokens가 한다.
     v3_org_tokens: str = ""
@@ -82,6 +86,26 @@ class Settings(BaseSettings):
     v3_detector_endpoint: str = ""
     v3_detector_api_key: str = ""
     v3_detector_deployment: str = ""
+    # 문서 추출(Document Intelligence prebuilt-layout). 둘 중 하나라도 비면 UTF-8 글 파일만 읽는다
+    azure_document_intelligence_endpoint: str = ""
+    azure_document_intelligence_api_key: str = ""
+    # 업로드 문서의 지시문 주입 검사(Content Safety Prompt Shields). 비면 검사하지 않고
+    # shieldUnavailable=true로 표시한다
+    azure_content_safety_endpoint: str = ""
+    azure_content_safety_api_key: str = ""
+    # 근거 검색 색인(주소와 키는 위의 AZURE_SEARCH_ENDPOINT, AZURE_SEARCH_API_KEY).
+    # 벡터 차원은 임베딩 모델과 같아야 한다(bge-m3 1024, text-embedding-3-small 1536). 정수가 아니면
+    # 경고를 남기고 로컬 검색으로 돈다
+    azure_search_index: str = "rsai-evidence"
+    azure_search_vector_dimensions: str = "1024"
+    # 임베딩: ollama | foundry | 비움(벡터 없이 글과 시맨틱 랭커). 색인과 질의가 같은 값을 써야 한다.
+    # ollama는 OLLAMA_BASE_URL, foundry는 FOUNDRY_ENDPOINT·FOUNDRY_API_KEY와 아래 배포 이름을 쓴다
+    v3_embeddings: str = ""
+    ollama_embed_model: str = "bge-m3"
+    foundry_embedding_deployment: str = ""
+    # 실행 기록을 OpenTelemetry span으로 Application Insights에 내보낸다(app/v3/tracing.py).
+    # azure-monitor-opentelemetry(extra tracing)가 없으면 경고만 남긴다
+    applicationinsights_connection_string: str = ""
 
     # ① 식별 모델 (backend#8). 가중치는 git 에 없다 -> scripts/fetch_models.py 가 MODEL_BLOB_URL 에서 받는다.
     classifier_backend: str = "auto"  # auto | trained | zeroshot

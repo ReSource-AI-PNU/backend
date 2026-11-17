@@ -1,6 +1,8 @@
 """시연 데이터. 회사 이름, 좌표, 수치, 문서는 모두 가상이다(실제 업체나 견적이 아니다).
 
 조직 레코드의 order는 조직 목록(GET /orgs)의 순서다. 시연 주인공 (주)한빛정밀이 맨 앞이다.
+운영 조직(org_admin)을 뺀 시연 조직에는 demo: true를 붙인다. bff 모드의 체험하기(X-Demo-View)는
+demo가 참인 조직만 읽기 전용으로 보여 준다. 운영 조직은 관리자 화면을 여는 조직이라 체험하기에 넣지 않는다.
 
 seed_demo(store, registry, today)는 저장소를 비우고 같은 상태로 다시 채운다.
 허가증, 매입 기준표, 계약서 값은 doc 근거로, 측정값은 measure 근거로, 사진 추정은 model 근거로
@@ -23,6 +25,8 @@ EMITTER = "org_hanbit"
 OTHER_EMITTER = "org_daon"
 VENDORS = ("org_saegil", "org_namhae", "org_miso")
 ADMIN = "org_admin"
+# 시연 진단에서 담당자가 답하는 값(가상). (흐름 ID, 항목) -> 값. 없는 질문에는 "모름"으로 답한다
+DEMO_ANSWERS: dict[tuple[str, str], Any] = {("st_film", "moisturePct"): 2.0}
 
 ORGS: list[dict[str, Any]] = [
     {
@@ -613,12 +617,18 @@ def _vendors(s: _Seeder) -> list[dict[str, Any]]:
     ]
 
 
-def seed_demo(store: Any, registry: Any, today: str) -> dict[str, Any]:
-    """저장소를 비우고 시연 시작 상태로 채운다. 여러 번 불러도 같은 상태가 된다."""
-    store.reset()
+def seed_demo(store: Any, registry: Any, today: str, *, wipe: bool = True) -> dict[str, Any]:
+    """저장소를 비우고 시연 시작 상태로 채운다. 여러 번 불러도 같은 상태가 된다.
+
+    wipe가 거짓이면 저장소를 비우지 않고 시연 조직의 레코드만 다시 쓴다(bff 모드의 되돌리기는
+    시연 조직의 자료를 먼저 지운 뒤 이렇게 부른다).
+    """
+    if wipe:
+        store.reset()
     seeder = _Seeder(registry, today)
     for org in ORGS:
-        store.put_org({**org, "synthetic": True, "note": SYNTHETIC_NOTE})
+        demo = org["role"] != "admin"
+        store.put_org({**org, "synthetic": True, "note": SYNTHETIC_NOTE, "demo": demo})
     streams = _streams(seeder)
     for stream in streams:
         store.put_stream({**stream, "synthetic": True})

@@ -6,6 +6,7 @@
 from __future__ import annotations
 
 import json
+from collections.abc import Mapping
 from typing import Any
 
 from app.v3.intake._http import Transport, default_transport
@@ -14,6 +15,8 @@ from app.v3.textutil import josa
 API_VERSION = "2024-09-01"
 MAX_DOCUMENT_CHARS = 10000
 MAX_DOCUMENTS_PER_CALL = 5
+# Content Safety 리소스의 주소(https://<이름>.cognitiveservices.azure.com/)와 키
+ENV_ENDPOINT, ENV_KEY = "AZURE_CONTENT_SAFETY_ENDPOINT", "AZURE_CONTENT_SAFETY_API_KEY"
 
 
 class ShieldError(RuntimeError):
@@ -59,6 +62,20 @@ class PromptShieldsClient:
         if len(flags) != len(documents):
             raise ShieldError("Prompt Shields가 문서 수와 다른 수의 결과를 돌려줬습니다.")
         return {"documents": flags}
+
+
+def client_from_env(
+    env: Mapping[str, str], transport: Transport | None = None
+) -> PromptShieldsClient | None:
+    """AZURE_CONTENT_SAFETY_ENDPOINT와 _API_KEY가 모두 있으면 클라이언트, 하나라도 없으면 None.
+
+    None이면 업로드 문서는 검사 없이 받고 shieldUnavailable=True로 표시한다(check_document).
+    """
+    endpoint = (env.get(ENV_ENDPOINT) or "").strip()
+    api_key = (env.get(ENV_KEY) or "").strip()
+    if not endpoint or not api_key:
+        return None
+    return PromptShieldsClient(endpoint, api_key, transport)
 
 
 def _chunks(text: str) -> list[str]:

@@ -10,7 +10,7 @@ import base64
 import json
 import re
 import time
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from typing import Any
 
 from app.v3 import ids
@@ -18,6 +18,11 @@ from app.v3.evidence.model import Evidence
 from app.v3.intake._http import Transport, default_transport, header
 
 API_VERSION = "2024-11-30"
+# Document Intelligence 리소스의 주소(https://<이름>.cognitiveservices.azure.com/)와 키
+ENV_ENDPOINT, ENV_KEY = (
+    "AZURE_DOCUMENT_INTELLIGENCE_ENDPOINT",
+    "AZURE_DOCUMENT_INTELLIGENCE_API_KEY",
+)
 LOW_CONFIDENCE = 0.8
 MATERIALS = ("LLDPE", "LDPE", "HDPE", "PVC", "PET", "ABS", "PP", "PE", "PS", "PC", "PA")
 WASTE_ITEMS = {
@@ -99,6 +104,30 @@ class DocumentIntelligenceClient:
                 raise DocumentError(f"문서 분석이 실패했습니다. {message}".strip())
             sleep(poll_seconds)
         raise DocumentError("문서 분석이 제시간에 끝나지 않았습니다.")
+
+
+def client_from_env(
+    env: Mapping[str, str], transport: Transport | None = None
+) -> DocumentIntelligenceClient | None:
+    """AZURE_DOCUMENT_INTELLIGENCE_ENDPOINT와 _API_KEY가 모두 있으면 클라이언트, 아니면 None.
+
+    None이면 upload_document는 UTF-8 글 파일만 읽는다(extraction "text_only").
+    """
+    endpoint = (env.get(ENV_ENDPOINT) or "").strip()
+    api_key = (env.get(ENV_KEY) or "").strip()
+    if not endpoint or not api_key:
+        return None
+    return DocumentIntelligenceClient(endpoint, api_key, transport)
+
+
+def plain_text(data: bytes) -> str | None:
+    """UTF-8 글 파일이면 그 글, 아니면 None. PDF는 글자만으로 돼 있어도 글 파일로 보지 않는다."""
+    if data.lstrip()[:5] == b"%PDF-":
+        return None
+    try:
+        return data.decode("utf-8")
+    except UnicodeDecodeError:
+        return None
 
 
 # ── layout 읽기 ───────────────────────────────────────────────

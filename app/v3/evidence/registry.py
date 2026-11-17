@@ -65,6 +65,13 @@ class InMemoryRegistry:
         """모두 지운다. 시연 데이터를 처음 상태로 되돌릴 때 쓴다."""
         self._items.clear()
 
+    def delete(self, evidence_ids: Iterable[str]) -> int:
+        """주어진 근거를 지운다. 지운 수를 준다. bff 모드의 시연 되돌리기가 시연 조직의 근거만 지울 때 쓴다."""
+        removed = 0
+        for evidence_id in set(evidence_ids):
+            removed += self._items.pop(evidence_id, None) is not None
+        return removed
+
     def list(
         self, *, kinds: Iterable[str] | None = None, org_id: str | None = None
     ) -> list[Evidence]:
@@ -113,6 +120,12 @@ class JsonFileRegistry(InMemoryRegistry):
     def clear(self) -> None:
         super().clear()
         self._write()
+
+    def delete(self, evidence_ids: Iterable[str]) -> int:
+        removed = super().delete(evidence_ids)
+        if removed:
+            self._write()
+        return removed
 
     def _write(self) -> None:
         if not self._ready:

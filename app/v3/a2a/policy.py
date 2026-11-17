@@ -188,12 +188,17 @@ def check_disclosure(message: Message, registry: Any, store: Any) -> list[dict[s
         return []
     others = {oid: org for oid, org in emitters.items() if oid != message.recipient}
     problems: list[dict[str, Any]] = []
+    # 가입한 조직(demo: false)의 이름은 이 업체와 대화한 적이 있을 때만 본다. 이름은 가입한 사람이
+    # 정하므로("플라스틱" 같은 낱말) 상관없는 업체의 메시지까지 막지 않게 한다. ID·흐름·근거는 늘 본다
+    dealt = {t.get("emitterOrgId") for t in store.list_threads(org_id=message.sender)}
 
     # 본문과, 본문 밖에 실려 화면으로 나가는 문장(닫는 이유, 받지 않는 이유, 조건 문장)을 함께 본다
     text = "\n".join([message.text or "", *[found for _, found in message.free_texts()]])
     bare_text = _bare(text)
     for oid, org in others.items():
         name = str(org.get("name") or "")
+        if org.get("demo") is False and oid not in dealt:
+            name = ""
         if oid in text or (name and (name in text or _bare(name) in bare_text)):
             problems.append(
                 {

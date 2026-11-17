@@ -3,7 +3,10 @@
 # az 로그인과 SSH 키가 있는 곳(맥)에서 돌린다. VM 안에서 이미지를 빌드하므로 ACR 작업이나 레지스트리가 필요 없다.
 #
 #   bash infra/vm/deploy-vm.sh             # 커밋된 소스를 올리고 다시 빌드한 뒤 띄운다
-#   SEED=1 bash infra/vm/deploy-vm.sh      # 끝에 시연 시작 상태로 되돌린다(진행 중인 진단과 대화 기록이 지워진다)
+#   SEED=1 bash infra/vm/deploy-vm.sh      # 끝에 시연 시작 상태로 되돌린다
+#                                          # bff: 시연 조직만 되돌리고 시연 진단을 승인 대기까지 돌려 둔다(실제 계정·조직은 그대로)
+#                                          # token·header: 진행 중인 진단과 대화 기록이 모두 지워진다
+#   GRANT_ADMIN=a@b.c bash infra/vm/deploy-vm.sh  # bff: 끝에 그 이메일로 가입한 사용자를 관리자 조직(org_admin)에 넣는다
 #
 # 환경 변수
 #   RG               리소스 그룹 (기본 team_AIBIC2026_03_RG_EUS2)
@@ -14,13 +17,21 @@
 #   V3_LLM           rule(기본. 규칙 정책) | foundry | anthropic
 #                    실제 모델(foundry)은 2026-11-18 시험에서 초안이 근거 검증기에 거부되어(NUMBER_OUTSIDE_PLACEHOLDER 등)
 #                    대화가 담당자 인계로 끝났다. 프롬프트·출력 형식을 고치기 전까지 시연은 rule로 한다
-#   V3_AUTH          token(기본. 조직별 토큰, 공개 주소용) | header(시연 전용)
+#   V3_AUTH          bff(기본. 실제 계정·조직: 프런트 서버만 V3_BFF_KEY로 부르고 사용자·소속을 확인한다)
+#                    | token(조직별 토큰) | header(시연 전용)
 #   AUTH_DEV_LOGIN   true(기본. 시연용 로그인) | false
 #   OLLAMA_MODELS    VM에 받아 둘 Ollama 모델 (기본 "bge-m3 qwen2.5:7b". 시연 업체 한 곳이 qwen2.5:7b를 고른다)
-#   SEED             1이면 배포 끝에 POST /api/v3/demo/reset 을 관리자 토큰으로 부른다
+#   SEED             1이면 배포 끝에 시연 데이터를 되돌린다. bff는 백엔드 컨테이너에서 scripts.v3.accounts_admin reset-demo,
+#                    token·header는 POST /api/v3/demo/reset 을 관리자 토큰(또는 X-Org-Id)으로 부른다
+#   GRANT_ADMIN      bff에서만. 이미 가입한 사용자의 이메일. 그 사용자를 org_admin의 owner로 넣는다
+#   INDEX            1이면 배포 끝에 백엔드 컨테이너 안에서 근거 색인을 다시 만든다(scripts/v3/index_evidence.py
+#                    --create-index. 운영 DB의 근거를 질의와 같은 임베딩으로 올린다). SEED=1과 함께 주면 되돌린 뒤에 돈다
+#   AZURE_SEARCH_INDEX            근거 색인 이름 (기본 rsai-evidence)
+#   FOUNDRY_EMBEDDING_DEPLOYMENT  질의·색인 임베딩 배포 (기본 text-embedding-3-small, 1536차원).
+#                    Foundry 계정에 이 배포가 없으면 V3_EMBEDDINGS를 비워 벡터 없이 글과 시맨틱 랭커로 찾는다
 #
 # 비밀: Key Vault에서 읽어 VM의 /opt/rsai/env/*.env(권한 600)에만 쓴다. 화면과 명령줄에 값을 찍지 않는다.
-#       v3-org-tokens, auth-secret 이 Key Vault에 없으면 새로 만들어 Key Vault에만 둔다.
+#       v3-bff-key, v3-org-tokens, auth-secret 이 Key Vault에 없으면 새로 만들어 Key Vault에만 둔다.
 set -euo pipefail
 
 RG="${RG:-team_AIBIC2026_03_RG_EUS2}"
@@ -32,16 +43,25 @@ BACKEND_REF="${BACKEND_REF:-HEAD}"
 FRONTEND_DIR="${FRONTEND_DIR:-$ROOT/../frontend}"
 FRONTEND_REF="${FRONTEND_REF:-origin/main}"
 V3_LLM="${V3_LLM:-rule}"
-V3_AUTH="${V3_AUTH:-token}"
+V3_AUTH="${V3_AUTH:-bff}"
 AUTH_DEV_LOGIN="${AUTH_DEV_LOGIN:-true}"
 OLLAMA_MODELS="${OLLAMA_MODELS:-bge-m3 qwen2.5:7b}"
 SEED="${SEED:-}"
+GRANT_ADMIN="${GRANT_ADMIN:-}"
+INDEX="${INDEX:-}"
+SEARCH_INDEX="${AZURE_SEARCH_INDEX:-rsai-evidence}"
+EMBED_DEPLOYMENT="${FOUNDRY_EMBEDDING_DEPLOYMENT:-text-embedding-3-small}"
+EMBED_DIMENSIONS=1536  # text-embedding-3-small. 다른 모델을 고르면 색인을 그 차원으로 다시 만든다(INDEX=1)
 ADMIN_USER="${ADMIN_USER:-rsai}"
 TAGQ="tags.project=='resource-ai'"
 ORGS=(org_hanbit org_daon org_saegil org_namhae org_miso org_admin)
 
 say() { echo "[deploy-vm] $*"; }
 die() { echo "[deploy-vm] 오류: $*" >&2; exit 1; }
+
+case "$V3_AUTH" in bff|token|header) ;; *) die "V3_AUTH는 bff | token | header 가운데 하나다: $V3_AUTH" ;; esac
+case "$GRANT_ADMIN" in *"'"*|*'"'*|*' '*) die "GRANT_ADMIN에 따옴표나 공백을 쓸 수 없다" ;; esac
+[ -z "$GRANT_ADMIN" ] || [ "$V3_AUTH" = bff ] || die "GRANT_ADMIN은 V3_AUTH=bff에서만 쓴다"
 
 [ -f "$SSH_KEY" ] || die "SSH 키가 없다: $SSH_KEY"
 FQDN="$(az network public-ip show -g "$RG" -n pip-rsai-demo-app --query dnsSettings.fqdn -o tsv)"
@@ -59,6 +79,11 @@ kv_get() { az keyvault secret show --vault-name "$KV" -n "$1" --query value -o t
 kv_has() { az keyvault secret show --vault-name "$KV" -n "$1" --query id -o tsv >/dev/null 2>&1; }
 kv_set_file() { az keyvault secret set --vault-name "$KV" -n "$1" --file "$2" --query id -o tsv >/dev/null; }
 
+if [ "$V3_AUTH" = bff ] && ! kv_has v3-bff-key; then
+  say "Key Vault에 v3-bff-key 가 없어 새로 만든다 (프런트 서버가 백엔드를 부를 때 쓰는 키)"
+  python3 -I -c 'import secrets; print(secrets.token_urlsafe(32))' >"$TMP/bff"
+  kv_set_file v3-bff-key "$TMP/bff"; rm -f "$TMP/bff"
+fi
 if ! kv_has v3-org-tokens; then
   say "Key Vault에 v3-org-tokens 가 없어 조직별 토큰을 새로 만든다"
   python3 -I -c 'import json,secrets,sys; print(json.dumps({o: secrets.token_urlsafe(32) for o in sys.argv[1:]}))' "${ORGS[@]}" >"$TMP/tokens"
@@ -75,7 +100,13 @@ if ! kv_has detector-api-key; then
   kv_set_file detector-api-key "$TMP/det"; rm -f "$TMP/det"
 fi
 
-FOUNDRY_ENDPOINT="$(az cognitiveservices account list -g "$RG" --query "[?$TAGQ && kind=='AIServices'] | [0].properties.endpoint" -o tsv)"
+# AI 서비스의 주소는 태그(project=resource-ai)와 종류로 찾는다. 키는 아래 put_secret이 Key Vault에서 읽는다
+ai_account() { az cognitiveservices account list -g "$RG" --query "[?$TAGQ && kind=='$1'] | [0].$2" -o tsv; }
+FOUNDRY_ENDPOINT="$(ai_account AIServices properties.endpoint)"
+FOUNDRY_NAME="$(ai_account AIServices name)"
+DOCINTEL_ENDPOINT="$(ai_account FormRecognizer properties.endpoint)"
+CONTENT_SAFETY_ENDPOINT="$(ai_account ContentSafety properties.endpoint)"
+SEARCH_NAME="$(az search service list -g "$RG" --query "[?$TAGQ] | [0].name" -o tsv)"
 
 # 값을 작은따옴표로 감싸 Compose가 $ 등을 해석하지 않게 한다. 값에 작은따옴표가 있으면 멈춘다
 put() {
@@ -98,6 +129,29 @@ put "$B" OLLAMA_BASE_URL "http://ollama:11434"
 put "$B" OLLAMA_EMBED_MODEL bge-m3
 put_secret "$B" AZURE_STORAGE_CONNECTION_STRING storage-connection-string
 put_secret "$B" APPLICATIONINSIGHTS_CONNECTION_STRING appinsights-connection-string
+# 문서 추출(Document Intelligence)과 업로드 문서의 지시문 주입 검사(Content Safety Prompt Shields)
+if [ -n "$DOCINTEL_ENDPOINT" ]; then
+  put "$B" AZURE_DOCUMENT_INTELLIGENCE_ENDPOINT "$DOCINTEL_ENDPOINT"
+  put_secret "$B" AZURE_DOCUMENT_INTELLIGENCE_API_KEY docintel-key
+else say "Document Intelligence 리소스를 찾지 못했다. 문서는 글 파일만 읽는다"; fi
+if [ -n "$CONTENT_SAFETY_ENDPOINT" ]; then
+  put "$B" AZURE_CONTENT_SAFETY_ENDPOINT "$CONTENT_SAFETY_ENDPOINT"
+  put_secret "$B" AZURE_CONTENT_SAFETY_API_KEY contentsafety-key
+else say "Content Safety 리소스를 찾지 못했다. 업로드 문서의 주입 검사를 하지 않는다"; fi
+# 근거 검색(Azure AI Search). 질의 임베딩은 색인(INDEX=1이나 맥에서 돌린 index_evidence)과 같은 Foundry 배포다
+if [ -n "$SEARCH_NAME" ]; then
+  put "$B" AZURE_SEARCH_ENDPOINT "https://$SEARCH_NAME.search.windows.net"
+  put_secret "$B" AZURE_SEARCH_API_KEY search-admin-key
+  put "$B" AZURE_SEARCH_INDEX "$SEARCH_INDEX"
+  put "$B" AZURE_SEARCH_VECTOR_DIMENSIONS "$EMBED_DIMENSIONS"
+  if [ -n "$FOUNDRY_NAME" ] && az cognitiveservices account deployment show -g "$RG" -n "$FOUNDRY_NAME" \
+      --deployment-name "$EMBED_DEPLOYMENT" --query name -o tsv >/dev/null 2>&1; then
+    put "$B" V3_EMBEDDINGS foundry
+    put "$B" FOUNDRY_EMBEDDING_DEPLOYMENT "$EMBED_DEPLOYMENT"
+  else
+    say "Foundry 임베딩 배포 $EMBED_DEPLOYMENT 가 없다. 근거 검색은 벡터 없이 글과 시맨틱 랭커로만 한다"
+  fi
+else say "Azure AI Search 를 찾지 못했다. 근거 검색은 로컬 검색으로 돈다"; fi
 put_secret "$B" MODEL_BLOB_URL model-blob-url
 # 사진·영상 탐지: 같은 VM의 detector 서비스(app/ml/score_api.py). 두 이름에 같은 키를 넣는다
 put "$B" V3_DETECTOR_ENDPOINT "http://detector:8000/score"
@@ -114,9 +168,16 @@ put "$F" AUTH_URL "https://$FQDN"
 put "$F" AUTH_TRUST_HOST true
 put "$F" AUTH_DEV_LOGIN "$AUTH_DEV_LOGIN"
 put "$F" V3_BACKEND_URL "http://backend:8000/api/v3"
+put "$F" V3_AUTH "$V3_AUTH"
 if [ "$V3_AUTH" = token ]; then
   put_secret "$B" V3_ORG_TOKENS v3-org-tokens
   put_secret "$F" V3_ORG_TOKENS v3-org-tokens
+fi
+if [ "$V3_AUTH" = bff ]; then
+  # 백엔드와 프런트 서버가 같은 키를 갖는다. 키가 없으면 백엔드가 모든 요청을 503으로 거절하므로 멈춘다
+  kv_has v3-bff-key || die "Key Vault에 v3-bff-key 가 없다"
+  put_secret "$B" V3_BFF_KEY v3-bff-key
+  put_secret "$F" V3_BFF_KEY v3-bff-key
 fi
 
 say "소스 묶기: backend $(git -C "$BACKEND_DIR" rev-parse --short "$BACKEND_REF"), frontend $(git -C "$FRONTEND_DIR" rev-parse --short "$FRONTEND_REF")"
@@ -174,7 +235,10 @@ for i in $(seq 1 30); do
   sleep 10
 done
 
-if [ "$SEED" = 1 ]; then
+if [ "$SEED" = 1 ] && [ "$V3_AUTH" = bff ]; then
+  say "시연 조직 되돌리기 (실제 계정·조직은 그대로)"
+  "${SSH[@]}" 'cd /opt/rsai && docker compose exec -T backend python -m scripts.v3.accounts_admin reset-demo' </dev/null
+elif [ "$SEED" = 1 ]; then
   say "시연 시작 상태로 되돌리기"
   "${SSH[@]}" 'cd /opt/rsai && docker compose exec -T backend python -c "
 import json, os, httpx
@@ -187,5 +251,13 @@ r = httpx.post(\"http://localhost:8000/api/v3/demo/reset\", headers=headers, tim
 print(\"demo/reset\", r.status_code)
 r.raise_for_status()
 "' </dev/null
+fi
+if [ -n "$GRANT_ADMIN" ]; then
+  say "관리자 조직에 사용자 넣기"
+  "${SSH[@]}" "cd /opt/rsai && docker compose exec -T backend python -m scripts.v3.accounts_admin grant-admin '$GRANT_ADMIN'" </dev/null
+fi
+if [ "$INDEX" = 1 ]; then
+  say "근거 색인 다시 만들기 (백엔드 컨테이너 안에서, 운영 DB의 근거)"
+  "${SSH[@]}" 'cd /opt/rsai && docker compose exec -T backend python -m scripts.v3.index_evidence --create-index' </dev/null
 fi
 say "끝: https://$FQDN"
