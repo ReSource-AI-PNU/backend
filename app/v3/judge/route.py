@@ -58,6 +58,14 @@ def baseline(rec: Recorder, stream: dict, kg: float, after: float | None, prefix
             None,
             cost_ev,
         )
+    elif (stream.get("currentTreatment") or {}).get("methodAssumed"):
+        rec.check(
+            "current_method",
+            "met",
+            "현행 처리 방법은 답을 받지 않아 혼합 소각으로 보았습니다.",
+            None,
+            cost_ev,
+        )
     if after is not None:
         rec.number(
             f"{prefix}difference",

@@ -32,6 +32,9 @@ def demo():
     app = make_app()
     asked = start(app)
     waiting = answer_all(app, asked)
+    if waiting["session"]["status"] == "awaiting_answers":
+        # 두 번째 묶음: 현행 처리비 질문(모름으로 답하면 혼합 소각 가정값을 쓴다)
+        waiting = answer_all(app, waiting)
     done = approve_all(app, waiting)
     return app, asked, waiting, done
 
@@ -306,6 +309,9 @@ def test_run_is_idempotent_at_every_stop():
     assert again["events"] == asked["events"] and again["questions"] == asked["questions"]
     waiting = answer_all(app, asked)
     again = service.run_session(app, sid, HANBIT)
+    assert again["events"] == waiting["events"] and again["questions"] == waiting["questions"]
+    waiting = answer_all(app, waiting)  # 두 번째 묶음(현행 처리비)
+    again = service.run_session(app, sid, HANBIT)
     assert again["events"] == waiting["events"] and again["threads"] == waiting["threads"]
     first = service.approve(app, sid, waiting["approvals"][0]["threadId"], HANBIT)
     repeat = service.approve(app, sid, waiting["approvals"][0]["threadId"], HANBIT)
@@ -337,16 +343,22 @@ def test_question_policy_three_per_batch_two_batches():
     second = service.run_session(app, sid, HANBIT)
     new = [q for q in second["questions"] if not q["answered"]]
     assert second["session"]["status"] == "awaiting_answers"
+    # 품질 질문이 먼저고, 남는 자리에 현행 처리비 질문이 들어간다
     assert [(q["streamId"], q["field"], q["batch"]) for q in new] == [
-        ("st_sprue", "contaminationPct", 2)
+        ("st_sprue", "contaminationPct", 2),
+        ("st_film", "currentCost", 2),
+        ("st_purge", "currentCost", 2),
     ]
-    service.answer_question(app, sid, new[0]["id"], "unknown", HANBIT)
+    for question in new:
+        service.answer_question(app, sid, question["id"], "unknown", HANBIT)
     final = service.run_session(app, sid, HANBIT)
     # 두 묶음을 다 썼다. 모르는 값은 확인 필요로 남기고 진행한다
     assert final["session"]["status"] == "awaiting_approval"
-    assert len(final["questions"]) == 4 and all(
+    assert len(final["questions"]) == 6 and all(
         q["answered"] and q["unknown"] for q in final["questions"]
     )
+    # 현행 처리비는 몰라도 가정값으로 견주므로 "확인 필요"로 남기지 않는다
+    assert all(u["field"] != "currentCost" for u in final["unresolved"])
     assert {(u["streamId"], u["field"]) for u in final["unresolved"]} >= {
         ("st_sprue", "contaminationPct")
     }
@@ -358,7 +370,7 @@ def test_question_policy_three_per_batch_two_batches():
 
 def test_answered_moisture_becomes_evidence_and_grade():
     app = make_app()
-    view = answer_all(app, start(app))
+    view = to_approval(app)
     film = next(s for s in view["streams"] if s["id"] == "st_film")
     assert value(film["moisture"]) == FILM_MOISTURE
     assert film["moisture"]["evidence"] == ["human:org_hanbit:st_film-수분"]

@@ -303,7 +303,7 @@
       },
       "expect": {
         "questions": {
-          "count": 1,
+          "count": 2,
           "asked": [
             [
               "st_a",
@@ -599,7 +599,7 @@
       },
       "expect": {
         "questions": {
-          "count": 1,
+          "count": 2,
           "asked": [
             [
               "st_a",

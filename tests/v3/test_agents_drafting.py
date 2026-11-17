@@ -228,9 +228,14 @@ def test_confirm_is_refused_before_both_approvals():
 
 def to_approval_from(app, session_id):
     view = service.run_session(app, session_id, HANBIT)
-    for question in view["questions"]:
-        service.answer_question(app, session_id, question["id"], "unknown", HANBIT)
-    return service.run_session(app, session_id, HANBIT)
+    for _ in range(3):  # 질문 묶음은 많아야 둘이다
+        if view["session"]["status"] != "awaiting_answers":
+            break
+        for question in view["questions"]:
+            if not question["answered"]:
+                service.answer_question(app, session_id, question["id"], "unknown", HANBIT)
+        view = service.run_session(app, session_id, HANBIT)
+    return view
 
 
 def test_model_failure_twice_is_a_handoff_not_a_guess():

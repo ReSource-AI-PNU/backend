@@ -119,7 +119,11 @@ def test_route_checks_and_sensitivity_survive_an_answer_given_mid_conversation()
     session = played(world([pp(measure=None)], [buyer()]))
     result = session.view["result"]
     item = result["assignments"][0]
-    assert [q["field"] for q in session.view["questions"]] == ["contaminationPct", "moisturePct"]
+    assert [q["field"] for q in session.view["questions"]] == [
+        "contaminationPct",
+        "currentCost",
+        "moisturePct",
+    ]
     assert item["status"] == "conditional" and item["vendorOrgId"] == "org_v1"
     assert {"contaminationPct", "moisturePct", "current_assumed"} <= {
         c["key"] for c in item["checks"]

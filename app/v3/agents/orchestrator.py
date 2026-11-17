@@ -62,7 +62,7 @@ MAX_STEPS = 400  # 대화 고리의 안전 상한. 스레드마다 12턴 상한�
 STAGE_KEYS = ("1", "2", "3", "4", "5", "6")
 WORST = {"calculated": 0, "conditional": 1, "needs_information": 2}
 # 배출 기업의 현행 처리에 관한 검사(judge_route). 업체와 함께 보는 문서와 업체 뷰에는 싣지 않는다
-CURRENT_CHECKS = ("current_cost", "current_assumed")
+CURRENT_CHECKS = ("current_cost", "current_assumed", "current_method")
 # check_loading의 검사 키 → 함께 보여 줄 값(claim 키)
 LOADING_CLAIMS = {
     "min_volume": ("totalKg", "minMonthlyKg"),
@@ -561,6 +561,8 @@ class Orchestrator:
         work["unresolved"] = [
             {"streamId": q["streamId"], "field": q["field"]}
             for q in self.policy.unresolved(pending, history)
+            # 현행 처리비는 몰라도 혼합 소각 가정값으로 견준다. 업체 배정을 막는 값이 아니다
+            if q["field"] not in questions.PRIVATE_FIELDS
         ]
         work["stages"]["1"] = "needs_check" if missing or work["unresolved"] else "done"
         return False
@@ -1992,7 +1994,10 @@ class Orchestrator:
                 for check in (source or {}).get("checks") or []:
                     if any(c["key"] == check["key"] for c in checks):
                         continue
-                    if check["status"] != "met" or check["key"] == "current_assumed":
+                    if check["status"] != "met" or check["key"] in (
+                        "current_assumed",
+                        "current_method",
+                    ):
                         checks.append(
                             {k: check.get(k) for k in ("key", "status", "text", "evidence")}
                         )

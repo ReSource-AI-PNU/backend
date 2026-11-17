@@ -152,3 +152,39 @@ def test_carbon_needs_a_factor_for_both_sides():
     assert claim(buried, "carbonDifference")["value"] == pytest.approx(
         (0.0186 - 0.013203539) * 0.6, abs=1e-6
     )
+
+
+# ── 현행 처리비 질문 ─────────────────────────────────────────────────────
+def test_current_cost_answer_replaces_the_assumption_and_stays_with_the_emitter():
+    import json
+
+    from app.v3 import service
+    from app.v3.agents import questions
+    from tests.v3.runtime_fixtures import HANBIT, SAEGIL, answer_all, make_app, start
+
+    app = make_app()
+    view = answer_all(app, start(app))  # 첫 묶음(수분)에 답하면 현행 처리비를 묻는다
+    sid = view["session"]["id"]
+    asked = [q for q in view["questions"] if not q["answered"]]
+    assert {(q["streamId"], q["field"]) for q in asked} == {
+        ("st_film", "currentCost"),
+        ("st_purge", "currentCost"),
+    }
+    assert all(q["unit"] == "원/kg" and q["batch"] == 2 for q in asked)
+    for question in asked:
+        value = 180 if question["streamId"] == "st_film" else "unknown"
+        service.answer_question(app, sid, question["id"], value, HANBIT)
+    view = service.run_session(app, sid, HANBIT)
+    assert view["session"]["status"] == "awaiting_approval"
+    by_stream = {a["streamId"]: a for a in view["result"]["assignments"]}
+    film, purge = by_stream["st_film"], by_stream["st_purge"]
+    assert film["currentAssumed"] is False and film["monthlyNow"]["value"] == -180 * 300
+    assert "human:org_hanbit:st_film-현행처리비" in film["monthlyNow"]["evidence"]
+    assert purge["currentAssumed"] is True  # 모름이면 혼합 소각 가정값을 그대로 쓴다
+    assert any(c["key"] == "current_method" for c in film["checks"])
+    # 업체에게는 현행 처리비도, 그 답의 근거도 보이지 않는다
+    seen = json.dumps(service.get_view(app, sid, SAEGIL), ensure_ascii=False)
+    assert "현행처리비" not in seen and "현행 처리비" not in seen
+    # 업체는 현행 처리비를 물을 수 없다
+    assert "currentCost" not in questions.ASK_FIELDS
+    assert questions.clean_asks([{"streamId": "st_film", "field": "currentCost"}]) == []

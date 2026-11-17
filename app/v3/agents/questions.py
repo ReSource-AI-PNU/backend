@@ -14,6 +14,16 @@ from app.v3.evidence.model import Evidence
 from app.v3.textutil import josa
 
 FIELDS: dict[str, dict[str, Any]] = {
+    # 현행 처리비를 모르면 혼합 소각 가정값으로 견주게 된다(설계안 15장 2).
+    # 재질·품질 질문이 업체 대조에 먼저 필요하므로 그 뒤에, 질문 한도가 남을 때만 묻는다
+    "currentCost": {
+        "priority": 4,
+        "answerType": "number",
+        "unit": "원/kg",
+        "label": "현행 처리비",
+        "text": "{name_object} 지금 처리하는 데 kg당 얼마를 내고 계신가요? "
+        "모르면 '모름'으로 답해 주세요.",
+    },
     "material": {
         "priority": 1,
         "answerType": "text",
@@ -66,7 +76,9 @@ FIELDS: dict[str, dict[str, Any]] = {
 
 # 메시지 meta.asks[].field에 올 수 있는 값(계약 7장). 업체가 배출 기업에 묻는 흐름 항목과,
 # 회사 측이 업체에 조건을 달라고 할 때의 "terms"다. 이 밖의 값은 메시지에 싣지 않는다.
-ASK_FIELDS = (*FIELDS, "terms")
+# 현행 처리비는 배출 기업만의 값이라 업체가 물을 수 없다.
+PRIVATE_FIELDS = ("currentCost",)
+ASK_FIELDS = (*[f for f in FIELDS if f not in PRIVATE_FIELDS], "terms")
 
 
 def clean_asks(items: Any) -> list[dict[str, str]]:
@@ -81,7 +93,12 @@ def clean_asks(items: Any) -> list[dict[str, str]]:
     return out
 
 
-_EVIDENCE_LABEL = {"moisturePct": "수분", "contaminationPct": "오염도", "monthlyKg": "월발생량"}
+_EVIDENCE_LABEL = {
+    "moisturePct": "수분",
+    "contaminationPct": "오염도",
+    "monthlyKg": "월발생량",
+    "currentCost": "현행처리비",
+}
 # identify_stream의 check 키 → 물을 항목
 _CHECK_FIELDS = {
     "material": "material",
@@ -100,7 +117,9 @@ def make_question(stream: dict[str, Any], field: str, *, asked_by: str = "identi
     return {
         "streamId": stream["id"],
         "field": field,
-        "text": spec["text"].format(name=name, name_topic=josa(name, "은는")),
+        "text": spec["text"].format(
+            name=name, name_topic=josa(name, "은는"), name_object=josa(name, "을를")
+        ),
         "answerType": spec["answerType"],
         "unit": spec.get("unit"),
         "choices": spec.get("choices"),
@@ -123,6 +142,8 @@ def known(stream: dict[str, Any], field: str) -> bool:
         )
     if field == "lotSame":
         return False
+    if field == "currentCost":
+        return (stream.get("currentTreatment") or {}).get("unitCostKrwPerKg") is not None
     return stream.get(field) is not None
 
 
@@ -135,6 +156,7 @@ def from_identify(stream: dict[str, Any], result: dict[str, Any]) -> list[dict[s
         field = _CHECK_FIELDS.get(str(check.get("key")))
         if field:
             out.append(field)
+    out.append("currentCost")
     return [make_question(stream, f) for f in dict.fromkeys(out) if not known(stream, f)]
 
 
@@ -195,11 +217,24 @@ def apply_answer(
             )
         )
         answers[field] = float(value)
-        answers["evidence"] = list(dict.fromkeys([*(answers.get("evidence") or []), evidence.id]))
+        if field not in PRIVATE_FIELDS:
+            # answers.evidence는 업체에 열리는 근거다. 현행 처리비 같은 배출 기업만의 답은 섞지 않는다
+            answers["evidence"] = list(
+                dict.fromkeys([*(answers.get("evidence") or []), evidence.id])
+            )
         if field == "monthlyKg":
             stream["monthlyKg"] = float(value)
             stream["monthlyKgBasis"] = "estimated"
             stream["monthlyKgEvidence"] = [evidence.id]
+        if field == "currentCost":
+            # 처리 방법은 묻지 않았다. 자료 화면에서 넣기 전까지는 혼합 소각으로 본다
+            current = dict(stream.get("currentTreatment") or {})
+            stream["currentTreatment"] = {
+                "method": current.get("method") or "혼합 소각",
+                "methodAssumed": not current.get("method"),
+                "unitCostKrwPerKg": float(value),
+                "evidence": [evidence.id],
+            }
     elif field == "lotSame":
         answers[field] = value
     else:
