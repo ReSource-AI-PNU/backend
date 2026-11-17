@@ -7,7 +7,17 @@ import logging
 import math
 
 from app.v3 import names
-from app.v3.judge.common import Recorder, best_criterion, num, permit_match, quality
+from app.v3.judge.common import (
+    CARBON_FORMULA,
+    Recorder,
+    best_criterion,
+    carbon_per_kg,
+    labor_cost,
+    num,
+    permit_match,
+    quality,
+    transport_charge,
+)
 from app.v3.judge.route import current_cost
 
 try:  # 없으면 순수 파이썬 완전 탐색으로만 돈다
@@ -50,6 +60,13 @@ def cp_sat_pick(usable, options, weight):
         [round((c["value"] - weight * c["carbon"]) * SOLVER_SCALE) for c in choices]
         for choices in options
     ]
+    # 업체에 하나라도 맡기면 한 번 드는 월 운반비(배출 기업 부담일 때). 완전 탐색과 같은 규칙이다
+    fixed = {
+        name: round(
+            _fixed_transport(options[members[0][0]][members[0][1]]["vendor"]) * SOLVER_SCALE
+        )
+        for name, members in by_vendor.items()
+    }
 
     def build():
         model = cp_model.CpModel()
@@ -59,9 +76,15 @@ def cp_sat_pick(usable, options, weight):
         ]
         for row in x:
             model.add(sum(row) == 1)
-        for members in by_vendor.values():
+        used = {name: model.new_bool_var(f"used_{k}") for k, name in enumerate(sorted(by_vendor))}
+        for name, members in by_vendor.items():
             vendor = options[members[0][0]][members[0][1]]["vendor"]
             total = sum(grams[i] * x[i][j] for i, j in members)
+            for i, j in members:
+                model.add(used[name] >= x[i][j])
+            capacity = num(vendor.get("monthlyCapacityKg"))
+            if capacity is not None:
+                model.add(total <= math.floor(capacity * SOLVER_SCALE + 1e-6))
             for i, j in members:
                 minimum = num(options[i][j]["criterion"].get("minMonthlyKg")) or 0.0
                 if minimum > 0:
@@ -89,32 +112,31 @@ def cp_sat_pick(usable, options, weight):
                     model.add(volume <= limit + sum(liters.values()) * sum(unknown))
                 elif liters:
                     model.add(volume <= limit)
-        return model, x
+        return model, x, used
 
     def solve(model):
         solver = cp_model.CpSolver()
         solver.parameters.num_search_workers = 1  # 같은 입력이면 같은 답
         return solver if solver.solve(model) == cp_model.OPTIMAL else None
 
-    def objective(x):
-        return sum(gain[i][j] * x[i][j] for i in range(len(options)) for j in range(len(x[i])))
+    def objective(x, used):
+        money = sum(gain[i][j] * x[i][j] for i in range(len(options)) for j in range(len(x[i])))
+        return money - sum(fixed[name] * used[name] for name in used)
 
-    model, x = build()
-    model.maximize(objective(x))
+    model, x, used = build()
+    model.maximize(objective(x, used))
     solver = solve(model)
     if solver is None:
         return None
-    best = sum(
-        gain[i][j] for i in range(len(options)) for j in range(len(x[i])) if solver.value(x[i][j])
-    )
+    best = round(solver.objective_value)
     picked: list[int] = []
     for i, choices in enumerate(options):  # 동점 정리: 앞 흐름부터 업체 ID가 앞선 것을 고정한다
         if len(choices) == 1:
             picked.append(0)
             continue
         order = sorted({_name(c) for c in choices})
-        model, x = build()
-        model.add(objective(x) == best)
+        model, x, used = build()
+        model.add(objective(x, used) == best)
         for done, j in enumerate(picked):
             model.add(x[done][j] == 1)
         model.minimize(sum(order.index(_name(c)) * x[i][j] for j, c in enumerate(choices)))
@@ -125,14 +147,9 @@ def cp_sat_pick(usable, options, weight):
     return tuple(picked)
 
 
-def _carbon_per_kg(rec: Recorder, item: str):
-    now_ef, after_ef = (
-        rec.basis(f"emission.incinerate.{item}"),
-        rec.basis(f"emission.recycle.{item}"),
-    )
-    if now_ef is None or after_ef is None:
-        return None, []
-    return (float(after_ef.value) - float(now_ef.value)) / 1000, [now_ef.id, after_ef.id]
+def _fixed_transport(vendor: dict) -> float:
+    """이 업체에 맡기면 배출 기업이 따로 내는 월 운반비. 조건이나 금액을 모르면 0으로 둔다."""
+    return float(transport_charge(vendor)["monthly"] or 0.0)
 
 
 def optimize_assignment(
@@ -187,7 +204,7 @@ def optimize_assignment(
                 "월 발생량을 몰라 배정에서 뺐습니다.",
             )
             continue
-        cost, cost_ev, assumed, _ = current_cost(rec, stream)
+        cost = current_cost(rec, stream)[0]
         if cost is None:
             output["skipped"].append(
                 {"streamId": stream.get("id"), "reason": "현행 처리 단가 확인 필요"}
@@ -198,11 +215,21 @@ def optimize_assignment(
                 "현행 처리 단가가 없어 배정에서 뺐습니다.",
             )
             continue
-        carbon, carbon_ev = _carbon_per_kg(rec, str(stream.get("wasteItem")))
+        cost, cost_ev, assumed, method = current_cost(rec, stream)
+        labor, labor_ev, hours, rate = labor_cost(rec, stream)
         q = quality(stream)
-        choices = [
-            {"vendor": None, "value": -cost * kg, "ev": cost_ev, "criterion": None, "carbon": 0.0}
-        ]
+        keep = {
+            "vendor": None,
+            "value": -cost * kg,
+            "revenue": -cost * kg,
+            "labor": 0.0,
+            "ev": cost_ev,
+            "criterion": None,
+            "carbon": 0.0,
+            "carbon_ev": [],
+            "carbon_known": True,
+        }
+        choices = [keep]
         for vendor in vendors:
             if (str(stream.get("id")), str(vendor.get("orgId"))) in excluded:
                 continue
@@ -211,13 +238,21 @@ def optimize_assignment(
             criterion, checks = best_criterion(stream, vendor, q)
             if criterion is None or any(c[1] == "unmet" for c in checks):
                 continue
+            price = float(criterion["unitPriceKrwPerKg"])
+            per_kg, carbon_ev, _ = carbon_per_kg(rec, stream, vendor, price, method)
             choices.append(
                 {
                     "vendor": vendor,
-                    "value": float(criterion["unitPriceKrwPerKg"]) * kg,
+                    "price": price,
+                    "revenue": price * kg,
+                    "labor": labor or 0.0,
+                    # 흐름 하나의 값: 매각 수익(처리비면 음수) − 전처리 인건비. 운반비는 업체 단위로 뺀다
+                    "value": price * kg - (labor or 0.0),
                     "ev": list(criterion.get("evidence") or []),
                     "criterion": criterion,
-                    "carbon": (carbon or 0.0) * kg,
+                    "carbon": (per_kg or 0.0) * kg,
+                    "carbon_ev": carbon_ev,
+                    "carbon_known": per_kg is not None,
                     "conditional": any(c[1] == "conditional" for c in checks),
                 }
             )
@@ -228,7 +263,9 @@ def optimize_assignment(
                 "cost": cost,
                 "cost_ev": cost_ev,
                 "assumed": assumed,
-                "carbon_ev": carbon_ev,
+                "labor_ev": labor_ev,
+                "hours": hours,
+                "rate": rate,
             }
         )
         options.append(choices)
@@ -252,6 +289,9 @@ def optimize_assignment(
             mins = [num(combo[i]["criterion"].get("minMonthlyKg")) or 0.0 for i in members]
             if total + 1e-9 < max(mins):
                 return False
+            capacity = num(vendor.get("monthlyCapacityKg"))
+            if capacity is not None and total > capacity + 1e-9:
+                return False  # 업체의 월 처리 용량
             fleet = vendor.get("fleet") or {}
             pickups = num((vendor.get("guardrails") or {}).get("minPickupsPerMonth"))
             cap_kg, cap_m3 = num(fleet.get("capacityKg")), num(fleet.get("capacityM3"))
@@ -269,7 +309,10 @@ def optimize_assignment(
         for combo in itertools.product(*options):
             if not feasible(combo):
                 continue
-            money = math.fsum(c["value"] for c in combo)
+            hired = {str(c["vendor"].get("orgId")): c["vendor"] for c in combo if c["vendor"]}
+            money = math.fsum(c["value"] for c in combo) - math.fsum(
+                _fixed_transport(v) for v in hired.values()
+            )
             carbon = math.fsum(c["carbon"] for c in combo)
             objective = money - weight * carbon
             names = tuple(str(c["vendor"].get("orgId")) if c["vendor"] else "" for c in combo)
@@ -299,7 +342,24 @@ def optimize_assignment(
         output["solver"] = "ortools" if same else "exact"
 
     now_total = after_total = carbon_total = 0.0
-    carbon_known = True
+    no_factor: list[str] = []  # 배출계수가 없어 탄소를 내지 못한 흐름의 이름
+    # 업체별 월 운반비를 그 업체로 가는 흐름에 물량 비율로 나눈다(합이 운반비와 같게 마지막 흐름이 나머지를 받는다)
+    groups: dict[str, list[int]] = {}
+    for i, choice in enumerate(best):
+        if choice["vendor"] is not None:
+            groups.setdefault(str(choice["vendor"].get("orgId")), []).append(i)
+    share: dict[int, float] = {}
+    charges: dict[int, dict] = {}
+    for members in groups.values():
+        charge = transport_charge(best[members[0]]["vendor"])
+        total_kg = math.fsum(usable[i]["kg"] for i in members)
+        left = float(charge["monthly"] or 0.0)
+        for i in members[:-1]:
+            share[i] = round(float(charge["monthly"] or 0.0) * usable[i]["kg"] / total_kg)
+            left -= share[i]
+        share[members[-1]] = left
+        for i in members:
+            charges[i] = charge
     # 합계 계산 근거가 흐름별 계산 근거를 입력으로 잇게 한다(계산 사슬: 합계 → 흐름별 → 원 근거)
     parts: dict[str, list[str]] = {"now": [], "after": [], "difference": [], "carbon": []}
     for i, (item, choice) in enumerate(zip(usable, best, strict=True)):
@@ -316,55 +376,112 @@ def optimize_assignment(
             label=names.calc_label("monthlyNow", who),
         )
         parts["now"].append(made["evidence"][0])
+        breakdown = {"revenue": None, "transport": None, "labor": None}
+        after, after_ev, after_formula = choice["value"], list(choice["ev"]), "현행 유지의 월 손익"
+        charge = charges.get(i)
+        if choice["vendor"] is not None:
+            made = rec.number(
+                f"{tag}Revenue",
+                choice["revenue"],
+                "원/월",
+                "업체 단가 × 월 발생량(처리비면 음수)",
+                choice["ev"],
+                label=names.calc_label("revenue", who),
+            )
+            breakdown["revenue"] = made["id"]
+            after_ev = [made["evidence"][0], *choice["ev"]]
+            after_formula = "매각 수익(처리비면 음수) − 운반비 − 전처리 인건비"
+            if charge and charge["known"] and charge["monthly"] is not None:
+                made = rec.number(
+                    f"{tag}Transport",
+                    share[i],
+                    "원/월",
+                    "운반비는 업체 단가에 들어 있습니다(수거 포함)"
+                    if charge["paidBy"] == "vendor"
+                    else "업체의 1회 운반비 × 월 수거 횟수를 이 업체로 가는 흐름의 물량 비율로 나눈 값",
+                    charge["evidence"],
+                    label=names.calc_label("transport", who),
+                )
+                breakdown["transport"] = made["id"]
+                after_ev.append(made["evidence"][0])
+            elif charge and charge["known"]:
+                rec.check(
+                    f"transport:{stream.get('id')}",
+                    "conditional",
+                    "운반비를 따로 내야 하는데 금액이 없어 계산에 넣지 못했습니다. 확인 필요.",
+                    None,
+                    charge["evidence"],
+                )
+            if choice["labor"]:
+                made = rec.number(
+                    f"{tag}Labor",
+                    choice["labor"],
+                    "원/월",
+                    "월 전처리 작업 시간 × 시간당 인건비",
+                    item["labor_ev"],
+                    label=names.calc_label("labor", who),
+                )
+                breakdown["labor"] = made["id"]
+                after_ev.append(made["evidence"][0])
+            after = choice["value"] - share.get(i, 0.0)
         made = rec.number(
             f"{tag}MonthlyAfter",
-            choice["value"],
+            after,
             "원/월",
-            "배정한 경로의 월 손익",
-            choice["ev"],
+            after_formula,
+            after_ev,
             label=names.calc_label("monthlyAfter", who),
         )
         parts["after"].append(made["evidence"][0])
         made = rec.number(
             f"{tag}Difference",
-            choice["value"] - now,
+            after - now,
             "원/월",
             "배정 뒤 월 손익 − 현행 월 손익",
             [*choice["ev"], *item["cost_ev"]],
             label=names.calc_label("difference", who),
         )
         parts["difference"].append(made["evidence"][0])
+        unknown_transport = bool(
+            charge and charge["known"] and charge["monthly"] is None and choice["vendor"]
+        )
         entry = {
             "streamId": stream.get("id"),
             "vendorOrgId": choice["vendor"].get("orgId") if choice["vendor"] else None,
             "route": "keep"
             if choice["vendor"] is None
-            else ("sell" if choice["value"] >= 0 else "treat"),
+            else ("sell" if choice["price"] >= 0 else "treat"),
             "criterionId": choice["criterion"].get("id") if choice["criterion"] else None,
-            "status": "conditional" if choice.get("conditional") else "calculated",
+            "status": "conditional"
+            if choice.get("conditional") or unknown_transport
+            else "calculated",
             "monthlyNow": f"{tag}MonthlyNow",
             "monthlyAfter": f"{tag}MonthlyAfter",
             "difference": f"{tag}Difference",
+            "revenue": breakdown["revenue"],
+            "transport": breakdown["transport"],
+            "labor": breakdown["labor"],
+            "transportPaidBy": charge["paidBy"] if charge and charge["known"] else None,
             "currentAssumed": item["assumed"],
             "carbon": None,
         }
         if choice["vendor"] is not None:
-            if item["carbon_ev"]:
+            if choice["carbon_known"]:
                 made = rec.number(
                     f"{tag}Carbon",
                     choice["carbon"],
                     "tCO2e/월",
-                    "(재활용 계수 − 소각 계수) × 월 발생량",
-                    item["carbon_ev"],
+                    CARBON_FORMULA,
+                    choice["carbon_ev"],
                     label=names.calc_label("carbon", who),
                 )
                 entry["carbon"] = made["id"]
                 parts["carbon"].append(made["evidence"][0])
                 carbon_total += choice["carbon"]
             else:
-                carbon_known = False
+                no_factor.append(str(who or stream.get("id")))
         output["assignments"].append(entry)
-        now_total, after_total = now_total + now, after_total + choice["value"]
+        now_total, after_total = now_total + now, after_total + after
     rec.number("totalNow", now_total, "원/월", "흐름별 현행 월 손익의 합", parts["now"])
     rec.number("totalAfter", after_total, "원/월", "흐름별 배정 뒤 월 손익의 합", parts["after"])
     rec.number(
@@ -380,15 +497,20 @@ def optimize_assignment(
         "difference": "totalDifference",
         "carbon": None,
     }
-    if carbon_known and any(a["carbon"] for a in output["assignments"]):
+    if any(a["carbon"] for a in output["assignments"]):
         output["totals"]["carbon"] = rec.number(
-            "totalCarbon", carbon_total, "tCO2e/월", "흐름별 탄소 차이의 합", parts["carbon"]
+            "totalCarbon",
+            carbon_total,
+            "tCO2e/월",
+            "배출계수가 있는 흐름의 탄소 변화 합",
+            parts["carbon"],
         )["id"]
-    elif not carbon_known:
+    if no_factor:
         rec.check(
             "carbon",
             "conditional",
-            "배출계수가 없는 품목이 있어 탄소 합계를 내지 않았습니다. 확인 필요.",
+            f"배출계수가 없는 처리 방식으로 가는 흐름({', '.join(no_factor)})은 "
+            "탄소 계산에서 뺐습니다. 확인 필요.",
         )
     if any(a["currentAssumed"] for a in output["assignments"]):
         rec.check(

@@ -391,3 +391,97 @@ def stream_cautions(stream: dict) -> list[tuple]:
             )
         )
     return out
+
+
+# ── 순비용의 나머지 항: 운반비와 전처리 인건비 ─────────────────────────────
+# 회사 측 월 순비용 = 처리비 − 매각 수익 + 운반비 + 전처리 인건비 (설계안 v3 8.6).
+# 운반비는 업체가 밝힌 조건(profile["transport"])을 따른다: 단가에 포함이면 0, 별도면 1회 운반비 × 월 횟수.
+# 전처리 인건비는 담당자가 넣은 월 작업 시간(stream["pretreatHoursPerMonth"])이 있을 때만 계산한다.
+
+
+def pickups_of(vendor: dict, pickups=None) -> float | None:
+    return num(pickups) or num((vendor.get("guardrails") or {}).get("minPickupsPerMonth"))
+
+
+def transport_charge(vendor: dict, pickups=None) -> dict:
+    """업체 한 곳에 맡길 때 배출 기업이 따로 내는 월 운반비.
+
+    {"known": 조건을 아는가, "paidBy", "monthly": 금액 | None, "perPickup", "pickups", "evidence"}
+    - 조건이 없으면 known False (예전 프로필). 금액은 넣지 않고 "확인 필요"로 둔다.
+    - 업체 부담(수거 포함)이면 0원.
+    - 배출 기업 부담인데 1회 운반비나 월 횟수가 없으면 monthly None.
+    """
+    terms = vendor.get("transport") or {}
+    paid_by = terms.get("paidBy")
+    evidence = list(terms.get("evidence") or [])
+    out = {
+        "known": paid_by in ("vendor", "emitter"),
+        "paidBy": paid_by,
+        "monthly": None,
+        "perPickup": num(terms.get("feePerPickupKrw")),
+        "pickups": pickups_of(vendor, pickups),
+        "evidence": evidence,
+    }
+    if paid_by == "vendor":
+        out["monthly"] = 0.0
+    elif paid_by == "emitter" and out["perPickup"] is not None and out["pickups"]:
+        out["monthly"] = out["perPickup"] * out["pickups"]
+    return out
+
+
+def labor_cost(rec: Recorder, stream: dict):
+    """(월 전처리 인건비 | None, 근거 ID, 시간, 시간당 단가). 작업 시간을 넣지 않았으면 None."""
+    hours = num(stream.get("pretreatHoursPerMonth"))
+    if hours is None or hours <= 0:
+        return None, [], None, None
+    own = num(stream.get("laborCostKrwPerHour"))
+    if own is not None:
+        return hours * own, list(stream.get("pretreatEvidence") or []), hours, own
+    rate = rec.basis("labor.costPerHour")
+    if rate is None:
+        return None, [], hours, None
+    evidence = [*list(stream.get("pretreatEvidence") or []), rate.id]
+    return hours * float(rate.value), evidence, hours, float(rate.value)
+
+
+# ── 탄소 ───────────────────────────────────────────────────────────────
+# 탄소 변화 = (옮긴 뒤 처리의 배출계수 − 현행 처리의 배출계수) × 월 발생량.
+# 계수는 환경성적표지 평가계수(공식값)다. 신재 대체 효과와 운송 배출은 넣지 않는다.
+_AFTER_PROCESS = {"재활용": "recycle", "물질 재활용": "recycle", "열분해": "pyrolysis"}
+CARBON_FORMULA = (
+    "(옮긴 뒤 처리의 배출계수 − 현행 처리의 배출계수) × 월 발생량. "
+    "신재 대체 효과와 운송 배출은 넣지 않았습니다."
+)
+
+
+def current_process(method) -> str | None:
+    text = str(method or "")
+    if "소각" in text:
+        return "incinerate"
+    if "매립" in text:
+        return "landfill"
+    return None
+
+
+def after_process(vendor: dict, unit_price: float | None) -> str | None:
+    """업체의 처리 방식. 프로필에 없으면 값을 주고 사 가는 경우만 재활용으로 본다."""
+    process = vendor.get("process")
+    if process:
+        return _AFTER_PROCESS.get(str(process))
+    return "recycle" if unit_price is not None and unit_price >= 0 else None
+
+
+def carbon_per_kg(rec: Recorder, stream: dict, vendor: dict, unit_price, method):
+    """(kg당 탄소 변화 tCO2e | None, 근거 ID, 계산하지 못한 이유)."""
+    item = stream.get("wasteItem")
+    now_key = current_process(method)
+    if now_key is None:
+        return None, [], "현행 처리 방식의 배출계수가 없어 탄소를 계산하지 않았습니다. 확인 필요."
+    after_key = after_process(vendor, unit_price)
+    if after_key is None:
+        return None, [], "업체의 처리 방식을 몰라 탄소를 계산하지 않았습니다. 확인 필요."
+    now_ef = rec.basis(f"emission.{now_key}.{item}")
+    after_ef = rec.basis(f"emission.{after_key}.{item}")
+    if now_ef is None or after_ef is None:
+        return None, [], "배출계수가 없어 탄소를 계산하지 않았습니다. 확인 필요."
+    return (float(after_ef.value) - float(now_ef.value)) / 1000, [now_ef.id, after_ef.id], None

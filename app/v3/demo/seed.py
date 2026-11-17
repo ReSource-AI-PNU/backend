@@ -93,17 +93,21 @@ def vendor_evidence_ids(profile: dict[str, Any]) -> list[str]:
     for criterion in profile.get("criteria") or []:
         found += criterion.get("evidence") or []
     found += (profile.get("fleet") or {}).get("evidence") or []
+    found += (profile.get("transport") or {}).get("evidence") or []
     return list(dict.fromkeys(found))
 
 
 def share_vendor_terms(registry: Any, profile: dict[str, Any], org_id: str) -> list[str]:
-    """대화가 열릴 때 업체의 허가증과 매입 기준 근거를 배출 기업에 연다. fleet 근거는 열지 않는다."""
+    """대화가 열릴 때 업체의 허가증, 매입 기준, 운반 조건 근거를 배출 기업에 연다. fleet 근거는 열지 않는다."""
     shared: list[str] = []
     for section in ("permits", "criteria"):
         for item in profile.get(section) or []:
             for evidence_id in item.get("evidence") or []:
                 share_evidence(registry, evidence_id, org_id)
                 shared.append(evidence_id)
+    for evidence_id in (profile.get("transport") or {}).get("evidence") or []:
+        share_evidence(registry, evidence_id, org_id)
+        shared.append(evidence_id)
     return list(dict.fromkeys(shared))
 
 
@@ -221,9 +225,10 @@ class _Seeder:
         self.put(
             eid,
             org,
-            "사진 추정 오염 비율",
-            f"사진에서 추정한 이물 면적 비율 {contamination:g}% ({found})",
-            "탐지 모델 resource-ai-detector v1",
+            "사진 추정 오염 비율(시연용 고정값)",
+            f"사진에서 추정한 이물 면적 비율 {contamination:g}% ({found}). "
+            "시연용으로 넣어 둔 값이고 탐지 모델을 돌린 결과가 아니다",
+            "시연용 고정값(탐지 모델 미실행)",
             self.today,
             contamination,
             "%",
@@ -302,6 +307,30 @@ class _Seeder:
             ),
         ]
         return {"id": cid, **spec, "evidence": evidence}
+
+    def transport(self, org: str, paid_by: str, fee: float | None = None) -> dict:
+        """운반 조건. 업체 부담이면 단가에 포함(수거 포함), 배출 기업 부담이면 1회 운반비를 따로 받는다."""
+        if paid_by == "vendor":
+            eid = self.put(
+                ids.doc_id(org, "매입기준표", "운반조건"),
+                org,
+                "운반 조건",
+                "수거 차량 운반비는 매입 단가에 포함한다(수거 포함 단가)",
+                "매입 기준표",
+                DOC_DATE,
+            )
+            return {"paidBy": "vendor", "evidence": [eid]}
+        eid = self.put(
+            ids.doc_id(org, "반입조건표", "운반비"),
+            org,
+            "1회 운반비",
+            f"운반비는 처리비와 따로 받는다: 1회 {fee:g}원",
+            "반입 조건표",
+            DOC_DATE,
+            fee,
+            "원/회",
+        )
+        return {"paidBy": "emitter", "feePerPickupKrw": fee, "evidence": [eid]}
 
     def fleet(self, org: str, depot: list[float], kg: float, m3: float, per_km: float) -> dict:
         doc = "노선차량"
@@ -500,6 +529,8 @@ def _vendors(s: _Seeder) -> list[dict[str, Any]]:
                 ),
             ],
             "fleet": s.fleet(sg, [128.8721, 35.1493], 5000, 20, 1200),
+            "transport": s.transport(sg, "vendor"),
+            "process": "재활용",
             "guardrails": {
                 "floorPriceKrwPerKg": 120,
                 "ceilingPriceKrwPerKg": 340,
@@ -537,6 +568,9 @@ def _vendors(s: _Seeder) -> list[dict[str, Any]]:
                 ),
             ],
             "fleet": s.fleet(nh, [128.8189, 35.2296], 8000, 30, 1500),
+            # 위탁 처리라 운반비를 따로 받는다(1회 운반비 × 월 수거 횟수가 순비용에 들어간다)
+            "transport": s.transport(nh, "emitter", 30000),
+            "process": "열분해",
             "guardrails": {
                 "floorPriceKrwPerKg": -150,
                 "ceilingPriceKrwPerKg": -50,
@@ -564,6 +598,8 @@ def _vendors(s: _Seeder) -> list[dict[str, Any]]:
                 ),
             ],
             "fleet": s.fleet(ms, [128.9795, 35.1462], 3500, 14, 1100),
+            "transport": s.transport(ms, "vendor"),
+            "process": "재활용",
             "guardrails": {
                 "floorPriceKrwPerKg": 100,
                 "ceilingPriceKrwPerKg": 230,

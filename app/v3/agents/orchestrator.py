@@ -2107,6 +2107,20 @@ class Orchestrator:
                 if other_id == vendor_id or not other:
                     continue
                 other_route = tool_of(other_id, "judge_route", streamId=sid)
+                # 운반비와 전처리 인건비까지 뺀 값(cost_carbon)이 있으면 그것으로 견준다
+                other_cost = tool_of(other_id, "cost_carbon", streamId=sid)
+                other_after = claim_in(
+                    other_cost, "monthlyAfter", f"{tag}_alt_{safe_id(other_id)}_monthlyAfter"
+                ) or claim_in(
+                    other_route, "monthlyAfter", f"{tag}_alt_{safe_id(other_id)}_monthlyAfter"
+                )
+                now_claim = claim_in(optimized, item.get("monthlyNow"), "x")
+                worse = bool(
+                    vendor_id is None
+                    and other_after
+                    and now_claim
+                    and float(other_after["value"]) <= float(now_claim["value"])
+                )
                 alternatives.append(
                     {
                         "vendorOrgId": other_id,
@@ -2116,12 +2130,10 @@ class Orchestrator:
                             **other["claim"],
                             "id": f"{tag}_alt_{safe_id(other_id)}_unitPrice",
                         },
-                        "monthlyAfter": claim_in(
-                            other_route,
-                            "monthlyAfter",
-                            f"{tag}_alt_{safe_id(other_id)}_monthlyAfter",
-                        ),
-                        "note": "조건부 제안"
+                        "monthlyAfter": other_after,
+                        "note": "운반비와 인건비를 넣으면 지금보다 이득이 없어 고르지 않았습니다"
+                        if worse
+                        else "조건부 제안"
                         if other["type"] == "conditional"
                         else "선택되지 않은 제안",
                     }
@@ -2139,6 +2151,11 @@ class Orchestrator:
                 ),
                 "monthlyNow": claim_in(optimized, item.get("monthlyNow"), f"{tag}_monthlyNow"),
                 "difference": claim_in(optimized, item.get("difference"), f"{tag}_difference"),
+                # 순비용의 내역: 매각 수익(처리비면 음수), 배출 기업이 따로 내는 운반비, 전처리 인건비
+                "revenue": claim_in(optimized, item.get("revenue"), f"{tag}_revenue"),
+                "transport": claim_in(optimized, item.get("transport"), f"{tag}_transport"),
+                "labor": claim_in(optimized, item.get("labor"), f"{tag}_labor"),
+                "transportPaidBy": item.get("transportPaidBy"),
                 "carbon": claim_in(optimized, item.get("carbon"), f"{tag}_carbon"),
                 "carbonValue": claim_in(
                     cost, (cost or {}).get("output", {}).get("kau"), f"{tag}_carbonValue"
@@ -2174,6 +2191,10 @@ class Orchestrator:
                     "monthlyAfter": None,
                     "monthlyNow": None,
                     "difference": None,
+                    "revenue": None,
+                    "transport": None,
+                    "labor": None,
+                    "transportPaidBy": None,
                     "carbon": None,
                     "carbonValue": None,
                     "currentAssumed": False,

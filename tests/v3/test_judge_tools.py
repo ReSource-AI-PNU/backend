@@ -245,7 +245,14 @@ def test_cost_carbon_marks_missing_basis_as_needs_check():
     r = run(reg, "cost_carbon", stream=stream(), vendor=vendor(), origin=ORIGIN)
     assert r["status"] == "conditional" and r["output"]["transportAssumed"] is True
     assert claim(r, "monthlyAfter")["value"] == 192000  # 운송비는 기본으로 업체 부담
-    assert claim(r, "carbonDifference")["value"] == pytest.approx((-1.6 - 0.78) * 600 / 1000)
+    # 환경성적표지 평가계수: (재활용 공정 − 혼합 소각) × 월 발생량. 신재 대체 효과는 넣지 않는다
+    assert claim(r, "carbonDifference")["value"] == pytest.approx(
+        (0.0186 - 3.412554039) * 600 / 1000, abs=1e-6
+    )
+    assert all(
+        e.startswith(("calc:", "ref:환경성적표지:"))
+        for e in claim(r, "carbonDifference")["evidence"]
+    )
     assert r["output"]["kau"] is None and any(c["key"] == "kau" for c in r["checks"])
     paid = run(
         reg,
@@ -327,6 +334,7 @@ def test_optimize_assignment_constraints_and_tiebreak():
 def test_carbon_weight_only_changes_objective_when_positive():
     reg = registry()
     payer = vendor(
+        process="재활용",  # 처리비를 받는 업체는 처리 방식을 밝혀야 탄소를 계산한다
         criteria=[
             {
                 "id": "pc_fee",
@@ -335,7 +343,7 @@ def test_carbon_weight_only_changes_objective_when_positive():
                 "minMonthlyKg": 0,
                 "evidence": [],
             }
-        ]
+        ],
     )
     off = run(reg, "optimize_assignment", streams=[stream()], vendors=[payer])
     assert (

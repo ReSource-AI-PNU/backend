@@ -141,7 +141,7 @@ def public_profile(profile: dict[str, Any], *, fleet_cost: bool = True) -> dict[
     if not fleet_cost:
         fleet.pop("costPerKm", None)
         fleet.pop("evidence", None)
-    return {
+    out = {
         "orgId": profile.get("orgId"),
         "permits": list(profile.get("permits") or []),
         "criteria": list(profile.get("criteria") or []),
@@ -150,6 +150,12 @@ def public_profile(profile: dict[str, Any], *, fleet_cost: bool = True) -> dict[
             k: guard[k] for k in ("days", "minPickupsPerMonth") if guard.get(k) is not None
         },
     }
+    # 운반 조건(단가에 포함인지, 1회 운반비), 처리 방식, 월 처리 용량은 업체가 밝히는 조건이다.
+    # 없는 프로필은 예전처럼 키 자체를 싣지 않는다(계산 근거 ID가 바뀌지 않게)
+    for key in ("transport", "process", "monthlyCapacityKg"):
+        if profile.get(key) is not None:
+            out[key] = profile[key]
+    return out
 
 
 def short(stream_id: str) -> str:

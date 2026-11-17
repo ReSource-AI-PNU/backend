@@ -11,7 +11,7 @@ from app.v3.evidence.model import Evidence
 
 SEEDS = Path(__file__).parents[2] / "app" / "v3" / "evidence" / "seeds"
 UNITS = {
-    "원", "원/kg", "원/t", "원/월", "원/회", "원/km", "원/tCO2e", "kg", "t", "kg/월", "t/월", "%",
+    "원", "원/kg", "원/t", "원/월", "원/회", "원/km", "원/시간", "시간/월", "원/tCO2e", "kg", "t", "kg/월", "t/월", "%",
     "km", "m", "m3", "kg/m3", "tCO2e", "kgCO2e", "tCO2e/월", "kgCO2e/kg", "tCO2e/t", "회", "회/월",
     "일", "개",
 }  # fmt: skip

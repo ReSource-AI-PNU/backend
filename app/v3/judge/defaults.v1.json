@@ -9,7 +9,7 @@
     }
   ],
   "missing": [
-    "emission.transport.perKm"
+    "emission.pyrolysis.폐플라스틱"
   ],
   "refs": {
     "kau.price": [
@@ -32,6 +32,27 @@
     ],
     "reference.price.PE.펠렛": [
       "ref:가격조사:PE-펠렛-경남@2026-10"
+    ],
+    "emission.incinerate.폐플라스틱": [
+      "ref:환경성적표지:혼합폐플라스틱-소각@2024-09"
+    ],
+    "emission.recycle.폐플라스틱": [
+      "ref:환경성적표지:혼합폐플라스틱-재활용@2024-09"
+    ],
+    "emission.landfill.폐플라스틱": [
+      "ref:환경성적표지:혼합폐플라스틱-매립@2024-09"
+    ],
+    "emission.incinerate.포장재": [
+      "ref:환경성적표지:혼합폐플라스틱-소각@2024-09"
+    ],
+    "emission.recycle.포장재": [
+      "ref:환경성적표지:혼합폐플라스틱-재활용@2024-09"
+    ],
+    "emission.landfill.포장재": [
+      "ref:환경성적표지:혼합폐플라스틱-매립@2024-09"
+    ],
+    "labor.costPerHour": [
+      "ref:최저임금:시간급@2026"
     ]
   },
   "items": [
@@ -119,23 +140,8 @@
       "unit": "원/km",
       "label": "차량 운행 단가",
       "excerpt": "팀 가정값(가상 시연용). 실제 시세·법정 기준이 아니다. 기존 자료에 없어 새로 둔 값이다. 업체가 노선·차량 단가를 올리면 그 값을 쓴다."
-    },
-    {
-      "key": "emission.incinerate.폐플라스틱",
-      "value": 0.78,
-      "unit": "kgCO2e/kg",
-      "label": "혼합 소각 배출계수 (폐플라스틱)",
-      "excerpt": "팀 가정값(가상 시연용). 실제 시세·법정 기준이 아니다. 이전 시연 화면의 판정 예시(월 600kg, 0.47t)에서 역산했다.",
-      "origin": "app/schemas.py의 StreamDecision 예시"
-    },
-    {
-      "key": "emission.recycle.폐플라스틱",
-      "value": -1.6,
-      "unit": "kgCO2e/kg",
-      "label": "재활용 회피 배출계수 (폐플라스틱)",
-      "excerpt": "팀 가정값(가상 시연용). 실제 시세·법정 기준이 아니다. 이전 시연 화면의 판정 예시(월 600kg, -0.96t)에서 역산했다.",
-      "origin": "app/schemas.py의 StreamDecision 예시"
     }
   ],
-  "referenceNote": "reference.price.* 는 가격조사 참고 시세다. 업체 매입 단가가 아니므로 손익 계산에는 쓰지 않는다."
+  "referenceNote": "reference.price.* 는 가격조사 참고 시세다. 업체 매입 단가가 아니므로 손익 계산에는 쓰지 않는다.",
+  "emissionNote": "배출계수는 환경성적표지 평가계수의 혼합폐플라스틱 값이다. 탄소 변화는 (옮긴 뒤 처리의 계수 − 현행 처리의 계수) × 월 발생량으로 계산하고, 신재 대체 효과와 운송 배출은 넣지 않는다. 열분해 공정의 계수는 표에 없어 계산하지 않는다."
 }

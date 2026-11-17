@@ -155,8 +155,21 @@ def test_result_sheet_assigns_every_stream(demo):
     assert value(totals["difference"]) == value(totals["monthlyAfter"]) - value(
         totals["monthlyNow"]
     )
-    assert totals["carbon"] is None  # 포장재 배출계수가 없어 합계는 확인 필요로 둔다
-    assert by_stream["st_film"]["carbon"] is None and by_stream["st_sprue"]["carbon"] is not None
+    # 탄소는 공식 배출계수(환경성적표지)로 낸다. 열분해는 계수가 없어 그 흐름만 빠진다
+    assert by_stream["st_purge"]["carbon"] is None
+    assert value(totals["carbon"]) == pytest.approx(
+        sum(value(by_stream[s]["carbon"]) for s in ("st_sprue", "st_film", "st_defect"))
+    )
+    assert value(by_stream["st_sprue"]["carbon"]) == pytest.approx(
+        (0.0186 - 3.412554039) * 600 / 1000, abs=1e-6
+    )
+    # 순비용의 내역: 매각 수익(처리비면 음수) − 운반비 − 전처리 인건비
+    assert sprue["transportPaidBy"] == "vendor" and value(sprue["transport"]) == 0
+    assert value(sprue["revenue"]) == 320 * 600 and sprue["labor"] is None
+    purge = by_stream["st_purge"]
+    assert purge["transportPaidBy"] == "emitter" and value(purge["transport"]) == 30000
+    assert value(purge["revenue"]) == -80 * 250
+    assert value(purge["monthlyAfter"]) == -80 * 250 - 30000
     assert by_stream["st_purge"]["currentAssumed"] is True
     assumed = {a["id"]: a for a in result["assumptions"]}
     assert all(set(a) == {"id", "label", "value", "unit"} for a in result["assumptions"])

@@ -17,6 +17,8 @@ UNITS: dict[str, tuple[str, float]] = {
     "원/월": ("krw/month", 1.0),
     "원/회": ("krw/trip", 1.0),
     "원/km": ("krw/length", 1.0),
+    "원/시간": ("krw/hour", 1.0),
+    "시간/월": ("hour/month", 1.0),
     "원/tCO2e": ("krw/co2", 1.0),
     "kg": ("mass", 1.0),
     "t": ("mass", 1000.0),
