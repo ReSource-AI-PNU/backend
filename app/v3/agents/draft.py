@@ -43,6 +43,10 @@ RULES = (
     ),
     "{{id}}의 id는 pool의 id를 글자 그대로 쓴다. pool에 없는 id를 만들지 않는다.",
     (
+        "pool에서 role이 treatmentFee인 금액은 배출 기업이 내는 처리비다. '처리비는 {{id}}'로 쓰고 "
+        "'매입 단가'라고 쓰지 않는다."
+    ),
+    (
         "reason이나 terms.conditions에 쓴 {{id}}는 본문(text)에도 쓴다. 조건 문장은 본문에 쓴 문장을 "
         "그대로 옮긴다."
     ),
