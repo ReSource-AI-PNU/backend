@@ -3,7 +3,12 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
-    """환경 변수로 주입되는 설정. 값은 .env 파일 또는 Container Apps 시크릿에서 읽는다."""
+    """환경 변수로 주입되는 설정. 값은 .env 파일이나 배포한 앱의 설정(Key Vault 참조, 시크릿)에서 읽는다.
+
+    v3 환경 변수의 이름과 허용값은 여기가 정본이다. 로컬 서버(app/v3/devserver.py)는 pydantic 없이
+    os.environ에서 같은 이름을 읽는다. 값을 확인하는 일은 한곳에서 한다: V3_LLM은
+    app/v3/agents/factory.py, V3_AUTH와 토큰은 app/v3/httpio.py, V3_DISTANCE는 app/v3/judge/distance.py.
+    """
 
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
@@ -32,21 +37,24 @@ class Settings(BaseSettings):
     platform_road_matrix_token: str = ""
 
     # 설계안 v3 (app/v3). DATABASE_URL이 있으면 SQL 저장, 없으면 메모리 저장으로 돈다.
-    v3_llm: str = "rule"  # rule(규칙 정책, 모델 미연결) | foundry | anthropic
+    # V3_LLM: rule(규칙 정책, 모델 미연결) | foundry | anthropic. 그 밖의 값이면 서버가 뜨지 않는다
+    v3_llm: str = "rule"
     foundry_endpoint: str = ""  # 리소스 주소까지만 (뒤에 /openai/... 를 붙이지 않는다)
     foundry_deployment: str = ""
     foundry_api_key: str = ""
     ollama_base_url: str = ""  # 업체가 오픈 모델을 고른 경우. VNet 안의 주소만 쓴다
-    # V3_LLM=anthropic일 때. 키는 값으로 주거나(Key Vault 주입) 파일 경로로 준다. 기록에 싣지 않는다
+    # V3_LLM=anthropic일 때. 키는 ANTHROPIC_API_KEY 값으로 주거나(Key Vault 주입) ANTHROPIC_API_KEY_FILE에
+    # 키만 담은 파일의 경로로 준다(값이 비어 있을 때만 파일을 읽는다). 기록과 예외 문구에 싣지 않는다
     anthropic_api_key: str = ""
     anthropic_api_key_file: str = ""
-    anthropic_model: str = ""  # 비우면 claude-sonnet-5-5
+    anthropic_model: str = ""  # ANTHROPIC_MODEL. 비우면 claude-sonnet-5-5
     # 참이면 ollama를 고른 업체도(주소가 없을 때) anthropic 모델이 답한다. 화면에는 둘 다 나온다
     v3_llm_all_vendors: bool = False
     # 도로 거리 제공자: kakao | azure | none. 비우면 AZURE_MAPS_KEY가 있을 때 Azure Maps를 쓴다.
     # 없거나 호출이 실패하면 직선 거리 × 우회 계수(가정값)로 계산하고 결과에 가정값이라고 남긴다
     v3_distance: str = ""
-    kakao_rest_api_key: str = ""  # 카카오모빌리티 자동차 길찾기(읽기 전용 거리 조회)
+    # KAKAO_REST_API_KEY: 카카오모빌리티 자동차 길찾기(읽기 전용 거리 조회). V3_DISTANCE=kakao일 때만 읽는다
+    kakao_rest_api_key: str = ""
     # 업체 측 에이전트 서비스 (app/v3/vendor_service.py)
     vendor_org_id: str = ""
     vendor_service_key: str = ""
@@ -61,6 +69,10 @@ class Settings(BaseSettings):
     # token 모드의 조직별 서비스 토큰. JSON 글 그대로 받는다: {"조직 ID": "토큰"}(값은 목록도 된다).
     # Key Vault에서 주입한다. 읽고 확인하는 일은 app/v3/httpio.py의 org_tokens가 한다.
     v3_org_tokens: str = ""
+    # V3_ORG_TOKENS_FILE: 위 JSON을 담은 파일의 경로(비밀을 파일로 마운트할 때). 있으면 이 파일을 먼저 읽는다
+    v3_org_tokens_file: str = ""
+    # V3_CORS_ORIGINS: CORS_ORIGINS에 더 허용할 출처. 쉼표로 나눈다(http(s)://호스트[:포트]). 틀린 꼴이면 멈춘다
+    v3_cors_origins: str = ""
     # 탐지 모델(Azure ML 관리형 온라인 엔드포인트)의 채점 주소와 키. 비어 있으면 사진·영상 업로드는
     # "탐지 모델이 연결되지 않았습니다"로 답한다.
     v3_detector_endpoint: str = ""

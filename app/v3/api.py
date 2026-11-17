@@ -197,8 +197,16 @@ def build_app() -> service.App:
 
 
 def current_auth() -> httpio.Auth:
-    """설정 V3_AUTH, V3_ORG_TOKENS로 요청한 조직을 정하는 방법을 만든다. 설정이 틀리면 ValueError."""
-    return httpio.make_auth(settings.v3_auth, settings.v3_org_tokens)
+    """설정 V3_AUTH, V3_ORG_TOKENS(또는 V3_ORG_TOKENS_FILE)로 요청한 조직을 정하는 방법을 만든다.
+
+    설정이 틀리면 ValueError. header 모드에서는 토큰 설정을 읽지 않는다(파일도 열지 않는다).
+    """
+    if (settings.v3_auth or "").strip().lower() != httpio.AUTH_TOKEN:
+        return httpio.make_auth(settings.v3_auth)
+    return httpio.make_auth(
+        settings.v3_auth,
+        httpio.tokens_text(settings.v3_org_tokens, settings.v3_org_tokens_file),
+    )
 
 
 _state: service.App | None = None

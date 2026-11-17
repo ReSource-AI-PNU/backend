@@ -27,8 +27,10 @@ from __future__ import annotations
 
 import hmac
 import json
+import re
 from collections.abc import Mapping
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Any
 
 from app.v3.service import ServiceError
@@ -166,6 +168,38 @@ def make_auth(mode: str | None, raw_tokens: Any = None) -> Auth:
     if mode not in AUTH_MODES:
         raise ValueError(f"V3_AUTH는 {' | '.join(AUTH_MODES)} 가운데 하나여야 한다: {mode!r}")
     return Auth(mode, org_tokens(raw_tokens) if mode == AUTH_TOKEN else ())
+
+
+def tokens_text(raw: Any = None, path: str | None = None) -> Any:
+    """token 모드의 토큰 설정을 어디서 읽을지 정한다: V3_ORG_TOKENS_FILE(파일 경로)이 있으면 그 파일의
+    내용, 없으면 V3_ORG_TOKENS 값 그대로. 로컬 서버와 FastAPI 경로가 같은 순서로 읽는다.
+
+    파일을 읽지 못하면 ValueError다. 문구에는 변수 이름만 싣고 경로와 내용은 싣지 않는다.
+    """
+    path = (path or "").strip()
+    if not path:
+        return raw
+    try:
+        return Path(path).expanduser().read_text(encoding="utf-8")
+    except OSError:
+        raise ValueError("V3_ORG_TOKENS_FILE이 가리키는 파일을 읽을 수 없습니다.") from None
+
+
+def extra_origins(raw: str | None) -> list[str]:
+    """V3_CORS_ORIGINS(쉼표로 나눈 출처)를 목록으로. http(s)://호스트[:포트] 꼴만 받고 아니면 ValueError.
+
+    끝의 빗금은 떼고 같은 출처는 한 번만 남긴다. 비어 있으면 빈 목록이다.
+    """
+    found: list[str] = []
+    for origin in (raw or "").split(","):
+        origin = origin.strip().rstrip("/")
+        if not origin:
+            continue
+        if not re.fullmatch(r"https?://[A-Za-z0-9.\-]+(:\d+)?", origin):
+            raise ValueError(f"허용 출처는 http(s)://호스트[:포트] 꼴이어야 합니다: {origin}")
+        if origin not in found:
+            found.append(origin)
+    return found
 
 
 # ── 업체 측 에이전트 서비스(POST /a2a/messages) ───────────────────────

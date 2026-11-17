@@ -3,6 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.api.router import router
 from app.core.config import settings
+from app.v3 import httpio
 from app.v3.api import router as v3_router
 
 app = FastAPI(
@@ -13,7 +14,10 @@ app = FastAPI(
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=settings.cors_origins,
+    # CORS_ORIGINS(JSON 목록)에 V3_CORS_ORIGINS(쉼표로 나눈 출처)를 더한다. 로컬 서버와 같은 이름이다
+    allow_origins=list(
+        dict.fromkeys([*settings.cors_origins, *httpio.extra_origins(settings.v3_cors_origins)])
+    ),
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
