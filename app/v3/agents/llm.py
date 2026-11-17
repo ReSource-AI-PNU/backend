@@ -84,6 +84,34 @@ def _post_json(
     return data
 
 
+# 다시 불러 볼 만한 실패: 연결·시간 초과(status 없음), 요청 한도, 서버 쪽 오류
+TRANSIENT_STATUSES = (408, 429, 500, 502, 503, 504)
+
+
+def _post_retrying(
+    transport: Transport,
+    url: str,
+    headers: dict[str, str],
+    payload: dict[str, Any],
+    timeout: float,
+    *,
+    retries: int,
+) -> dict[str, Any]:
+    """_post_json을 부르고, 일시적인 실패면 retries번까지 곧바로 다시 부른다(초안 시도 횟수와 별개다).
+
+    모델이 낸 답의 형식이나 검증과는 관계없는 연결 문제다. 같은 요청을 그대로 다시 보낸다.
+    기다리지 않는다(에이전트 코드는 시계를 읽지 않는다. 시간 초과는 이미 timeout만큼 기다린 뒤다).
+    """
+    for attempt in range(retries + 1):
+        try:
+            return _post_json(transport, url, headers, payload, timeout)
+        except LLMError as error:
+            transient = error.status is None or error.status in TRANSIENT_STATUSES
+            if not transient or attempt >= retries:
+                raise
+    raise LLMError("모델을 부르지 못했다")  # 닿지 않는다(위 고리가 돌려주거나 예외를 낸다)
+
+
 class NotStrict(ValueError):
     """엄격 모드(structured outputs strict)로 바꿀 수 없는 스키마다(속성을 정하지 않은 객체 등)."""
 
@@ -198,6 +226,7 @@ class FoundryChat:
     - reasoning_effort를 주면 그대로 보낸다(gpt-5 계열. 기본 강도는 추론 토큰을 많이 써서 응답이
       느리고, max_completion_tokens를 추론에 다 쓰면 본문이 비어 돌아온다).
     - 응답이 길이 제한에서 잘렸거나 모델이 거절했으면 LLMError다(빈 글을 형식 오류로 보이지 않게).
+    - 연결 실패·시간 초과·429·5xx는 retries번(기본 한 번) 다시 부른다. 초안 시도로 세지 않는다.
     """
 
     provider = "foundry"
@@ -214,6 +243,7 @@ class FoundryChat:
         timeout: float = 60,
         reasoning_effort: str | None = None,
         strict: bool = True,
+        retries: int = 1,
     ) -> None:
         if reasoning_effort is not None and reasoning_effort not in REASONING_EFFORTS:
             raise ValueError(f"reasoning_effort는 {', '.join(REASONING_EFFORTS)} 가운데 하나다")
@@ -226,6 +256,7 @@ class FoundryChat:
         self.timeout = timeout
         self.reasoning_effort = reasoning_effort
         self.strict = strict
+        self.retries = retries
 
     def __repr__(self) -> str:
         return f"FoundryChat(endpoint={self.endpoint!r}, deployment={self.model!r})"
@@ -301,8 +332,13 @@ class FoundryChat:
                 "type": "json_schema",
                 "json_schema": {"name": "response", "schema": schema, "strict": strict},
             }
-        data = _post_json(
-            self._transport, self.url, {"api-key": self._api_key}, payload, self.timeout
+        data = _post_retrying(
+            self._transport,
+            self.url,
+            {"api-key": self._api_key},
+            payload,
+            self.timeout,
+            retries=self.retries,
         )
         try:
             choice = data["choices"][0]
@@ -354,6 +390,7 @@ class OllamaChat:
         timeout: float = 120,
         num_ctx: int | None = 16384,
         num_predict: int | None = 2048,
+        retries: int = 1,
     ) -> None:
         self.base_url = base_url.rstrip("/")
         self.model = model
@@ -361,6 +398,7 @@ class OllamaChat:
         self.timeout = timeout
         self.num_ctx = num_ctx
         self.num_predict = num_predict
+        self.retries = retries
 
     @staticmethod
     def _wire(messages: list[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -416,7 +454,14 @@ class OllamaChat:
             payload["tools"] = _function_tools(tools)
         if response_schema is not None:
             payload["format"] = response_schema
-        data = _post_json(self._transport, f"{self.base_url}/api/chat", {}, payload, self.timeout)
+        data = _post_retrying(
+            self._transport,
+            f"{self.base_url}/api/chat",
+            {},
+            payload,
+            self.timeout,
+            retries=self.retries,
+        )
         message = data.get("message")
         if not isinstance(message, dict):
             raise LLMError("모델 응답에 message가 없다")

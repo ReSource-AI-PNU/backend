@@ -183,3 +183,39 @@ def test_factory_lenient_keeps_defaults_and_sets_ollama_context(caplog):
         "vendor", "org_namhae", {"provider": "ollama", "name": "qwen2.5:7b"}
     )
     assert ollama.num_ctx == 32768
+
+
+class Flaky:
+    """처음 몇 번은 실패하고 그 뒤에 답한다."""
+
+    def __init__(self, failures, reply):
+        self.failures, self.reply, self.calls = list(failures), reply, 0
+
+    def __call__(self, method, url, headers, body, timeout):
+        self.calls += 1
+        if self.failures:
+            failure = self.failures.pop(0)
+            if isinstance(failure, Exception):
+                raise failure
+            return failure, {}, json.dumps({"error": {"message": "busy"}}).encode()
+        return 200, {}, json.dumps(self.reply).encode()
+
+
+def test_transient_failures_are_retried_once_without_counting_as_a_draft():
+    ok = foundry_reply('{"type": "offer"}')
+    fake = Flaky([LLMError("모델 서버에 연결하지 못했다: TimeoutError")], ok)
+    llm = FoundryChat("https://x", "d", KEY, transport=fake)
+    assert llm.complete([])["content"] == '{"type": "offer"}'
+    assert fake.calls == 2
+    fake = Flaky([429, 503], ok)
+    with pytest.raises(LLMError) as error:
+        FoundryChat("https://x", "d", KEY, transport=fake).complete([])
+    assert error.value.status == 503 and fake.calls == 2  # 한 번만 다시 부른다
+    fake = Flaky([400], ok)
+    with pytest.raises(LLMError):
+        FoundryChat("https://x", "d", KEY, transport=fake).complete([])
+    assert fake.calls == 1  # 요청이 틀린 것(4xx)은 다시 부르지 않는다
+    reply = {"message": {"role": "assistant", "content": "{}"}}
+    fake = Flaky([502], reply)
+    OllamaChat("http://x", "m", transport=fake).complete([])
+    assert fake.calls == 2
