@@ -23,3 +23,8 @@ data/processed/
 .DS_Store
 *.safetensors
 mlflow.db
+*.db
+*.db-shm
+*.db-wal
+.local-run/
+.pytest-*/

@@ -1,0 +1,7682 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Re:Source AI API",
+    "description": "산업 폐기물 등급 판정과 산업단지 묶음 수거 매칭 에이전트 API",
+    "version": "0.1.0"
+  },
+  "paths": {
+    "/api/v1/contract/session-example": {
+      "get": {
+        "tags": [
+          "contract"
+        ],
+        "summary": "Session Example",
+        "description": "승인과 실제 결과 기록까지 끝난 시연 진단 한 건",
+        "operationId": "session_example_api_v1_contract_session_example_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Session"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/contract/collections-example": {
+      "get": {
+        "tags": [
+          "contract"
+        ],
+        "summary": "Collections Example",
+        "description": "현장 지식, 라벨 검수, 모델·데이터셋, 발송함, 회사·멤버 예시",
+        "operationId": "collections_example_api_v1_contract_collections_example_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DemoCollections"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/companies": {
+      "get": {
+        "tags": [
+          "track-d"
+        ],
+        "summary": "List Companies",
+        "operationId": "list_companies_api_v1_companies_get",
+        "parameters": [
+          {
+            "name": "complex_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "default": "noksan",
+              "title": "Complex Id"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "default": "",
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "x-user-id",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "default": "",
+              "title": "X-User-Id"
+            }
+          },
+          {
+            "name": "x-company-id",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "default": "",
+              "title": "X-Company-Id"
+            }
+          },
+          {
+            "name": "x-member-role",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "default": "",
+              "title": "X-Member-Role"
+            }
+          },
+          {
+            "name": "x-demo-actor",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "default": "false",
+              "title": "X-Demo-Actor"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "additionalProperties": true
+                  },
+                  "title": "Response List Companies Api V1 Companies Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/companies/me": {
+      "get": {
+        "tags": [
+          "track-d"
+        ],
+        "summary": "My Company",
+        "operationId": "my_company_api_v1_companies_me_get",
+        "parameters": [
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "default": "",
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "x-user-id",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "default": "",
+              "title": "X-User-Id"
+            }
+          },
+          {
+            "name": "x-company-id",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "default": "",
+              "title": "X-Company-Id"
+            }
+          },
+          {
+            "name": "x-member-role",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "default": "",
+              "title": "X-Member-Role"
+            }
+          },
+          {
+            "name": "x-demo-actor",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "default": "false",
+              "title": "X-Demo-Actor"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CompanyProfile"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/companies/{company_id}": {
+      "put": {
+        "tags": [
+          "track-d"
+        ],
+        "summary": "Put Company",
+        "operationId": "put_company_api_v1_companies__company_id__put",
+        "parameters": [
+          {
+            "name": "company_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Company Id"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "default": "",
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "x-user-id",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "default": "",
+              "title": "X-User-Id"
+            }
+          },
+          {
+            "name": "x-company-id",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "default": "",
+              "title": "X-Company-Id"
+            }
+          },
+          {
+            "name": "x-member-role",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "default": "",
+              "title": "X-Member-Role"
+            }
+          },
+          {
+            "name": "x-demo-actor",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "default": "false",
+              "title": "X-Demo-Actor"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CompanyProfile"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CompanyProfile"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/sessions": {
+      "post": {
+        "tags": [
+          "track-d"
+        ],
+        "summary": "Create Session",
+        "operationId": "create_session_api_v1_sessions_post",
+        "parameters": [
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "default": "",
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "x-user-id",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "default": "",
+              "title": "X-User-Id"
+            }
+          },
+          {
+            "name": "x-company-id",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "default": "",
+              "title": "X-Company-Id"
+            }
+          },
+          {
+            "name": "x-member-role",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "default": "",
+              "title": "X-Member-Role"
+            }
+          },
+          {
+            "name": "x-demo-actor",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "default": "false",
+              "title": "X-Demo-Actor"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateSession"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PlatformState"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "get": {
+        "tags": [
+          "track-d"
+        ],
+        "summary": "Sessions",
+        "operationId": "sessions_api_v1_sessions_get",
+        "parameters": [
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "default": "",
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "x-user-id",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "default": "",
+              "title": "X-User-Id"
+            }
+          },
+          {
+            "name": "x-company-id",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "default": "",
+              "title": "X-Company-Id"
+            }
+          },
+          {
+            "name": "x-member-role",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "default": "",
+              "title": "X-Member-Role"
+            }
+          },
+          {
+            "name": "x-demo-actor",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "default": "false",
+              "title": "X-Demo-Actor"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/PlatformState"
+                  },
+                  "title": "Response Sessions Api V1 Sessions Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/sessions/{session_id}": {
+      "get": {
+        "tags": [
+          "track-d"
+        ],
+        "summary": "Session",
+        "operationId": "session_api_v1_sessions__session_id__get",
+        "parameters": [
+          {
+            "name": "session_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Session Id"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "default": "",
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "x-user-id",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "default": "",
+              "title": "X-User-Id"
+            }
+          },
+          {
+            "name": "x-company-id",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "default": "",
+              "title": "X-Company-Id"
+            }
+          },
+          {
+            "name": "x-member-role",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "default": "",
+              "title": "X-Member-Role"
+            }
+          },
+          {
+            "name": "x-demo-actor",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "default": "false",
+              "title": "X-Demo-Actor"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PlatformState"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/sessions/{session_id}/answers": {
+      "post": {
+        "tags": [
+          "track-d"
+        ],
+        "summary": "Answer",
+        "operationId": "answer_api_v1_sessions__session_id__answers_post",
+        "parameters": [
+          {
+            "name": "session_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Session Id"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "default": "",
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "x-user-id",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "default": "",
+              "title": "X-User-Id"
+            }
+          },
+          {
+            "name": "x-company-id",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "default": "",
+              "title": "X-Company-Id"
+            }
+          },
+          {
+            "name": "x-member-role",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "default": "",
+              "title": "X-Member-Role"
+            }
+          },
+          {
+            "name": "x-demo-actor",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "default": "false",
+              "title": "X-Demo-Actor"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AnswerRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PlatformState"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/sessions/{session_id}/matching": {
+      "post": {
+        "tags": [
+          "track-d"
+        ],
+        "summary": "Matching",
+        "operationId": "matching_api_v1_sessions__session_id__matching_post",
+        "parameters": [
+          {
+            "name": "session_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Session Id"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "default": "",
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "x-user-id",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "default": "",
+              "title": "X-User-Id"
+            }
+          },
+          {
+            "name": "x-company-id",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "default": "",
+              "title": "X-Company-Id"
+            }
+          },
+          {
+            "name": "x-member-role",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "default": "",
+              "title": "X-Member-Role"
+            }
+          },
+          {
+            "name": "x-demo-actor",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "default": "false",
+              "title": "X-Demo-Actor"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MatchRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PlatformState"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/sessions/{session_id}/advance": {
+      "post": {
+        "tags": [
+          "track-d"
+        ],
+        "summary": "Advance",
+        "operationId": "advance_api_v1_sessions__session_id__advance_post",
+        "parameters": [
+          {
+            "name": "session_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Session Id"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "default": "",
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "x-user-id",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "default": "",
+              "title": "X-User-Id"
+            }
+          },
+          {
+            "name": "x-company-id",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "default": "",
+              "title": "X-Company-Id"
+            }
+          },
+          {
+            "name": "x-member-role",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "default": "",
+              "title": "X-Member-Role"
+            }
+          },
+          {
+            "name": "x-demo-actor",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "default": "false",
+              "title": "X-Demo-Actor"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AdvanceRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProgressResult"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/sessions/{session_id}/classify": {
+      "post": {
+        "tags": [
+          "track-d"
+        ],
+        "summary": "Classify",
+        "operationId": "classify_api_v1_sessions__session_id__classify_post",
+        "parameters": [
+          {
+            "name": "session_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Session Id"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "default": "",
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "x-user-id",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "default": "",
+              "title": "X-User-Id"
+            }
+          },
+          {
+            "name": "x-company-id",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "default": "",
+              "title": "X-Company-Id"
+            }
+          },
+          {
+            "name": "x-member-role",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "default": "",
+              "title": "X-Member-Role"
+            }
+          },
+          {
+            "name": "x-demo-actor",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "default": "false",
+              "title": "X-Demo-Actor"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Versioned"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PlatformState"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/sessions/{session_id}/questions": {
+      "post": {
+        "tags": [
+          "track-d"
+        ],
+        "summary": "Answer Question",
+        "operationId": "answer_question_api_v1_sessions__session_id__questions_post",
+        "parameters": [
+          {
+            "name": "session_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Session Id"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "default": "",
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "x-user-id",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "default": "",
+              "title": "X-User-Id"
+            }
+          },
+          {
+            "name": "x-company-id",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "default": "",
+              "title": "X-Company-Id"
+            }
+          },
+          {
+            "name": "x-member-role",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "default": "",
+              "title": "X-Member-Role"
+            }
+          },
+          {
+            "name": "x-demo-actor",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "default": "false",
+              "title": "X-Demo-Actor"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/QuestionReply"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PlatformState"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/sessions/{session_id}/invites": {
+      "post": {
+        "tags": [
+          "track-d"
+        ],
+        "summary": "Invite",
+        "operationId": "invite_api_v1_sessions__session_id__invites_post",
+        "parameters": [
+          {
+            "name": "session_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Session Id"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "default": "",
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "x-user-id",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "default": "",
+              "title": "X-User-Id"
+            }
+          },
+          {
+            "name": "x-company-id",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "default": "",
+              "title": "X-Company-Id"
+            }
+          },
+          {
+            "name": "x-member-role",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "default": "",
+              "title": "X-Member-Role"
+            }
+          },
+          {
+            "name": "x-demo-actor",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "default": "false",
+              "title": "X-Demo-Actor"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/InviteRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PlatformState"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/inbox": {
+      "get": {
+        "tags": [
+          "track-d"
+        ],
+        "summary": "Inbox",
+        "operationId": "inbox_api_v1_inbox_get",
+        "parameters": [
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "default": "",
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "x-user-id",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "default": "",
+              "title": "X-User-Id"
+            }
+          },
+          {
+            "name": "x-company-id",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "default": "",
+              "title": "X-Company-Id"
+            }
+          },
+          {
+            "name": "x-member-role",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "default": "",
+              "title": "X-Member-Role"
+            }
+          },
+          {
+            "name": "x-demo-actor",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "default": "false",
+              "title": "X-Demo-Actor"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/InboxItem"
+                  },
+                  "title": "Response Inbox Api V1 Inbox Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/sessions/{session_id}/bundles/{bundle_id}/reply": {
+      "post": {
+        "tags": [
+          "track-d"
+        ],
+        "summary": "Reply",
+        "operationId": "reply_api_v1_sessions__session_id__bundles__bundle_id__reply_post",
+        "parameters": [
+          {
+            "name": "session_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Session Id"
+            }
+          },
+          {
+            "name": "bundle_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Bundle Id"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "default": "",
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "x-user-id",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "default": "",
+              "title": "X-User-Id"
+            }
+          },
+          {
+            "name": "x-company-id",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "default": "",
+              "title": "X-Company-Id"
+            }
+          },
+          {
+            "name": "x-member-role",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "default": "",
+              "title": "X-Member-Role"
+            }
+          },
+          {
+            "name": "x-demo-actor",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "default": "false",
+              "title": "X-Demo-Actor"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReplyRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InboxItem"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/sessions/{session_id}/bundles/{bundle_id}/replace": {
+      "post": {
+        "tags": [
+          "track-d"
+        ],
+        "summary": "Replace Members",
+        "operationId": "replace_members_api_v1_sessions__session_id__bundles__bundle_id__replace_post",
+        "parameters": [
+          {
+            "name": "session_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Session Id"
+            }
+          },
+          {
+            "name": "bundle_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Bundle Id"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "default": "",
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "x-user-id",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "default": "",
+              "title": "X-User-Id"
+            }
+          },
+          {
+            "name": "x-company-id",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "default": "",
+              "title": "X-Company-Id"
+            }
+          },
+          {
+            "name": "x-member-role",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "default": "",
+              "title": "X-Member-Role"
+            }
+          },
+          {
+            "name": "x-demo-actor",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "default": "false",
+              "title": "X-Demo-Actor"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Versioned"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PlatformState"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/sessions/{session_id}/negotiations": {
+      "post": {
+        "tags": [
+          "track-d"
+        ],
+        "summary": "Negotiation",
+        "operationId": "negotiation_api_v1_sessions__session_id__negotiations_post",
+        "parameters": [
+          {
+            "name": "session_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Session Id"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "default": "",
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "x-user-id",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "default": "",
+              "title": "X-User-Id"
+            }
+          },
+          {
+            "name": "x-company-id",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "default": "",
+              "title": "X-Company-Id"
+            }
+          },
+          {
+            "name": "x-member-role",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "default": "",
+              "title": "X-Member-Role"
+            }
+          },
+          {
+            "name": "x-demo-actor",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "default": "false",
+              "title": "X-Demo-Actor"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/NegotiationRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NegotiationResult"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/sessions/{session_id}/negotiations/{negotiation_id}/approve": {
+      "post": {
+        "tags": [
+          "track-d"
+        ],
+        "summary": "Approve",
+        "operationId": "approve_api_v1_sessions__session_id__negotiations__negotiation_id__approve_post",
+        "parameters": [
+          {
+            "name": "session_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Session Id"
+            }
+          },
+          {
+            "name": "negotiation_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Negotiation Id"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "default": "",
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "x-user-id",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "default": "",
+              "title": "X-User-Id"
+            }
+          },
+          {
+            "name": "x-company-id",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "default": "",
+              "title": "X-Company-Id"
+            }
+          },
+          {
+            "name": "x-member-role",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "default": "",
+              "title": "X-Member-Role"
+            }
+          },
+          {
+            "name": "x-demo-actor",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "default": "false",
+              "title": "X-Demo-Actor"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ApprovalRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PlatformState"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/sessions/{session_id}/commands": {
+      "post": {
+        "tags": [
+          "track-d"
+        ],
+        "summary": "Command",
+        "operationId": "command_api_v1_sessions__session_id__commands_post",
+        "parameters": [
+          {
+            "name": "session_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Session Id"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "default": "",
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "x-user-id",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "default": "",
+              "title": "X-User-Id"
+            }
+          },
+          {
+            "name": "x-company-id",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "default": "",
+              "title": "X-Company-Id"
+            }
+          },
+          {
+            "name": "x-member-role",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "default": "",
+              "title": "X-Member-Role"
+            }
+          },
+          {
+            "name": "x-demo-actor",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "default": "false",
+              "title": "X-Demo-Actor"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CommandRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CommandResult"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/identity": {
+      "get": {
+        "tags": [
+          "identity"
+        ],
+        "summary": "Identity",
+        "operationId": "identity_api_v1_identity_get",
+        "parameters": [
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "default": "",
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "x-user-id",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "default": "",
+              "title": "X-User-Id"
+            }
+          },
+          {
+            "name": "x-user-email",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "default": "",
+              "title": "X-User-Email"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/organizations": {
+      "post": {
+        "tags": [
+          "identity"
+        ],
+        "summary": "Organization",
+        "operationId": "organization_api_v1_organizations_post",
+        "parameters": [
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "default": "",
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "x-user-id",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "default": "",
+              "title": "X-User-Id"
+            }
+          },
+          {
+            "name": "x-user-email",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "default": "",
+              "title": "X-User-Email"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/OrganizationInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Organization"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/organizations/{cid}/members": {
+      "get": {
+        "tags": [
+          "identity"
+        ],
+        "summary": "Members",
+        "operationId": "members_api_v1_organizations__cid__members_get",
+        "parameters": [
+          {
+            "name": "cid",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Cid"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "default": "",
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "x-user-id",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "default": "",
+              "title": "X-User-Id"
+            }
+          },
+          {
+            "name": "x-user-email",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "default": "",
+              "title": "X-User-Email"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "identity"
+        ],
+        "summary": "Invite",
+        "operationId": "invite_api_v1_organizations__cid__members_post",
+        "parameters": [
+          {
+            "name": "cid",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Cid"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "default": "",
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "x-user-id",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "default": "",
+              "title": "X-User-Id"
+            }
+          },
+          {
+            "name": "x-user-email",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "default": "",
+              "title": "X-User-Email"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Invite"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/membership/accept": {
+      "post": {
+        "tags": [
+          "identity"
+        ],
+        "summary": "Accept",
+        "operationId": "accept_api_v1_membership_accept_post",
+        "parameters": [
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "default": "",
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "x-user-id",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "default": "",
+              "title": "X-User-Id"
+            }
+          },
+          {
+            "name": "x-user-email",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "default": "",
+              "title": "X-User-Email"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AcceptInvite"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/organizations/{cid}/members/{mid}": {
+      "patch": {
+        "tags": [
+          "identity"
+        ],
+        "summary": "Change Role",
+        "operationId": "change_role_api_v1_organizations__cid__members__mid__patch",
+        "parameters": [
+          {
+            "name": "cid",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Cid"
+            }
+          },
+          {
+            "name": "mid",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Mid"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "default": "",
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "x-user-id",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "default": "",
+              "title": "X-User-Id"
+            }
+          },
+          {
+            "name": "x-user-email",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "default": "",
+              "title": "X-User-Email"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RoleUpdate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "identity"
+        ],
+        "summary": "Remove Member",
+        "operationId": "remove_member_api_v1_organizations__cid__members__mid__delete",
+        "parameters": [
+          {
+            "name": "cid",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Cid"
+            }
+          },
+          {
+            "name": "mid",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Mid"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "default": "",
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "x-user-id",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "default": "",
+              "title": "X-User-Id"
+            }
+          },
+          {
+            "name": "x-user-email",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "default": "",
+              "title": "X-User-Email"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/sessions/{sid}/approval": {
+      "post": {
+        "tags": [
+          "delivery"
+        ],
+        "summary": "Approve Proposal",
+        "operationId": "approve_proposal_api_v1_sessions__sid__approval_post",
+        "parameters": [
+          {
+            "name": "sid",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Sid"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "default": "",
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "x-user-id",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "default": "",
+              "title": "X-User-Id"
+            }
+          },
+          {
+            "name": "x-company-id",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "default": "",
+              "title": "X-Company-Id"
+            }
+          },
+          {
+            "name": "x-member-role",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "default": "",
+              "title": "X-Member-Role"
+            }
+          },
+          {
+            "name": "x-demo-actor",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "default": "false",
+              "title": "X-Demo-Actor"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ProposalApproval"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PlatformState"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/sessions/{sid}/deliveries": {
+      "get": {
+        "tags": [
+          "delivery"
+        ],
+        "summary": "Deliveries",
+        "operationId": "deliveries_api_v1_sessions__sid__deliveries_get",
+        "parameters": [
+          {
+            "name": "sid",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Sid"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "default": "",
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "x-user-id",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "default": "",
+              "title": "X-User-Id"
+            }
+          },
+          {
+            "name": "x-company-id",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "default": "",
+              "title": "X-Company-Id"
+            }
+          },
+          {
+            "name": "x-member-role",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "default": "",
+              "title": "X-Member-Role"
+            }
+          },
+          {
+            "name": "x-demo-actor",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "default": "false",
+              "title": "X-Demo-Actor"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "delivery"
+        ],
+        "summary": "Send",
+        "operationId": "send_api_v1_sessions__sid__deliveries_post",
+        "parameters": [
+          {
+            "name": "sid",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Sid"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "default": "",
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "x-user-id",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "default": "",
+              "title": "X-User-Id"
+            }
+          },
+          {
+            "name": "x-company-id",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "default": "",
+              "title": "X-Company-Id"
+            }
+          },
+          {
+            "name": "x-member-role",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "default": "",
+              "title": "X-Member-Role"
+            }
+          },
+          {
+            "name": "x-demo-actor",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "default": "false",
+              "title": "X-Demo-Actor"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ApprovalRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/health": {
+      "get": {
+        "tags": [
+          "system"
+        ],
+        "summary": "Health",
+        "operationId": "health_api_v1_health_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": {
+                    "type": "string"
+                  },
+                  "type": "object",
+                  "title": "Response Health Api V1 Health Get"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "AcceptInvite": {
+        "properties": {
+          "token": {
+            "type": "string",
+            "maxLength": 200,
+            "minLength": 32,
+            "title": "Token"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "token"
+        ],
+        "title": "AcceptInvite"
+      },
+      "AdvanceRequest": {
+        "properties": {
+          "version": {
+            "type": "integer",
+            "minimum": 1.0,
+            "title": "Version"
+          },
+          "step": {
+            "type": "string",
+            "enum": [
+              "classify",
+              "feasibility",
+              "regulation",
+              "matching",
+              "cost-carbon",
+              "proposal"
+            ],
+            "title": "Step"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "version",
+          "step"
+        ],
+        "title": "AdvanceRequest"
+      },
+      "AnswerRequest": {
+        "properties": {
+          "version": {
+            "type": "integer",
+            "minimum": 1.0,
+            "title": "Version"
+          },
+          "streamId": {
+            "type": "string",
+            "title": "Streamid"
+          },
+          "monthlyKg": {
+            "type": "number",
+            "maximum": 1000000.0,
+            "exclusiveMinimum": 0.0,
+            "title": "Monthlykg"
+          },
+          "origin": {
+            "type": "string",
+            "enum": [
+              "PIR",
+              "PCR"
+            ],
+            "title": "Origin"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "version",
+          "streamId",
+          "monthlyKg",
+          "origin"
+        ],
+        "title": "AnswerRequest"
+      },
+      "Approval": {
+        "properties": {
+          "approvedBy": {
+            "type": "string",
+            "title": "Approvedby"
+          },
+          "approvedAt": {
+            "type": "string",
+            "title": "Approvedat"
+          },
+          "routeId": {
+            "type": "string",
+            "enum": [
+              "A",
+              "B",
+              "C",
+              "D"
+            ],
+            "title": "Routeid"
+          },
+          "sentTo": {
+            "items": {
+              "$ref": "#/components/schemas/SentTo"
+            },
+            "type": "array",
+            "title": "Sentto"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "approvedBy",
+          "approvedAt",
+          "routeId",
+          "sentTo"
+        ],
+        "title": "Approval"
+      },
+      "ApprovalRequest": {
+        "properties": {
+          "version": {
+            "type": "integer",
+            "minimum": 1.0,
+            "title": "Version"
+          },
+          "confirm": {
+            "type": "boolean",
+            "const": true,
+            "title": "Confirm"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "version",
+          "confirm"
+        ],
+        "title": "ApprovalRequest"
+      },
+      "Assumption": {
+        "properties": {
+          "label": {
+            "type": "string",
+            "title": "Label"
+          },
+          "value": {
+            "type": "string",
+            "title": "Value"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "label",
+          "value"
+        ],
+        "title": "Assumption"
+      },
+      "Bundle": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "streamId": {
+            "type": "string",
+            "title": "Streamid"
+          },
+          "material": {
+            "type": "string",
+            "title": "Material"
+          },
+          "origin": {
+            "type": "string",
+            "enum": [
+              "PIR",
+              "PCR"
+            ],
+            "title": "Origin"
+          },
+          "route": {
+            "type": "string",
+            "enum": [
+              "bundle",
+              "sell",
+              "pyrolysis"
+            ],
+            "title": "Route"
+          },
+          "collectorId": {
+            "type": "string",
+            "title": "Collectorid"
+          },
+          "collectorName": {
+            "type": "string",
+            "title": "Collectorname"
+          },
+          "minKg": {
+            "type": "number",
+            "title": "Minkg"
+          },
+          "truckKg": {
+            "type": "number",
+            "title": "Truckkg"
+          },
+          "members": {
+            "items": {
+              "$ref": "#/components/schemas/BundleMember"
+            },
+            "type": "array",
+            "title": "Members"
+          },
+          "candidateKg": {
+            "type": "number",
+            "title": "Candidatekg"
+          },
+          "confirmedKg": {
+            "type": "number",
+            "title": "Confirmedkg"
+          },
+          "ready": {
+            "type": "boolean",
+            "title": "Ready"
+          },
+          "trips": {
+            "items": {
+              "$ref": "#/components/schemas/Trip"
+            },
+            "type": "array",
+            "title": "Trips"
+          },
+          "excluded": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Excluded"
+          },
+          "distanceBasis": {
+            "type": "string",
+            "title": "Distancebasis",
+            "default": "직선거리 추정 · 실제 도로 경로 아님"
+          },
+          "schedule": {
+            "type": "string",
+            "title": "Schedule",
+            "default": "미확정 · 사람 승인 필요"
+          },
+          "isDemo": {
+            "type": "boolean",
+            "title": "Isdemo"
+          },
+          "form": {
+            "type": "string",
+            "enum": [
+              "film",
+              "rigid",
+              "paper",
+              "other"
+            ],
+            "title": "Form",
+            "default": "film"
+          },
+          "radiusM": {
+            "type": "integer",
+            "title": "Radiusm",
+            "default": 15000
+          },
+          "pickupsPerMonth": {
+            "type": "integer",
+            "title": "Pickupspermonth",
+            "default": 1
+          },
+          "pickupSlot": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "오전",
+                  "오후"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pickupslot"
+          },
+          "minimumBasis": {
+            "type": "string",
+            "enum": [
+              "month",
+              "pickup"
+            ],
+            "title": "Minimumbasis",
+            "default": "month"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "id",
+          "streamId",
+          "material",
+          "origin",
+          "route",
+          "collectorId",
+          "collectorName",
+          "minKg",
+          "truckKg",
+          "members",
+          "candidateKg",
+          "confirmedKg",
+          "ready",
+          "trips",
+          "excluded",
+          "isDemo"
+        ],
+        "title": "Bundle"
+      },
+      "BundleGroup": {
+        "properties": {
+          "streamId": {
+            "type": "string",
+            "title": "Streamid"
+          },
+          "mode": {
+            "type": "string",
+            "enum": [
+              "순회 수거",
+              "공동처리"
+            ],
+            "title": "Mode",
+            "description": "기본값 순회 수거: 각 회사가 같은 허가 업체와 따로 계약하고, 업체가 사업장을 차례로 돈다."
+          },
+          "item": {
+            "type": "string",
+            "enum": [
+              "폐플라스틱",
+              "금속 스크랩",
+              "폐목재",
+              "포장재"
+            ],
+            "title": "Item"
+          },
+          "minKg": {
+            "type": "number",
+            "minimum": 0.0,
+            "title": "Minkg",
+            "description": "업체가 한 번 출장할 만한 물량(품목별 가정값)"
+          },
+          "truckKg": {
+            "type": "number",
+            "exclusiveMinimum": 0.0,
+            "title": "Truckkg"
+          },
+          "fillRate": {
+            "type": "number",
+            "minimum": 0.0,
+            "title": "Fillrate",
+            "description": "묶음 합계 / 트럭 적재량. 1을 넘으면 트럭 여러 대 분량"
+          },
+          "soloFillRate": {
+            "type": "number",
+            "minimum": 0.0,
+            "title": "Solofillrate"
+          },
+          "group": {
+            "items": {
+              "$ref": "#/components/schemas/MatchingMember"
+            },
+            "type": "array",
+            "title": "Group"
+          },
+          "totalKg": {
+            "type": "number",
+            "minimum": 0.0,
+            "title": "Totalkg"
+          },
+          "collector": {
+            "$ref": "#/components/schemas/Collector"
+          },
+          "excluded": {
+            "items": {
+              "$ref": "#/components/schemas/ExcludedCompany"
+            },
+            "type": "array",
+            "title": "Excluded"
+          },
+          "schedule": {
+            "type": "string",
+            "title": "Schedule"
+          },
+          "costShare": {
+            "items": {
+              "$ref": "#/components/schemas/CostShare"
+            },
+            "type": "array",
+            "title": "Costshare"
+          },
+          "visitOrder": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Visitorder",
+            "description": "수거 업체가 출발해 도는 사업장 순서(그룹 기업 id). 가장 가까운 곳부터 돈다(backend#14에서 OR-Tools로 대체)"
+          },
+          "routeM": {
+            "anyOf": [
+              {
+                "type": "number",
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Routem",
+            "description": "수거 업체 출발 → 순회 → 복귀 거리(m). 직선거리에 도로 계수 1.3을 곱한 가정값"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "streamId",
+          "mode",
+          "item",
+          "minKg",
+          "truckKg",
+          "fillRate",
+          "soloFillRate",
+          "group",
+          "totalKg",
+          "collector",
+          "excluded",
+          "schedule",
+          "costShare"
+        ],
+        "title": "BundleGroup",
+        "description": "묶음 매각 흐름 하나에 대한 순회 수거 그룹. 공동 보관은 금지다.",
+        "examples": [
+          {
+            "collector": {
+              "companyId": "noksan-010",
+              "distanceM": 3182,
+              "name": "(주)새길자원",
+              "permits": [
+                "폐플라스틱",
+                "포장재"
+              ]
+            },
+            "costShare": [
+              {
+                "companyId": "noksan-001",
+                "name": "(주)한빛정밀",
+                "sharePct": 24.4
+              }
+            ],
+            "excluded": [
+              {
+                "companyId": "noksan-025",
+                "name": "(주)미소환경",
+                "reason": "폐플라스틱(필름) 허가 품목 없음"
+              }
+            ],
+            "fillRate": 1.23,
+            "group": [
+              {
+                "companyId": "noksan-001",
+                "distanceM": 0,
+                "isSelf": true,
+                "kg": 300,
+                "name": "(주)한빛정밀"
+              }
+            ],
+            "item": "포장재",
+            "minKg": 1000,
+            "mode": "순회 수거",
+            "schedule": "매월 둘째·넷째 주 화요일 오전, 사업장별 순회",
+            "soloFillRate": 0.3,
+            "streamId": "st_film",
+            "totalKg": 1230,
+            "truckKg": 1000
+          }
+        ]
+      },
+      "BundleMember": {
+        "properties": {
+          "companyId": {
+            "type": "string",
+            "title": "Companyid"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "kg": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Kg"
+          },
+          "location": {
+            "anyOf": [
+              {
+                "prefixItems": [
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "number"
+                  }
+                ],
+                "type": "array",
+                "maxItems": 2,
+                "minItems": 2
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Location"
+          },
+          "state": {
+            "type": "string",
+            "enum": [
+              "self",
+              "not-sent",
+              "pending",
+              "accepted",
+              "declined"
+            ],
+            "title": "State"
+          },
+          "reason": {
+            "type": "string",
+            "title": "Reason",
+            "default": ""
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "companyId",
+          "name",
+          "kg",
+          "state"
+        ],
+        "title": "BundleMember"
+      },
+      "ClassifyResult": {
+        "properties": {
+          "item": {
+            "type": "string",
+            "enum": [
+              "폐플라스틱",
+              "금속 스크랩",
+              "폐목재",
+              "포장재"
+            ],
+            "title": "Item"
+          },
+          "detail": {
+            "type": "string",
+            "title": "Detail",
+            "description": "예: \"PP 사출 스프루·러너\" "
+          },
+          "material": {
+            "type": "string",
+            "title": "Material",
+            "description": "예: \"PP\", \"PP+ABS\", \"LDPE\". 사진만으로 확정하지 않고 원자재 명세나 답변으로 확정한다."
+          },
+          "singleMaterial": {
+            "type": "boolean",
+            "title": "Singlematerial"
+          },
+          "confidence": {
+            "type": "number",
+            "maximum": 1.0,
+            "minimum": 0.0,
+            "title": "Confidence"
+          },
+          "estimatedKg": {
+            "type": "number",
+            "minimum": 0.0,
+            "title": "Estimatedkg",
+            "description": "사진 한 장 기준 추정. 월 발생량은 Stream.monthlyKg로 따로 확정한다."
+          },
+          "frames": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Frames"
+          },
+          "detections": {
+            "items": {
+              "$ref": "#/components/schemas/Detection"
+            },
+            "type": "array",
+            "title": "Detections"
+          },
+          "model": {
+            "$ref": "#/components/schemas/ModelRef"
+          },
+          "durationMs": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Durationms"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "item",
+          "detail",
+          "material",
+          "singleMaterial",
+          "confidence",
+          "estimatedKg",
+          "frames",
+          "detections",
+          "model",
+          "durationMs"
+        ],
+        "title": "ClassifyResult"
+      },
+      "Collector": {
+        "properties": {
+          "companyId": {
+            "type": "string",
+            "title": "Companyid"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "distanceM": {
+            "type": "number",
+            "minimum": 0.0,
+            "title": "Distancem"
+          },
+          "permits": {
+            "items": {
+              "type": "string",
+              "enum": [
+                "폐플라스틱",
+                "금속 스크랩",
+                "폐목재",
+                "포장재"
+              ]
+            },
+            "type": "array",
+            "title": "Permits"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "companyId",
+          "name",
+          "distanceM",
+          "permits"
+        ],
+        "title": "Collector"
+      },
+      "CollectorPolicy": {
+        "properties": {
+          "permits": {
+            "items": {
+              "type": "string",
+              "enum": [
+                "폐플라스틱",
+                "금속 스크랩",
+                "폐목재",
+                "포장재"
+              ]
+            },
+            "type": "array",
+            "title": "Permits"
+          },
+          "materials": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Materials"
+          },
+          "forms": {
+            "items": {
+              "type": "string",
+              "enum": [
+                "film",
+                "rigid",
+                "paper",
+                "other"
+              ]
+            },
+            "type": "array",
+            "title": "Forms"
+          },
+          "routes": {
+            "items": {
+              "type": "string",
+              "enum": [
+                "sell",
+                "bundle",
+                "pyrolysis"
+              ]
+            },
+            "type": "array",
+            "title": "Routes"
+          },
+          "minKg": {
+            "type": "number",
+            "maximum": 1000000.0,
+            "exclusiveMinimum": 0.0,
+            "title": "Minkg"
+          },
+          "truckKg": {
+            "type": "number",
+            "maximum": 1000000.0,
+            "exclusiveMinimum": 0.0,
+            "title": "Truckkg"
+          },
+          "days": {
+            "items": {
+              "type": "string",
+              "enum": [
+                "월",
+                "화",
+                "수",
+                "목",
+                "금"
+              ]
+            },
+            "type": "array",
+            "minItems": 1,
+            "title": "Days"
+          },
+          "maxPerKg": {
+            "type": "integer",
+            "maximum": 100000.0,
+            "minimum": 0.0,
+            "title": "Maxperkg"
+          },
+          "maxPerMonth": {
+            "type": "integer",
+            "maximum": 31.0,
+            "minimum": 1.0,
+            "title": "Maxpermonth"
+          },
+          "permitVerified": {
+            "type": "boolean",
+            "title": "Permitverified",
+            "default": false
+          },
+          "evidence": {
+            "type": "string",
+            "maxLength": 1000,
+            "minLength": 1,
+            "title": "Evidence"
+          },
+          "minimumBasis": {
+            "type": "string",
+            "enum": [
+              "month",
+              "pickup"
+            ],
+            "title": "Minimumbasis",
+            "default": "pickup"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "permits",
+          "materials",
+          "forms",
+          "minKg",
+          "truckKg",
+          "days",
+          "maxPerKg",
+          "maxPerMonth",
+          "evidence"
+        ],
+        "title": "CollectorPolicy"
+      },
+      "CommandRequest": {
+        "properties": {
+          "version": {
+            "type": "integer",
+            "minimum": 1.0,
+            "title": "Version"
+          },
+          "text": {
+            "type": "string",
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Text"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "version",
+          "text"
+        ],
+        "title": "CommandRequest"
+      },
+      "CommandResult": {
+        "properties": {
+          "message": {
+            "type": "string",
+            "title": "Message"
+          },
+          "state": {
+            "$ref": "#/components/schemas/PlatformState"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "message",
+          "state"
+        ],
+        "title": "CommandResult"
+      },
+      "CompanyProfile": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^[a-zA-Z0-9_-]{1,100}$",
+            "title": "Id"
+          },
+          "name": {
+            "type": "string",
+            "maxLength": 100,
+            "minLength": 1,
+            "title": "Name"
+          },
+          "complexId": {
+            "type": "string",
+            "pattern": "^[a-z0-9-]{1,100}$",
+            "title": "Complexid"
+          },
+          "location": {
+            "prefixItems": [
+              {
+                "type": "number",
+                "maximum": 180.0,
+                "minimum": -180.0
+              },
+              {
+                "type": "number",
+                "maximum": 90.0,
+                "minimum": -90.0
+              }
+            ],
+            "type": "array",
+            "maxItems": 2,
+            "minItems": 2,
+            "title": "Location"
+          },
+          "role": {
+            "type": "string",
+            "enum": [
+              "배출",
+              "처리업체",
+              "수요처"
+            ],
+            "title": "Role"
+          },
+          "supplies": {
+            "items": {
+              "$ref": "#/components/schemas/MaterialSupply"
+            },
+            "type": "array",
+            "title": "Supplies"
+          },
+          "collector": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/CollectorPolicy"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "visibility": {
+            "type": "string",
+            "enum": [
+              "private",
+              "complex"
+            ],
+            "title": "Visibility",
+            "default": "complex"
+          },
+          "isDemo": {
+            "type": "boolean",
+            "title": "Isdemo",
+            "default": false
+          },
+          "pickupWindow": {
+            "$ref": "#/components/schemas/PickupWindow"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "complexId",
+          "location",
+          "role"
+        ],
+        "title": "CompanyProfile"
+      },
+      "CompanyRef": {
+        "properties": {
+          "companyId": {
+            "type": "string",
+            "title": "Companyid"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "companyId",
+          "name"
+        ],
+        "title": "CompanyRef"
+      },
+      "Conclusion": {
+        "properties": {
+          "tone": {
+            "type": "string",
+            "enum": [
+              "gain",
+              "warn",
+              "loss"
+            ],
+            "title": "Tone"
+          },
+          "text": {
+            "type": "string",
+            "title": "Text"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "tone",
+          "text"
+        ],
+        "title": "Conclusion"
+      },
+      "Correction": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "at": {
+            "type": "string",
+            "title": "At"
+          },
+          "by": {
+            "type": "string",
+            "title": "By"
+          },
+          "step": {
+            "type": "string",
+            "enum": [
+              "classify",
+              "feasibility",
+              "regulation",
+              "matching",
+              "cost-carbon",
+              "proposal"
+            ],
+            "title": "Step"
+          },
+          "streamId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Streamid"
+          },
+          "field": {
+            "type": "string",
+            "title": "Field"
+          },
+          "before": {
+            "type": "string",
+            "title": "Before"
+          },
+          "after": {
+            "type": "string",
+            "title": "After"
+          },
+          "rationale": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rationale"
+          },
+          "knowledgeCardId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Knowledgecardid"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "id",
+          "at",
+          "by",
+          "step",
+          "field",
+          "before",
+          "after"
+        ],
+        "title": "Correction",
+        "description": "사람이 판정을 고친 기록. 이유는 현장 지식 카드로 승격될 수 있다."
+      },
+      "CostCarbonResult": {
+        "properties": {
+          "routes": {
+            "items": {
+              "$ref": "#/components/schemas/Route"
+            },
+            "type": "array",
+            "title": "Routes"
+          },
+          "assumptions": {
+            "items": {
+              "$ref": "#/components/schemas/Assumption"
+            },
+            "type": "array",
+            "title": "Assumptions"
+          },
+          "baseline": {
+            "type": "string",
+            "enum": [
+              "신재 대비",
+              "매립 대비"
+            ],
+            "title": "Baseline"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "routes",
+          "assumptions",
+          "baseline"
+        ],
+        "title": "CostCarbonResult"
+      },
+      "CostShare": {
+        "properties": {
+          "companyId": {
+            "type": "string",
+            "title": "Companyid"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "sharePct": {
+            "type": "number",
+            "maximum": 100.0,
+            "minimum": 0.0,
+            "title": "Sharepct"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "companyId",
+          "name",
+          "sharePct"
+        ],
+        "title": "CostShare"
+      },
+      "CreateSession": {
+        "properties": {
+          "companyId": {
+            "type": "string",
+            "title": "Companyid"
+          },
+          "title": {
+            "type": "string",
+            "maxLength": 100,
+            "minLength": 1,
+            "title": "Title",
+            "default": "폐플라스틱 흐름 진단"
+          },
+          "streams": {
+            "items": {
+              "$ref": "#/components/schemas/Stream"
+            },
+            "type": "array",
+            "maxItems": 8,
+            "minItems": 1,
+            "title": "Streams"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "companyId",
+          "streams"
+        ],
+        "title": "CreateSession"
+      },
+      "DatasetVersion": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "createdAt": {
+            "type": "string",
+            "title": "Createdat"
+          },
+          "images": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Images"
+          },
+          "newLabels": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Newlabels"
+          },
+          "fromCorrections": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Fromcorrections"
+          },
+          "fromOutcomes": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Fromoutcomes"
+          },
+          "note": {
+            "type": "string",
+            "title": "Note"
+          },
+          "labelTaskIds": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Labeltaskids",
+            "description": "이 버전에 들어간 검수 라벨"
+          },
+          "createdBy": {
+            "type": "string",
+            "title": "Createdby"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "id",
+          "createdAt",
+          "images",
+          "newLabels",
+          "fromCorrections",
+          "fromOutcomes",
+          "note",
+          "labelTaskIds",
+          "createdBy"
+        ],
+        "title": "DatasetVersion"
+      },
+      "DemoCollections": {
+        "properties": {
+          "knowledgeCards": {
+            "items": {
+              "$ref": "#/components/schemas/KnowledgeCard"
+            },
+            "type": "array",
+            "title": "Knowledgecards"
+          },
+          "labelTasks": {
+            "items": {
+              "$ref": "#/components/schemas/LabelTask"
+            },
+            "type": "array",
+            "title": "Labeltasks"
+          },
+          "modelVersions": {
+            "items": {
+              "$ref": "#/components/schemas/ModelVersion"
+            },
+            "type": "array",
+            "title": "Modelversions"
+          },
+          "trainingRuns": {
+            "items": {
+              "$ref": "#/components/schemas/TrainingRun"
+            },
+            "type": "array",
+            "title": "Trainingruns"
+          },
+          "datasetVersions": {
+            "items": {
+              "$ref": "#/components/schemas/DatasetVersion"
+            },
+            "type": "array",
+            "title": "Datasetversions"
+          },
+          "outbox": {
+            "items": {
+              "$ref": "#/components/schemas/OutboxMessage"
+            },
+            "type": "array",
+            "title": "Outbox"
+          },
+          "organizations": {
+            "items": {
+              "$ref": "#/components/schemas/Organization"
+            },
+            "type": "array",
+            "title": "Organizations"
+          },
+          "members": {
+            "items": {
+              "$ref": "#/components/schemas/Member"
+            },
+            "type": "array",
+            "title": "Members"
+          },
+          "passports": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/MaterialPassport"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Passports"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "knowledgeCards",
+          "labelTasks",
+          "modelVersions",
+          "trainingRuns",
+          "datasetVersions",
+          "outbox",
+          "organizations",
+          "members"
+        ],
+        "title": "DemoCollections",
+        "description": "세션 밖에서 쓰는 컬렉션 예시"
+      },
+      "Detection": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "label": {
+            "type": "string",
+            "title": "Label"
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "item",
+              "contaminant"
+            ],
+            "title": "Kind"
+          },
+          "confidence": {
+            "type": "number",
+            "maximum": 1.0,
+            "minimum": 0.0,
+            "title": "Confidence"
+          },
+          "box": {
+            "prefixItems": [
+              {
+                "type": "number",
+                "maximum": 1.0,
+                "minimum": 0.0
+              },
+              {
+                "type": "number",
+                "maximum": 1.0,
+                "minimum": 0.0
+              },
+              {
+                "type": "number",
+                "maximum": 1.0,
+                "minimum": 0.0
+              },
+              {
+                "type": "number",
+                "maximum": 1.0,
+                "minimum": 0.0
+              }
+            ],
+            "type": "array",
+            "maxItems": 4,
+            "minItems": 4,
+            "title": "Box"
+          },
+          "source": {
+            "type": "string",
+            "enum": [
+              "ai",
+              "human"
+            ],
+            "title": "Source"
+          },
+          "original": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/DetectionOriginal"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "사람이 고쳤으면 AI 원래 값"
+          },
+          "ratio": {
+            "anyOf": [
+              {
+                "type": "number",
+                "maximum": 1.0,
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ratio",
+            "description": "이물이면 면적 기준 추정 비율. 매입처는 무게로 등급을 매기므로 확정값이 아니다."
+          },
+          "removed": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Removed"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "id",
+          "label",
+          "kind",
+          "confidence",
+          "box",
+          "source"
+        ],
+        "title": "Detection"
+      },
+      "DetectionOriginal": {
+        "properties": {
+          "label": {
+            "type": "string",
+            "title": "Label"
+          },
+          "box": {
+            "prefixItems": [
+              {
+                "type": "number",
+                "maximum": 1.0,
+                "minimum": 0.0
+              },
+              {
+                "type": "number",
+                "maximum": 1.0,
+                "minimum": 0.0
+              },
+              {
+                "type": "number",
+                "maximum": 1.0,
+                "minimum": 0.0
+              },
+              {
+                "type": "number",
+                "maximum": 1.0,
+                "minimum": 0.0
+              }
+            ],
+            "type": "array",
+            "maxItems": 4,
+            "minItems": 4,
+            "title": "Box"
+          },
+          "ratio": {
+            "anyOf": [
+              {
+                "type": "number",
+                "maximum": 1.0,
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ratio"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "label",
+          "box"
+        ],
+        "title": "DetectionOriginal"
+      },
+      "DocumentDraft": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "plan",
+              "grant",
+              "pickup",
+              "quote",
+              "joint"
+            ],
+            "title": "Kind"
+          },
+          "title": {
+            "type": "string",
+            "title": "Title"
+          },
+          "to": {
+            "type": "string",
+            "title": "To"
+          },
+          "fields": {
+            "items": {
+              "$ref": "#/components/schemas/DocumentField"
+            },
+            "type": "array",
+            "title": "Fields"
+          },
+          "body": {
+            "type": "string",
+            "title": "Body"
+          },
+          "external": {
+            "type": "boolean",
+            "title": "External",
+            "description": "외부로 보내는 서류인가(승인 게이트 대상)"
+          },
+          "optional": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Optional"
+          },
+          "streamId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Streamid"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "id",
+          "kind",
+          "title",
+          "to",
+          "fields",
+          "body",
+          "external"
+        ],
+        "title": "DocumentDraft"
+      },
+      "DocumentField": {
+        "properties": {
+          "label": {
+            "type": "string",
+            "title": "Label"
+          },
+          "value": {
+            "type": "string",
+            "title": "Value"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "label",
+          "value"
+        ],
+        "title": "DocumentField"
+      },
+      "ExcludedCompany": {
+        "properties": {
+          "companyId": {
+            "type": "string",
+            "title": "Companyid"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "reason": {
+            "type": "string",
+            "title": "Reason"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "companyId",
+          "name",
+          "reason"
+        ],
+        "title": "ExcludedCompany"
+      },
+      "FeasibilityResult": {
+        "properties": {
+          "decisions": {
+            "items": {
+              "$ref": "#/components/schemas/StreamDecision"
+            },
+            "type": "array",
+            "title": "Decisions"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "calculated",
+              "conditional",
+              "needs_information"
+            ],
+            "title": "Status",
+            "default": "calculated"
+          },
+          "totalNow": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Totalnow",
+            "description": "공장 월 손익: 현행 전부 소각"
+          },
+          "totalAfter": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Totalafter",
+            "description": "공장 월 손익: 흐름별 최적안"
+          },
+          "difference": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Difference"
+          },
+          "carbonNowT": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Carbonnowt"
+          },
+          "carbonAfterT": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Carbonaftert"
+          },
+          "reasons": {
+            "items": {
+              "$ref": "#/components/schemas/Reason"
+            },
+            "type": "array",
+            "title": "Reasons"
+          },
+          "note": {
+            "type": "string",
+            "title": "Note"
+          },
+          "dataMode": {
+            "anyOf": [
+              {
+                "type": "string",
+                "const": "synthetic_demo"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Datamode"
+          },
+          "assumptions": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Assumptions"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "decisions",
+          "totalNow",
+          "totalAfter",
+          "carbonNowT",
+          "carbonAfterT",
+          "reasons",
+          "note"
+        ],
+        "title": "FeasibilityResult"
+      },
+      "FieldAction": {
+        "properties": {
+          "title": {
+            "type": "string",
+            "title": "Title"
+          },
+          "laborHours": {
+            "type": "number",
+            "minimum": 0.0,
+            "title": "Laborhours"
+          },
+          "laborCost": {
+            "type": "number",
+            "title": "Laborcost"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "title",
+          "laborHours",
+          "laborCost"
+        ],
+        "title": "FieldAction",
+        "description": "경로에 필요한 현장 작업. 인건비는 월 손익에서 뺀다."
+      },
+      "Guardrails": {
+        "properties": {
+          "minPerKg": {
+            "type": "integer",
+            "title": "Minperkg"
+          },
+          "days": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Days"
+          },
+          "minPerMonth": {
+            "type": "integer",
+            "minimum": 1.0,
+            "title": "Minpermonth"
+          },
+          "maxRounds": {
+            "type": "integer",
+            "minimum": 1.0,
+            "title": "Maxrounds"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "minPerKg",
+          "days",
+          "minPerMonth",
+          "maxRounds"
+        ],
+        "title": "Guardrails",
+        "description": "사람이 정한 협상 범위. 에이전트는 이 안에서만 양보한다."
+      },
+      "HTTPValidationError": {
+        "properties": {
+          "detail": {
+            "items": {
+              "$ref": "#/components/schemas/ValidationError"
+            },
+            "type": "array",
+            "title": "Detail"
+          }
+        },
+        "type": "object",
+        "title": "HTTPValidationError"
+      },
+      "InboxItem": {
+        "properties": {
+          "sessionId": {
+            "type": "string",
+            "title": "Sessionid"
+          },
+          "version": {
+            "type": "integer",
+            "title": "Version"
+          },
+          "bundle": {
+            "$ref": "#/components/schemas/Bundle"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "sessionId",
+          "version",
+          "bundle"
+        ],
+        "title": "InboxItem"
+      },
+      "Invite": {
+        "properties": {
+          "email": {
+            "type": "string",
+            "maxLength": 200,
+            "pattern": "^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$",
+            "title": "Email"
+          },
+          "role": {
+            "type": "string",
+            "enum": [
+              "관리자",
+              "승인권자",
+              "담당자"
+            ],
+            "title": "Role"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "email",
+          "role"
+        ],
+        "title": "Invite"
+      },
+      "InviteRequest": {
+        "properties": {
+          "version": {
+            "type": "integer",
+            "minimum": 1.0,
+            "title": "Version"
+          },
+          "bundleId": {
+            "type": "string",
+            "title": "Bundleid"
+          },
+          "confirm": {
+            "type": "boolean",
+            "const": true,
+            "title": "Confirm"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "version",
+          "bundleId",
+          "confirm"
+        ],
+        "title": "InviteRequest"
+      },
+      "KnowledgeCard": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "item": {
+            "type": "string",
+            "enum": [
+              "폐플라스틱",
+              "금속 스크랩",
+              "폐목재",
+              "포장재"
+            ],
+            "title": "Item"
+          },
+          "condition": {
+            "type": "string",
+            "title": "Condition"
+          },
+          "judgment": {
+            "type": "string",
+            "title": "Judgment"
+          },
+          "rationale": {
+            "type": "string",
+            "title": "Rationale"
+          },
+          "step": {
+            "type": "string",
+            "enum": [
+              "classify",
+              "feasibility",
+              "regulation",
+              "matching",
+              "cost-carbon",
+              "proposal"
+            ],
+            "title": "Step"
+          },
+          "author": {
+            "type": "string",
+            "title": "Author"
+          },
+          "orgName": {
+            "type": "string",
+            "title": "Orgname"
+          },
+          "createdAt": {
+            "type": "string",
+            "title": "Createdat"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "proposed",
+              "reviewing",
+              "adopted",
+              "rejected"
+            ],
+            "title": "Status"
+          },
+          "agrees": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Agrees"
+          },
+          "sourceSessionId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sourcesessionid"
+          },
+          "citedCount": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Citedcount"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "id",
+          "item",
+          "condition",
+          "judgment",
+          "rationale",
+          "step",
+          "author",
+          "orgName",
+          "createdAt",
+          "status",
+          "agrees",
+          "citedCount"
+        ],
+        "title": "KnowledgeCard",
+        "description": "암묵지: 현장 숙련자의 판단 기준. 조건 → 판단 → 근거"
+      },
+      "LabelTask": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "sessionId": {
+            "type": "string",
+            "title": "Sessionid"
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "box",
+              "ratio",
+              "grade",
+              "outcome",
+              "origin",
+              "route"
+            ],
+            "title": "Kind"
+          },
+          "title": {
+            "type": "string",
+            "title": "Title"
+          },
+          "before": {
+            "type": "string",
+            "title": "Before"
+          },
+          "after": {
+            "type": "string",
+            "title": "After"
+          },
+          "source": {
+            "type": "string",
+            "enum": [
+              "현장 수정",
+              "업체 실제 결과"
+            ],
+            "title": "Source"
+          },
+          "createdAt": {
+            "type": "string",
+            "title": "Createdat"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "pending",
+              "accepted",
+              "rejected"
+            ],
+            "title": "Status"
+          },
+          "reviewer": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reviewer"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "id",
+          "sessionId",
+          "kind",
+          "title",
+          "before",
+          "after",
+          "source",
+          "createdAt",
+          "status"
+        ],
+        "title": "LabelTask"
+      },
+      "LadderStep": {
+        "properties": {
+          "label": {
+            "type": "string",
+            "title": "Label"
+          },
+          "perKg": {
+            "type": "number",
+            "title": "Perkg"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "label",
+          "perKg"
+        ],
+        "title": "LadderStep"
+      },
+      "MatchRequest": {
+        "properties": {
+          "version": {
+            "type": "integer",
+            "minimum": 1.0,
+            "title": "Version"
+          },
+          "streamId": {
+            "type": "string",
+            "title": "Streamid"
+          },
+          "form": {
+            "type": "string",
+            "enum": [
+              "film",
+              "rigid",
+              "paper",
+              "other"
+            ],
+            "title": "Form"
+          },
+          "route": {
+            "type": "string",
+            "enum": [
+              "bundle",
+              "sell",
+              "pyrolysis"
+            ],
+            "title": "Route",
+            "default": "bundle"
+          },
+          "radiusM": {
+            "type": "integer",
+            "maximum": 100000.0,
+            "minimum": 100.0,
+            "title": "Radiusm",
+            "default": 15000
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "version",
+          "streamId",
+          "form"
+        ],
+        "title": "MatchRequest"
+      },
+      "MatchingMember": {
+        "properties": {
+          "companyId": {
+            "type": "string",
+            "title": "Companyid"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "kg": {
+            "anyOf": [
+              {
+                "type": "number",
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Kg",
+            "description": "다른 회사의 물량은 배출 기업 화면에서 숨긴다(분담 비율만 공개)."
+          },
+          "distanceM": {
+            "type": "number",
+            "minimum": 0.0,
+            "title": "Distancem"
+          },
+          "isSelf": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Isself"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "companyId",
+          "name",
+          "kg",
+          "distanceM"
+        ],
+        "title": "MatchingMember"
+      },
+      "MatchingResult": {
+        "properties": {
+          "complexId": {
+            "type": "string",
+            "title": "Complexid"
+          },
+          "selfLocation": {
+            "prefixItems": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "number"
+              }
+            ],
+            "type": "array",
+            "maxItems": 2,
+            "minItems": 2,
+            "title": "Selflocation"
+          },
+          "bundles": {
+            "items": {
+              "$ref": "#/components/schemas/BundleGroup"
+            },
+            "type": "array",
+            "title": "Bundles"
+          },
+          "partners": {
+            "items": {
+              "$ref": "#/components/schemas/StreamPartner"
+            },
+            "type": "array",
+            "title": "Partners"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "complexId",
+          "selfLocation",
+          "bundles",
+          "partners"
+        ],
+        "title": "MatchingResult"
+      },
+      "MaterialPassport": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "sessionId": {
+            "type": "string",
+            "title": "Sessionid"
+          },
+          "streamId": {
+            "type": "string",
+            "title": "Streamid"
+          },
+          "issuedAt": {
+            "type": "string",
+            "title": "Issuedat"
+          },
+          "issuer": {
+            "type": "string",
+            "title": "Issuer"
+          },
+          "company": {
+            "type": "string",
+            "title": "Company"
+          },
+          "complex": {
+            "type": "string",
+            "title": "Complex"
+          },
+          "stream": {
+            "type": "string",
+            "title": "Stream"
+          },
+          "material": {
+            "type": "string",
+            "title": "Material"
+          },
+          "detail": {
+            "type": "string",
+            "title": "Detail"
+          },
+          "origin": {
+            "type": "string",
+            "enum": [
+              "PIR",
+              "PCR"
+            ],
+            "title": "Origin"
+          },
+          "originBasis": {
+            "type": "string",
+            "title": "Originbasis"
+          },
+          "creditable": {
+            "type": "string",
+            "enum": [
+              "pcr",
+              "pcr-unverified",
+              "pir"
+            ],
+            "title": "Creditable",
+            "description": "재생원료 사용 실적에 넣을 수 있는가"
+          },
+          "evidence": {
+            "items": {
+              "$ref": "#/components/schemas/PassportEvidence"
+            },
+            "type": "array",
+            "title": "Evidence"
+          },
+          "weightKg": {
+            "type": "number",
+            "minimum": 0.0,
+            "title": "Weightkg"
+          },
+          "grade": {
+            "type": "string",
+            "title": "Grade"
+          },
+          "collectedBy": {
+            "type": "string",
+            "title": "Collectedby"
+          },
+          "collectedAt": {
+            "type": "string",
+            "title": "Collectedat"
+          },
+          "route": {
+            "type": "string",
+            "enum": [
+              "reuse",
+              "sell",
+              "bundle",
+              "pyrolysis",
+              "incinerate"
+            ],
+            "title": "Route"
+          },
+          "prevHash": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Prevhash"
+          },
+          "hash": {
+            "type": "string",
+            "title": "Hash"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "id",
+          "sessionId",
+          "streamId",
+          "issuedAt",
+          "issuer",
+          "company",
+          "complex",
+          "stream",
+          "material",
+          "detail",
+          "origin",
+          "originBasis",
+          "creditable",
+          "evidence",
+          "weightKg",
+          "grade",
+          "collectedBy",
+          "collectedAt",
+          "route",
+          "hash"
+        ],
+        "title": "MaterialPassport",
+        "description": "재생원료 여권. 수거분 한 묶음의 출처·재질·중량·근거를 서명된 이력으로 남긴다.\nhash는 여권 내용(키 순서 고정 JSON)과 앞 여권 hash로 만든 SHA-256이다."
+      },
+      "MaterialSupply": {
+        "properties": {
+          "item": {
+            "type": "string",
+            "enum": [
+              "폐플라스틱",
+              "금속 스크랩",
+              "폐목재",
+              "포장재"
+            ],
+            "title": "Item"
+          },
+          "material": {
+            "type": "string",
+            "maxLength": 30,
+            "minLength": 1,
+            "title": "Material"
+          },
+          "form": {
+            "type": "string",
+            "enum": [
+              "film",
+              "rigid",
+              "paper",
+              "other"
+            ],
+            "title": "Form"
+          },
+          "origin": {
+            "type": "string",
+            "enum": [
+              "PIR",
+              "PCR"
+            ],
+            "title": "Origin"
+          },
+          "monthlyKg": {
+            "type": "number",
+            "maximum": 1000000.0,
+            "exclusiveMinimum": 0.0,
+            "title": "Monthlykg"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "item",
+          "material",
+          "form",
+          "origin",
+          "monthlyKg"
+        ],
+        "title": "MaterialSupply"
+      },
+      "Media": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "image",
+              "video",
+              "pdf",
+              "sample"
+            ],
+            "title": "Kind",
+            "description": "sample이면 url은 \"sample:<variant>\" (시연용 일러스트)"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "url": {
+            "type": "string",
+            "title": "Url"
+          },
+          "size": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Size"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "id",
+          "kind",
+          "name",
+          "url"
+        ],
+        "title": "Media"
+      },
+      "Member": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "orgId": {
+            "type": "string",
+            "title": "Orgid"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "email": {
+            "type": "string",
+            "title": "Email"
+          },
+          "role": {
+            "type": "string",
+            "enum": [
+              "관리자",
+              "승인권자",
+              "담당자"
+            ],
+            "title": "Role"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "active",
+              "invited"
+            ],
+            "title": "Status"
+          },
+          "invitedAt": {
+            "type": "string",
+            "title": "Invitedat"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "id",
+          "orgId",
+          "name",
+          "email",
+          "role",
+          "status",
+          "invitedAt"
+        ],
+        "title": "Member"
+      },
+      "MessageReply": {
+        "properties": {
+          "decision": {
+            "type": "string",
+            "enum": [
+              "accepted",
+              "declined"
+            ],
+            "title": "Decision"
+          },
+          "at": {
+            "type": "string",
+            "title": "At"
+          },
+          "by": {
+            "type": "string",
+            "title": "By"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "decision",
+          "at",
+          "by"
+        ],
+        "title": "MessageReply",
+        "description": "요청서에 대한 받는 쪽의 회신. 묶음 참여 제안이면 참여 여부다."
+      },
+      "ModelMetrics": {
+        "properties": {
+          "mAP50": {
+            "type": "number",
+            "title": "Map50"
+          },
+          "contaminationMae": {
+            "type": "number",
+            "title": "Contaminationmae"
+          },
+          "verdictAgreement": {
+            "type": "number",
+            "title": "Verdictagreement"
+          },
+          "latencyMs": {
+            "type": "number",
+            "title": "Latencyms"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "mAP50",
+          "contaminationMae",
+          "verdictAgreement",
+          "latencyMs"
+        ],
+        "title": "ModelMetrics"
+      },
+      "ModelRef": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "version": {
+            "type": "string",
+            "title": "Version"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "name",
+          "version"
+        ],
+        "title": "ModelRef"
+      },
+      "ModelVersion": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "version": {
+            "type": "string",
+            "title": "Version"
+          },
+          "createdAt": {
+            "type": "string",
+            "title": "Createdat"
+          },
+          "datasetVersion": {
+            "type": "string",
+            "title": "Datasetversion"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "production",
+              "candidate",
+              "archived",
+              "training"
+            ],
+            "title": "Status"
+          },
+          "metrics": {
+            "$ref": "#/components/schemas/ModelMetrics"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "version",
+          "createdAt",
+          "datasetVersion",
+          "status",
+          "metrics"
+        ],
+        "title": "ModelVersion"
+      },
+      "Negotiation": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "streamId": {
+            "type": "string",
+            "title": "Streamid"
+          },
+          "counterparty": {
+            "$ref": "#/components/schemas/CompanyRef"
+          },
+          "guardrails": {
+            "$ref": "#/components/schemas/Guardrails"
+          },
+          "requested": {
+            "$ref": "#/components/schemas/PickupTerms"
+          },
+          "rounds": {
+            "items": {
+              "$ref": "#/components/schemas/NegotiationRound"
+            },
+            "type": "array",
+            "title": "Rounds"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "agreed",
+              "failed",
+              "approved"
+            ],
+            "title": "Status"
+          },
+          "agreed": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PickupTerms"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Note"
+          },
+          "startedAt": {
+            "type": "string",
+            "title": "Startedat"
+          },
+          "approvedBy": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Approvedby"
+          },
+          "approvedAt": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Approvedat"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "id",
+          "streamId",
+          "counterparty",
+          "guardrails",
+          "requested",
+          "rounds",
+          "status",
+          "startedAt"
+        ],
+        "title": "Negotiation",
+        "description": "에이전트 간 협상(A2A). 합의안은 승인권자가 승인해야 확정된다."
+      },
+      "NegotiationRequest": {
+        "properties": {
+          "version": {
+            "type": "integer",
+            "minimum": 1.0,
+            "title": "Version"
+          },
+          "bundleId": {
+            "type": "string",
+            "title": "Bundleid"
+          },
+          "guardrails": {
+            "$ref": "#/components/schemas/Guardrails"
+          },
+          "requested": {
+            "$ref": "#/components/schemas/PickupTerms"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "version",
+          "bundleId",
+          "guardrails",
+          "requested"
+        ],
+        "title": "NegotiationRequest"
+      },
+      "NegotiationResult": {
+        "properties": {
+          "negotiation": {
+            "$ref": "#/components/schemas/Negotiation"
+          },
+          "state": {
+            "$ref": "#/components/schemas/PlatformState"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "negotiation",
+          "state"
+        ],
+        "title": "NegotiationResult"
+      },
+      "NegotiationRound": {
+        "properties": {
+          "by": {
+            "type": "string",
+            "enum": [
+              "ours",
+              "theirs"
+            ],
+            "title": "By"
+          },
+          "at": {
+            "type": "string",
+            "title": "At"
+          },
+          "terms": {
+            "$ref": "#/components/schemas/PickupTerms"
+          },
+          "message": {
+            "type": "string",
+            "title": "Message"
+          },
+          "within": {
+            "type": "boolean",
+            "title": "Within",
+            "description": "이 제안이 우리 가드레일 안에 있는가"
+          },
+          "accept": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Accept"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "by",
+          "at",
+          "terms",
+          "message",
+          "within"
+        ],
+        "title": "NegotiationRound"
+      },
+      "Organization": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "ownerId": {
+            "type": "string",
+            "title": "Ownerid"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "bizNo": {
+            "type": "string",
+            "title": "Bizno"
+          },
+          "industry": {
+            "type": "string",
+            "title": "Industry"
+          },
+          "complexId": {
+            "type": "string",
+            "title": "Complexid"
+          },
+          "role": {
+            "type": "string",
+            "enum": [
+              "배출",
+              "처리업체",
+              "수요처"
+            ],
+            "title": "Role"
+          },
+          "contactTitle": {
+            "type": "string",
+            "title": "Contacttitle"
+          },
+          "wasteStreams": {
+            "items": {
+              "$ref": "#/components/schemas/WasteStream"
+            },
+            "type": "array",
+            "title": "Wastestreams"
+          },
+          "createdAt": {
+            "type": "string",
+            "title": "Createdat"
+          },
+          "updatedAt": {
+            "type": "string",
+            "title": "Updatedat"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "id",
+          "ownerId",
+          "name",
+          "bizNo",
+          "industry",
+          "complexId",
+          "role",
+          "contactTitle",
+          "wasteStreams",
+          "createdAt",
+          "updatedAt"
+        ],
+        "title": "Organization",
+        "description": "우리 서비스에 가입한 회사 (backend#23 기업 프로필)."
+      },
+      "OrganizationInput": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "maxLength": 100,
+            "minLength": 2,
+            "title": "Name"
+          },
+          "bizNo": {
+            "type": "string",
+            "pattern": "^\\d{10}$",
+            "title": "Bizno"
+          },
+          "industry": {
+            "type": "string",
+            "maxLength": 100,
+            "minLength": 1,
+            "title": "Industry"
+          },
+          "complexId": {
+            "type": "string",
+            "pattern": "^[a-z0-9-]{1,100}$",
+            "title": "Complexid"
+          },
+          "role": {
+            "type": "string",
+            "enum": [
+              "배출",
+              "처리업체",
+              "수요처"
+            ],
+            "title": "Role"
+          },
+          "contactTitle": {
+            "type": "string",
+            "maxLength": 100,
+            "title": "Contacttitle",
+            "default": ""
+          },
+          "wasteStreams": {
+            "items": {
+              "$ref": "#/components/schemas/WasteStream"
+            },
+            "type": "array",
+            "title": "Wastestreams"
+          },
+          "location": {
+            "anyOf": [
+              {
+                "prefixItems": [
+                  {
+                    "type": "number",
+                    "maximum": 180.0,
+                    "minimum": -180.0
+                  },
+                  {
+                    "type": "number",
+                    "maximum": 90.0,
+                    "minimum": -90.0
+                  }
+                ],
+                "type": "array",
+                "maxItems": 2,
+                "minItems": 2
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Location"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "name",
+          "bizNo",
+          "industry",
+          "complexId",
+          "role",
+          "wasteStreams"
+        ],
+        "title": "OrganizationInput"
+      },
+      "OutboxMessage": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "sessionId": {
+            "type": "string",
+            "title": "Sessionid"
+          },
+          "orgId": {
+            "type": "string",
+            "title": "Orgid"
+          },
+          "fromOrg": {
+            "type": "string",
+            "title": "Fromorg"
+          },
+          "toCompanyId": {
+            "type": "string",
+            "title": "Tocompanyid"
+          },
+          "toName": {
+            "type": "string",
+            "title": "Toname"
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "quote",
+              "bundle-invite",
+              "pickup"
+            ],
+            "title": "Kind"
+          },
+          "streamId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Streamid"
+          },
+          "subject": {
+            "type": "string",
+            "title": "Subject"
+          },
+          "sentAt": {
+            "type": "string",
+            "title": "Sentat"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "sent",
+              "read",
+              "replied",
+              "completed"
+            ],
+            "title": "Status"
+          },
+          "reply": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/MessageReply"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "id",
+          "sessionId",
+          "orgId",
+          "fromOrg",
+          "toCompanyId",
+          "toName",
+          "kind",
+          "subject",
+          "sentAt",
+          "status"
+        ],
+        "title": "OutboxMessage",
+        "description": "승인 후 업체에 보낸 요청(시연은 모의 메일함)."
+      },
+      "Outcome": {
+        "properties": {
+          "recordedAt": {
+            "type": "string",
+            "title": "Recordedat"
+          },
+          "recordedBy": {
+            "type": "string",
+            "title": "Recordedby"
+          },
+          "recorderRole": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "배출",
+                  "처리업체",
+                  "수요처"
+                ]
+              },
+              {
+                "type": "string",
+                "const": "담당자"
+              }
+            ],
+            "title": "Recorderrole"
+          },
+          "streamId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Streamid"
+          },
+          "accepted": {
+            "type": "boolean",
+            "title": "Accepted"
+          },
+          "actualGrade": {
+            "type": "string",
+            "title": "Actualgrade"
+          },
+          "actualPerKg": {
+            "type": "integer",
+            "title": "Actualperkg"
+          },
+          "actualKg": {
+            "type": "number",
+            "minimum": 0.0,
+            "title": "Actualkg"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "recordedAt",
+          "recordedBy",
+          "recorderRole",
+          "accepted",
+          "actualGrade",
+          "actualPerKg",
+          "actualKg"
+        ],
+        "title": "Outcome",
+        "description": "수거 후 업체가 기록한 실제 결과. 단가 보정의 정답 신호이고, 탐지 모델 학습에는 쓰지 않는다."
+      },
+      "PassportEvidence": {
+        "properties": {
+          "label": {
+            "type": "string",
+            "title": "Label"
+          },
+          "value": {
+            "type": "string",
+            "title": "Value"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "label",
+          "value"
+        ],
+        "title": "PassportEvidence"
+      },
+      "PickupTerms": {
+        "properties": {
+          "day": {
+            "type": "string",
+            "title": "Day"
+          },
+          "slot": {
+            "type": "string",
+            "enum": [
+              "오전",
+              "오후"
+            ],
+            "title": "Slot"
+          },
+          "perKg": {
+            "type": "integer",
+            "title": "Perkg"
+          },
+          "perMonth": {
+            "type": "integer",
+            "minimum": 1.0,
+            "title": "Permonth"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "day",
+          "slot",
+          "perKg",
+          "perMonth"
+        ],
+        "title": "PickupTerms",
+        "description": "순회 수거 조건: 요일·시간대·kg당 단가(수거 업체가 배출 기업에 주는 값)·월 수거 횟수"
+      },
+      "PickupWindow": {
+        "properties": {
+          "start": {
+            "type": "integer",
+            "maximum": 1440.0,
+            "minimum": 0.0,
+            "title": "Start",
+            "default": 480
+          },
+          "end": {
+            "type": "integer",
+            "maximum": 1440.0,
+            "minimum": 0.0,
+            "title": "End",
+            "default": 1080
+          },
+          "serviceMinutes": {
+            "type": "integer",
+            "maximum": 180.0,
+            "minimum": 0.0,
+            "title": "Serviceminutes",
+            "default": 15
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "PickupWindow"
+      },
+      "PlatformState": {
+        "properties": {
+          "version": {
+            "type": "integer",
+            "title": "Version"
+          },
+          "session": {
+            "$ref": "#/components/schemas/Session"
+          },
+          "bundles": {
+            "items": {
+              "$ref": "#/components/schemas/Bundle"
+            },
+            "type": "array",
+            "title": "Bundles"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "version",
+          "session"
+        ],
+        "title": "PlatformState"
+      },
+      "ProgressResult": {
+        "properties": {
+          "state": {
+            "$ref": "#/components/schemas/PlatformState"
+          },
+          "blockedStep": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "classify",
+                  "feasibility",
+                  "regulation",
+                  "matching",
+                  "cost-carbon",
+                  "proposal"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Blockedstep"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "state"
+        ],
+        "title": "ProgressResult"
+      },
+      "ProposalApproval": {
+        "properties": {
+          "version": {
+            "type": "integer",
+            "minimum": 1.0,
+            "title": "Version"
+          },
+          "confirm": {
+            "type": "boolean",
+            "const": true,
+            "title": "Confirm"
+          },
+          "routeId": {
+            "type": "string",
+            "enum": [
+              "A",
+              "B",
+              "C",
+              "D"
+            ],
+            "title": "Routeid"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "version",
+          "confirm",
+          "routeId"
+        ],
+        "title": "ProposalApproval"
+      },
+      "ProposalResult": {
+        "properties": {
+          "recommended": {
+            "type": "string",
+            "enum": [
+              "A",
+              "B",
+              "C",
+              "D"
+            ],
+            "title": "Recommended"
+          },
+          "alternatives": {
+            "items": {
+              "type": "string",
+              "enum": [
+                "A",
+                "B",
+                "C",
+                "D"
+              ]
+            },
+            "type": "array",
+            "title": "Alternatives"
+          },
+          "summary": {
+            "type": "string",
+            "title": "Summary"
+          },
+          "documents": {
+            "items": {
+              "$ref": "#/components/schemas/DocumentDraft"
+            },
+            "type": "array",
+            "title": "Documents"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "recommended",
+          "alternatives",
+          "summary",
+          "documents"
+        ],
+        "title": "ProposalResult"
+      },
+      "Question": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "step": {
+            "type": "string",
+            "enum": [
+              "classify",
+              "feasibility",
+              "regulation",
+              "matching",
+              "cost-carbon",
+              "proposal"
+            ],
+            "title": "Step"
+          },
+          "streamId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Streamid"
+          },
+          "text": {
+            "type": "string",
+            "title": "Text"
+          },
+          "why": {
+            "type": "string",
+            "title": "Why"
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "number",
+              "choice"
+            ],
+            "title": "Kind"
+          },
+          "unit": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Unit"
+          },
+          "options": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Options"
+          },
+          "suggested": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Suggested"
+          },
+          "answer": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Answer"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "id",
+          "step",
+          "text",
+          "why",
+          "kind"
+        ],
+        "title": "Question",
+        "description": "정보가 부족할 때 담당자에게 되묻는 질문. 흐름별 질문이면 streamId가 있다.",
+        "examples": [
+          {
+            "id": "pcr-proof:st_film",
+            "kind": "choice",
+            "options": [
+              "있음",
+              "없음"
+            ],
+            "step": "regulation",
+            "streamId": "st_film",
+            "text": "원자재 포장 필름의 입고 기록(원자재 납품서·포장 사양)이 있나요?",
+            "why": "공장이 쓰고 버린 포장재를 사용 후(PCR) 재생원료로 팔려면 출처를 증명해야 합니다."
+          }
+        ]
+      },
+      "QuestionReply": {
+        "properties": {
+          "version": {
+            "type": "integer",
+            "minimum": 1.0,
+            "title": "Version"
+          },
+          "questionId": {
+            "type": "string",
+            "title": "Questionid"
+          },
+          "answer": {
+            "type": "string",
+            "maxLength": 2000,
+            "minLength": 1,
+            "title": "Answer"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "version",
+          "questionId",
+          "answer"
+        ],
+        "title": "QuestionReply"
+      },
+      "Reason": {
+        "properties": {
+          "text": {
+            "type": "string",
+            "title": "Text"
+          },
+          "source": {
+            "type": "string",
+            "title": "Source"
+          },
+          "knowledgeCardId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Knowledgecardid"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "text",
+          "source"
+        ],
+        "title": "Reason"
+      },
+      "RegulationItem": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "streamId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Streamid"
+          },
+          "label": {
+            "type": "string",
+            "title": "Label"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "ok",
+              "no",
+              "ask"
+            ],
+            "title": "Status"
+          },
+          "result": {
+            "type": "string",
+            "title": "Result"
+          },
+          "citation": {
+            "type": "string",
+            "title": "Citation",
+            "description": "「법령명」 제○조 형식의 인용"
+          },
+          "excerpt": {
+            "type": "string",
+            "title": "Excerpt"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "id",
+          "label",
+          "status",
+          "result",
+          "citation",
+          "excerpt"
+        ],
+        "title": "RegulationItem"
+      },
+      "RegulationResult": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/RegulationItem"
+            },
+            "type": "array",
+            "title": "Items"
+          },
+          "conclusion": {
+            "$ref": "#/components/schemas/Conclusion"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "items",
+          "conclusion"
+        ],
+        "title": "RegulationResult"
+      },
+      "ReplyRequest": {
+        "properties": {
+          "version": {
+            "type": "integer",
+            "minimum": 1.0,
+            "title": "Version"
+          },
+          "decision": {
+            "type": "string",
+            "enum": [
+              "accepted",
+              "declined"
+            ],
+            "title": "Decision"
+          },
+          "reason": {
+            "type": "string",
+            "maxLength": 200,
+            "title": "Reason",
+            "default": ""
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "version",
+          "decision"
+        ],
+        "title": "ReplyRequest"
+      },
+      "RoleUpdate": {
+        "properties": {
+          "role": {
+            "type": "string",
+            "enum": [
+              "관리자",
+              "승인권자",
+              "담당자"
+            ],
+            "title": "Role"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "role"
+        ],
+        "title": "RoleUpdate"
+      },
+      "Route": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "enum": [
+              "A",
+              "B",
+              "C",
+              "D"
+            ],
+            "title": "Id"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "description": {
+            "type": "string",
+            "title": "Description"
+          },
+          "monthlyKrw": {
+            "type": "integer",
+            "title": "Monthlykrw"
+          },
+          "carbonT": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Carbont"
+          },
+          "kauKrw": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Kaukrw",
+            "description": "줄인 탄소를 배출권 가격으로 바꾼 참고값"
+          },
+          "condition": {
+            "type": "string",
+            "title": "Condition"
+          },
+          "recommended": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Recommended"
+          },
+          "breakdown": {
+            "items": {
+              "$ref": "#/components/schemas/ScenarioLine"
+            },
+            "type": "array",
+            "title": "Breakdown"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "description",
+          "monthlyKrw",
+          "carbonT",
+          "kauKrw",
+          "condition",
+          "breakdown"
+        ],
+        "title": "Route",
+        "description": "공장 시나리오 A·B·C·D. 프런트 타입 이름(Route)을 그대로 쓴다.",
+        "examples": [
+          {
+            "breakdown": [
+              {
+                "carbonT": -0.96,
+                "monthlyKrw": 510000,
+                "route": "reuse",
+                "streamId": "st_sprue"
+              }
+            ],
+            "carbonT": -2.06,
+            "condition": "분리 보관 구역, 분쇄기 사용, 단지 3개사 순회 수거 동의",
+            "description": "스프루·러너 공정 재투입 · 불량 성형품 매각 · 퍼지·색 혼합 열분해 · 원자재 포장 필름 단지 묶음 매각",
+            "id": "A",
+            "kauKrw": 18540,
+            "monthlyKrw": 595000,
+            "name": "흐름별 최적안",
+            "recommended": true
+          }
+        ]
+      },
+      "RouteAlternative": {
+        "properties": {
+          "route": {
+            "type": "string",
+            "enum": [
+              "reuse",
+              "sell",
+              "bundle",
+              "pyrolysis",
+              "incinerate"
+            ],
+            "title": "Route"
+          },
+          "perKg": {
+            "type": "number",
+            "title": "Perkg"
+          },
+          "note": {
+            "type": "string",
+            "title": "Note"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "route",
+          "perKg",
+          "note"
+        ],
+        "title": "RouteAlternative"
+      },
+      "RunEvent": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "at": {
+            "type": "string",
+            "title": "At"
+          },
+          "agent": {
+            "type": "string",
+            "enum": [
+              "orchestrator",
+              "classify",
+              "feasibility",
+              "regulation",
+              "matching",
+              "cost-carbon",
+              "proposal",
+              "negotiation",
+              "passport",
+              "walkthrough"
+            ],
+            "title": "Agent"
+          },
+          "actor": {
+            "type": "string",
+            "enum": [
+              "ai",
+              "human"
+            ],
+            "title": "Actor",
+            "description": "사람이 한 일(확정·수정·승인·명령·회신)은 human"
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "start",
+              "tool",
+              "result",
+              "ask",
+              "decision",
+              "command"
+            ],
+            "title": "Kind"
+          },
+          "title": {
+            "type": "string",
+            "title": "Title"
+          },
+          "detail": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Detail"
+          },
+          "tool": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tool"
+          },
+          "refs": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Refs",
+            "description": "근거(인용 조항, 데이터 출처, 현장 지식 카드)"
+          },
+          "durationMs": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Durationms"
+          },
+          "step": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "classify",
+                  "feasibility",
+                  "regulation",
+                  "matching",
+                  "cost-carbon",
+                  "proposal"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Step"
+          },
+          "streamId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Streamid"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "id",
+          "at",
+          "agent",
+          "actor",
+          "kind",
+          "title"
+        ],
+        "title": "RunEvent",
+        "description": "에이전트 실행 기록 한 줄. Agent Framework 실행 추적(OpenTelemetry)에서 만든다."
+      },
+      "ScenarioLine": {
+        "properties": {
+          "streamId": {
+            "type": "string",
+            "title": "Streamid"
+          },
+          "route": {
+            "type": "string",
+            "enum": [
+              "reuse",
+              "sell",
+              "bundle",
+              "pyrolysis",
+              "incinerate"
+            ],
+            "title": "Route"
+          },
+          "monthlyKrw": {
+            "type": "integer",
+            "title": "Monthlykrw"
+          },
+          "carbonT": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Carbont"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "streamId",
+          "route",
+          "monthlyKrw",
+          "carbonT"
+        ],
+        "title": "ScenarioLine",
+        "description": "시나리오 안의 흐름별 내역"
+      },
+      "SentTo": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "kind": {
+            "type": "string",
+            "title": "Kind"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "name",
+          "kind"
+        ],
+        "title": "SentTo"
+      },
+      "Session": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "orgId": {
+            "type": "string",
+            "title": "Orgid"
+          },
+          "ownerId": {
+            "type": "string",
+            "title": "Ownerid"
+          },
+          "complexId": {
+            "type": "string",
+            "title": "Complexid"
+          },
+          "title": {
+            "type": "string",
+            "title": "Title"
+          },
+          "createdAt": {
+            "type": "string",
+            "title": "Createdat"
+          },
+          "updatedAt": {
+            "type": "string",
+            "title": "Updatedat"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "analyzing",
+              "in-progress",
+              "awaiting-approval",
+              "approved",
+              "sent",
+              "completed"
+            ],
+            "title": "Status"
+          },
+          "step": {
+            "type": "string",
+            "enum": [
+              "classify",
+              "feasibility",
+              "regulation",
+              "matching",
+              "cost-carbon",
+              "proposal"
+            ],
+            "title": "Step",
+            "description": "사용자가 마지막으로 연 단계"
+          },
+          "streams": {
+            "items": {
+              "$ref": "#/components/schemas/Stream"
+            },
+            "type": "array",
+            "title": "Streams"
+          },
+          "questions": {
+            "items": {
+              "$ref": "#/components/schemas/Question"
+            },
+            "type": "array",
+            "title": "Questions"
+          },
+          "feasibility": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/FeasibilityResult"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "regulation": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/RegulationResult"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "matching": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/MatchingResult"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "costCarbon": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/CostCarbonResult"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "proposal": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ProposalResult"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "selectedRoute": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "A",
+                  "B",
+                  "C",
+                  "D"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Selectedroute"
+          },
+          "approval": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Approval"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "outcome": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Outcome"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "가장 최근에 기록한 실제 결과(하위 호환). 흐름별 결과는 outcomes"
+          },
+          "outcomes": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/Outcome"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Outcomes",
+            "description": "흐름별 실제 결과. 같은 흐름은 최신 기록 하나만 남긴다."
+          },
+          "corrections": {
+            "items": {
+              "$ref": "#/components/schemas/Correction"
+            },
+            "type": "array",
+            "title": "Corrections"
+          },
+          "runLog": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/RunEvent"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Runlog",
+            "description": "에이전트 실행 기록(오래된 것부터)"
+          },
+          "negotiations": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/Negotiation"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Negotiations"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "id",
+          "orgId",
+          "ownerId",
+          "complexId",
+          "title",
+          "createdAt",
+          "updatedAt",
+          "status",
+          "step",
+          "streams",
+          "questions",
+          "corrections"
+        ],
+        "title": "Session"
+      },
+      "Stream": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "process": {
+            "type": "string",
+            "title": "Process"
+          },
+          "media": {
+            "items": {
+              "$ref": "#/components/schemas/Media"
+            },
+            "type": "array",
+            "title": "Media"
+          },
+          "classify": {
+            "$ref": "#/components/schemas/ClassifyResult"
+          },
+          "origin": {
+            "type": "string",
+            "enum": [
+              "PIR",
+              "PCR"
+            ],
+            "title": "Origin"
+          },
+          "originSource": {
+            "type": "string",
+            "enum": [
+              "ai",
+              "human"
+            ],
+            "title": "Originsource"
+          },
+          "monthlyKg": {
+            "type": "number",
+            "minimum": 0.0,
+            "title": "Monthlykg"
+          },
+          "monthlyKgConfirmed": {
+            "type": "boolean",
+            "title": "Monthlykgconfirmed",
+            "description": "사람이 확인하기 전에는 추정값이다."
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "process",
+          "media",
+          "classify",
+          "origin",
+          "originSource",
+          "monthlyKg",
+          "monthlyKgConfirmed"
+        ],
+        "title": "Stream",
+        "description": "공장의 폐플라스틱 흐름 하나. 진단의 기본 단위.",
+        "examples": [
+          {
+            "classify": {
+              "confidence": 0.93,
+              "detail": "PP 사출 스프루·러너",
+              "detections": [],
+              "durationMs": 1800,
+              "estimatedKg": 600,
+              "frames": 1,
+              "item": "폐플라스틱",
+              "material": "PP",
+              "model": {
+                "name": "rtdetr-waste",
+                "version": "v3.2"
+              },
+              "singleMaterial": true
+            },
+            "id": "st_sprue",
+            "media": [
+              {
+                "id": "m1",
+                "kind": "image",
+                "name": "sprue.jpg",
+                "url": "blob://..."
+              }
+            ],
+            "monthlyKg": 600,
+            "monthlyKgConfirmed": true,
+            "name": "스프루·러너",
+            "origin": "PIR",
+            "originSource": "ai",
+            "process": "사출 1·2라인"
+          }
+        ]
+      },
+      "StreamDecision": {
+        "properties": {
+          "streamId": {
+            "type": "string",
+            "title": "Streamid"
+          },
+          "route": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "reuse",
+                  "sell",
+                  "bundle",
+                  "pyrolysis",
+                  "incinerate"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Route"
+          },
+          "reason": {
+            "type": "string",
+            "title": "Reason"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "calculated",
+              "conditional",
+              "needs_information"
+            ],
+            "title": "Status",
+            "default": "calculated"
+          },
+          "reasonCode": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "missing_information",
+                  "unconfirmed_quantity",
+                  "zero_quantity",
+                  "unsupported_combination",
+                  "invalid_input"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reasoncode"
+          },
+          "currentPerKg": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Currentperkg",
+            "description": "현행(혼합 소각) kg당 손익. 처리비라 음수"
+          },
+          "afterPerKg": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Afterperkg",
+            "description": "추천 경로 kg당 손익. 재투입이면 신재 대체 가치"
+          },
+          "monthlyNow": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Monthlynow"
+          },
+          "monthlyAfter": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Monthlyafter",
+            "description": "after_per_kg × 월 발생량 − 현장 작업 인건비"
+          },
+          "monthlyDifference": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Monthlydifference"
+          },
+          "cashSaleRevenue": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cashsalerevenue"
+          },
+          "purchaseAvoidanceNet": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Purchaseavoidancenet"
+          },
+          "disposalCost": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Disposalcost"
+          },
+          "transportCost": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Transportcost"
+          },
+          "laborCost": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Laborcost"
+          },
+          "carbonNowT": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Carbonnowt"
+          },
+          "carbonAfterT": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Carbonaftert"
+          },
+          "action": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/FieldAction"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "ladder": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/LadderStep"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ladder"
+          },
+          "alternatives": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/RouteAlternative"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Alternatives"
+          },
+          "aiRoute": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "reuse",
+                  "sell",
+                  "bundle",
+                  "pyrolysis",
+                  "incinerate"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Airoute",
+            "description": "경로를 사람이 바꿨으면 AI 원래 경로"
+          },
+          "dataMode": {
+            "anyOf": [
+              {
+                "type": "string",
+                "const": "synthetic_demo"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Datamode"
+          },
+          "assumptions": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Assumptions"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "streamId",
+          "route",
+          "reason",
+          "currentPerKg",
+          "afterPerKg",
+          "monthlyNow",
+          "monthlyAfter",
+          "carbonNowT",
+          "carbonAfterT",
+          "ladder",
+          "alternatives"
+        ],
+        "title": "StreamDecision",
+        "examples": [
+          {
+            "action": {
+              "laborCost": 30000,
+              "laborHours": 2,
+              "title": "색별로 분리해 분쇄기에 넣으세요"
+            },
+            "afterPerKg": 900,
+            "alternatives": [
+              {
+                "note": "재투입보다 가치가 낮음",
+                "perKg": 300,
+                "route": "sell"
+              }
+            ],
+            "carbonAfterT": -0.96,
+            "carbonNowT": 0.47,
+            "currentPerKg": -250,
+            "ladder": [
+              {
+                "label": "현재(혼합 소각)",
+                "perKg": -250
+              },
+              {
+                "label": "분쇄 재투입",
+                "perKg": 900
+              }
+            ],
+            "monthlyAfter": 510000,
+            "monthlyNow": -150000,
+            "reason": "깨끗한 단일 PP라 분쇄해서 같은 공정에 다시 넣을 수 있습니다.",
+            "route": "reuse",
+            "streamId": "st_sprue"
+          }
+        ]
+      },
+      "StreamPartner": {
+        "properties": {
+          "streamId": {
+            "type": "string",
+            "title": "Streamid"
+          },
+          "route": {
+            "type": "string",
+            "enum": [
+              "reuse",
+              "sell",
+              "bundle",
+              "pyrolysis",
+              "incinerate"
+            ],
+            "title": "Route"
+          },
+          "companyId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Companyid"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "distanceM": {
+            "type": "number",
+            "minimum": 0.0,
+            "title": "Distancem"
+          },
+          "location": {
+            "type": "string",
+            "title": "Location",
+            "description": "단지 밖 업체면 위치 설명"
+          },
+          "note": {
+            "type": "string",
+            "title": "Note"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "streamId",
+          "route",
+          "name",
+          "distanceM",
+          "location",
+          "note"
+        ],
+        "title": "StreamPartner",
+        "description": "묶음이 아닌 흐름의 거래처(매각처·열분해 업체). 재투입·소각은 거래처가 없다."
+      },
+      "TrainingRun": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "startedAt": {
+            "type": "string",
+            "title": "Startedat"
+          },
+          "finishedAt": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Finishedat"
+          },
+          "datasetVersion": {
+            "type": "string",
+            "title": "Datasetversion"
+          },
+          "baseModel": {
+            "type": "string",
+            "title": "Basemodel"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "queued",
+              "running",
+              "succeeded",
+              "failed"
+            ],
+            "title": "Status"
+          },
+          "progress": {
+            "type": "number",
+            "maximum": 1.0,
+            "minimum": 0.0,
+            "title": "Progress"
+          },
+          "resultModelId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Resultmodelid"
+          },
+          "triggeredBy": {
+            "type": "string",
+            "title": "Triggeredby"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "id",
+          "startedAt",
+          "datasetVersion",
+          "baseModel",
+          "status",
+          "progress",
+          "triggeredBy"
+        ],
+        "title": "TrainingRun"
+      },
+      "Trip": {
+        "properties": {
+          "visits": {
+            "items": {
+              "$ref": "#/components/schemas/Visit"
+            },
+            "type": "array",
+            "title": "Visits"
+          },
+          "kg": {
+            "type": "number",
+            "title": "Kg"
+          },
+          "distanceM": {
+            "type": "integer",
+            "title": "Distancem"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "visits",
+          "kg",
+          "distanceM"
+        ],
+        "title": "Trip"
+      },
+      "ValidationError": {
+        "properties": {
+          "loc": {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                }
+              ]
+            },
+            "type": "array",
+            "title": "Location"
+          },
+          "msg": {
+            "type": "string",
+            "title": "Message"
+          },
+          "type": {
+            "type": "string",
+            "title": "Error Type"
+          },
+          "input": {
+            "title": "Input"
+          },
+          "ctx": {
+            "type": "object",
+            "title": "Context"
+          }
+        },
+        "type": "object",
+        "required": [
+          "loc",
+          "msg",
+          "type"
+        ],
+        "title": "ValidationError"
+      },
+      "Versioned": {
+        "properties": {
+          "version": {
+            "type": "integer",
+            "minimum": 1.0,
+            "title": "Version"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "version"
+        ],
+        "title": "Versioned"
+      },
+      "Visit": {
+        "properties": {
+          "companyId": {
+            "type": "string",
+            "title": "Companyid"
+          },
+          "kg": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Kg"
+          },
+          "arrivalMinute": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Arrivalminute"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "companyId",
+          "kg"
+        ],
+        "title": "Visit"
+      },
+      "WasteStream": {
+        "properties": {
+          "item": {
+            "type": "string",
+            "enum": [
+              "폐플라스틱",
+              "금속 스크랩",
+              "폐목재",
+              "포장재"
+            ],
+            "title": "Item"
+          },
+          "detail": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Detail"
+          },
+          "monthlyKg": {
+            "type": "number",
+            "minimum": 0.0,
+            "title": "Monthlykg"
+          },
+          "storage": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "실내",
+                  "야외·지붕",
+                  "야외·노출"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Storage"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "item",
+          "monthlyKg"
+        ],
+        "title": "WasteStream",
+        "description": "회사 프로필에 적는 품목별 월 배출량. 진단의 Stream과 다르다."
+      }
+    }
+  }
+}

@@ -1,3 +1,4 @@
+from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -21,6 +22,14 @@ class Settings(BaseSettings):
     azure_maps_key: str = ""
     azure_storage_connection_string: str = ""
     database_url: str = ""
+    platform_service_key: str = ""
+    platform_demo: bool = False
+    platform_stage_endpoints: dict[str, str] = {}
+    platform_stage_token: str = ""
+    platform_a2a_peers: dict[str, dict[str, str]] = {}
+    platform_adapter_timeout: float = Field(default=15, ge=1, le=60)
+    platform_road_matrix_url: str = ""
+    platform_road_matrix_token: str = ""
 
     # ① 식별 모델 (backend#8). 가중치는 git 에 없다 -> scripts/fetch_models.py 가 MODEL_BLOB_URL 에서 받는다.
     classifier_backend: str = "auto"  # auto | trained | zeroshot

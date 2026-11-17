@@ -1,0 +1,42 @@
+{
+  "checked_at": "2026-11-12T16:50:30.132490+00:00",
+  "scope": "Track D local code and integration adapters; external operational validation excluded",
+  "branch": "feat/track-d-platform",
+  "committed": false,
+  "pushed": false,
+  "merged": false,
+  "backend": {
+    "pytest_passed": 82,
+    "subtests_passed": 40,
+    "skipped": 1,
+    "skip_reason": "No TRACK_D_TEST_POSTGRES_URL",
+    "ruff": "passed",
+    "sqlite_migrations": "upgrade/downgrade tested; local DB at 0003_deliveries",
+    "openapi_drift": "none"
+  },
+  "frontend": {
+    "typescript": "passed",
+    "eslint": "passed; zero warnings after dependency cleanup",
+    "production_build": "passed",
+    "demo_playwright_passed": 5,
+    "auth_playwright_passed": 1,
+    "auth_mode": "Local Auth.js development provider with PLATFORM_DEMO=false; not Entra validation",
+    "mobile_overflow": "passed at 390px"
+  },
+  "external_adapters": {
+    "A2A_0_3": "wire contract and error/guardrails tested with httpx.MockTransport",
+    "Azure_Maps_2025_01_01": "request/response and malformed matrix tested with httpx.MockTransport",
+    "public_sources": "pagination, normalization, duplicates and XML validation tested",
+    "dispatch": "explicit approval, timeout recovery and stable idempotency key tested"
+  },
+  "not_run": [
+    "Live PostgreSQL/PostGIS",
+    "Live Entra identity provider",
+    "Live A/B/C team endpoints",
+    "Live counterpart A2A",
+    "Live Azure Maps",
+    "Live institutional data collection",
+    "Remote GitHub CI"
+  ],
+  "review_url": "http://127.0.0.1:3010/track-d"
+}
