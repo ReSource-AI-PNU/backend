@@ -41,6 +41,12 @@ ml = [
 mcp-server = [
     "mcp>=1.10,<2",
 ]
+# 실행 기록을 Application Insights로 내보낸다(app/v3/tracing.py). APPLICATIONINSIGHTS_CONNECTION_STRING이
+# 있을 때만 켜고, 없거나 이 extra가 없으면 아무 일도 하지 않는다(테스트는 이 extra 없이 돈다).
+# Docker 이미지는 EXTRAS와 상관없이 항상 넣는다(Dockerfile).
+tracing = [
+    "azure-monitor-opentelemetry>=1.6,<2",
+]
 
 [tool.ruff]
 line-length = 100
