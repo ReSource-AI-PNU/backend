@@ -41,15 +41,17 @@
 
 | ID | 값 | 출처 URL | 기준일 | 확인 일시 |
 |---|---|---|---|---|
-| `ref:가격조사:PE-압축-경남@2026-10` | 482.6 원/kg | https://www.recycling-info.or.kr/sds/marketIndex.do | 2026-10-31 | 2026-11-16T17:35:50.077Z |
-| `ref:가격조사:PP-압축-경남@2026-10` | 390.5 원/kg | https://www.recycling-info.or.kr/sds/marketIndex.do | 2026-10-31 | 2026-11-16T17:35:50.077Z |
-| `ref:가격조사:PE-플레이크-경남@2026-10` | 621.7 원/kg | https://www.recycling-info.or.kr/sds/marketIndex.do | 2026-10-31 | 2026-11-16T17:35:50.077Z |
-| `ref:가격조사:PP-플레이크-경남@2026-10` | 562.7 원/kg | https://www.recycling-info.or.kr/sds/marketIndex.do | 2026-10-31 | 2026-11-16T17:35:50.077Z |
-| `ref:가격조사:PE-펠렛-경남@2026-10` | 888.3 원/kg | https://www.recycling-info.or.kr/sds/marketIndex.do | 2026-10-31 | 2026-11-16T17:35:50.077Z |
-| `ref:가격조사:PP-펠렛-경남@2026-10` | 723.7 원/kg | https://www.recycling-info.or.kr/sds/marketIndex.do | 2026-10-31 | 2026-11-16T17:35:50.077Z |
+| `ref:가격조사:PE-압축-경남@2026-10` | 483 원/kg | https://apis.data.go.kr/B552584/reutilMrktPrcExmn/getlist | 2026-10-31 | 2026-11-17T16:43:11Z |
+| `ref:가격조사:PP-압축-경남@2026-10` | 391 원/kg | https://apis.data.go.kr/B552584/reutilMrktPrcExmn/getlist | 2026-10-31 | 2026-11-17T16:43:11Z |
+| `ref:가격조사:PE-플레이크-경남@2026-10` | 622 원/kg | https://apis.data.go.kr/B552584/reutilMrktPrcExmn/getlist | 2026-10-31 | 2026-11-17T16:43:11Z |
+| `ref:가격조사:PP-플레이크-경남@2026-10` | 563 원/kg | https://apis.data.go.kr/B552584/reutilMrktPrcExmn/getlist | 2026-10-31 | 2026-11-17T16:43:11Z |
+| `ref:가격조사:PE-펠렛-경남@2026-10` | 888 원/kg | https://apis.data.go.kr/B552584/reutilMrktPrcExmn/getlist | 2026-10-31 | 2026-11-17T16:43:11Z |
+| `ref:가격조사:PP-펠렛-경남@2026-10` | 724 원/kg | https://apis.data.go.kr/B552584/reutilMrktPrcExmn/getlist | 2026-10-31 | 2026-11-17T16:43:11Z |
 | `ref:KAU:KAU26-종가@2026-11-16` | 29750 원/tCO2e | https://ets.krx.co.kr/contents/ETS/03/03010000/ETS03010000.jsp | 2026-11-16 | 2026-11-16T17:36:06.136Z |
 
-- 가격조사 값은 자원순환정보시스템 통계DB 화면의 2026년 10월 경남 열이다. 화면에 적힌 조건은 "VAT포함(단위:원/kg)"뿐이다.
+- 가격조사 값은 공공데이터포털의 "한국환경공단_재활용가능자원 가격조사 정보 조회 서비스"(15156640)를 `scripts/v3/fetch_reference_prices.py`로 불러 받은 2026년 10월 경남 권역 값이다(2026-11-18 실행. 2026년 11월 자료는 아직 없었다). API는 원 단위로 준다. 이전에 자원순환정보시스템 통계DB 화면에서 손으로 옮긴 값(482.6, 390.5, 621.7, 562.7, 888.3, 723.7)과 반올림하면 모두 같았다. 통계 화면에 적힌 조건은 "VAT포함(단위:원/kg)"이었고, API 응답에는 부가세 표시가 없다.
+- 조사 권역은 여덟(수도권, 강원, 충북, 충남, 전북, 전남, 경북, 경남)이고 부산은 따로 없다(같은 API에 `stdgNm=부산`으로 물으면 0건이다). 부산의 공장에는 경남 권역 값을 참고로 보여 준다.
+- 다시 받기: `DATA_GO_KR_SERVICE_KEY=<인증키> python3 scripts/v3/fetch_reference_prices.py [--dry-run]`. 가격조사 행만 고쳐 쓰고 다른 행은 그대로 둔다. 달이 바뀌어 근거 ID가 바뀌면 `app/v3/judge/defaults.v1.json`의 `refs`에서 고칠 키와 ID를 출력한다.
 - KAU 값은 배출권 1톤(tCO2e)당 원이다. 단위는 `원/tCO2e`로 적고 `meta.per`에도 `tCO2e`를 남겼다.
 
 ## 확인 필요 (넣지 않은 것)
