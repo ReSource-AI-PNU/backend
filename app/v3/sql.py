@@ -58,6 +58,15 @@ class EventRow(Base):
     payload: Mapped[dict] = mapped_column(JSON)
 
 
+class ActivityRow(Base):
+    """실시간 진행 기록(live.py). 기록 하나가 트랜잭션 하나라 쓰자마자 다른 요청이 읽는다."""
+
+    __tablename__ = "v3_activity"
+    session_id: Mapped[str] = mapped_column(String(100), primary_key=True)
+    seq: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=False)
+    payload: Mapped[dict] = mapped_column(JSON)
+
+
 class UserRow(Base):
     __tablename__ = "v3_users"
     id: Mapped[str] = mapped_column(String(40), primary_key=True)
@@ -86,7 +95,12 @@ class InviteRow(Base):
     used_by: Mapped[str | None] = mapped_column(String(40), nullable=True)
 
 
-V3_TABLES = (EvidenceRow.__table__, RecordRow.__table__, EventRow.__table__)
+V3_TABLES = (
+    EvidenceRow.__table__,
+    RecordRow.__table__,
+    EventRow.__table__,
+    ActivityRow.__table__,
+)
 ACCOUNT_TABLES = (UserRow.__table__, MembershipRow.__table__, InviteRow.__table__)
 
 
@@ -216,6 +230,7 @@ ORGS, STREAMS, VENDORS, SESSIONS, THREADS = (
     "threads",
 )
 QUESTIONS, APPROVALS, DOCUMENTS, COUNTERS = "questions", "approvals", "documents", "counters"
+RUNS = "runs"  # 진단마다 실행 자리 하나(id는 진단 ID)
 
 
 class SqlStore:
@@ -244,6 +259,7 @@ class SqlStore:
         with _transaction(self._engine) as db:
             db.execute(delete(RecordRow))
             db.execute(delete(EventRow))
+            db.execute(delete(ActivityRow))
 
     def purge_orgs(self, org_ids: Iterable[str]) -> list[str]:
         """org_ids의 조직, 흐름, 업체 프로필, 그 조직이 배출 기업인 진단을 지운다. 지운 스레드 ID를 준다.
@@ -275,6 +291,7 @@ class SqlStore:
                 QUESTIONS: sessions,
                 APPROVALS: sessions,
                 DOCUMENTS: sessions,
+                RUNS: sessions,
             }
             for kind, keys in doomed.items():
                 if keys:
@@ -283,6 +300,7 @@ class SqlStore:
                     )
             if sessions:
                 db.execute(delete(EventRow).where(EventRow.session_id.in_(sessions)))
+                db.execute(delete(ActivityRow).where(ActivityRow.session_id.in_(sessions)))
         return threads
 
     @staticmethod
@@ -522,6 +540,77 @@ class SqlStore:
         query = select(EventRow).where(EventRow.session_id == session_id).order_by(EventRow.seq)
         with _transaction(self._engine) as db:
             return [copy.deepcopy(row.payload) for row in db.scalars(query).all()]
+
+    # ── 실시간 진행 기록과 실행 자리 ──────────────────────────────────
+    def add_activity(self, session_id: str, entry: dict[str, Any]) -> dict[str, Any]:
+        """seq는 세션마다 1부터 센다. 기록 하나를 곧바로 커밋한다(실행 중에도 다른 요청이 읽는다).
+
+        두 요청이 같은 seq를 쓰려 하면 기본 키 충돌이 나므로 몇 번 다시 시도한다.
+        """
+        tries = 0
+        while True:
+            try:
+                with _transaction(self._engine) as db:
+                    last = db.scalar(
+                        select(func.max(ActivityRow.seq)).where(
+                            ActivityRow.session_id == session_id
+                        )
+                    )
+                    saved = {**_plain(entry), "seq": int(last or 0) + 1}
+                    saved.setdefault("at", self.now())
+                    db.add(ActivityRow(session_id=session_id, seq=saved["seq"], payload=saved))
+                return copy.deepcopy(saved)
+            except IntegrityError:
+                tries += 1
+                if tries >= 5:
+                    raise
+
+    def list_activity(self, session_id: str, after: int = 0) -> list[dict[str, Any]]:
+        query = (
+            select(ActivityRow)
+            .where(ActivityRow.session_id == session_id, ActivityRow.seq > int(after))
+            .order_by(ActivityRow.seq)
+        )
+        with _transaction(self._engine) as db:
+            return [copy.deepcopy(row.payload) for row in db.scalars(query).all()]
+
+    def claim_run(
+        self, session_id: str, run: dict[str, Any], stale_before: float
+    ) -> dict[str, Any] | None:
+        """비어 있거나 heartbeat가 stale_before보다 앞선(멈춘) 자리면 run을 적고 None을 준다.
+
+        다른 실행이 살아 있으면 적지 않고 그 실행을 준다. 같은 순간에 둘이 빈 자리를 차지하려 하면
+        기본 키 충돌로 하나만 적히고, 진 쪽은 이긴 쪽의 실행을 받는다.
+        """
+        try:
+            with _transaction(self._engine) as db:
+                row = self._row(db, RUNS, session_id, lock=True)
+                if row is not None and float(row.payload.get("heartbeat") or 0) >= stale_before:
+                    return copy.deepcopy(row.payload)
+                self._write(db, RUNS, session_id, run, row)
+        except IntegrityError:
+            current = self.get_run(session_id)
+            return current if current is not None else dict(run)
+        return None
+
+    def touch_run(self, session_id: str, run_id: str, at: float) -> bool:
+        with _transaction(self._engine) as db:
+            row = self._row(db, RUNS, session_id, lock=True)
+            if row is None or row.payload.get("runId") != run_id:
+                return False
+            self._write(db, RUNS, session_id, {**row.payload, "heartbeat": float(at)}, row)
+        return True
+
+    def release_run(self, session_id: str, run_id: str) -> None:
+        with _transaction(self._engine) as db:
+            row = self._row(db, RUNS, session_id, lock=True)
+            if row is not None and row.payload.get("runId") == run_id:
+                db.delete(row)
+
+    def get_run(self, session_id: str) -> dict[str, Any] | None:
+        with _transaction(self._engine) as db:
+            row = self._row(db, RUNS, session_id)
+            return copy.deepcopy(row.payload) if row is not None else None
 
 
 # ── 계정 (V3_AUTH=bff) ──────────────────────────────────────────────
