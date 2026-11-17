@@ -322,7 +322,11 @@ async def viewer_of(request: Request, *, required: bool = True) -> str:
 
 
 def bff_key_only(request: Request) -> httpio.BffIdentity | None:
-    """bff 모드면 BFF 키만 확인하고 BFF가 밝힌 값을 준다. 다른 모드에서는 아무것도 하지 않는다(None)."""
+    """bff 모드면 BFF 키만 확인하고 BFF가 밝힌 값을 준다. 다른 모드에서는 아무것도 하지 않는다(None).
+
+    이 함수를 쓰는 경로(계정·조직·초대, CSV 양식)는 체험하기 앱으로 돌지 않는다.
+    """
+    _demo_view.set(False)
     auth = current_auth()
     return auth.bff(request.headers) if auth.mode == httpio.AUTH_BFF else None
 
