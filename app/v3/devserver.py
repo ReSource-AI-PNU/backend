@@ -224,6 +224,8 @@ def route(app: service.App, request: Request) -> Any:
         case ("POST", ["sessions"]):
             body = request.json()
             return service.create_session(app, str(body.get("emitterOrgId") or viewer), viewer)
+        case ("GET", ["sessions"]):
+            return service.list_sessions(app, viewer)
         case ("GET", ["sessions", session_id]):
             return service.get_view(app, session_id, viewer)
         case ("POST", ["sessions", session_id, "run"]):

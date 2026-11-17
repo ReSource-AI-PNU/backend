@@ -583,6 +583,33 @@ def create_session(app: App, emitter_org_id: str, viewer: str) -> dict[str, Any]
     return get_view(app, session["id"], viewer)
 
 
+def list_sessions(app: App, viewer: str) -> list[dict[str, Any]]:
+    """내가 당사자인 진단의 목록(최근 것이 앞). 다른 기기에서 들어와도 이어 볼 수 있게 한다.
+
+    배출 기업은 자기 진단, 업체는 자기에게 실제로 열린 대화가 있는 진단, 운영자는 전부를 본다.
+    목록에는 진단 ID, 상태, 배출 기업, 시각만 싣는다. 내용은 GET /sessions/{id}가 조직 경계를 지켜 돌려준다.
+    """
+    me = _org(app, viewer)
+    admin = me.get("role") == "admin"
+    out = []
+    for session in app.store.list_sessions(None if admin else viewer):
+        mine = viewer == session["emitterOrgId"]
+        if not (admin or mine or _visible_threads(app, session, viewer)):
+            continue
+        out.append(
+            {
+                "id": session["id"],
+                "emitterOrgId": session["emitterOrgId"],
+                "emitterName": app.store.get_org(session["emitterOrgId"])["name"],
+                "status": session["status"],
+                "createdAt": session.get("createdAt"),
+                "updatedAt": session.get("updatedAt") or session.get("createdAt"),
+                "as": "admin" if admin else ("emitter" if mine else "vendor"),
+            }
+        )
+    return sorted(out, key=lambda item: (item["updatedAt"] or "", item["id"]), reverse=True)
+
+
 def run_session(app: App, session_id: str, viewer: str) -> dict[str, Any]:
     _, owner = _session_for(app, session_id, viewer)
     if not owner:

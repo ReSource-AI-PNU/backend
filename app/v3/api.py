@@ -359,6 +359,12 @@ async def create_session(request: Request):
     return await call(service.create_session, str(body.get("emitterOrgId") or viewer), viewer)
 
 
+@router.get("/sessions")
+@guarded
+async def session_list(request: Request):
+    return await call(service.list_sessions, viewer_of(request))
+
+
 @router.get("/sessions/{session_id}")
 @guarded
 async def session_view(session_id: str, request: Request):
