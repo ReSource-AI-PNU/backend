@@ -120,6 +120,16 @@ def client_from_env(
     return DocumentIntelligenceClient(endpoint, api_key, transport)
 
 
+def plain_text(data: bytes) -> str | None:
+    """UTF-8 글 파일이면 그 글, 아니면 None. PDF는 글자만으로 돼 있어도 글 파일로 보지 않는다."""
+    if data.lstrip()[:5] == b"%PDF-":
+        return None
+    try:
+        return data.decode("utf-8")
+    except UnicodeDecodeError:
+        return None
+
+
 # ── layout 읽기 ───────────────────────────────────────────────
 
 
