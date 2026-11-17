@@ -66,9 +66,10 @@ def test_search_never_returns_other_orgs_evidence(registry):
         search_evidence(registry, "위탁 처리 단가", org_id="org_other")[0]["evidence"]["id"]
         == SECRET
     )
+    # 대화하지 않은 조직에는 공개 근거만 나온다("단가"는 동의어로 "가격"까지 넓혀 가격조사를 찾는다)
     assert [
         r["evidence"]["id"] for r in search_evidence(registry, "단가", org_id="org_namhae")
-    ] == []
+    ] == [SURVEY]
 
 
 def test_search_filters_kinds_and_limit(registry):

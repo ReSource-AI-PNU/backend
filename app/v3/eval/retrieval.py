@@ -9,9 +9,15 @@
 
 방식(6장):
 - S0: ③ 도구(judge/regulation.py)의 낱말 수 세기. 법령만 본다.
-- S1: 근거 검색(evidence/search.py)의 어휘 점수(낱말 + 한글 2-gram). 공개 근거 전부를 본다.
+- S1: 근거 검색(evidence/search.py)의 로컬 순위. BM25F(근거 이름·원문·출처·ID 필드 가중) + 한국어
+  낱말 나누기(조사 떼기, 글자 2-gram, 조 번호) + 분야 동의어(evidence/lexical.py). 공개 근거 전부를 본다.
+- S1v1: 2026-11-18까지의 S1(낱말 + 한글 2-gram 비율 점수). 고친 뒤와 견주는 참고 기준이다.
 - S2~S5: Azure AI Search(BM25, 벡터, 하이브리드, 하이브리드 + 시맨틱 랭커). 설정이 있고
   V3_EVAL_L2_AZURE=1일 때만 평가 전용 색인을 만들어 돈다. 없으면 미측정.
+- S6: S1과 S5의 순위를 RRF로 합친 하이브리드(제품의 search_evidence가 백엔드를 연결했을 때와 같다).
+  S5가 돌 때만 잰다.
+
+S1의 동의어 표와 무게는 개발 질의(dev)만 보고 정했다. 시험 질의(test-v1)는 고친 뒤 한 번 쟀다.
 
 지표는 BEIR(Thakur et al. 2021)의 nDCG@10과 Järvelin·Kekäläinen(2002)의 nDCG 정의를 따른다.
 등급 2 = 직접 근거, 1 = 관련, 0 = 무관. 모든 숫자에 질의 단위 부트스트랩 95% CI를 붙인다.
@@ -33,7 +39,7 @@ from typing import Any
 
 from app.v3.eval import stats
 from app.v3.eval.world import DEFAULT_TODAY, base_registry
-from app.v3.evidence import search
+from app.v3.evidence import lexical, search
 from app.v3.evidence.model import PUBLIC, Evidence
 from app.v3.evidence.registry import InMemoryRegistry
 from app.v3.evidence.seeds import load_seed_file
@@ -56,13 +62,15 @@ TYPES = {
 }
 LOCAL_SYSTEMS = {
     "S0": "③ 도구 낱말 수 세기(법령만)",
-    "S1": "근거 검색 어휘 점수(낱말 + 한글 2-gram)",
+    "S1": "근거 검색 BM25F(필드 가중 + 한국어 낱말·2-gram + 분야 동의어)",
+    "S1v1": "이전 근거 검색 어휘 점수(낱말 + 한글 2-gram, 참고)",
 }
 AZURE_SYSTEMS = {
     "S2": "AI Search BM25 전문 검색",
     "S3": "벡터(임베딩)",
     "S4": "하이브리드(BM25 + 벡터, RRF)",
     "S5": "하이브리드 + 시맨틱 랭커",
+    "S6": "S1 + S5 하이브리드(RRF)",
 }
 SYSTEMS = {**LOCAL_SYSTEMS, **AZURE_SYSTEMS}
 AZURE_OPT_IN = "V3_EVAL_L2_AZURE"
@@ -151,8 +159,8 @@ def rank_s0(laws: Sequence[Evidence], query: str, today: str = DEFAULT_TODAY) ->
     return [(eid, float(-neg)) for neg, eid in scored]
 
 
-class LexicalIndex:
-    """evidence/search.py의 score()를 문서 쪽 값만 미리 계산해 그대로 낸다(결과가 같아야 한다)."""
+class LegacyIndex:
+    """S1v1: 이전 판의 search.score()를 문서 쪽 값만 미리 계산해 그대로 낸다(결과가 같아야 한다)."""
 
     def __init__(self, items: Sequence[Evidence]) -> None:
         self.docs = []
@@ -186,9 +194,20 @@ class LexicalIndex:
 
 
 def local_rankers(items: Sequence[Evidence]) -> dict[str, Callable[[str], Ranking]]:
-    index = LexicalIndex(items)
+    index = lexical.LexicalIndex(items)  # search.rank_local과 같다(색인을 한 번만 만든다)
+    legacy = LegacyIndex(items)
     laws = [e for e in items if e.kind == "law"]
-    return {"S0": lambda q: rank_s0(laws, q), "S1": index.score_all}
+    return {"S0": lambda q: rank_s0(laws, q), "S1": index.rank, "S1v1": legacy.score_all}
+
+
+def fused_ranker(*rankers: Callable[[str], Ranking]) -> Callable[[str], Ranking]:
+    """순위들을 RRF(k=60)로 합친다(search.search_evidence의 하이브리드와 같다)."""
+
+    def rank(query: str) -> Ranking:
+        lists = [[eid for eid, _ in ranker(query)][: search.FUSION_DEPTH] for ranker in rankers]
+        return lexical.rrf(lists)
+
+    return rank
 
 
 def azure_rankers(
@@ -438,11 +457,14 @@ def run_layer(
     queries = load_queries(split)
     items = corpus(corpus_registry())
     wanted = list(systems or SYSTEMS)
-    rankers = {k: v for k, v in local_rankers(items).items() if k in wanted}
+    local = local_rankers(items)
+    rankers = {k: v for k, v in local.items() if k in wanted}
     not_measured: list[str] = []
     azure_wanted = [s for s in wanted if s in AZURE_SYSTEMS]
     if azure_wanted:
         found, reason = azure_rankers(items, env, transport=azure_transport)
+        if "S5" in found:
+            found["S6"] = fused_ranker(local["S1"], found["S5"])
         for name in azure_wanted:
             if name in found:
                 rankers[name] = found[name]

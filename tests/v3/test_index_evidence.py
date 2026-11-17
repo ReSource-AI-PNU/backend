@@ -4,7 +4,7 @@ import json
 
 import pytest
 
-from app.v3.evidence import search, search_azure
+from app.v3.evidence import lexical, search, search_azure
 from app.v3.evidence.model import Evidence
 from app.v3.evidence.registry import InMemoryRegistry
 from scripts.v3 import index_evidence
@@ -99,7 +99,7 @@ def test_backend_gives_the_order_and_registry_gives_the_content(registry):
         [hit(second, 3.0), hit(stale, 2.0), hit(second, 1.5), hit(private, 1.0), hit(gone, 0.5)]
     )
     client = search_azure.AzureSearchClient("https://search.invalid", "idx", "k", transport=fake)
-    search.use_backend(client.search)
+    search.use_backend(client.search, fuse=False)
     assert search.backend_name() == "azure"
 
     found = search.search_evidence(registry, "폐기물", org_id="org_b", limit=10)
@@ -113,6 +113,22 @@ def test_backend_gives_the_order_and_registry_gives_the_content(registry):
     assert [f["evidence"]["id"] for f in mine] == [private.id]
     assert "search.in(kind, 'doc'" in fake.calls[1][3]["filter"]
     assert len(search.search_evidence(registry, "폐기물", org_id="org_a", limit=1)) == 1
+
+
+def test_backend_and_local_rankings_are_fused_with_rrf_by_default(registry):
+    first = registry.get("law:가상법:제1조@2026-01-01")
+    second = registry.get("law:가상법:제2조@2026-01-01")
+    private = registry.get("doc:org_a:계약서:단가")
+    fake = FakeSearch([hit(second, 3.0), hit(private, 2.0)])
+    client = search_azure.AzureSearchClient("https://search.invalid", "idx", "k", transport=fake)
+    search.use_backend(client.search)
+    local = search.rank_local(registry.list(org_id="org_b"), "폐기물 위탁")
+    fused = search.search_evidence(registry, "폐기물 위탁", org_id="org_b", limit=10)
+    expected = lexical.rrf([[second.id], [eid for eid, _ in local]])
+    assert [(f["evidence"]["id"], f["score"]) for f in fused] == expected
+    assert {f["evidence"]["id"] for f in fused} == {first.id, second.id}  # 볼 수 없는 것은 없다
+    assert fake.calls[0][3]["top"] == search.FUSION_DEPTH  # 합치려고 더 깊이 받는다
+    search.use_backend(None)
 
 
 def test_backend_failure_and_empty_query_fall_back_to_local(registry):

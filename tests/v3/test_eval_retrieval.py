@@ -135,14 +135,31 @@ def test_s0_ranks_like_the_regulation_tool(items):
 
 def test_s1_ranks_like_the_evidence_search(items):
     registry = retrieval.corpus_registry()
-    index = retrieval.LexicalIndex(items)
+    rankers = retrieval.local_rankers(items)
     assert search.backend_name() == search.LOCAL
     for query in QUERIES:
         expected = [
             (hit["evidence"]["id"], hit["score"])
             for hit in search.search_evidence(registry, query, org_id=None, limit=20)
         ]
-        assert index.score_all(query)[:20] == expected
+        assert rankers["S1"](query)[:20] == expected
+
+
+def test_s1v1_keeps_the_previous_lexical_score_for_comparison(items):
+    legacy = retrieval.LegacyIndex(items)
+    by_id = {e.id: e for e in items}
+    for query in QUERIES:
+        ranked = legacy.score_all(query)[:20]
+        assert ranked and all(
+            by_id[eid] and search.score(by_id[eid], query) == s for eid, s in ranked
+        )
+
+
+def test_s6_fuses_s1_with_s5_by_reciprocal_rank():
+    s1 = lambda q: [("a", 0.9), ("b", 0.5)]
+    s5 = lambda q: [("b", 3.0), ("c", 2.0)]
+    fused = retrieval.fused_ranker(s1, s5)("x")
+    assert [eid for eid, _ in fused] == ["b", "a", "c"]
 
 
 # ── 층 결과와 기준선 ─────────────────────────────────────────────────
@@ -158,7 +175,7 @@ def test_run_layer_is_deterministic_and_reports_azure_as_not_measured():
     for m in first["metrics"]:
         assert m["ci"] is not None and m["ci"][0] <= m["value"] <= m["ci"][1]
         assert m["system"] == first["details"]["chosen"]
-    assert sum("Azure AI Search 설정 없음" in item for item in first["notMeasured"]) == 4
+    assert sum("Azure AI Search 설정 없음" in item for item in first["notMeasured"]) == 5
     assert first["metrics"][0]["target"]["isTarget"] is True
 
 
@@ -189,11 +206,15 @@ def test_azure_systems_run_through_an_eval_only_index_when_opted_in():
     assert any(body.get("queryType") != "semantic" for body in searches)  # S2: BM25
     assert any(body.get("queryType") == "semantic" for body in searches)  # S5
     assert set(result["details"]["queries"]) == {"S2", "S5"}
+    both = retrieval.run_layer(
+        "dev", resamples=20, systems=["S1", "S5", "S6"], env=env, azure_transport=transport
+    )
+    assert set(both["details"]["queries"]) == {"S1", "S5", "S6"}
 
 
 def test_s0_and_s1_ndcg_have_not_dropped_below_the_saved_baseline():
     baseline = retrieval.load_baseline()
     assert baseline is not None and baseline["chosen"] in retrieval.LOCAL_SYSTEMS
-    assert set(baseline["thresholds"]) == {"S0", "S1"}
+    assert set(baseline["thresholds"]) == {"S0", "S1", "S1v1"}
     assert retrieval.check_baseline("dev") == []
     assert retrieval.check_baseline("test") == []

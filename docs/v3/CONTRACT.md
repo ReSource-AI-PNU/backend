@@ -499,7 +499,7 @@ VendorProfile {"orgId": "org_saegil",
 | `POST /sessions/{id}/answers` | `{questionId, value | "unknown"}`. 수치 항목은 숫자나 글("2 퍼센트", "2프로 정도", "650 킬로", "0.65톤", "약 2%", "kg당 250원", "톤당 25만원")로 받아 항목의 단위로 바꾼다(톤→kg, 1년→한 달, 원/톤→원/kg). 숫자가 둘 이상("1~2%"), 범위를 뜻하는 말("이하", "넘게"), 다른 단위(% 자리에 kg), 한 달로 바꿀 수 없는 기간(주, 하루)은 `INVALID_ANSWER`이고 메시지가 고쳐 쓸 꼴을 알려 준다. "모름", "몰라요", "모르겠어요"는 `unknown`이다(`agents/amounts.py`) |
 | `POST /sessions/{id}/approvals` | `{threadId}`. 요청한 조직 쪽 승인을 기록한다. 양쪽이 승인하면 confirm 메시지와 문서를 만든다 |
 | `GET /evidence/{id}` | 근거 하나와 계산 사슬 `{evidence, chain: [evidence]}` |
-| `GET /evidence?q=&kind=` | 근거 검색 |
+| `GET /evidence?q=&kind=` | 근거 검색 `[{evidence, score}]`. 로컬 순위는 보는 조직이 열 수 있는 근거만으로 만든 BM25F 색인(근거 이름·원문·출처·ID 필드 가중, 조사 떼기·한글 2-gram·조 번호, 분야 동의어 `evidence/synonyms.ko.json`)이고 `score`는 질의마다 0~1로 맞춘 값이다. Azure AI Search를 설정하면 그 순위와 로컬 순위를 RRF(k=60)로 합치고 `score`는 RRF 점수다 |
 | `GET /intake/csv/template`, `POST /intake/csv` | 측정값 CSV 양식과 업로드 |
 | `POST /intake/media` | 사진·영상 업로드(multipart: `file`, `orgId`, `streamId`). 탐지 모델을 불러 재질 추정과 이물 비율을 model 근거로 등록한다. 아래 "사진·영상" |
 | `POST /intake/documents` | 문서 업로드와 추출 |

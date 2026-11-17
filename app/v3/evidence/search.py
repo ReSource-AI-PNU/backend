@@ -1,8 +1,12 @@
-"""근거 검색과 조회. 기본은 로컬 레지스트리에 대한 결정적 어휘 검색이다.
+"""근거 검색과 조회. 기본은 로컬 레지스트리에 대한 결정적 어휘 검색(BM25F, evidence/lexical.py)이다.
 
-use_backend로 Azure AI Search(search_azure.py)를 연결하면 순위만 거기서 받는다. 돌려주는 근거의
-내용은 언제나 레지스트리에서 다시 읽은 것이고, 조직이 볼 수 없는 근거는 걸러 낸다. 백엔드가
-실패하면 로컬 검색으로 답한다. 판단 도구는 이 검색을 쓰지 않으므로 도구의 결과는 그대로다.
+로컬 검색은 조직이 볼 수 있는 근거만으로 색인을 만든다(볼 수 없는 근거가 점수에 끼지 않는다).
+점수는 질의마다 0~1로 맞춘 값이다.
+
+use_backend로 Azure AI Search(search_azure.py)를 연결하면 백엔드의 순위와 로컬 순위를 RRF로 합친다
+(fuse=False면 백엔드 순위만 쓴다). 돌려주는 근거의 내용은 언제나 레지스트리에서 다시 읽은 것이고,
+조직이 볼 수 없는 근거는 걸러 낸다. 백엔드가 실패하면 로컬 검색으로 답한다. 판단 도구는 이 검색을
+쓰지 않으므로 도구의 결과는 그대로다.
 """
 
 from __future__ import annotations
@@ -12,6 +16,7 @@ import re
 from collections.abc import Callable, Iterable
 from typing import Any
 
+from app.v3.evidence import lexical
 from app.v3.evidence.model import PUBLIC, Evidence
 from app.v3.evidence.registry import EvidenceForbidden, EvidenceNotFound, EvidenceRegistry
 
@@ -23,10 +28,12 @@ SearchBackend = Callable[..., list[dict[str, Any]]]
 LOCAL = "local"
 _backend: SearchBackend | None = None
 _backend_name = LOCAL
+_fuse = True
+FUSION_DEPTH = 50  # RRF로 합칠 때 양쪽에서 받는 순위 수
 
 _TOKEN = re.compile(r"[0-9a-z가-힣]+")
 _HANGUL_RUN = re.compile(r"[가-힣]+")
-# 필드별 가중치. 라벨에 맞으면 원문에 맞는 것보다 높게 친다.
+# 이전 판의 어휘 점수(score)가 쓰던 필드별 가중치. 평가의 비교 기준(S1v1)으로만 남긴다.
 _FIELD_WEIGHTS = (("label", 3.0), ("id", 2.0), ("excerpt", 1.0), ("source", 1.0))
 
 
@@ -73,24 +80,46 @@ def search_evidence(
     질의가 비어 있으면 볼 수 있는 근거를 ID 순서로 limit개 돌려준다(점수 0).
     """
     kinds = None if kinds is None else list(kinds)
-    if limit > 0 and _backend is not None and query.strip():
-        ranked_elsewhere = _from_backend(registry, query, kinds, org_id, limit)
-        if ranked_elsewhere is not None:
-            return ranked_elsewhere
-    items = registry.list(kinds=kinds, org_id=org_id)
     if limit <= 0:
         return []
+    items = registry.list(kinds=kinds, org_id=org_id)
     if not query.strip():
         return [{"evidence": shown(e, org_id), "score": 0.0} for e in items[:limit]]
-    scored = [(score(e, query), e) for e in items]
-    ranked = sorted((pair for pair in scored if pair[0] > 0), key=lambda p: (-p[0], p[1].id))
-    return [{"evidence": shown(e, org_id), "score": s} for s, e in ranked[:limit]]
+    by_id = {e.id: e for e in items}
+    local = rank_local(items, query)
+    if _backend is not None:
+        depth = max(limit, FUSION_DEPTH) if _fuse else limit
+        ranked_elsewhere = _from_backend(registry, query, kinds, org_id, depth)
+        if ranked_elsewhere is not None:
+            if not _fuse:
+                return ranked_elsewhere[:limit]
+            fused = lexical.rrf(
+                [
+                    [hit["evidence"]["id"] for hit in ranked_elsewhere],
+                    [evidence_id for evidence_id, _ in local[:depth]],
+                ]
+            )
+            shown_by_id = {hit["evidence"]["id"]: hit["evidence"] for hit in ranked_elsewhere}
+            return [
+                {"evidence": shown_by_id.get(eid) or shown(by_id[eid], org_id), "score": value}
+                for eid, value in fused[:limit]
+            ]
+    return [{"evidence": shown(by_id[eid], org_id), "score": value} for eid, value in local[:limit]]
 
 
-def use_backend(backend: SearchBackend | None, name: str = "azure") -> None:
-    """검색 순위를 낼 백엔드를 정한다. None이면 로컬 검색으로 돌아간다."""
-    global _backend, _backend_name
+def rank_local(items: Iterable[Evidence], query: str) -> list[tuple[str, float]]:
+    """로컬 어휘 순위(BM25F + 한국어 낱말 나누기 + 분야 동의어). [(근거 ID, 0~1 점수)]."""
+    return lexical.LexicalIndex.cached(list(items)).rank(query)
+
+
+def use_backend(backend: SearchBackend | None, name: str = "azure", *, fuse: bool = True) -> None:
+    """검색 순위를 낼 백엔드를 정한다. None이면 로컬 검색으로 돌아간다.
+
+    fuse면 백엔드 순위와 로컬 순위를 RRF(k=60)로 합친다(하이브리드). 아니면 백엔드 순위만 쓴다.
+    """
+    global _backend, _backend_name, _fuse
     _backend, _backend_name = backend, (name if backend is not None else LOCAL)
+    _fuse = fuse
 
 
 def backend_name() -> str:
