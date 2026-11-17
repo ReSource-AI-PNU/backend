@@ -28,7 +28,7 @@ from starlette.exceptions import HTTPException
 
 from app.core.config import settings
 from app.v3 import httpio, service
-from app.v3.agents.llm import FoundryChat, OllamaChat
+from app.v3.agents.factory import build_llm_factory
 
 logger = logging.getLogger(__name__)
 
@@ -57,34 +57,40 @@ def make_llm_factory(
     deployment: str = "",
     api_key: str = "",
     ollama_base_url: str = "",
+    anthropic_api_key: str = "",
+    anthropic_api_key_file: str = "",
+    anthropic_model: str = "",
+    all_vendors: bool = False,
 ) -> Callable[[str, str, dict[str, Any] | None], Any]:
     """llm_factory(role, org_id, model) -> LLM | None. None이면 service가 규칙 정책으로 돈다.
 
-    - mode가 rule이면 항상 None.
+    모델을 고르는 규칙은 로컬 서버와 같은 함수(agents/factory.py의 build_llm_factory)가 정한다.
+    - mode는 rule | foundry | anthropic. 그 밖의 값이면 ValueError.
+    - rule이면 항상 None.
     - 업체가 ollama를 골랐으면 OLLAMA_BASE_URL이 있을 때만 OllamaChat을 준다. 주소가 없으면
       다른 모델로 바꿔 부르지 않고 None을 준다(쓰지 않은 모델을 쓴 것처럼 보이지 않게).
-    - 그 밖에는 FOUNDRY_* 세 값이 모두 있을 때 FoundryChat을 준다.
+      V3_LLM=anthropic이고 V3_LLM_ALL_VENDORS=1일 때만 그 업체도 anthropic 모델이 답한다.
+    - foundry는 FOUNDRY_* 세 값이 모두 있을 때, anthropic은 키(ANTHROPIC_API_KEY나
+      ANTHROPIC_API_KEY_FILE)가 있을 때 그 모델을 준다. 빠져 있으면 경고를 남기고 규칙 정책으로 돈다.
     """
-    if mode not in ("rule", "foundry"):
-        raise ValueError(f"V3_LLM은 rule이나 foundry여야 한다: {mode!r}")
-    foundry_ready = bool(endpoint and deployment and api_key)
-    if mode == "foundry" and not foundry_ready:
-        logger.warning("V3_LLM=foundry인데 FOUNDRY_* 설정이 비어 있어 규칙 정책으로 돈다")
+    env = {
+        "FOUNDRY_ENDPOINT": endpoint,
+        "FOUNDRY_DEPLOYMENT": deployment,
+        "FOUNDRY_API_KEY": api_key,
+        "OLLAMA_BASE_URL": ollama_base_url,
+        "ANTHROPIC_API_KEY": anthropic_api_key,
+        "ANTHROPIC_API_KEY_FILE": anthropic_api_key_file,
+        "ANTHROPIC_MODEL": anthropic_model,
+        "V3_LLM_ALL_VENDORS": "1" if all_vendors else "",
+    }
+    built = build_llm_factory(mode, env, strict=False)
+    if built is not None:
+        return built
 
-    def factory(role: str, org_id: str, model: dict[str, Any] | None = None) -> Any:
-        if mode == "rule":
-            return None
-        chosen = model or {}
-        if role == "vendor" and chosen.get("provider") == "ollama":
-            if ollama_base_url and chosen.get("name"):
-                return OllamaChat(ollama_base_url, str(chosen["name"]))
-            logger.warning("%s: Ollama 주소나 모델 이름이 없어 규칙 정책으로 돈다", org_id)
-            return None
-        if foundry_ready:
-            return FoundryChat(endpoint, deployment, api_key)
+    def rule(role: str, org_id: str, model: dict[str, Any] | None = None) -> Any:
         return None
 
-    return factory
+    return rule
 
 
 def make_vendor_gateway() -> Any:
@@ -137,6 +143,10 @@ def build_app() -> service.App:
         deployment=settings.foundry_deployment,
         api_key=settings.foundry_api_key,
         ollama_base_url=settings.ollama_base_url,
+        anthropic_api_key=settings.anthropic_api_key,
+        anthropic_api_key_file=settings.anthropic_api_key_file,
+        anthropic_model=settings.anthropic_model,
+        all_vendors=settings.v3_llm_all_vendors,
     )
     factory = maf.factory_from_env(factory, os.environ)
     store = tracing.enable(store, os.environ.get("APPLICATIONINSIGHTS_CONNECTION_STRING", ""))

@@ -1,7 +1,7 @@
 """표준 라이브러리 HTTP 서버. 계약 8장의 API를 service 함수에 그대로 잇는다(로컬 시연, 개발용).
 
     python3 -m app.v3.devserver --port 8000 [--store 경로.json] [--reset]
-                                [--llm rule|foundry|anthropic]
+                                [--llm rule|foundry|anthropic]   (없으면 환경 변수 V3_LLM)
                                 [--auth header|token --org-tokens 토큰.json]
 
 - 시작할 때 가정값, 근거 시드(법령·기준값), 시연 데이터를 올린다.
@@ -42,7 +42,13 @@ from typing import Any
 from urllib.parse import parse_qs, unquote, urlsplit
 
 from app.v3 import httpio, service
-from app.v3.agents.llm import AnthropicChat, FoundryChat, OllamaChat
+from app.v3.agents.factory import (
+    LLM_MODES,
+    MODE_LABELS,
+    LlmConfigError,
+    build_llm_factory,
+    normalize_mode,
+)
 from app.v3.evidence.registry import InMemoryRegistry, JsonFileRegistry
 from app.v3.intake import detector
 from app.v3.store import InMemoryStore, JsonFileStore
@@ -51,7 +57,6 @@ PREFIX = "/api/v3"
 ALLOWED_ORIGINS = ("http://localhost:3000", "http://127.0.0.1:3000")
 ALLOWED_HEADERS = "X-Org-Id, Authorization, Content-Type"
 ALLOWED_METHODS = "GET, POST, PUT, OPTIONS"
-FOUNDRY_ENV = ("FOUNDRY_ENDPOINT", "FOUNDRY_DEPLOYMENT", "FOUNDRY_API_KEY")
 
 
 class Request:
@@ -367,49 +372,23 @@ def make_server(
     return server
 
 
+def llm_factory_from_env(mode: str | None, env: Mapping[str, str]) -> Callable[..., Any] | None:
+    """llm_factory(role, org_id, model) 또는 None(rule). api.py와 같은 함수로 만든다.
+
+    로컬 서버는 설정이 빠져 있으면 어떤 값이 없는지만 밝히고 멈춘다(키는 출력하지 않는다).
+    """
+    try:
+        return build_llm_factory(mode, env, strict=True)
+    except LlmConfigError as error:
+        raise SystemExit(str(error)) from None
+
+
 def foundry_factory(env: Mapping[str, str]) -> Callable[..., Any]:
-    """llm_factory(role, org_id, model). 값이 빠져 있으면 어떤 값이 없는지만 밝히고 멈춘다."""
-    missing = [name for name in FOUNDRY_ENV if not env.get(name)]
-    if missing:
-        raise SystemExit(f"--llm foundry에는 환경 변수가 필요합니다: {', '.join(missing)}")
-    endpoint, deployment, key = (env[name] for name in FOUNDRY_ENV)
-    ollama = (env.get("OLLAMA_BASE_URL") or "").strip()
-
-    def factory(role: str, _org_id: str, model: dict[str, Any] | None):
-        if role == "vendor" and (model or {}).get("provider") == "ollama":
-            # 주소가 없으면 None을 돌려줘 규칙 정책으로 돌게 한다(화면에 모델 미연결로 나온다)
-            return OllamaChat(ollama, str(model["name"])) if ollama else None
-        return FoundryChat(endpoint, deployment, key)
-
-    return factory
+    return llm_factory_from_env("foundry", env)  # type: ignore[return-value]
 
 
 def anthropic_factory(env: Mapping[str, str]) -> Callable[..., Any]:
-    """llm_factory(role, org_id, model). 키가 없으면 무엇이 없는지만 밝히고 멈춘다(키는 출력하지 않는다)."""
-    key = (env.get("ANTHROPIC_API_KEY") or "").strip()
-    key_file = (env.get("ANTHROPIC_API_KEY_FILE") or "").strip()
-    if not key and key_file:
-        try:
-            key = Path(key_file).expanduser().read_text(encoding="utf-8").strip()
-        except OSError:
-            raise SystemExit("ANTHROPIC_API_KEY_FILE이 가리키는 파일을 읽을 수 없습니다.") from None
-    if not key:
-        raise SystemExit(
-            "--llm anthropic에는 ANTHROPIC_API_KEY나 ANTHROPIC_API_KEY_FILE이 필요합니다."
-        )
-    name = (env.get("ANTHROPIC_MODEL") or "claude-sonnet-5-5").strip()
-    ollama = (env.get("OLLAMA_BASE_URL") or "").strip()
-    all_vendors = (env.get("V3_LLM_ALL_VENDORS") or "").strip() == "1"
-
-    def factory(role: str, _org_id: str, model: dict[str, Any] | None):
-        if role == "vendor" and (model or {}).get("provider") == "ollama":
-            if ollama:
-                return OllamaChat(ollama, str(model["name"]))
-            if not all_vendors:
-                return None  # 규칙 정책으로 돈다(화면에 모델 미연결로 나온다)
-        return AnthropicChat(key, name)
-
-    return factory
+    return llm_factory_from_env("anthropic", env)  # type: ignore[return-value]
 
 
 def build_app(
@@ -433,13 +412,7 @@ def build_app(
     else:
         store, registry = InMemoryStore(), InMemoryRegistry()
     settings = os.environ if env is None else env
-    factory = (
-        foundry_factory(settings)
-        if llm == "foundry"
-        else anthropic_factory(settings)
-        if llm == "anthropic"
-        else None
-    )
+    factory = llm_factory_from_env(llm, settings)
     app = service.App(
         store,
         registry,
@@ -487,7 +460,12 @@ def main(argv: list[str] | None = None) -> None:
     parser.add_argument(
         "--reset", action="store_true", help="--store 파일이 있어도 시연 시작 상태로 되돌린다"
     )
-    parser.add_argument("--llm", choices=("rule", "foundry", "anthropic"), default="rule")
+    parser.add_argument(
+        "--llm",
+        choices=LLM_MODES,
+        default=None,
+        help="모델. 주지 않으면 환경 변수 V3_LLM, 그것도 없으면 rule(규칙 정책, 모델 미연결)",
+    )
     parser.add_argument("--today", default=None, help="기준일 YYYY-MM-DD(없으면 오늘)")
     parser.add_argument(
         "--demo-closed", action="store_true", help="시연 되돌리기를 관리자 조직만 부르게 한다"
@@ -506,19 +484,19 @@ def main(argv: list[str] | None = None) -> None:
     )
     args = parser.parse_args(argv)
     auth = load_auth(args.auth, args.org_tokens)
+    try:
+        llm = normalize_mode(args.llm or os.environ.get("V3_LLM"))
+    except LlmConfigError as error:
+        raise SystemExit(str(error)) from None
     app = build_app(
         store_path=args.store,
-        llm=args.llm,
+        llm=llm,
         today=args.today,
         demo_open=not args.demo_closed,
         reset=args.reset,
     )
     server = make_server(app, args.host, args.port, quiet=False, auth=auth)
-    mode = {
-        "rule": "규칙 정책(모델 미연결)",
-        "foundry": "Foundry",
-        "anthropic": "Anthropic(Claude)",
-    }[args.llm]
+    mode = MODE_LABELS[llm]
     state = "이전 진단을 이어 갑니다" if app.resumed else "시연 시작 상태"
     who = (
         "조직 식별: token(조직별 서비스 토큰)"
