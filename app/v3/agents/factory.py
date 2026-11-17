@@ -9,7 +9,10 @@
 | ANTHROPIC_API_KEY | V3_LLM=anthropic일 때의 키 |
 | ANTHROPIC_API_KEY_FILE | 키를 담은 파일 경로(ANTHROPIC_API_KEY가 비어 있을 때만 읽는다) |
 | ANTHROPIC_MODEL | 기본 claude-sonnet-5-5 |
+| FOUNDRY_REASONING_EFFORT | 추론 강도 minimal \\| low(기본) \\| medium \\| high \\| none(보내지 않음. 추론 모델이 아닌 배포) |
+| FOUNDRY_MAX_COMPLETION_TOKENS | 응답 토큰 상한(기본 4000. 추론 토큰을 포함한다) |
 | OLLAMA_BASE_URL | 업체가 ollama를 골랐을 때 그 업체의 모델 주소 |
+| OLLAMA_NUM_CTX | Ollama 문맥 길이(기본 16384. 에이전트 입력이 기본값 2048~4096보다 길다) |
 | V3_LLM_ALL_VENDORS | 1이면 ollama를 고른 업체도(주소가 없을 때) anthropic 모델이 답한다 |
 
 - 돌려주는 값은 llm_factory(role, org_id, model) -> LLM | None 이다. None이면 service가 규칙 정책으로 돈다.
@@ -28,7 +31,7 @@ from collections.abc import Callable, Mapping
 from pathlib import Path
 from typing import Any
 
-from app.v3.agents.llm import AnthropicChat, FoundryChat, OllamaChat
+from app.v3.agents.llm import REASONING_EFFORTS, AnthropicChat, FoundryChat, OllamaChat
 
 logger = logging.getLogger(__name__)
 
@@ -42,6 +45,9 @@ MODE_LABELS = {
 }
 
 LlmFactory = Callable[[str, str, dict[str, Any] | None], Any]
+DEFAULT_REASONING_EFFORT = "low"
+DEFAULT_MAX_COMPLETION_TOKENS = 4000
+DEFAULT_OLLAMA_NUM_CTX = 16384
 
 
 class LlmConfigError(ValueError):
@@ -73,6 +79,31 @@ def anthropic_key(env: Mapping[str, Any]) -> str:
     return key
 
 
+def _positive_int(env: Mapping[str, Any], name: str, default: int) -> int:
+    raw = _value(env, name)
+    if not raw:
+        return default
+    try:
+        number = int(raw)
+    except ValueError:
+        raise LlmConfigError(f"{name}은 양의 정수여야 합니다.") from None
+    if number <= 0:
+        raise LlmConfigError(f"{name}은 양의 정수여야 합니다.")
+    return number
+
+
+def reasoning_effort(env: Mapping[str, Any]) -> str | None:
+    """FOUNDRY_REASONING_EFFORT. 비우면 low, none이면 보내지 않는다(추론 모델이 아닌 배포)."""
+    raw = _value(env, "FOUNDRY_REASONING_EFFORT").lower() or DEFAULT_REASONING_EFFORT
+    if raw == "none":
+        return None
+    if raw not in REASONING_EFFORTS:
+        raise LlmConfigError(
+            f"FOUNDRY_REASONING_EFFORT는 {' | '.join((*REASONING_EFFORTS, 'none'))} 가운데 하나여야 합니다."
+        )
+    return raw
+
+
 def build_llm_factory(
     mode: str | None, env: Mapping[str, Any], *, strict: bool = False
 ) -> LlmFactory | None:
@@ -98,9 +129,25 @@ def build_llm_factory(
             )
         else:
             endpoint, deployment, key = (_value(env, name) for name in FOUNDRY_ENV)
+            try:
+                effort = reasoning_effort(env)
+                limit = _positive_int(
+                    env, "FOUNDRY_MAX_COMPLETION_TOKENS", DEFAULT_MAX_COMPLETION_TOKENS
+                )
+            except LlmConfigError as error:
+                if strict:
+                    raise
+                logger.warning("%s 기본값으로 돈다", error)
+                effort, limit = DEFAULT_REASONING_EFFORT, DEFAULT_MAX_COMPLETION_TOKENS
 
             def make_main() -> Any:
-                return FoundryChat(endpoint, deployment, key)
+                return FoundryChat(
+                    endpoint,
+                    deployment,
+                    key,
+                    reasoning_effort=effort,
+                    max_completion_tokens=limit,
+                )
 
     else:  # anthropic
         try:
@@ -124,11 +171,21 @@ def build_llm_factory(
             def make_main() -> Any:
                 return AnthropicChat(key, name)
 
+    num_ctx: int | None = None
+    if ollama:
+        try:
+            num_ctx = _positive_int(env, "OLLAMA_NUM_CTX", DEFAULT_OLLAMA_NUM_CTX)
+        except LlmConfigError as error:
+            if strict:
+                raise
+            logger.warning("%s 기본값으로 돈다", error)
+            num_ctx = DEFAULT_OLLAMA_NUM_CTX
+
     def factory(role: str, org_id: str, model: dict[str, Any] | None = None) -> Any:
         picked = model or {}
         if role == "vendor" and picked.get("provider") == "ollama":
             if ollama and picked.get("name"):
-                return OllamaChat(ollama, str(picked["name"]))
+                return OllamaChat(ollama, str(picked["name"]), num_ctx=num_ctx)
             if not all_vendors:
                 logger.warning("%s: Ollama 주소나 모델 이름이 없어 규칙 정책으로 돈다", org_id)
                 return None
