@@ -1,13 +1,20 @@
-"""평가 통계. 부트스트랩 신뢰구간, pass^k, 짝 비교, 지표 한 칸의 모양(평가 설계 4.3, 8장, 15장).
+"""평가 통계. 신뢰구간, pass^k, 짝 비교, 지표 한 칸의 모양(평가 설계 4.3, 8장, 15장).
 
-    bootstrap_ci(values, clusters=None) -> (하한, 상한) | None
+    wilson_ci(p, n) -> (하한, 상한) | None       # 비율 지표
+    bootstrap_ci(values, clusters=None) -> (하한, 상한) | None   # 비율이 아닌 지표
     pass_hat_k(counts, n, k) -> float           # τ-bench의 pass^k 추정
     paired_bootstrap(a, b) -> {"delta", "ci", "n", "verdict"}
     metric(key, label, value, ci=..., n=..., target=...) -> 리포트 한 줄
 
-- 신뢰구간은 95% 퍼센타일 부트스트랩이고 재표집은 10,000번, 시드는 고정이다(같은 입력이면 같은 구간).
-- 묶음(clusters)을 주면 묶음 단위로 재표집한다(변형 묶음, 한 시나리오의 반복 n번).
-- 표준 라이브러리만 쓴다.
+- 비율 지표(성공률, 통과율, 거부율, 표적 ASR, 재현율처럼 0~1인 값의 평균)의 95% 신뢰구간은 Wilson 점수
+  구간이다(Wilson 1927, "Probable inference, the law of succession, and statistical inference",
+  JASA 22(158)). n이 10~30이고 값이 0이나 1이면 퍼센타일 부트스트랩은 [1, 1]처럼 폭이 0인 구간을 내지만,
+  Wilson 구간은 그렇지 않다(n=10에서 10/10이면 [0.72, 1]).
+  - n은 독립 단위의 수다. 묶음(clusters)이 있으면 묶음 수를 n으로 쓰고 p̂는 전체 평균이다. 0~1 값의 분산은
+    p(1−p)를 넘지 않으므로 묶음 평균이나 0~1 사이 값(재현율 등)에 쓰면 구간이 실제보다 넓어진다(보수적).
+- 비율이 아닌 지표(nDCG, MRR, 정규화 후회, 전술 민감도, 턴 수)는 95% 퍼센타일 부트스트랩이고 재표집은
+  10,000번, 시드는 고정이다(같은 입력이면 같은 구간). 묶음을 주면 묶음 단위로 재표집한다.
+- 지표 한 칸의 ciMethod가 "wilson" | "bootstrap"이다. 표준 라이브러리만 쓴다.
 """
 
 from __future__ import annotations
@@ -22,6 +29,45 @@ RESAMPLES = 10_000
 ALPHA = 0.05
 SMALL_SAMPLE = 10  # 세부 범주 칸이 이보다 작으면 "표본 적음"(평가 설계 4.3)
 NOT_MEASURED = "미측정"
+Z_95 = 1.959963984540054  # 표준정규분포의 97.5% 분위수
+WILSON, BOOTSTRAP = "wilson", "bootstrap"
+# 0~1 값이지만 비율이 아닌 지표(부트스트랩으로 구간을 낸다). 나머지 rate_metric 지표는 비율이다
+BOOTSTRAP_KEYS = frozenset(
+    {
+        "ndcg@10",
+        "mrr",
+        "normalizedRegret",
+        "regretWithTransport",
+        "tacticSensitivity",
+        "turnsToAgreement",
+        "turnsPerThread",
+        "latencyP50",
+        "latencyP95",
+    }
+)
+
+
+def is_proportion(key: str) -> bool:
+    """신뢰구간을 Wilson으로 내는 비율 지표인가."""
+    return key not in BOOTSTRAP_KEYS
+
+
+def wilson_ci(p: float | None, n: float | None, *, z: float = Z_95) -> tuple[float, float] | None:
+    """비율 p(0~1)와 독립 단위 수 n의 Wilson 점수 구간(Wilson 1927). n이 없거나 0이면 None.
+
+    center = (p + z²/2n) / (1 + z²/n), half = z·sqrt(p(1−p)/n + z²/4n²) / (1 + z²/n).
+    """
+    if p is None or not n or n <= 0:
+        return None
+    p = min(1.0, max(0.0, float(p)))
+    n = float(n)
+    z2 = z * z
+    denominator = 1 + z2 / n
+    center = (p + z2 / (2 * n)) / denominator
+    half = z * math.sqrt(p * (1 - p) / n + z2 / (4 * n * n)) / denominator
+    low = 0.0 if p == 0.0 else max(0.0, center - half)
+    high = 1.0 if p == 1.0 else min(1.0, center + half)  # 끝값은 반올림 오차 없이 0과 1이다
+    return (low, high)
 
 
 def _mean(values: Sequence[float]) -> float:
@@ -159,14 +205,18 @@ def metric(
     runs: int | None = None,
     goal: dict[str, Any] | None = None,
     note: str | None = None,
+    ci_method: str | None = None,
 ) -> dict[str, Any]:
-    """리포트 표 한 줄(평가 설계 15장): 지표, 값, 95% CI, n(묶음 수), 목표, 판정."""
+    """리포트 표 한 줄(평가 설계 15장): 지표, 값, 95% CI(구하는 법), n(묶음 수), 목표, 판정."""
     small = n is not None and 0 < n < SMALL_SAMPLE
+    if ci is not None and ci_method is None:
+        ci_method = BOOTSTRAP
     return {
         "key": key,
         "label": label,
         "value": value,
         "ci": list(ci) if ci is not None else None,
+        "ciMethod": ci_method if ci is not None else None,
         "n": n,
         "clusters": clusters,
         "runs": runs,
@@ -187,22 +237,31 @@ def rate_metric(
     note: str | None = None,
     resamples: int = RESAMPLES,
 ) -> dict[str, Any]:
-    """0/1(또는 0~1) 값의 평균과 부트스트랩 CI. 값이 없으면 미측정."""
+    """0/1(또는 0~1) 값의 평균과 95% CI. 값이 없으면 미측정.
+
+    비율 지표는 Wilson 점수 구간(n은 묶음이 있으면 묶음 수), BOOTSTRAP_KEYS의 지표는 부트스트랩이다.
+    """
     values = [float(f) for f in flags]
     if not values:
         return metric(key, label, None, n=0, goal=goal, note=note)
-    ci = bootstrap_ci(values, clusters=clusters, resamples=resamples)
     groups = len(set(clusters)) if clusters is not None else None
+    n = groups if groups is not None else len(values)
+    value = _mean(values)
+    if is_proportion(key):
+        ci, method = wilson_ci(value, n), WILSON
+    else:
+        ci, method = bootstrap_ci(values, clusters=clusters, resamples=resamples), BOOTSTRAP
     return metric(
         key,
         label,
-        _mean(values),
+        value,
         ci=ci,
-        n=groups if groups is not None else len(values),
+        n=n,
         clusters=groups,
         runs=len(values) if groups is not None else None,
         goal=goal,
         note=note,
+        ci_method=method,
     )
 
 

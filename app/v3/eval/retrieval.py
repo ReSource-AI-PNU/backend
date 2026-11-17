@@ -439,9 +439,13 @@ def _fmt(value: float | None) -> str:
     return stats.NOT_MEASURED if value is None else f"{value:.3f}"
 
 
-def _cell(m: dict[str, Any]) -> str:
+def cell(m: dict[str, Any]) -> str:
+    """방식별 비교 표의 칸: 값 [95% CI]."""
     ci = m["ci"]
     return f"{_fmt(m['value'])} [{_fmt(ci[0])}, {_fmt(ci[1])}]" if ci else _fmt(m["value"])
+
+
+_cell = cell
 
 
 def run_layer(

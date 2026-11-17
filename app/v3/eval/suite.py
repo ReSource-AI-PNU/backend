@@ -19,11 +19,27 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
-from app.v3.eval import injection, leakage, metamorphic, negotiation, retrieval, sets, stats, trials
+from app.v3.eval import (
+    injection,
+    leakage,
+    metamorphic,
+    negotiation,
+    public,
+    retrieval,
+    sets,
+    stats,
+    trials,
+)
 
 ROOT = Path(__file__).resolve().parents[3]
 LAYERS = ("L1", "L2", "L3", "L4", "L5", "L6", "L7")
 RULE_LABEL = "규칙 정책(모델 미연결)"
+PUBLIC_RULE_LABEL = "모델을 연결하지 않은 기본 규칙"  # 신뢰 페이지(latest.json)에 쓰는 이름
+CI_NOTE = (
+    "95% 신뢰구간입니다. 비율(성공률, 통과율 등)은 Wilson 점수 구간(Wilson 1927)으로 구해, 시험 수가 "
+    "적고 결과가 모두 성공이거나 모두 실패여도 폭이 0이 되지 않습니다. 순위 점수와 횟수의 평균은 "
+    "재표집(부트스트랩)으로 구합니다."
+)
 STALE_DAYS = 30
 # 평가 설계 3장의 목표. 결과가 아니라 목표다(isTarget).
 DESIGN_TARGETS = {
@@ -249,6 +265,86 @@ def _model_names(factory: Callable[..., Any]) -> dict[str, Any]:
     return out
 
 
+# ── 저장한 결과에서 다시 만들기(모델을 다시 부르지 않는다) ─────────────────
+
+
+def _interval(m: dict[str, Any]) -> None:
+    """지표 한 칸의 신뢰구간을 지금 규칙(stats)으로 다시 낸다. 부트스트랩 구간은 그대로 둔다."""
+    if m.get("ci") is None or m.get("value") is None or not m.get("n"):
+        return
+    if stats.is_proportion(m["key"]):
+        m["ci"] = list(stats.wilson_ci(m["value"], m["n"]) or ())
+        m["ciMethod"] = stats.WILSON
+    else:
+        m["ciMethod"] = m.get("ciMethod") or stats.BOOTSTRAP
+
+
+def recompute_intervals(result: dict[str, Any]) -> dict[str, Any]:
+    """저장한 리포트(<날짜>-<split>-<llm>.json)의 비율 지표 신뢰구간을 Wilson 구간으로 다시 낸다.
+
+    값과 n은 저장된 그대로다(모델을 다시 부르지 않는다). 범주별 성공률 표와 L2의 방식별 비교 표도
+    같은 규칙으로 다시 쓴다. 고친 result를 돌려준다(제자리에서 고친다).
+    """
+    for layer in result["layers"]:
+        for m in layer["metrics"]:
+            _interval(m)
+        by_system = (layer.get("details") or {}).get("bySystem") or {}
+        for rows in by_system.values():
+            for m in rows:
+                _interval(m)
+        for table in layer["tables"]:
+            if table.get("title") == "범주별 성공률":
+                for row in table["rows"]:
+                    if row[1] and row[2] is not None:
+                        low, high = stats.wilson_ci(row[2], row[1]) or (None, None)
+                        row[3] = [round(low, 3), round(high, 3)]
+            elif layer["layer"] == "L2" and str(table.get("title")).startswith("방식별 비교"):
+                for row in table["rows"]:
+                    system = str(row[0]).split(" ", 1)[0]
+                    if system in by_system:
+                        row[1:] = [retrieval.cell(m) for m in by_system[system]]
+    return result
+
+
+def rebuild_from_raw(raw_path: Path) -> tuple[dict[str, Any], list[dict[str, Any]], Path]:
+    """<stem>.raw.jsonl과 같은 자리의 <stem>.json을 읽어 신뢰구간을 다시 낸 결과를 돌려준다.
+
+    (결과, 원 출력 행, <stem>.json 경로). 원 출력은 바꾸지 않고, 행 수가 L4 실행 수와 같은지 본다.
+    """
+    raw_path = Path(raw_path)
+    if not raw_path.name.endswith(".raw.jsonl"):
+        raise ValueError("--from-raw에는 <날짜>-<split>-<llm>.raw.jsonl을 줍니다")
+    json_path = raw_path.with_name(raw_path.name.removesuffix(".raw.jsonl") + ".json")
+    if not json_path.exists():
+        raise ValueError(f"같은 자리에 저장한 리포트가 없습니다: {json_path.name}")
+    result = json.loads(json_path.read_text(encoding="utf-8"))
+    rows = [
+        json.loads(line)
+        for line in raw_path.read_text(encoding="utf-8").splitlines()
+        if line.strip()
+    ]
+    runs = next(
+        (
+            m.get("runs") or m.get("n")
+            for layer in result["layers"]
+            if layer["layer"] == "L4"
+            for m in layer["metrics"]
+            if m["key"] == "pass^1"
+        ),
+        None,
+    )
+    if runs is not None and rows and len(rows) != runs:
+        raise ValueError(f"원 출력 {len(rows)}행이 리포트의 L4 실행 {runs}번과 다릅니다")
+    recompute_intervals(result)
+    result["header"]["rebuiltFrom"] = {
+        "raw": _rel(raw_path),
+        "sha256": _sha256(raw_path),
+        "rows": len(rows),
+        "note": "저장한 결과에서 신뢰구간만 다시 냈다. 모델을 다시 부르지 않았다.",
+    }
+    return result, rows, json_path
+
+
 # ── Markdown ─────────────────────────────────────────────────────────
 
 
@@ -318,7 +414,10 @@ def render_markdown(result: dict[str, Any]) -> str:
         f"| 비용(원) | {h['costKrw'] if h['costKrw'] is not None else stats.NOT_MEASURED} |",
         f"| 호출 예산 | {h['budgetCalls'] if h['budgetCalls'] is not None else '없음'} |",
         f"| 걸린 시간 | {h['elapsedSeconds']}초 |",
-        f"| 신뢰구간 | 95% 퍼센타일 부트스트랩 {h['resamples']}번, 시드 {h['seed']} |",
+        (
+            "| 신뢰구간 | 95%. 비율 지표는 Wilson 점수 구간(Wilson 1927, n은 묶음 수), "
+            f"nDCG·MRR·후회·턴 수는 퍼센타일 부트스트랩 {h['resamples']}번, 시드 {h['seed']} |"
+        ),
         f"| 기대값 상태 | {h['reviewState']} |",
         "",
         "## 층별 요약",
@@ -395,33 +494,34 @@ def _sha256(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
+METRIC_FIELDS = ("key", "value", "ci", "ciMethod", "n", "runs", "target", "verdict", "smallSample")
+
+
+def public_metric(code: str, m: dict[str, Any]) -> dict[str, Any]:
+    """신뢰 페이지에 싣는 지표 한 칸. label·explain은 쉬운 말, technicalLabel은 리포트의 이름이다."""
+    label, explain = public.metric_text(code, m["key"], m["label"])
+    out = {k: m.get(k) for k in METRIC_FIELDS}
+    if out["ci"] is not None and out["ciMethod"] is None:  # ciMethod 전의 리포트
+        out["ciMethod"] = stats.WILSON if stats.is_proportion(m["key"]) else stats.BOOTSTRAP
+    return {**out, "label": label, "explain": explain or None, "technicalLabel": m["label"]}
+
+
 def summary_for_latest(result: dict[str, Any], files: list[Path]) -> dict[str, Any]:
+    """신뢰 페이지용 요약. 이름과 풀이는 쉬운 말이고(public.py), 층 코드·지표 키는 기계 ID로 따로 있다."""
     h = result["header"]
     layers = {}
     for layer in result["layers"]:
+        title, explain = public.layer_text(layer["layer"], layer["title"])
         layers[layer["layer"]] = {
-            "title": layer["title"],
+            "title": title,
+            "explain": explain,
+            "technicalTitle": layer["title"],
             "status": layer["status"],
             "n": layer["n"],
             "unit": layer["unit"],
-            "metrics": [
-                {
-                    k: m.get(k)
-                    for k in (
-                        "key",
-                        "label",
-                        "value",
-                        "ci",
-                        "n",
-                        "runs",
-                        "target",
-                        "verdict",
-                        "smallSample",
-                    )
-                }
-                for m in layer["metrics"]
-            ],
-            "notMeasured": layer["notMeasured"],
+            "metrics": [public_metric(layer["layer"], m) for m in layer["metrics"]],
+            "notMeasured": public.not_measured_text(layer["notMeasured"]),
+            "notMeasuredTechnical": layer["notMeasured"],
         }
     headline = {}
     for key, (code, metric_key) in HEADLINE.items():
@@ -438,13 +538,29 @@ def summary_for_latest(result: dict[str, Any], files: list[Path]) -> dict[str, A
         headline[key] = (
             None
             if found is None
-            else {k: found.get(k) for k in ("label", "value", "ci", "n", "target", "verdict")}
+            else {
+                k: v
+                for k, v in public_metric(code, found).items()
+                if k
+                in (
+                    "key",
+                    "label",
+                    "explain",
+                    "technicalLabel",
+                    "value",
+                    "ci",
+                    "ciMethod",
+                    "n",
+                    "target",
+                    "verdict",
+                )
+            }
         )
     date = h["date"]
     return {
         "date": date,
         # 공개 신뢰 페이지에는 모델 이름 대신 "AI 판(평가일)"을 쓴다(평가 설계 17장, DESIGN.md)
-        "aiVersion": f"AI 판({date})" if h["isModel"] else f"{RULE_LABEL} · {date}",
+        "aiVersion": f"AI 판({date})" if h["isModel"] else f"{PUBLIC_RULE_LABEL} · {date}",
         "isModel": h["isModel"],
         "policy": h["policy"],
         "split": h["split"],
@@ -459,25 +575,71 @@ def summary_for_latest(result: dict[str, Any], files: list[Path]) -> dict[str, A
         "targetsAreNotResults": True,
         "designTargets": DESIGN_TARGETS,
         "staleAfterDays": STALE_DAYS,
+        "ciNote": CI_NOTE,
+        "rebuiltFrom": h.get("rebuiltFrom"),
         "sources": [{"path": _rel(p), "sha256": _sha256(p)} for p in files if p.exists()],
     }
 
 
+HISTORY_LIMIT = 10
+SUPERSEDED_REASON = "같은 평가셋을 나중 코드로 다시 잰 결과로 바뀌었습니다."
+
+
+def superseded(old: dict[str, Any], new: dict[str, Any], reason: str = SUPERSEDED_REASON) -> dict:
+    """지난 실행의 요약(현재 결과가 아니다). 신뢰 페이지가 지금 결과처럼 보이면 안 된다."""
+    return {
+        "current": False,
+        "split": old.get("split"),
+        "date": old.get("date"),
+        "commit": old.get("commit"),
+        "policy": old.get("policy"),
+        "isModel": old.get("isModel"),
+        "supersededBy": {"date": new.get("date"), "commit": new.get("commit")},
+        "reason": reason,
+        "headline": {
+            key: None
+            if item is None
+            else {
+                "label": public.metric_text(*HEADLINE.get(key, ("", key)), str(item.get("label")))[0],
+                "value": item.get("value"),
+            }
+            for key, item in (old.get("headline") or {}).items()
+        },
+    }
+
+
+def _headline_values(run: dict[str, Any]) -> dict[str, Any]:
+    return {k: (v or {}).get("value") for k, v in (run.get("headline") or {}).items()}
+
+
 def update_latest(path: Path, result: dict[str, Any], files: list[Path]) -> dict[str, Any]:
-    """latest.json의 runs[split]을 이번 실행으로 바꾼다. 신뢰 페이지는 primary(시험셋)를 먼저 본다."""
+    """latest.json의 runs[split]을 이번 실행으로 바꾼다. 신뢰 페이지는 primary(시험셋)를 먼저 본다.
+
+    바뀐 실행의 주요 값이 이번과 다르면 history에 current: false로 남긴다(지난 결과가 지금 결과로 보이지
+    않게, 그러나 숨기지도 않게). 같은 값이면 남기지 않는다.
+    """
     current: dict[str, Any] = {}
     if path.exists():
         current = json.loads(path.read_text(encoding="utf-8"))
     runs = dict(current.get("runs") or {})
-    runs[result["header"]["split"]] = summary_for_latest(result, files)
+    history = list(current.get("history") or [])
+    split = result["header"]["split"]
+    new = summary_for_latest(result, files)
+    old = runs.get(split)
+    if old and _headline_values(old) != _headline_values(new):
+        history.insert(0, superseded(old, new))
+    runs[split] = new
     latest = {
         "note": (
             "평가 실행의 최신 요약. 신뢰 페이지(평가 설계 17장)가 읽는다. 목표(target.isTarget)는 결과가 "
-            "아니다. isModel이 false인 실행은 규칙 정책(모델 미연결)의 회귀 시험이고 AI 결과로 보이면 "
-            f"안 된다. 날짜에서 {STALE_DAYS}일이 지나면 '오래된 결과'로 표시한다."
+            "아니다. isModel이 false인 실행은 모델을 연결하지 않은 기본 규칙의 회귀 시험이고 AI 결과로 "
+            f"보이면 안 된다. 날짜에서 {STALE_DAYS}일이 지나면 '오래된 결과'로 표시한다. label·explain·"
+            "title은 공개 화면용 쉬운 말이고 technicalLabel·technicalTitle·key·층 코드는 기술 이름이다. "
+            "history는 지난 결과(current: false)이고 지금 결과가 아니다."
         ),
         "primary": "test" if "test" in runs else next(iter(runs)),
         "runs": dict(sorted(runs.items())),
+        "history": history[:HISTORY_LIMIT],
     }
     path.write_text(json.dumps(latest, ensure_ascii=False, indent=1) + "\n", encoding="utf-8")
     return latest

@@ -3,6 +3,7 @@
     python3 -m scripts.v3.eval.run_all --split test --llm rule
     python3 -m scripts.v3.eval.run_all --split test --llm foundry --repeats 4 --budget-calls 3000
     python3 -m scripts.v3.eval.run_all --layers L2,L6 --split dev --resamples 2000
+    python3 -m scripts.v3.eval.run_all --from-raw docs/v3/eval/2026-11-18-test-foundry.raw.jsonl
 
 쓰는 파일(--out-dir, 기본 docs/v3/eval):
     <날짜>-<split>-<llm>.json      층별 지표, CI, 표, 머리(커밋, 평가셋 판, 매니페스트 해시, 모델, 토큰)
@@ -16,6 +17,9 @@
   Prompt Shields(AZURE_CONTENT_SAFETY_*)와 AI Search(V3_EVAL_L2_AZURE=1 + AZURE_SEARCH_*)는 있을
   때만 그 칸을 잰다.
 - --budget-calls에 닿으면 새 실행을 시작하지 않고 남은 칸을 "예산 초과로 미측정"으로 적는다.
+- --from-raw는 저장한 원 출력(.raw.jsonl)과 같은 자리의 리포트(.json)에서 모델을 다시 부르지 않고
+  리포트(.json, .md)와 latest.json(과 eval-report.md)을 다시 만든다. 값과 n은 그대로이고 신뢰구간만 지금
+  규칙(비율은 Wilson 점수 구간)으로 다시 낸다. 원 출력 행 수가 리포트의 L4 실행 수와 다르면 멈춘다.
 """
 
 from __future__ import annotations
@@ -59,12 +63,27 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument(
         "--no-report", action="store_true", help="docs/v3/eval-report.md를 다시 만들지 않는다"
     )
+    parser.add_argument(
+        "--from-raw",
+        type=Path,
+        default=None,
+        help="저장한 <날짜>-<split>-<llm>.raw.jsonl(과 같은 자리의 .json)에서 리포트와 latest.json을 "
+        "다시 만든다. 모델을 부르지 않는다",
+    )
     args = parser.parse_args(argv)
     repeats = args.repeats or (1 if args.llm == "rule" else 4)
     date = args.date or dt.datetime.now(SEOUL).date().isoformat()
 
     def say(message: str) -> None:
         sys.stderr.write(f"· {message}\n")
+
+    if args.from_raw is not None:
+        return rebuild(
+            args.from_raw,
+            args.out_dir if args.out_dir != OUT_DIR else None,
+            not args.no_report,
+            say,
+        )
 
     result = suite.run_suite(
         layers=args.layers,
@@ -108,6 +127,30 @@ def main(argv: list[str] | None = None) -> int:
         )
         say(f"{layer['layer']} {layer['title']}: n={layer['n']}, {text}")
     sys.stdout.write("\n".join(str(p) for p in files) + "\n")
+    return 0
+
+
+def rebuild(raw: Path, out_dir: Path | None, write_report: bool, say) -> int:
+    """--from-raw: 저장한 결과의 신뢰구간을 지금 규칙으로 다시 내고 .json·.md·latest.json을 다시 쓴다."""
+    try:
+        result, _rows, json_path = suite.rebuild_from_raw(raw)
+    except ValueError as error:
+        sys.stderr.write(f"{error}\n")
+        return 2
+    out = out_dir or json_path.parent
+    out.mkdir(parents=True, exist_ok=True)
+    stem = out / json_path.name.removesuffix(".json")
+    json_out, md_out = stem.with_suffix(".json"), stem.with_suffix(".md")
+    json_out.write_text(
+        json.dumps(result, ensure_ascii=False, indent=1, default=str) + "\n", encoding="utf-8"
+    )
+    md_out.write_text(suite.render_markdown(result), encoding="utf-8")
+    raw_path = Path(raw)
+    suite.update_latest(out / "latest.json", result, [json_out, md_out, raw_path])
+    if write_report and out.resolve() == OUT_DIR.resolve():
+        EVAL_REPORT.write_text(report.render(report.collect()), encoding="utf-8")
+    say(f"다시 만듦(모델 호출 없음): {json_out.name}, {md_out.name}, latest.json")
+    sys.stdout.write("\n".join(str(p) for p in (json_out, md_out)) + "\n")
     return 0
 
 

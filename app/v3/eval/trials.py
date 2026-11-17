@@ -470,15 +470,17 @@ def l4_metrics(
             rows.append(stats.not_measured(key, label, reason, goal))
             continue
         values = [stats.per_task_pass_hat_k(c["successes"], c["n"], k) for c in cases]
+        # pass^k는 과업마다 0~1인 성공 확률 추정의 평균이다. 비율 지표처럼 Wilson 구간(n = 과업 수)을 쓴다
         rows.append(
             stats.metric(
                 key,
                 label,
                 stats.mean(values),
-                ci=stats.bootstrap_ci(values, resamples=resamples),
+                ci=stats.wilson_ci(stats.mean(values), len(cases)),
                 n=len(cases),
                 runs=len(trials),
                 goal=goal,
+                ci_method=stats.WILSON,
             )
         )
     rows.append(
@@ -711,7 +713,7 @@ def category_table(outcome: dict[str, Any], *, resamples: int = stats.RESAMPLES)
     rows = []
     for tag in sorted(by):
         values = by[tag]
-        ci = stats.bootstrap_ci(values, resamples=resamples)
+        ci = stats.wilson_ci(stats.mean(values), len(values))  # 성공률: Wilson 구간
         small = len(values) < stats.SMALL_SAMPLE
         rows.append(
             [

@@ -351,6 +351,24 @@ def latest_section(latest: dict[str, Any] | None) -> list[str]:
         ),
         "- 기대값은 모두 전문가 검토 전 초안이고, 두 번째 작성자 대조와 이중 라벨은 아직 하지 않았다.",
         (
+            "- **신뢰구간(95%).** 비율 지표(성공률, 통과율, 거부율, 표적 ASR, 재현율 등 0~1 값의 평균)는 "
+            "Wilson 점수 구간(Wilson 1927, JASA 22(158))이다. n은 독립 단위 수이고 묶음(사례, 기본 사례)이 "
+            "있으면 묶음 수다. n이 10~30이고 값이 0이나 1이면 퍼센타일 부트스트랩은 [1, 1]처럼 폭이 0인 "
+            "구간을 내는데, Wilson 구간은 그렇지 않다(n=10에서 10/10이면 [0.722, 1]). 0~1 값의 분산은 "
+            "p(1−p)를 넘지 않으므로 묶음 평균이나 재현율에 쓰면 구간은 보수적(넓게)이다. nDCG, MRR, 정규화 "
+            "후회, 전술 민감도, 턴 수처럼 비율이 아닌 지표는 퍼센타일 부트스트랩(10,000번, 고정 시드)이다. "
+            "지표마다 `ciMethod`(wilson | bootstrap)가 적혀 있다."
+        ),
+        (
+            "- **다시 만들기.** `python3 -m scripts.v3.eval.run_all --from-raw <리포트>.raw.jsonl`은 "
+            "저장한 원 출력과 같은 자리의 리포트(.json)에서 모델을 다시 부르지 않고 리포트, latest.json, "
+            "이 파일을 다시 만든다(값과 n은 그대로, 신뢰구간만 지금 규칙으로)."
+        ),
+        (
+            "- **지난 결과.** latest.json의 `history`는 나중 실행으로 바뀐 지난 결과(`current: false`)다. "
+            "지금 결과가 아니고, 아래 표에는 싣지 않는다."
+        ),
+        (
             "- 데이터가 없어 재지 못한 층: L1(공장 현장 사진 200장과 오염 비율 정답), L3 의미 지표"
             "(판정 모델과 사람 라벨 100문장), L7(루브릭과 사람 라벨 120건). Prompt Shields 탐지율과 AI "
             "Search(S2~S6)는 설정이 있을 때만 잰다."
@@ -389,6 +407,27 @@ def latest_section(latest: dict[str, Any] | None) -> list[str]:
                     f"| {head} | {status} | {n} | {_cell(m['label'])} | {_num(m['value'])} | "
                     f"{ci_text} | {_cell(target)} | {m['verdict']} |"
                 )
+        lines.append("")
+    history = latest.get("history") or []
+    if history:
+        lines += [
+            "### 지난 결과(지금 결과가 아님)",
+            "",
+            "| split | 날짜 · 커밋 | 바뀐 결과 | 까닭 | 주요 값(지난 값) |",
+            "|---|---|---|---|---|",
+        ]
+        for old in history:
+            values = ", ".join(
+                f"{item['label']} {_num(item['value'])}"
+                for item in (old.get("headline") or {}).values()
+                if item and item.get("value") is not None
+            )
+            by = old.get("supersededBy") or {}
+            lines.append(
+                f"| {old.get('split')} | {old.get('date')} · {old.get('commit') or '-'} | "
+                f"{by.get('date')} · {by.get('commit') or '-'} | {_cell(old.get('reason') or '')} | "
+                f"{_cell(values) or '-'} |"
+            )
         lines.append("")
     return lines
 
