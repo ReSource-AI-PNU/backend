@@ -1457,6 +1457,9 @@ def upload_document(
 ) -> dict[str, Any]:
     """문서를 읽어 값을 뽑는다. 뽑은 값은 사람이 확인하기 전에는 근거가 아니다.
 
+    extraction은 document_intelligence(PDF·사진·Office 문서를 Document Intelligence로 읽음) |
+    text(Document Intelligence가 연결돼 있지만 UTF-8 글 파일이라 그대로 읽음) |
+    text_only(Document Intelligence가 연결되지 않아 글 파일만 읽음)다.
     문서 글은 Prompt Shields로 검사한다. 지시문 주입이 탐지되면 문서를 쓰지 않고, 올린 조직의
     진행 중인 대화를 handoff로 넘긴다. Prompt Shields가 설정되지 않았으면 검사하지 않았다는
     표시(shieldUnavailable)를 그대로 돌려준다.
@@ -1467,7 +1470,11 @@ def upload_document(
             "INVALID_KIND", f"문서 종류는 {', '.join(documents.EXTRACTORS)} 가운데 하나입니다.", 422
         )
     client = app.documents
-    if client is not None and client.configured:
+    text = documents.plain_text(data)
+    if client is not None and client.configured and text is not None:
+        # Document Intelligence는 글 파일(.txt 등)을 받지 않는다(400). 연결돼 있어도 그대로 읽는다
+        layout, extraction = {"content": text}, "text"
+    elif client is not None and client.configured:
         try:
             layout = client.analyze(data)
         except documents.DocumentError as error:

@@ -1,12 +1,13 @@
 FROM python:3.12-slim
 
 # 함께 넣을 선택 의존성. 기본은 추론 extra(ml: torch CPU 휠, 학습 코드 없음)다.
-# 추론 없이 가볍게 만들려면 --build-arg EXTRAS= 로 비운다. mcp-server extra(MCP 서버)는 항상 들어간다.
+# 추론 없이 가볍게 만들려면 --build-arg EXTRAS= 로 비운다. mcp-server extra(MCP 서버)와
+# tracing extra(azure-monitor-opentelemetry, Application Insights 추적)는 EXTRAS와 상관없이 항상 들어간다.
 ARG EXTRAS=ml
 
 WORKDIR /app
 COPY pyproject.toml ./
-RUN pip install --no-cache-dir --extra-index-url https://download.pytorch.org/whl/cpu ".[mcp-server${EXTRAS:+,${EXTRAS}}]"
+RUN pip install --no-cache-dir --extra-index-url https://download.pytorch.org/whl/cpu ".[mcp-server,tracing${EXTRAS:+,${EXTRAS}}]"
 # supervision이 GUI용 opencv-python을 함께 깔아 cv2가 그쪽으로 잡히는데, slim 이미지에는 그 판이 쓰는
 # libxcb·libGL·libgthread가 없어 import부터 실패한다. 같은 버전의 headless 판만 남긴다.
 RUN if pip show opencv-python >/dev/null 2>&1; then \

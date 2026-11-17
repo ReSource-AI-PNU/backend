@@ -246,3 +246,13 @@ def test_confirm_fields_registers_only_confirmed_values():
     assert "김담당 확인" in evidence.source
     with pytest.raises(PermissionError):
         registry.get(ids_[0], "org_hanbit")
+
+
+def test_client_from_env_needs_both_endpoint_and_key():
+    from app.v3.intake.documents import ENV_ENDPOINT, ENV_KEY, client_from_env
+
+    assert client_from_env({}) is None
+    assert client_from_env({ENV_ENDPOINT: "https://di.example/"}) is None
+    assert client_from_env({ENV_KEY: "key"}) is None
+    client = client_from_env({ENV_ENDPOINT: "https://di.example/", ENV_KEY: "key"})
+    assert client is not None and client.configured and client.endpoint == "https://di.example"

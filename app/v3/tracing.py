@@ -1,13 +1,14 @@
 """실행 기록(store events)을 OpenTelemetry span으로 내보낸다.
 
-로컬 미실행(OpenTelemetry 부분): 작성한 환경에서는 opentelemetry와 azure-monitor-opentelemetry를
-불러올 수 없었다. 이벤트를 span 이름과 속성으로 바꾸는 부분(event_span)과 TracingStore는
-표준 라이브러리만 쓰고 tests/v3/test_tracing.py가 로컬에서 확인한다.
+OpenTelemetry 부분은 2026-11-18 tracing extra를 깐 환경에서 실제 연결 문자열로 span 하나를 내보내
+Application Insights의 dependencies 표에서 확인했다. 이벤트를 span 이름과 속성으로 바꾸는 부분
+(event_span)과 TracingStore는 표준 라이브러리만 쓰고 tests/v3/test_tracing.py가 로컬에서 확인한다.
 
 - 화면의 실행 기록과 같은 이벤트를 그대로 옮긴다. 일어나지 않은 호출을 만들지 않는다.
 - 두 패키지가 없거나 연결 문자열이 없으면 아무 일도 하지 않는다(받은 저장소를 그대로 돌려준다).
 - 내보내기가 실패해도 진단은 계속된다. 실행 기록은 이미 저장소에 남아 있다.
-- 필요한 패키지: azure-monitor-opentelemetry (opentelemetry-api, sdk를 함께 가져온다).
+- 필요한 패키지: azure-monitor-opentelemetry (pyproject의 tracing extra. opentelemetry-api, sdk를
+  함께 가져온다).
   configure_azure_monitor(connection_string=...)는 공식 문서의 사용법 그대로다.
   https://learn.microsoft.com/python/api/overview/azure/monitor-opentelemetry-readme
 """

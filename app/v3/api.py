@@ -116,13 +116,18 @@ def make_vendor_gateway() -> Any:
 def build_app() -> service.App:
     """설정에 따라 service.App을 만든다. DATABASE_URL이 있으면 SQL 저장, 없으면 메모리.
 
-    Azure 연결부는 설정이 있을 때만 켠다(이 부분은 로컬 미실행):
+    Azure 연결부는 설정이 있을 때만 켠다. 값은 모두 settings(app/core/config.py)에서 읽는다:
     - APPLICATIONINSIGHTS_CONNECTION_STRING: 실행 기록을 OpenTelemetry span으로 내보낸다(tracing.py).
     - AZURE_MAPS_KEY: 판단 도구의 도로 거리(judge/distance.py). 없으면 직선 거리 가정값 경로다.
       V3_DISTANCE=kakao와 KAKAO_REST_API_KEY를 주면 카카오모빌리티 길찾기로 도로 거리를 받는다
       (이쪽은 실제 호출로 확인했다).
-    - AZURE_SEARCH_ENDPOINT, AZURE_SEARCH_API_KEY: 근거 검색의 순위를 Azure AI Search에서 받는다
-      (evidence/search.py의 선택 계층). 없거나 설정이 틀리면 로컬 검색이다.
+    - AZURE_SEARCH_ENDPOINT, AZURE_SEARCH_API_KEY(+ AZURE_SEARCH_INDEX, V3_EMBEDDINGS와 그 값들):
+      근거 검색의 순위를 Azure AI Search에서 받는다(evidence/search.py의 선택 계층). 없거나 설정이
+      틀리면 로컬 검색이다. 질의 임베딩은 색인 스크립트(scripts/v3/index_evidence.py)와 같은 함수로 만든다.
+    - AZURE_DOCUMENT_INTELLIGENCE_ENDPOINT, _API_KEY: 문서 업로드를 prebuilt-layout으로 읽는다.
+      없으면 UTF-8 글 파일만 읽는다(extraction "text_only").
+    - AZURE_CONTENT_SAFETY_ENDPOINT, _API_KEY: 업로드 문서를 Prompt Shields로 검사한다.
+      없으면 검사하지 않고 shieldUnavailable=true로 표시한다.
     - V3_AGENT_FRAMEWORK=chat|agent + FOUNDRY_PROJECT_ENDPOINT: Foundry로 가는 모델 호출을
       Microsoft Agent Framework로 한다(agents/maf.py). 비어 있으면 지금처럼 urllib로 부른다.
     """
@@ -131,7 +136,7 @@ def build_app() -> service.App:
     from app.v3 import tracing
     from app.v3.agents import maf
     from app.v3.evidence import search, search_azure
-    from app.v3.intake import detector
+    from app.v3.intake import detector, documents, shields
     from app.v3.judge.distance import distance_provider_from_env
 
     if settings.database_url:
@@ -160,21 +165,32 @@ def build_app() -> service.App:
         all_vendors=settings.v3_llm_all_vendors,
     )
     factory = maf.factory_from_env(factory, os.environ)
-    store = tracing.enable(store, os.environ.get("APPLICATIONINSIGHTS_CONNECTION_STRING", ""))
-    search_env = {
-        **os.environ,
-        "AZURE_SEARCH_ENDPOINT": settings.azure_search_endpoint,
-        "AZURE_SEARCH_API_KEY": settings.azure_search_api_key,
-        "OLLAMA_BASE_URL": settings.ollama_base_url,
-        "FOUNDRY_ENDPOINT": settings.foundry_endpoint,
-        "FOUNDRY_API_KEY": settings.foundry_api_key,
-    }
+    store = tracing.enable(store, settings.applicationinsights_connection_string)
     try:
-        search_client = search_azure.client_from_env(search_env)
+        search_client = search_azure.client_from_env(search_settings())
     except ValueError as error:
         logger.warning("Azure AI Search 설정이 틀려 로컬 검색으로 돈다: %s", error)
         search_client = None
     search.use_backend(search_client.search if search_client is not None else None)
+    # 둘 다 주소와 키가 모두 있을 때만 켜진다. 없으면 None이고 upload_document가 그렇다고 표시한다
+    document_client = documents.client_from_env(
+        {
+            documents.ENV_ENDPOINT: settings.azure_document_intelligence_endpoint,
+            documents.ENV_KEY: settings.azure_document_intelligence_api_key,
+        }
+    )
+    shield_client = shields.client_from_env(
+        {
+            shields.ENV_ENDPOINT: settings.azure_content_safety_endpoint,
+            shields.ENV_KEY: settings.azure_content_safety_api_key,
+        }
+    )
+    logger.info(
+        "근거 검색 %s, Document Intelligence %s, Prompt Shields %s",
+        search.backend_name(),
+        "연결" if document_client else "미연결",
+        "연결" if shield_client else "미연결",
+    )
     auth = current_auth()  # 설정이 틀리면(모르는 모드, token인데 토큰 없음) 여기서 멈춘다
     if auth.mode == httpio.AUTH_HEADER:
         logger.warning("V3_AUTH=header: %s", httpio.HEADER_MODE_WARNING)
@@ -205,7 +221,25 @@ def build_app() -> service.App:
                 detector.ENV_DEPLOYMENT: settings.v3_detector_deployment,
             }
         ),
+        documents=document_client,
+        shields=shield_client,
     )
+
+
+def search_settings() -> dict[str, str]:
+    """search_azure.client_from_env에 넘길 값. 색인 스크립트가 os.environ에서 읽는 이름과 같다."""
+    return {
+        "AZURE_SEARCH_ENDPOINT": settings.azure_search_endpoint,
+        "AZURE_SEARCH_API_KEY": settings.azure_search_api_key,
+        "AZURE_SEARCH_INDEX": settings.azure_search_index,
+        "AZURE_SEARCH_VECTOR_DIMENSIONS": settings.azure_search_vector_dimensions,
+        "V3_EMBEDDINGS": settings.v3_embeddings,
+        "OLLAMA_BASE_URL": settings.ollama_base_url,
+        "OLLAMA_EMBED_MODEL": settings.ollama_embed_model,
+        "FOUNDRY_ENDPOINT": settings.foundry_endpoint,
+        "FOUNDRY_API_KEY": settings.foundry_api_key,
+        "FOUNDRY_EMBEDDING_DEPLOYMENT": settings.foundry_embedding_deployment,
+    }
 
 
 def current_auth() -> httpio.Auth:

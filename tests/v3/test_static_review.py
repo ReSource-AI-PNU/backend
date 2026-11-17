@@ -282,12 +282,7 @@ def test_app_service_settings_are_names_the_app_reads():
         "PORT",  # 프런트(Next.js)
         "HOSTNAME",
     }
-    # 설정 모듈을 거치지 않고 프로세스 환경 변수에서 바로 읽는 이름(읽는 파일에 그 이름이 있어야 한다)
-    direct = {
-        "APPLICATIONINSIGHTS_CONNECTION_STRING": "app/v3/api.py",
-        "AZURE_SEARCH_INDEX": "app/v3/evidence/search_azure.py",
-    }
-    assert all(f'"{name}"' in read(path) for name, path in direct.items())
+    # APPLICATIONINSIGHTS_CONNECTION_STRING, AZURE_SEARCH_INDEX도 이제 설정 모듈(Settings)이 읽는다
     # 프런트 앱(Next.js, Auth.js)이 읽는 이름. 이 저장소에는 읽는 코드가 없다
     frontend = {
         "AUTH_SECRET",
@@ -299,7 +294,7 @@ def test_app_service_settings_are_names_the_app_reads():
         "AUTH_MICROSOFT_ENTRA_ID_SECRET",
         "V3_BACKEND_URL",
     }
-    known = platform | set(direct) | frontend
+    known = platform | frontend
     assert names - known <= settings_fields(), sorted(names - known - settings_fields())
     assert frontend <= names
     assert {"V3_AUTH", "V3_DEMO_OPEN", "V3_ORG_TOKENS"} <= names

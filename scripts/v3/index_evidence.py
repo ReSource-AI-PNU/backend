@@ -1,6 +1,7 @@
 """근거 레지스트리의 근거를 Azure AI Search 색인에 올린다.
 
-로컬 미실행(실제 호출): Azure AI Search와 임베딩 서버를 부르는 부분은 실행해 보지 못했다.
+2026-11-18 맥에서 실제로 돌렸다: V3_EMBEDDINGS=foundry(text-embedding-3-small, 1536차원)로
+rsai-evidence 색인을 만들고 시드 근거 48건을 올렸다. Ollama 임베딩 경로는 실제로 돌려 보지 못했다.
 순서와 요약은 tests/v3/test_index_evidence.py가 가짜 transport로 확인한다.
 
     python -m scripts.v3.index_evidence [--create-index] [--kinds law,ref] [--dry-run]

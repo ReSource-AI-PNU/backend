@@ -420,6 +420,31 @@ def test_document_upload_marks_unchecked_documents():
     assert checked["shieldUnavailable"] is False and checked["shield"]["checkedChunks"] == 1
 
 
+def test_document_intelligence_reads_binary_files_and_text_files_are_read_as_text():
+    """Document Intelligence는 글 파일을 받지 않는다(400). 연결돼 있어도 글 파일은 그대로 읽는다."""
+    from app.v3.intake.documents import DocumentIntelligenceClient
+
+    sent = []
+
+    def transport(method, url, headers, body):
+        if method == "POST":
+            sent.append(json.loads(body)["base64Source"])
+            return 202, {"Operation-Location": "https://di.example/op/1"}, b""
+        done = {"status": "succeeded", "analyzeResult": {"content": CONTRACT}}
+        return 200, {}, json.dumps(done).encode()
+
+    app = make_app(shields=shields(False))
+    app.documents = DocumentIntelligenceClient("https://di.example", "test-key", transport)
+    text = service.upload_document(app, HANBIT, "contract", "계약서.txt", CONTRACT.encode(), HANBIT)
+    assert text["extraction"] == "text" and sent == []
+    assert text["extracted"]["unitCostKrwPerKg"] == 250 and text["shieldUnavailable"] is False
+    for name, data in (("계약서.pdf", b"%PDF-1.4 ascii only"), ("계약서.png", b"\x89PNG\r\n")):
+        read = service.upload_document(app, HANBIT, "contract", name, data, HANBIT)
+        assert read["extraction"] == "document_intelligence"
+        assert read["extracted"]["unitCostKrwPerKg"] == 250
+    assert len(sent) == 2
+
+
 def test_injection_in_uploaded_document_hands_threads_off():
     app = make_app(shields=shields(True))
     waiting = to_approval(app)
