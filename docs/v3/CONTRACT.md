@@ -34,6 +34,7 @@
 | `app/v3/eval/` | 평가(8단계): 사례 세트 `cases/*.json`, 실행기, 형식 준수 시험, Foundry 평가 입력, 리포트 |
 | `app/v3/api.py`, `sql.py`, `mcp_server.py`, `vendor_service.py` | 프레임워크 가장자리 |
 | `app/v3/tracing.py`, `agents/maf.py`, `judge/distance.py`, `evidence/search_azure.py` | Azure 연결부(추적, Agent Framework, 도로 거리, 색인). 설정이 있을 때만 켜진다 |
+| `app/v3/live.py` | 실시간 진행: 진행 기록 쓰기(`Recorder`, `Turn`), 실행 자리(heartbeat), SSE 조각(8장 "실시간 진행") |
 | `scripts/v3/ingest_laws.py`, `index_evidence.py`, `register_foundry_agents.py` | 법령 수집, 근거 색인, 에이전트 등록 스크립트 |
 | `tests/v3/` | 테스트. 가장자리 테스트는 `pytest.importorskip`으로 시작한다 |
 
@@ -253,6 +254,9 @@ VendorProfile {"orgId": "org_saegil",
 ```
 
 `{"claim"}`은 `{"id", "kind", "value", "unit", "evidence"}` 객체다. 값이 없으면 `null`을 넣고 화면은 "확인 필요"를 보여 준다.
+
+- `session.status`의 `running`은 그 진단의 실행 자리가 살아 있다는 뜻이다(8장 "실시간 진행"). 뒤에서 도는 실행이 아직 진단을 고치기 전에도 `running`이고, 저장된 상태가 `running`이어도 실행 자리가 비었거나 멈췄으면(프로세스가 죽음) `idle`로 보인다. `GET /sessions`의 `status`도 같다.
+- `events[].kind`에 `error`가 더해졌다. 진행 중 오류(`detail.error`: 오류 종류 이름이나 코드, `detail.runId`)와 멈춘 실행 자리를 이어받은 일(`detail.reason: "stale"`)이다. 업체가 보는 뷰에는 나오지 않는다.
 
 ### 순비용의 내역과 공정 재투입
 
@@ -475,19 +479,20 @@ VendorProfile {"orgId": "org_saegil",
 - **header 모드는 시연 전용이며 공개 주소에 그대로 두면 조직 경계가 지켜지지 않는다.** 헤더만 바꾸면 다른 조직의 뷰를 받고 승인할 수 있다. 서비스 함수 아래의 조직 경계(뷰, 근거, 스레드)는 요청한 조직이 맞다는 전제에서만 지켜진다.
 - token 모드의 토큰과 조직의 짝은 설정 `V3_ORG_TOKENS`로 받는다. JSON `{"조직 ID": "토큰"}`이고 값은 목록도 된다(교체 기간에 둘을 함께 둘 때). 토큰은 16자 이상이고 두 조직이 같은 토큰을 쓸 수 없다. Key Vault에서 주입하고 저장소에 넣지 않는다. token 모드인데 비어 있거나 모양이 틀리면 요청을 처리하지 않는다(`devserver`는 뜨지 않고, `api.py`는 500 `INTERNAL`로 답한다).
 - 토큰 비교는 `hmac.compare_digest`로 하고 모든 항목을 끝까지 견준다. 토큰 → 조직 해석은 `app/v3/httpio.py`의 `Auth`, `org_tokens`, `match_token`에 있고 두 서버가 같이 쓴다.
-- token 모드의 오류: 토큰이 없거나 `Bearer` 꼴이 아니면 401 `TOKEN_REQUIRED`, 토큰이 어느 조직의 것도 아니면 401 `INVALID_TOKEN`. `GET /health`만 토큰 없이 답한다. `POST /demo/reset`은 토큰이 없으면 서비스의 규칙(`V3_DEMO_OPEN`, 관리자 조직)대로 답한다.
+- token 모드의 오류: 토큰이 없거나 `Bearer` 꼴이 아니면 401 `TOKEN_REQUIRED`, 토큰이 어느 조직의 것도 아니면 401 `INVALID_TOKEN`. `GET /health`와 `GET /trust`만 토큰 없이 답한다. `POST /demo/reset`은 토큰이 없으면 서비스의 규칙(`V3_DEMO_OPEN`, 관리자 조직)대로 답한다.
 - `devserver`도 같은 옵션을 받는다: `--auth header|token`, `--org-tokens <JSON 파일>`.
 - `GET /admin/status`의 `auth`: `{"mode": "header | token", "demoOnly": true | false}`. 관리자 화면이 시연 전용 모드임을 보여 줄 때 쓴다.
 - token 모드의 토큰은 FastAPI와 `devserver` 모두 `V3_ORG_TOKENS_FILE`(JSON을 담은 파일 경로)이 있으면 그 파일에서 먼저 읽고, 없으면 `V3_ORG_TOKENS`에서 읽는다.
 - `GET /admin/status`의 `distance`: `{"provider": true | false, "kind": "KakaoDistance | AzureMapsDistance | null", "lastError": "마지막 실패 이유 | null"}`. `provider`가 `false`면 직선 거리에 우회 계수를 곱한 가정값으로 계산한다. `lastError`에 키는 실리지 않는다.
 - Entra 인증에는 연결하지 않았다. token 모드는 조직 단위 식별이고 담당자 개인은 가리지 않는다.
-- bff 모드(9장): 모든 요청에 BFF 키가 있어야 한다(`GET /health`만 키 없이 답한다). 키는 설정 `V3_BFF_KEY`(Key Vault `v3-bff-key`)로 받고 `hmac.compare_digest`로 견준다. 키가 비어 있으면 모든 요청을 503으로 거절한다. 사용자가 `X-Org-Id`의 구성원이 아니면 403(`X-Org-Id`를 바꿔 다른 조직이 될 수 없다). 그다음의 조직 경계는 위 서비스 함수의 규칙 그대로다. `devserver`는 bff 모드를 받지 않는다(FastAPI만).
+- bff 모드(9장): 모든 요청에 BFF 키가 있어야 한다(`GET /health`와 `GET /trust`만 키 없이 답한다). 키는 설정 `V3_BFF_KEY`(Key Vault `v3-bff-key`)로 받고 `hmac.compare_digest`로 견준다. 키가 비어 있으면 모든 요청을 503으로 거절한다. 사용자가 `X-Org-Id`의 구성원이 아니면 403(`X-Org-Id`를 바꿔 다른 조직이 될 수 없다). 그다음의 조직 경계는 위 서비스 함수의 규칙 그대로다. `devserver`는 bff 모드를 받지 않는다(FastAPI만).
 - bff 모드에서 실제 업체의 공개 프로필(`GET /vendors/{orgId}`의 허가 품목과 모델 선택)은 그 업체와 스레드가 있는 배출 기업에게만 보인다. 다른 조직에는 404 `VENDOR_NOT_FOUND`다. 시연 업체의 공개 프로필은 전처럼 누구나 본다.
 - `GET /admin/status`의 `auth.demoOnly`는 header 모드에서만 `true`다.
 
 | 메서드와 경로 | 내용 |
 |---|---|
 | `GET /health` | `{"ok": true}`. 조직 헤더 없이 부른다 |
+| `GET /trust` | 공개 신뢰 페이지가 읽는 최신 평가 요약(`docs/v3/eval/latest.json`, 평가 설계 17장). 조직 데이터가 없어 `GET /health`처럼 인증 없이 답한다. 파일을 읽지 못하면 503 `TRUST_UNAVAILABLE` |
 | `POST /demo/reset` | 시연 데이터를 처음 상태로 되돌린다. 관리자만(아래 "관리자 조직") |
 | `GET /orgs` | 조직 목록. 조직 레코드의 `order`가 작은 것부터(시연 주인공 `org_hanbit`이 맨 앞, 운영 조직이 맨 뒤). `order`가 없는 조직은 그 뒤에 ID 순. token 모드에서는 자기 조직과 대화 상대만 |
 | `GET /orgs/{orgId}/streams`, `PUT /orgs/{orgId}/streams/{streamId}` | 흐름 조회와 수정(현행 처리, 전처리 작업 시간·시간당 인건비, 공정 재투입 값 포함. 6장) |
@@ -495,7 +500,8 @@ VendorProfile {"orgId": "org_saegil",
 | `POST /sessions` | `{emitterOrgId}`로 진단을 만든다. `emitterOrgId`가 없으면 요청한 조직이다 |
 | `GET /sessions` | 내가 당사자인 진단의 목록(최근 것이 앞). `[{id, emitterOrgId, emitterName, status, createdAt, updatedAt, as}]`. 배출 기업은 자기 진단, 업체는 자기에게 열린 대화가 있는 진단, 운영자는 전부. `as`는 `emitter`·`vendor`·`admin` |
 | `GET /sessions/{id}` | 진단 뷰 |
-| `POST /sessions/{id}/run` | 에이전트를 다음 멈춤 지점까지 돌린다. 진단 뷰를 돌려준다 |
+| `POST /sessions/{id}/run` | 에이전트를 다음 멈춤 지점까지 돌린다. 진단 뷰를 돌려준다. `?mode=async`면 뒤에서 돌리고 202 `{sessionId, status: "running", runId, after}`를 곧바로 준다(아래 "실시간 진행") |
+| `GET /sessions/{id}/stream` | 진행 기록을 SSE(`text/event-stream`)로 보낸다. 두 에이전트의 작성 중·근거 확인·거부·다시 쓰기·보냄, 진단 상태, 담당자 질문(아래 "실시간 진행") |
 | `POST /sessions/{id}/answers` | `{questionId, value | "unknown"}`. 수치 항목은 숫자나 글("2 퍼센트", "2프로 정도", "650 킬로", "0.65톤", "약 2%", "kg당 250원", "톤당 25만원")로 받아 항목의 단위로 바꾼다(톤→kg, 1년→한 달, 원/톤→원/kg). 숫자가 둘 이상("1~2%"), 범위를 뜻하는 말("이하", "넘게"), 다른 단위(% 자리에 kg), 한 달로 바꿀 수 없는 기간(주, 하루)은 `INVALID_ANSWER`이고 메시지가 고쳐 쓸 꼴을 알려 준다. "모름", "몰라요", "모르겠어요"는 `unknown`이다(`agents/amounts.py`) |
 | `POST /sessions/{id}/approvals` | `{threadId}`. 요청한 조직 쪽 승인을 기록한다. 양쪽이 승인하면 confirm 메시지와 문서를 만든다 |
 | `GET /evidence/{id}` | 근거 하나와 계산 사슬 `{evidence, chain: [evidence]}` |
@@ -510,6 +516,83 @@ VendorProfile {"orgId": "org_saegil",
 | `GET /admin/retrain/export`, `POST /admin/retrain/runs` | 재학습 행 내보내기, 재학습 실행 결과 등록(관리자만) |
 
 오류는 `{"error": {"code": "...", "message": "한국어 문장"}}`과 맞는 상태 코드로 낸다.
+
+### 실시간 진행 (`?mode=async`, 스트림)
+
+두 에이전트가 주고받는 대화를 화면이 바로 보여 주게 한다. 실행은 뒤에서 돌고 화면은 진행 기록을 SSE로 받는다. 구현은 `app/v3/live.py`(기록 쓰기, 실행 자리, SSE 조각), `service.start_run`·`execute_run`·`stream_events`, `api.py`와 `devserver.py`의 같은 두 경로다.
+
+**뒤에서 돌리기.** `POST /sessions/{id}/run?mode=async` → 202 `{"sessionId": "ses_1", "status": "running", "runId": "run_3", "after": 41}`.
+
+- 동기 실행과 같이 배출 기업(과 관리자)만 부른다(업체는 403 `FORBIDDEN`, 체험하기는 403 `DEMO_READ_ONLY`). 질의가 없거나 `mode=sync`면 전처럼 이 요청 안에서 돌리고 진단 뷰를 준다. 다른 `mode`는 422 `INVALID_VALUE`.
+- `after`는 이 실행이 남길 첫 기록 바로 앞의 seq다. 스트림을 `?after=<after>`로 열면 이 실행의 기록만 받는다(0이면 처음부터).
+- 실행 중 오류: events에 `kind: "error"`(`detail.error`는 오류 종류 이름이나 코드. 내용은 싣지 않는다)와 진행 기록의 안내 한 줄(`status`)을 남기고, `running`으로 남은 진단을 `idle`(답할 질문이 있으면 `awaiting_answers`)로 돌린다. 동기 실행의 오류는 전처럼 오류 응답(500 `INTERNAL` 등)이고 같은 기록이 남는다.
+
+**실행 자리(한 진단에 진행 하나).**
+
+- run(동기·비동기), 답(`POST /sessions/{id}/answers`), 승인(`POST /sessions/{id}/approvals`)은 시작할 때 그 진단의 실행 자리를 차지하고 끝나면 비운다. 자리가 살아 있으면 409 `RUN_IN_PROGRESS`다.
+- 자리는 저장소에 있다(메모리, SQL은 `v3_records`의 kind `runs`). 도는 동안 10초마다 살아 있다고 적고(heartbeat), 60초 동안 적지 않은 자리는 멈춘 것(프로세스가 죽거나 다시 뜸)으로 본다. 멈춘 자리는 다음 진행이 이어받고 events에 `kind: "error"`, `detail.reason: "stale"`을 남긴다. 진행기는 저장된 단계부터 이어 간다.
+
+**스트림.** `GET /sessions/{id}/stream` → `text/event-stream`.
+
+- 처음 읽을 때 권한을 확인한다. 볼 수 없으면 SSE가 아니라 보통의 오류(404 `SESSION_NOT_FOUND`, 401 등)다. 체험하기(`X-Demo-View: 1`, GET)로 시연 진단을 볼 수 있고 실제 조직의 진단은 보이지 않는다.
+- 응답 헤더 `Cache-Control: no-cache`, `X-Accel-Buffering: no`. 첫 조각은 `retry: 3000`이다(프록시가 응답 머리를 곧바로 넘기게 한다).
+- 기록 하나는 `id: <seq>`, `event: activity | status | question`, `data: <JSON 한 줄>`이다. seq는 진단마다 1부터 늘어나는 진행 기록 번호다. 보는 조직에게 걸러진 기록이 있으면 번호를 건너뛴다.
+- 15초 동안 보낼 것이 없으면 주석 줄 `: keep-alive`를 보낸다.
+- 실행 자리가 비었고(실행이 끝남) 기록을 다 보냈으면 `event: done`, `data: {"status": "awaiting_approval", "lastSeq": 158}`(id 없음)를 보내고 닫는다. 실행 중이면 열어 둔다. 실행 중이 아닌 진단을 열면 지난 기록을 보내고 곧바로 `done`이다. 그래서 화면은 run을 부른 뒤(202) 스트림을 연다.
+- 이어 받기: `Last-Event-ID` 헤더와 `?after=<seq>` 가운데 큰 값보다 큰 seq만 보낸다. 기록은 저장소에 남으므로 다시 붙어도 빠뜨리거나 두 번 보내지 않는다. `after`가 0 이상의 정수가 아니면 422 `INVALID_VALUE`, 읽을 수 없는 `Last-Event-ID`는 쓰지 않는다.
+- 도중에 볼 수 없게 되면(시연 되돌리기로 지워짐 등) `event: error`, `data: {"code", "message"}`를 보내고 닫는다.
+
+`event: activity`:
+
+```json
+{"seq": 64, "at": "2026-11-18T05:12:09+00:00", "stage": 4,
+ "actor": "company_agent | vendor_agent | validator | tool | system",
+ "kind": "drafting | validating | rejected | rewriting | sent | handoff | tool | question | status",
+ "threadId": "th_1", "vendorOrgId": "org_saegil", "vendorName": "(주)새길자원",
+ "author": {"side": "company", "kind": "agent", "label": "회사 측 AI"},
+ "text": "회사 측 AI가 메시지를 쓰고 있습니다.", "attempt": 1}
+```
+
+| `kind` | `actor` | 언제 | 더 붙는 필드 |
+|---|---|---|---|
+| `drafting` | `company_agent`, `vendor_agent` | 에이전트가 첫 초안을 쓰기 시작했다(모델을 부르기 전) | `attempt: 1` |
+| `validating` | `validator` | 보내기 전에 초안의 숫자·조항을 근거와 대조한다. 회사 측이 받은 업체 답을 다시 확인할 때도 나온다(작성자는 업체, 문장은 "회사 측에서 …") | `attempt`(있을 때) |
+| `rejected` | `validator` | 근거 확인에서 초안을 돌려보냈다 | `reasons`(화면용 사유 분류), `codes`(관리자 조직만), `attempt` |
+| `rewriting` | `company_agent`, `vendor_agent` | 거부 사유를 고쳐 다시 쓴다 | `attempt: 2` |
+| `sent` | `company_agent`, `vendor_agent` | 메시지가 대화에 붙었다(보냄) | `message`, `messageType`, `evidenceCount`(검증을 통과한 claim 수) |
+| `handoff` | `company_agent`, `vendor_agent` | 담당자에게 넘기는 메시지가 붙었다 | `message`, `messageType` |
+| `tool` | `tool` | 판단 도구를 불렀다 | `tool: {"name", "label", "status"}` |
+| `question` | `system` | 담당자 질문 묶음을 냈다(배출 기업만) | |
+| `status` | `system` | 단계 시작, 대화 열기, 조건 정리, 합의, 승인, 확정, 문서, 멈춤, 오류 안내 | |
+
+- `author`는 그 일이 붙는 말풍선의 쪽이다(7장 "작성자 표시"와 같은 값). 코드가 쓴 메시지(허가 품목 decline, handoff)는 `kind: "system"`, `label: "자동 안내"`다. 진행기의 안내(`status`, `question`)는 `null`이다.
+- `text`는 화면에 그대로 보일 한국어 한 줄이다. 숫자, 근거 ID, 내부 코드를 넣지 않는다(거부 사유도 분류만 쓴다). 값은 `message`의 claims에 있다.
+- `message`는 같은 조직이 `GET /sessions/{id}`로 받는 `threads[].messages[]`의 그 메시지와 같다(같은 함수로 만든다). 보는 조직이 그 대화를 볼 수 없으면(관리자 조직) `null`이다.
+- `reasons`(거부 사유 분류, 코드는 아래 "초안 거부 코드"): 근거에 없는 숫자(`NUMBER_OUTSIDE_PLACEHOLDER`), 근거에 없는 값(`UNKNOWN_PLACEHOLDER`, `UNKNOWN_CLAIM_REF`, `CLAIM_WITHOUT_EVIDENCE`, `EVIDENCE_NOT_FOUND`), 본문과 값이 맞지 않음(`UNUSED_CLAIM`), 근거와 다른 값(`VALUE_MISMATCH`, `UNIT_MISMATCH`), 원문과 다른 조항 인용, 볼 수 없는 근거, 기한이 지난 근거, 지금 보낼 수 없는 종류(`TYPE_NOT_ALLOWED`, `APPROVAL_REQUIRED`), 대화 규칙에 맞지 않음, 대화에 없는 폐기물, 허가 품목이 맞지 않음, 근거 없는 조건 낱말, 업체 기준 밖의 조건(`GUARDRAIL_*`), 다른 회사 정보(`OTHER_EMITTER_*`), 응답 형식 오류, 모델 호출 실패. 모르는 코드는 "검사를 통과하지 못함". 표는 `live.REASONS`다.
+- `tool.label`은 도구의 한국어 이름(`live.TOOL_LABELS`), `status`는 `calculated | conditional | needs_information | error`다.
+
+`event: status`: `{"seq", "at", "status", "phase", "stages": [7장의 stages와 같은 모양]}`. 진단 상태, 진행 단계(`phase`), 단계별 상태가 바뀔 때 나온다.
+
+`event: question`: `{"seq", "at", "stage", "questions": [7장의 questions와 같은 모양]}`. 담당자 질문 묶음이다. 배출 기업(과 관리자 조직)만 받는다.
+
+보는 조직에 따른 거르기는 진단 뷰와 같다.
+
+- 배출 기업(과 관리자 조직): 모든 기록.
+- 업체: 자기와 열린 대화(`not_opened`가 아닌)의 기록 가운데 두 당사자가 함께 보는 것(`sent`, `handoff`, 대화 열기·합의·승인·확정·문서 안내)과 자기 쪽이 한 일(자기 에이전트의 작성 중·근거 확인·거부·다시 쓰기·도구)만 받는다. 회사 측의 작성·검증·도구, 회사 측의 재확인, 다른 업체의 대화, 담당자 질문, 대화 밖의 안내는 받지 않는다. `status`는 받는다(진단 뷰의 `session`·`stages`와 같다).
+- 거부 코드(`codes`)는 관리자 조직에만 나간다.
+
+저장과 실시간:
+
+- 진행기는 그 일을 할 때 곧바로 기록을 저장소에 쓴다. 메모리 저장은 프로세스 안 목록, SQL은 `v3_activity` 테이블(마이그레이션 `0006_v3_activity`)이고 기록 하나가 트랜잭션 하나라 곧바로 커밋된다. 스트림은 저장소에서 읽으므로 실행이 끝나기 전에도 보이고 이어 받기가 정확하다.
+- 같은 프로세스에서는 기록을 쓸 때 기다리는 스트림을 깨운다(0.1초 안에 나간다). 다른 프로세스가 쓴 기록도 1초마다 저장소를 다시 읽어 잡는다.
+- 작성 중·근거 확인·거부·다시 쓰기는 `draft.run_draft`가 모델을 부르기 전과 검사하기 전에 알린다(`draft.LIVE`, `live.Turn`). 실제 모델이면 차례마다 몇 초씩 걸리므로 작성 중이 그만큼 보이고, 규칙 정책(시연)이면 곧바로 지나가도 같은 순서(작성 중 → 근거 확인 → 보냄)가 남는다.
+- 업체 측 에이전트가 다른 프로세스에 있으면(`V3_VENDOR_AGENTS`) 업체 측 작성 중은 회사 측이 부를 때 남기고, 업체 측의 거부·다시 쓰기·도구는 답을 받은 뒤 업체 측이 보낸 기록(정해 둔 값만 옮긴 것)으로 채운다.
+
+배포에서 주의할 것:
+
+- 프록시(Caddy, nginx)와 프런트 서버(Next.js BFF)는 `text/event-stream` 응답을 모아 두지 말고 그대로 흘려보내야 한다. 백엔드는 위 헤더를 보낸다. 브라우저의 `EventSource`는 헤더를 붙일 수 없으므로 BFF가 같은 출처의 주소로 받아 `Authorization`, `X-User-Id`, `X-Org-Id`(체험하기면 `X-Demo-View`)와 `Last-Event-ID`를 붙여 넘긴다.
+- 뒤에서 도는 실행은 요청을 받은 프로세스의 스레드다. 배포는 컨테이너 하나에 uvicorn 프로세스 하나다. 프로세스를 여럿 띄워도 실행 자리와 기록이 PostgreSQL에 있어 409와 스트림은 맞게 돌지만, 다른 프로세스가 쓴 기록은 1초 간격으로 보인다. 프로세스가 죽으면 그 실행은 이어지지 않는다(60초 뒤 멈춘 것으로 보고 다시 진행할 수 있다).
+- 메모리 저장(로컬, 테스트)에서 동기 실행은 끝날 때까지 다른 요청을 기다리게 하므로(전과 같다) 스트림도 끝에 한꺼번에 받는다. 실시간으로 보려면 `mode=async`를 쓴다(뒤에서 도는 실행은 저장소를 부를 때만 잠근다).
 
 ### 오류 코드 전체 목록
 
@@ -540,12 +623,13 @@ VendorProfile {"orgId": "org_saegil",
 | `APPROVAL_BLOCKED` | 409 | 승인이 막혀 있다. 이유는 `approvals[].blockedReason`과 `blockedCodes`에 있다(아래 "승인을 막는 사유 코드") |
 | `PERMIT_MISMATCH` | 409 | 승인하려는 대화의 업체 허가 품목이 합의 뒤에 바뀌어 흐름과 맞지 않는다. 승인하지 않는다. 맞는 흐름이 남지 않으면 그 대화를 근거와 함께 `decline`으로 닫고, 일부만 맞지 않으면 그 흐름만 빼고 승인을 지운다(남은 조건으로 다시 승인한다) |
 | `THREAD_NOT_CONFIRMED` | 409 | 확정되지 않은 대화에 실제 결과를 기록하려 했다 |
+| `RUN_IN_PROGRESS` | 409 | 그 진단의 진행(run, 답, 승인)이 이미 돌고 있다(위 "실시간 진행"의 실행 자리) |
 | `INVITE_INVALID` | 410 | 초대가 없거나, 만료되었거나(7일), 이미 쓰였다 |
 | `TOO_LARGE` | 413 | 본문이 20MB를 넘는다 |
 | `UNSUPPORTED_MEDIA` | 415 | 사진·영상이 아닌 파일이다. 탐지 모델이 연결되지 않았어도 형식 검사가 먼저다 |
 | `INVALID_BODY` | 422 | 본문이 JSON 객체가 아니거나 필수 항목(`questionId`·`value`, `threadId` 등)이 없다 |
 | `FILE_REQUIRED` | 422 | 올릴 파일이 없거나 비어 있다 |
-| `INVALID_VALUE` | 422 | 값이 틀렸다(음수 물량, 범위를 벗어난 비율, 모르는 모델 설정, 날짜 꼴 등) |
+| `INVALID_VALUE` | 422 | 값이 틀렸다(음수 물량, 범위를 벗어난 비율, 모르는 모델 설정, 날짜 꼴, run의 `mode`, 스트림의 `after` 등) |
 | `INVALID_KIND` | 422 | 근거 종류나 문서 종류가 목록에 없다 |
 | `INVALID_ANSWER` | 422 | 질문의 답이 그 항목에 맞지 않는다(빈 답 포함) |
 | `INVALID_FIELD` | 422 | 교정할 수 없는 항목이다(`POST /sessions/{id}/corrections`의 `field`) |
@@ -557,6 +641,7 @@ VendorProfile {"orgId": "org_saegil",
 | `DOCUMENT_FAILED`, `SHIELD_FAILED`, `DETECTOR_FAILED` | 502 | Document Intelligence, Prompt Shields, 탐지 엔드포인트 호출이 실패했거나 계약과 다른 답이 왔다 |
 | `DOCUMENT_INTELLIGENCE_UNAVAILABLE` | 503 | Document Intelligence가 설정되지 않아 글이 아닌 문서를 읽을 수 없다 |
 | `BFF_KEY_NOT_SET` | 503 | bff 모드인데 BFF 키 설정이 비어 있다. 모든 요청을 거절한다 |
+| `TRUST_UNAVAILABLE` | 503 | `GET /trust`가 최신 평가 요약 파일을 읽지 못했다 |
 
 업체 측 에이전트 서비스(`vendor_service.py`. `/api/v3`가 아니라 따로 뜨는 서비스다)만 내는 코드: `UNAUTHORIZED`(401, 서비스 키가 틀림), `WRONG_RECIPIENT`(403, 이 서비스의 업체에게 온 메시지가 아님), `SERVICE_KEY_NOT_SET`·`VENDOR_NOT_SET`(503, 설정이 빠짐). 로컬에서 따로 띄우는 표준 라이브러리 서버(`vendor_devserver.py`)는 같은 코드를 내고, 회사 측 서버가 저장 파일을 아직 쓰지 않았으면 `STORE_NOT_READY`(503)를 낸다. 나머지는 위 표와 같다.
 

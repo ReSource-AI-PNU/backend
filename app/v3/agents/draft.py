@@ -12,7 +12,9 @@
 from __future__ import annotations
 
 import json
+import logging
 from collections.abc import Callable
+from contextvars import ContextVar
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -26,6 +28,14 @@ from app.v3.judge.toolbox import TOOLS, call_tool
 MAX_ATTEMPTS = 2  # 첫 초안과 재작성 한 번
 MAX_TOOL_ROUNDS = 4
 ACCEPT, ASK_USER = "accept", "ask_user"
+
+logger = logging.getLogger(__name__)
+
+# 지금 차례의 실시간 알림 받는 곳: live(step, info). 진행기가 차례마다 정하고(app/v3/live.py의 Turn),
+# 그 동안 만든 Trace가 작성 중·근거 확인·거부·도구 호출을 곧바로 알린다. 없으면 아무것도 하지 않는다
+LIVE: ContextVar[Callable[[str, dict[str, Any]], None] | None] = ContextVar(
+    "v3_live_turn", default=None
+)
 
 RULES = (
     (
@@ -279,13 +289,29 @@ def model_label(llm: Any) -> dict[str, str]:
 
 
 class Trace:
-    """한 번의 작성에서 일어난 일. 진행기가 실행 기록(events)으로 옮긴다."""
+    """한 번의 작성에서 일어난 일. 진행기가 실행 기록(events)으로 옮긴다.
+
+    만들 때 LIVE에 알림 받는 곳이 있으면(live) 기록을 남길 때마다, 그리고 run_draft가 초안을 쓰기
+    시작하거나 검사를 시작할 때 곧바로 알린다(notify). 실행 기록(events)은 그대로 끝에 옮긴다.
+    """
 
     def __init__(self) -> None:
         self.events: list[dict[str, Any]] = []
+        self.live = LIVE.get()
 
     def add(self, actor: str, kind: str, summary: str, **detail: Any) -> None:
-        self.events.append({"actor": actor, "kind": kind, "summary": summary, "detail": detail})
+        event = {"actor": actor, "kind": kind, "summary": summary, "detail": detail}
+        self.events.append(event)
+        self.notify("trace", event)
+
+    def notify(self, step: str, info: dict[str, Any]) -> None:
+        """실시간 알림. 알림이 실패해도 작성은 멈추지 않는다."""
+        if self.live is None:
+            return
+        try:
+            self.live(step, info)
+        except Exception:  # 화면 알림 때문에 작성이 멈추면 안 된다
+            logger.warning("실시간 알림을 보내지 못했다", exc_info=True)
 
 
 @dataclass
@@ -583,8 +609,12 @@ def run_draft(
     messages: list[dict[str, Any]] = [{"role": "system", "content": system}]
     rejected: list[dict[str, Any]] = []  # 지금까지 거부된 사유 전부
     last: list[dict[str, Any]] = []
-    attempts = tool_rounds = 0
+    attempts = tool_rounds = announced = 0
     while True:
+        # 새 초안을 쓰기 시작한다(도구를 부른 뒤 이어 쓰는 것은 같은 초안이다)
+        if announced <= attempts:
+            announced = attempts + 1
+            trace.notify("drafting", {"actor": actor, "attempt": announced})
         data = briefing(last)
         if last and isinstance(data.get("guide"), list):
             data["guide"] = [*data["guide"], *retry_guide(last)]
@@ -664,6 +694,7 @@ def run_draft(
             except DraftError as error:
                 found = [error.item]
             else:
+                trace.notify("validating", {"actor": actor, "attempt": attempts + 1})
                 found = check(message, output)
         attempts += 1
         if not found and message is not None:

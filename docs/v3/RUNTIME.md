@@ -181,7 +181,10 @@ def get_vendor(app, org_id, viewer) -> dict
 def update_vendor(app, org_id, patch, viewer) -> dict
 def create_session(app, emitter_org_id, viewer) -> dict            # 진단 뷰
 def get_view(app, session_id, viewer) -> dict                       # 계약 7장
-def run_session(app, session_id, viewer) -> dict                    # 멈춤 지점까지
+def run_session(app, session_id, viewer) -> dict                    # 멈춤 지점까지(이 요청 안에서)
+def start_run(app, session_id, viewer) -> dict                      # 실행 자리만 차지: {sessionId, status, runId, after}
+def execute_run(app, session_id, run_id) -> None                    # start_run의 자리에서 돌린다(뒤에서 도는 스레드)
+def stream_events(app, session_id, viewer, after=0) -> dict         # 진행 기록(보는 조직에 맞춤). SSE가 되풀이해 부른다
 def answer_question(app, session_id, question_id, value, viewer) -> dict
 def approve(app, session_id, thread_id, viewer) -> dict
 def handle_vendor_message(app, vendor_org_id, message, context) -> dict   # 답 메시지(dict) 하나
@@ -246,11 +249,25 @@ def register_model_run(app, run, viewer) -> dict                    # 재학습 
 
 모든 메시지, 도구 호출, 검증 결과, handoff, 승인은 `store`의 events에 남는다. 계약 7장의 `kind`에 `thread`(스레드 개설·미개설·합의·확정), `question`(담당자 질문과 답), `document`(문서 생성), `stage`(진단 생성)를 더했다. 업체가 보는 뷰에는 자기 스레드의 메시지·handoff·승인·스레드·문서 기록과 자기가 한 도구 호출·검증 기록만 나간다. 화면의 대화와 실행 기록은 이 기록을 그대로 보여 준다. 다만 기록에 실린 근거 ID 가운데 보는 조직이 열 수 없는 것은 뷰를 만들 때 빼고 개수(`detail.hiddenEvidenceCount`)만 남긴다(상대 쪽 계산 근거의 ID에는 도구 이름과 값의 종류가 드러난다). OpenTelemetry로 내보내는 것은 `tracing.py`가 한다: `APPLICATIONINSIGHTS_CONNECTION_STRING`이 있으면 `api.build_app`이 저장소를 `TracingStore`로 감싸고, `add_event`로 저장된 이벤트마다 span 하나(`rsai.<kind>`, 속성 `rsai.*`)를 낸다. 저장된 이벤트만 옮기므로 화면과 추적이 같은 기록을 본다. 내보내기가 실패해도 진단은 계속된다. 필요한 패키지는 `tracing` extra(`azure-monitor-opentelemetry`)이고 Docker 이미지에는 늘 들어간다. extra가 없으면(테스트, 로컬 개발) 경고만 남기고 추적을 켜지 않는다.
 
+### 실시간 진행 기록
+
+화면이 두 에이전트의 대화를 바로 보여 주도록, 진행기는 events와 따로 진행 기록(activity)을 남긴다(계약 8장 "실시간 진행"). events는 차례가 끝난 뒤 한꺼번에 옮겨지지만 진행 기록은 그 일을 할 때 곧바로 저장소에 쓴다.
+
+- 쓰는 곳: `Orchestrator.feed`(`live.Recorder`). `_save`(상태·단계가 바뀔 때만 status), `_tool`, `_append`(sent·handoff), `_ask`(question), 단계 시작과 멈춤, 대화 열기·합의·승인·확정·문서 안내.
+- 작성 중·근거 확인·거부·다시 쓰기는 `draft.run_draft`가 알린다. 진행기가 차례마다 `feed.turn(...)`으로 `draft.LIVE`에 `live.Turn`을 두면, 그 동안 만든 `Trace`가 모델을 부르기 전(`drafting`, 다시 쓰면 `rewriting`), 검사하기 전(`validating`), 거부(`trace.add`의 validation `ok: false` → `rejected`), 도구 호출(`tool`)을 곧바로 알린다. 같은 프로세스의 업체 측 에이전트(`LocalVendorGateway`)도 같은 스레드에서 돌므로 같은 방법으로 알린다. 다른 프로세스면 알림이 오지 않으므로 답을 받은 뒤 `reported_trace`로 채운다(`Turn.replay`).
+- 알림 없이 만든 작성 기록(진행기가 정해진 순서로 부른 `run_tools`)은 `_flush`가 끝난 뒤 도구 기록으로 옮긴다.
+- 진행 기록을 쓰지 못해도(저장소 오류) 진단은 멈추지 않는다(경고만 남긴다).
+
+실행 자리: run·답·승인은 시작할 때 `store.claim_run`으로 그 진단의 자리를 차지하고(살아 있는 자리가 있으면 409 `RUN_IN_PROGRESS`), `live.Heartbeat`가 10초마다 `touch_run`으로 살아 있다고 적고, 끝나면 `release_run`으로 비운다. 60초 동안 적지 않은 자리는 멈춘 것으로 보고 이어받는다. 시각은 `App.wall_clock`(기본 `time.time`)으로 읽는다. 뷰의 `session.status`는 자리가 살아 있으면 `running`, 저장된 `running`이 남았는데 자리가 없으면 `idle`이다.
+
+뒤에서 도는 실행(`mode=async`)은 요청을 받은 프로세스의 데몬 스레드에서 `service.execute_run`으로 돈다. 메모리 저장소는 동시에 고치면 깨지므로 그 스레드는 `App.with_lock(잠금)`(저장소·레지스트리 호출마다 서버가 요청을 처리할 때 잡는 잠금을 잡는다)으로 돈다. 모델을 기다리는 동안에는 잠금을 잡지 않아 다른 요청(뷰, 스트림)이 그 사이에 돈다. SQL 저장소는 호출 하나가 트랜잭션 하나라 그대로 돈다. 오류는 events의 `kind: "error"`와 진행 기록에 남기고 진단을 `idle`(답할 질문이 있으면 `awaiting_answers`)로 돌린다.
+
 ## 8. 로컬 서버
 
 `python3 -m app.v3.devserver --port 8000 [--store 경로.json] [--reset] [--llm rule|foundry|anthropic] [--demo-closed] [--auth header|token --org-tokens 토큰.json]`
 
 - 표준 라이브러리 `http.server`로 계약 8장의 API를 모두 제공한다. 더한 주소는 `GET /health`와 `POST /intake/documents/confirm`이다.
+- `POST /sessions/{id}/run?mode=async`와 `GET /sessions/{id}/stream`(SSE)도 FastAPI와 같은 서비스 함수로 준다. 스트림은 길이를 모르므로 다 보내면 연결을 닫는다(`Connection: close`). 요청 잠금은 `RLock`이고, 뒤에서 도는 실행은 저장소를 부를 때마다 그 잠금을 잡는다. CORS 허용 헤더에 `Last-Event-ID`가 있다.
 - 시작할 때 가정값, 근거 시드, 시연 데이터를 올린다.
 - `--store 경로.json`을 주면 저장소는 그 파일(`JsonFileStore`)에, 근거 레지스트리는 옆 파일 `<이름>.evidence.json`(`JsonFileRegistry`)에 쓴다. 두 파일이 이미 있으면 시드로 덮어쓰지 않고 이전 진단을 이어 간다(메시지와 문서가 인용한 근거가 그대로 남아 승인과 검증이 이어진다). `--reset`을 주면 처음 상태로 되돌린다. 저장소 파일만 있고 근거 파일이 없으면 이어 갈 수 없어 처음 상태로 시작한다. `POST /demo/reset`은 두 파일을 모두 처음 상태로 되돌린다.
 - 이어 갈 때는 근거 시드(법령·기준값)를 다시 올리지 않는다. 시드 파일을 바꿨으면 `--reset`으로 다시 시작한다.

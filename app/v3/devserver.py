@@ -53,9 +53,11 @@ from collections.abc import Callable, Mapping
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any
+
+TRUST_FILE = Path(__file__).resolve().parents[2] / "docs" / "v3" / "eval" / "latest.json"
 from urllib.parse import parse_qs, unquote, urlsplit
 
-from app.v3 import httpio, localshare, service
+from app.v3 import httpio, live, localshare, service
 from app.v3.agents.factory import (
     LLM_MODES,
     MODE_LABELS,
@@ -70,7 +72,7 @@ from app.v3.store import InMemoryStore, JsonFileStore
 
 PREFIX = "/api/v3"
 ALLOWED_ORIGINS = ("http://localhost:3000", "http://127.0.0.1:3000")
-ALLOWED_HEADERS = "X-Org-Id, Authorization, Content-Type"
+ALLOWED_HEADERS = "X-Org-Id, Authorization, Content-Type, Last-Event-ID"
 ALLOWED_METHODS = "GET, POST, PUT, OPTIONS"
 
 
@@ -195,6 +197,20 @@ class Raw:
         self.body, self.content_type, self.filename = body, content_type, filename
 
 
+class Started:
+    """202 응답과 함께 뒤에서 돌릴 실행(POST /sessions/{id}/run?mode=async)."""
+
+    def __init__(self, body: dict[str, Any]) -> None:
+        self.body = body
+
+
+class EventStream:
+    """SSE 응답(GET /sessions/{id}/stream). first는 첫 읽기(권한 확인을 겸한다)의 결과다."""
+
+    def __init__(self, session_id: str, viewer: str, first: dict[str, Any]) -> None:
+        self.session_id, self.viewer, self.first = session_id, viewer, first
+
+
 def route(app: service.App, request: Request) -> Any:
     """경로를 service 함수에 잇는다. 돌려준 값은 JSON으로 나간다."""
     if not request.path.startswith(PREFIX):
@@ -203,7 +219,7 @@ def route(app: service.App, request: Request) -> Any:
     method = request.method
     # 상태 확인은 조직을 밝히지 않고 부른다(토큰이 없거나 틀려도 답한다). token 모드에서는 그 밖의
     # 모든 경로에 토큰이 있어야 한다(시연 되돌리기만 예외: 누가 부를 수 있는지는 서비스가 정한다)
-    if parts == ["health"]:
+    if parts in (["health"], ["trust"]):
         viewer = ""
     else:
         needed = request.auth.scoped and parts != ["demo", "reset"]
@@ -211,6 +227,9 @@ def route(app: service.App, request: Request) -> Any:
     match (method, parts):
         case ("GET", ["health"]):
             return {"ok": True}
+        case ("GET", ["trust"]):
+            # 공개 신뢰 페이지가 읽는 최신 평가 요약 (FastAPI 경로와 같은 파일)
+            return json.loads(TRUST_FILE.read_text(encoding="utf-8"))
         case ("POST", ["demo", "reset"]):
             return service.reset_demo(app, viewer or None)
         case ("GET", ["orgs"]):
@@ -232,7 +251,23 @@ def route(app: service.App, request: Request) -> Any:
         case ("GET", ["sessions", session_id]):
             return service.get_view(app, session_id, viewer)
         case ("POST", ["sessions", session_id, "run"]):
+            mode = (request.query.get("mode") or [""])[0]
+            if mode == "async":
+                return Started(service.start_run(app, session_id, viewer))
+            if mode not in ("", "sync"):
+                raise service.ServiceError("INVALID_VALUE", "mode는 async나 sync여야 합니다.", 422)
             return service.run_session(app, session_id, viewer)
+        case ("GET", ["sessions", session_id, "stream"]):
+            try:
+                after = live.resume_point(
+                    (request.query.get("after") or [""])[0], request.headers.get("Last-Event-ID")
+                )
+            except ValueError:
+                raise service.ServiceError(
+                    "INVALID_VALUE", "after는 0 이상의 정수여야 합니다.", 422
+                ) from None
+            first = service.stream_events(app, session_id, viewer, after)
+            return EventStream(session_id, viewer, first)
         case ("POST", ["sessions", session_id, "answers"]):
             question_id, value = httpio.answer_body(request.json())
             return service.answer_question(app, session_id, question_id, value, viewer)
@@ -300,8 +335,11 @@ def make_handler(
     auth: httpio.Auth | None = None,
     router: Callable[[service.App, Request], Any] | None = None,
 ):
-    """router는 (앱, 요청) -> 답. 주지 않으면 이 파일의 route다(업체 측 에이전트 서버가 자기 것을 준다)."""
-    guard = lock or threading.Lock()
+    """router는 (앱, 요청) -> 답. 주지 않으면 이 파일의 route다(업체 측 에이전트 서버가 자기 것을 준다).
+
+    요청은 guard를 잡고 처리한다. 뒤에서 도는 실행(mode=async)은 저장소를 부를 때마다 같은 잠금을 잡는다.
+    """
+    guard = lock or threading.RLock()
     auth = auth or httpio.Auth()
     handle = router or route
 
@@ -337,6 +375,42 @@ def make_handler(
             body = json.dumps(payload, ensure_ascii=False, default=str).encode("utf-8")
             self._send(status, body, "application/json; charset=utf-8")
 
+        def _started(self, started: Started) -> None:
+            run_id = started.body["runId"]
+            worker = threading.Thread(
+                target=service.execute_run,  # 오류는 실행 기록에 남기고 진단을 멈춘 상태로 돌린다
+                args=(app.with_lock(guard), started.body["sessionId"], run_id),
+                name=f"v3-run-{started.body['sessionId']}",
+                daemon=True,
+            )
+            worker.start()
+            body = json.dumps(started.body, ensure_ascii=False).encode("utf-8")
+            self._send(202, body, "application/json; charset=utf-8")
+
+        def _stream(self, stream: EventStream) -> None:
+            self.send_response(200)
+            self._cors()
+            self.send_header("Content-Type", "text/event-stream; charset=utf-8")
+            for name, value in live.STREAM_HEADERS.items():
+                self.send_header(name, value)
+            self.send_header("Connection", "close")  # 길이를 모르므로 다 보내면 연결을 닫는다
+            self.end_headers()
+            self.close_connection = True
+
+            def read(after: int) -> dict[str, Any]:
+                with guard:
+                    return service.stream_events(app, stream.session_id, stream.viewer, after)
+
+            try:
+                for chunk in live.stream_chunks(stream.first, read, stream.session_id):
+                    self.wfile.write(chunk.encode("utf-8"))
+                    self.wfile.flush()
+            except (BrokenPipeError, ConnectionResetError):
+                return  # 브라우저가 떠났다
+            except service.ServiceError as error:
+                chunk = live.sse("error", {"code": error.code, "message": error.message})
+                self.wfile.write(chunk.encode("utf-8"))
+
         def do_OPTIONS(self) -> None:
             self.send_response(204)
             self._cors()
@@ -363,7 +437,11 @@ def make_handler(
                     500, {"error": {"code": "INTERNAL", "message": "서버에서 오류가 났습니다."}}
                 )
             else:
-                if isinstance(result, Raw):
+                if isinstance(result, Started):
+                    self._started(result)
+                elif isinstance(result, EventStream):
+                    self._stream(result)
+                elif isinstance(result, Raw):
                     extra = (
                         [("Content-Disposition", f'attachment; filename="{result.filename}"')]
                         if result.filename

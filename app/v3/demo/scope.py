@@ -50,6 +50,9 @@ class DemoStore:
             "reset",
             "purge_orgs",
             "next_id",
+            "claim_run",
+            "touch_run",
+            "release_run",
         ):
             raise read_only()
         return getattr(self._store, name)
@@ -126,6 +129,14 @@ class DemoStore:
 
     def list_events(self, session_id: str) -> list[dict[str, Any]]:
         return self._store.list_events(session_id) if self._demo_session(session_id) else []
+
+    def list_activity(self, session_id: str, after: int = 0) -> list[dict[str, Any]]:
+        if not self._demo_session(session_id):
+            return []
+        return self._store.list_activity(session_id, after)
+
+    def get_run(self, session_id: str) -> dict[str, Any] | None:
+        return self._store.get_run(session_id) if self._demo_session(session_id) else None
 
 
 class DemoRegistry:

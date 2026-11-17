@@ -21,6 +21,8 @@ COPY scripts ./scripts
 # 배포 때마다 같은 이미지로 마이그레이션을 돌린다: alembic upgrade head
 COPY alembic.ini ./
 COPY migrations ./migrations
+# 공개 신뢰 페이지가 읽는 최신 평가 요약(GET /api/v3/trust)
+COPY docs/v3/eval/latest.json ./docs/v3/eval/latest.json
 
 # 가중치는 이미지에 넣지 않는다. 시작 시 MODEL_BLOB_URL 이 있으면 models/ 로 내려받고, 없으면 제로샷(Azure OpenAI)으로 동작.
 # 같은 이미지에서 환경 변수 APP_ROLE(api | vendor-agent | mcp | migrate | detector)이나 실행 명령만 바꿔 띄운다.

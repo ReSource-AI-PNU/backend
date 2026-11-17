@@ -73,7 +73,8 @@ services:
     image: ollama/ollama:latest
     restart: unless-stopped
     environment:
-      OLLAMA_KEEP_ALIVE: 24h
+      # 쓰지 않으면 5분 뒤 모델을 메모리에서 내린다(앱과 탐지 모델이 같은 16GB를 쓴다)
+      OLLAMA_KEEP_ALIVE: 5m
     volumes:
       - ollama:/root/.ollama
 

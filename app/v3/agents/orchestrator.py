@@ -3,6 +3,7 @@
 멈춤 지점은 awaiting_answers(담당자 답 대기), awaiting_approval(양쪽 승인 대기), confirmed다.
 다시 부르면 이어서 진행하고, 이미 한 일은 되풀이하지 않는다. 진행 상태는 세션 레코드의
 phase와 work에 남기고, 모든 메시지·도구 호출·검증 결과·handoff·승인은 실행 기록(events)에 남긴다.
+화면에 바로 보여 줄 진행(작성 중, 근거 확인, 거부, 다시 쓰기, 보냄)은 self.feed(live.Recorder)로 따로 남긴다.
 """
 
 from __future__ import annotations
@@ -54,6 +55,7 @@ from app.v3.intake.grade_model import GradeModelError, grade_stream
 from app.v3.judge import basis
 from app.v3.judge.common import best_criterion, permit_match, quality, without_emitter_only
 from app.v3.judge.toolbox import TOOLS, call_tool
+from app.v3.live import STATUS_NOTES, Recorder
 from app.v3.textutil import josa
 from app.v3.untrusted import org_label, stream_label
 
@@ -61,6 +63,7 @@ PHASES = ("identify", "discover", "converse", "propose", "approval", "done")
 TERMS_TYPES = ("offer", "counter", "conditional")
 MAX_STEPS = 400  # 대화 고리의 안전 상한. 스레드마다 12턴 상한이 먼저 걸린다
 STAGE_KEYS = ("1", "2", "3", "4", "5", "6")
+STAGE_NUMBERS = (1, 2, 3, 4, 5, 6)
 WORST = {"calculated": 0, "conditional": 1, "needs_information": 2}
 # 배출 기업의 현행 처리에 관한 검사(judge_route). 업체와 함께 보는 문서와 업체 뷰에는 싣지 않는다
 CURRENT_CHECKS = ("current_cost", "current_assumed", "current_method")
@@ -310,6 +313,7 @@ class Orchestrator:
         self.store = app.store
         self.registry = app.registry
         self.policy = QuestionPolicy()
+        self.feed = Recorder(app.store)  # 실시간 진행 기록(live.py). 실패해도 진단은 멈추지 않는다
 
     @property
     def today(self) -> str:
@@ -328,6 +332,13 @@ class Orchestrator:
     ) -> None:
         """작성 과정의 기록을 실행 기록으로 옮긴다. org_id는 그 일을 한 조직이다."""
         events = trace.events if isinstance(trace, Trace) else trace
+        if (
+            isinstance(trace, Trace)
+            and trace.live is None
+            and any(isinstance(e, dict) and e.get("kind") == "tool_call" for e in events)
+        ):
+            # 차례 알림 없이 만든 기록(진행기가 정해진 순서로 부른 도구)은 끝난 뒤 진행 기록으로 옮긴다
+            self.feed.from_trace(session_id, events, self._thread_ref(thread_id), org_id)
         for event in events:
             if not isinstance(event, dict) or not event.get("actor"):
                 continue
@@ -348,6 +359,16 @@ class Orchestrator:
         # work 같은 안쪽 객체는 그대로 둔다(진행 중인 참조가 끊기지 않게 한다)
         for key in ("version", "createdAt", "updatedAt"):
             session[key] = saved.get(key)
+        self.feed.status(session)  # 상태·단계가 바뀌었을 때만 남는다
+
+    def _thread_ref(self, thread_id: str | None) -> Thread | None:
+        """진행 기록에 붙일 대화(ID와 두 당사자). 없으면 None."""
+        if not thread_id:
+            return None
+        try:
+            return Thread.from_dict(self.store.get_thread(thread_id))
+        except KeyError:
+            return None
 
     def _tool(self, session, name, arguments, *, thread_id=None, summary_ids=None) -> dict:
         """진행기가 정해진 순서로 부르는 판단 도구. 호출은 실행 기록에 남는다."""
@@ -374,6 +395,15 @@ class Orchestrator:
             evidence=list(result.get("evidence") or []),
             orgId=org,
             calledBy="orchestrator",
+        )
+        thread = self._thread_ref(thread_id)
+        self.feed.tool(
+            session["id"],
+            name,
+            result.get("status"),
+            thread=thread,
+            side="company" if thread is not None else None,
+            org_id=org,
         )
         return result
 
@@ -442,10 +472,12 @@ class Orchestrator:
             "propose": self._propose,
         }
         while session["phase"] in steps:
+            self.feed.phase(session)
             paused = steps[session["phase"]](session)
             if paused:
                 session["status"] = "awaiting_answers"
                 self._save(session)
+                self._note_stop(session)
                 return session
             session["phase"] = PHASES[PHASES.index(session["phase"]) + 1]
             self._save(session)
@@ -454,7 +486,13 @@ class Orchestrator:
         elif session["status"] == "running":
             session["status"] = "idle"
         self._save(session)
+        self._note_stop(session)
         return session
+
+    def _note_stop(self, session: dict[str, Any]) -> None:
+        text = STATUS_NOTES.get(str(session.get("status")))
+        if text:
+            self.feed.note(session["id"], text, org_id=session["emitterOrgId"])
 
     # ── 합의 뒤 업체 조건 변경: 새 조건으로 대화를 이어 간다 ───────────
     def _renegotiate(self, session: dict[str, Any]) -> bool:
@@ -597,7 +635,7 @@ class Orchestrator:
         history = self.store.list_questions(session["id"])
         batch = self.policy.next_batch(questions.ordered(pending), history)
         if batch:
-            self._ask(session, batch)
+            self._ask(session, batch, stage=1)
             return True
         work["unresolved"] = [
             {"streamId": q["streamId"], "field": q["field"]}
@@ -608,10 +646,14 @@ class Orchestrator:
         work["stages"]["1"] = "needs_check" if missing or work["unresolved"] else "done"
         return False
 
-    def _ask(self, session: dict[str, Any], batch: list[dict[str, Any]]) -> None:
+    def _ask(
+        self, session: dict[str, Any], batch: list[dict[str, Any]], stage: int | None = None
+    ) -> None:
+        asked = []
         for question in batch:
             question = {"id": self.store.next_id("q"), **question}
             self.store.put_question(session["id"], question)
+            asked.append(question)
             self._event(
                 session["id"],
                 "system",
@@ -622,6 +664,7 @@ class Orchestrator:
                 field=question["field"],
                 batch=question["batch"],
             )
+        self.feed.questions(session, asked, stage)
 
     def answer(self, session_id: str, question_id: str, value: Any) -> dict[str, Any]:
         session = self.store.get_session(session_id)
@@ -754,6 +797,7 @@ class Orchestrator:
                     vendorOrgId=vendor_id,
                     streamIds=list(thread.stream_ids),
                 )
+                self.feed.opened(session["id"], thread, name)
             if refused[vendor_id]:
                 thread = Thread(
                     id=self.store.next_id("th"),
@@ -839,14 +883,15 @@ class Orchestrator:
         work["stages"]["3"] = "needs_check" if any(s != "calculated" for s in states) else "done"
 
         for thread in opened:  # ④ 연 스레드마다 문의
-            outcome, trace = agent.compose(
-                thread,
-                "inquiry",
-                streams=[by_id[s] for s in thread.stream_ids],
-                vendor=publics[thread.vendor_org],
-                vendor_org=self.store.get_org(thread.vendor_org),
-                memo=work["threadTools"][thread.id],
-            )
+            with self.feed.turn(session["id"], thread, "company", 4):
+                outcome, trace = agent.compose(
+                    thread,
+                    "inquiry",
+                    streams=[by_id[s] for s in thread.stream_ids],
+                    vendor=publics[thread.vendor_org],
+                    vendor_org=self.store.get_org(thread.vendor_org),
+                    memo=work["threadTools"][thread.id],
+                )
             self._send(session, thread, outcome, trace, stage=4)
         return False
 
@@ -889,6 +934,7 @@ class Orchestrator:
             attempts=validation.get("attempts"),
             reason=message.meta.get("reason"),
         )
+        self.feed.sent(session["id"], thread, message)
         state = session["work"]["threadState"]
         if thread.closed:
             state[thread.id] = "closed"
@@ -1368,16 +1414,20 @@ class Orchestrator:
             },
         }
 
-    def _receive(self, session, thread: Thread, reply: dict[str, Any]) -> None:
-        """업체 측 답을 회사 측에서 다시 검사한 뒤에만 스레드에 붙인다."""
+    def _receive(self, session, thread: Thread, reply: dict[str, Any], turn: Any = None) -> None:
+        """업체 측 답을 회사 측에서 다시 검사한 뒤에만 스레드에 붙인다.
+
+        turn은 이 차례의 실시간 알림(live.Turn)이다. 업체 측에서 알림이 하나도 오지 않았으면(다른
+        프로세스) 업체 측이 보낸 기록으로 거부와 다시 쓰기를 진행 기록에 채운다.
+        """
         work = session["work"]
         raw_meta = reply.get("meta") if isinstance(reply.get("meta"), dict) else {}
-        self._flush(
-            session["id"],
-            reported_trace(raw_meta.get("trace"), self.registry),
-            thread.id,
-            thread.vendor_org,
-        )
+        reported = reported_trace(raw_meta.get("trace"), self.registry)
+        self._flush(session["id"], reported, thread.id, thread.vendor_org)
+        if turn is not None and not turn.steps:
+            turn.replay(reported)
+        stage = reply.get("stage") if reply.get("stage") in STAGE_NUMBERS else 5
+        self.feed.recheck(session["id"], thread, None, stage)
         meta = self._clean_meta(raw_meta, thread)
         reported = meta.get("validation") or {}
         problems: list[dict[str, Any]] = []
@@ -1411,6 +1461,7 @@ class Orchestrator:
                     message, meta.get("terms"), thread_names(self.store, thread)
                 )
             ]
+        self.feed.recheck(session["id"], thread, [str(p["code"]) for p in problems], stage)
         self._event(
             session["id"],
             "validator",
@@ -1603,11 +1654,13 @@ class Orchestrator:
     def _ask_vendor(self, session, thread: Thread) -> None:
         last = thread.messages[-1]
         try:
-            reply = self.app.vendor_gateway.deliver(
-                thread.vendor_org,
-                thread.to_dict()["messages"][-1] | {"threadId": thread.id, "seq": last.seq},
-                self._vendor_context(session, thread),
-            )
+            with self.feed.turn(session["id"], thread, "vendor", last.stage) as turn:
+                turn.announce()
+                reply = self.app.vendor_gateway.deliver(
+                    thread.vendor_org,
+                    thread.to_dict()["messages"][-1] | {"threadId": thread.id, "seq": last.seq},
+                    self._vendor_context(session, thread),
+                )
         except Exception as error:  # noqa: BLE001 - 업체 측 장애는 종류와 관계없이 사람에게 넘긴다
             self._event(
                 session["id"],
@@ -1625,7 +1678,7 @@ class Orchestrator:
                 stage=4,
             )
             return
-        self._receive(session, thread, reply)
+        self._receive(session, thread, reply, turn)
 
     def _company_turn(self, session, thread: Thread, agent: CompanyAgent, profiles) -> None:
         work = session["work"]
@@ -1638,22 +1691,30 @@ class Orchestrator:
                 if x["vendorOrgId"] == thread.vendor_org and x["streamId"] in thread.stream_ids
             }
         )
-        outcome, trace = agent.compose(
-            thread,
-            "reply",
-            streams=streams,
-            vendor=public_profile(profiles[thread.vendor_org], fleet_cost=False),
-            vendor_org=self.store.get_org(thread.vendor_org),
-            memo=work["threadTools"].setdefault(thread.id, []),
-            state={
-                "offered": offered,
-                "excluded": excluded,
-                "cannotAskUser": bool(work["cannotAsk"].get(thread.id)),
-            },
-        )
+        with self.feed.turn(session["id"], thread, "company", 5):
+            outcome, trace = agent.compose(
+                thread,
+                "reply",
+                streams=streams,
+                vendor=public_profile(profiles[thread.vendor_org], fleet_cost=False),
+                vendor_org=self.store.get_org(thread.vendor_org),
+                memo=work["threadTools"].setdefault(thread.id, []),
+                state={
+                    "offered": offered,
+                    "excluded": excluded,
+                    "cannotAskUser": bool(work["cannotAsk"].get(thread.id)),
+                },
+            )
         if outcome.kind == ACCEPT:
             self._flush(session["id"], trace, thread.id, thread.emitter_org)
             work["threadState"][thread.id] = "settled"
+            self.feed.note(
+                session["id"],
+                "회사 측 AI가 받은 조건으로 최적안 계산에 넘깁니다.",
+                stage=5,
+                thread=thread,
+                org_id=thread.emitter_org,
+            )
             return
         if outcome.kind == ASK_USER:
             self._flush(session["id"], trace, thread.id, thread.emitter_org)
@@ -1669,8 +1730,15 @@ class Orchestrator:
             history = self.store.list_questions(session["id"])
             batch = self.policy.next_batch(questions.ordered(wanted), history)
             if batch:
-                self._ask(session, batch)
+                self._ask(session, batch, stage=5)
                 work["threadState"][thread.id] = "waiting_user"
+                self.feed.note(
+                    session["id"],
+                    "회사 측 AI가 담당자에게 물어본 뒤 이어서 답합니다.",
+                    stage=5,
+                    thread=thread,
+                    org_id=thread.emitter_org,
+                )
             elif work["cannotAsk"].get(thread.id):
                 self._handoff(
                     session,
@@ -1781,6 +1849,14 @@ class Orchestrator:
                 status="agreed",
                 streamIds=assigned[thread.id],
                 agreedSeq=thread.agreed_seq,
+            )
+            self.feed.note(
+                session["id"],
+                "최적안에 들어간 조건입니다. 양쪽 담당자의 승인을 기다립니다.",
+                stage=6,
+                thread=thread,
+                org_id=thread.emitter_org,
+                shared=True,
             )
             self._remember(session, thread)
             self._loading_for(session, thread, assigned[thread.id], streams, profiles)
@@ -2386,6 +2462,14 @@ class Orchestrator:
             orgId=org_id,
             both=both,
         )
+        self.feed.note(
+            session_id,
+            f"{'회사' if side == 'emitter' else '업체'} 측 담당자가 승인했습니다.",
+            stage=6,
+            thread=thread,
+            org_id=org_id,
+            shared=True,
+        )
         if both:
             self._confirm(session, thread)
         agreed = [t for t in self._threads(session_id) if t.id in session["work"]["assigned"]]
@@ -2412,15 +2496,16 @@ class Orchestrator:
             for sid in assigned
             if sid in offers
         ]
-        outcome, trace = self._company(session).compose(
-            thread,
-            "confirm",
-            streams=streams,
-            vendor=public_profile(profile, fleet_cost=False),
-            vendor_org=self.store.get_org(thread.vendor_org),
-            memo=work["threadTools"].setdefault(thread.id, []),
-            state={"offered": sorted(offers), "agreed": agreed},
-        )
+        with self.feed.turn(session["id"], thread, "company", 6):
+            outcome, trace = self._company(session).compose(
+                thread,
+                "confirm",
+                streams=streams,
+                vendor=public_profile(profile, fleet_cost=False),
+                vendor_org=self.store.get_org(thread.vendor_org),
+                memo=work["threadTools"].setdefault(thread.id, []),
+                state={"offered": sorted(offers), "agreed": agreed},
+            )
         self._send(session, thread, outcome, trace, stage=6)
         if thread.status != "confirmed":
             return
@@ -2439,6 +2524,14 @@ class Orchestrator:
             "양쪽 승인으로 확정했습니다.",
             thread.id,
             status="confirmed",
+        )
+        self.feed.note(
+            session["id"],
+            "양쪽 승인으로 확정했습니다.",
+            stage=6,
+            thread=thread,
+            org_id=thread.emitter_org,
+            shared=True,
         )
         for document in self._documents(session, thread, assigned):
             result = validate_text(
@@ -2479,6 +2572,14 @@ class Orchestrator:
                 thread.id,
                 documentId=document["id"],
                 document=document["kind"],
+            )
+            self.feed.note(
+                session["id"],
+                f"{josa(document['title'], '을를')} 만들었습니다.",
+                stage=6,
+                thread=thread,
+                org_id=thread.emitter_org,
+                shared=True,
             )
 
     def _documents(self, session, thread: Thread, assigned: list[str]) -> list[dict[str, Any]]:

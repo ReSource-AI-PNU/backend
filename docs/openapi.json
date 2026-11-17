@@ -3288,6 +3288,26 @@
         }
       }
     },
+    "/api/v3/trust": {
+      "get": {
+        "tags": [
+          "v3"
+        ],
+        "summary": "Trust",
+        "description": "최신 평가 요약을 인증 없이 돌려준다. 조직 데이터는 들어 있지 않다.",
+        "operationId": "trust_api_v3_trust_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v3/demo/reset": {
       "post": {
         "tags": [
@@ -3593,6 +3613,46 @@
         ],
         "summary": "Run Session",
         "operationId": "run_session_api_v3_sessions__session_id__run_post",
+        "parameters": [
+          {
+            "name": "session_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Session Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v3/sessions/{session_id}/stream": {
+      "get": {
+        "tags": [
+          "v3"
+        ],
+        "summary": "Session Stream",
+        "operationId": "session_stream_api_v3_sessions__session_id__stream_get",
         "parameters": [
           {
             "name": "session_id",

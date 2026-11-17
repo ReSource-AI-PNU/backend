@@ -16,23 +16,30 @@ tests/v3/test_api.py가 CI에서 확인한다.
 - 오류는 {"error": {"code", "message"}}와 상태 코드로 낸다. 본문은 FastAPI 검증에 맡기지 않고
   직접 읽는다(검증 실패 응답의 모양을 계약과 같게 하려는 것).
 - 서비스 함수는 작업 스레드에서 부른다. 메모리 저장소일 때는 한 번에 하나씩만 부른다.
+- POST /sessions/{id}/run?mode=async는 실행 자리를 차지하고 202를 준 뒤 뒤에서 도는 스레드로 돌린다.
+  메모리 저장소면 그 스레드는 저장소 호출 하나마다 같은 잠금을 잡는다(요청과 번갈아 돈다).
+  GET /sessions/{id}/stream은 진행 기록을 SSE로 보낸다(계약 8장 "실시간 진행").
 - 판단과 숫자는 여기서 만들지 않는다. 받은 값을 넘기고 돌려받은 값을 그대로 내보낸다.
 """
 
+import asyncio
 import contextvars
 import functools
+import json
 import logging
 import threading
-from collections.abc import Callable
+import time
+from collections.abc import AsyncIterator, Callable
+from pathlib import Path
 from typing import Any
 
 from fastapi import APIRouter, Request
-from fastapi.responses import JSONResponse, Response
+from fastapi.responses import JSONResponse, Response, StreamingResponse
 from starlette.concurrency import run_in_threadpool
 from starlette.exceptions import HTTPException
 
 from app.core.config import settings
-from app.v3 import accounts, httpio, service
+from app.v3 import accounts, httpio, live, service
 from app.v3.agents.factory import build_llm_factory
 from app.v3.demo.scope import demo_app
 
@@ -306,6 +313,60 @@ async def call(fn: Callable[..., Any], *args: Any) -> Any:
     return await run_in_threadpool(_invoke, fn, args, _demo_view.get())
 
 
+# ── 뒤에서 도는 실행 ─────────────────────────────────────────────────
+_runs_lock = threading.Lock()
+_running: dict[str, threading.Thread] = {}
+
+
+def _background_app(app: service.App) -> service.App:
+    """뒤에서 도는 실행이 쓸 앱. SQL이면 그대로(호출 하나가 트랜잭션 하나), 메모리면 호출마다 잠근다."""
+    return app if settings.database_url else app.with_lock(_memory_lock)
+
+
+def _background_run(app: service.App, session_id: str, run_id: str) -> None:
+    try:
+        service.execute_run(app, session_id, run_id)
+    except Exception:
+        # 실행 기록(kind "error")과 진행 기록에 이미 남겼다. 서버 기록에는 자세한 내용을 남긴다
+        logger.exception("뒤에서 돈 진단 실행이 실패했다: %s %s", session_id, run_id)
+    finally:
+        with _runs_lock:
+            _running.pop(run_id, None)
+
+
+def launch_run(app: service.App, session_id: str, run_id: str) -> None:
+    """start_run이 차지한 자리에서 진단을 뒤에서 돌린다. 스레드를 띄우지 못하면 자리를 비운다."""
+    worker = threading.Thread(
+        target=_background_run,
+        args=(_background_app(app), session_id, run_id),
+        name=f"v3-run-{session_id}",
+        daemon=True,  # 프로세스가 끝나면 함께 멈춘다. 남은 자리는 heartbeat가 끊겨 멈춘 것으로 본다
+    )
+    with _runs_lock:
+        _running[run_id] = worker
+    try:
+        worker.start()
+    except BaseException:
+        with _runs_lock:
+            _running.pop(run_id, None)
+        app.store.release_run(session_id, run_id)
+        raise
+
+
+def wait_runs(timeout: float = 30.0) -> bool:
+    """뒤에서 도는 실행이 모두 끝날 때까지 기다린다(테스트와 종료 때). 모두 끝났으면 True."""
+    deadline = time.monotonic() + timeout
+    while True:
+        with _runs_lock:
+            workers = list(_running.values())
+        if not workers:
+            return True
+        left = deadline - time.monotonic()
+        if left <= 0:
+            return False
+        workers[0].join(min(left, 0.5))
+
+
 def guarded(handler: Callable[..., Any]) -> Callable[..., Any]:
     """오류를 계약의 모양으로 바꾼다. 예상하지 못한 오류의 내용은 응답에 싣지 않는다."""
 
@@ -416,6 +477,20 @@ async def health(request: Request):
     return {"ok": True}
 
 
+# 공개 신뢰 페이지(평가 설계 17장)가 읽는 최신 평가 요약. 평가 실행(scripts/v3/eval/run_all)이 만든다
+TRUST_FILE = Path(__file__).resolve().parents[2] / "docs" / "v3" / "eval" / "latest.json"
+
+
+@router.get("/trust")
+@guarded
+async def trust(request: Request):
+    """최신 평가 요약을 인증 없이 돌려준다. 조직 데이터는 들어 있지 않다."""
+    try:
+        return json.loads(TRUST_FILE.read_text(encoding="utf-8"))
+    except (OSError, ValueError) as error:
+        raise service.ServiceError("TRUST_UNAVAILABLE", "평가 결과를 불러오지 못했습니다.", 503) from error
+
+
 @router.post("/demo/reset")
 @guarded
 async def demo_reset(request: Request):
@@ -485,7 +560,85 @@ async def session_view(session_id: str, request: Request):
 @router.post("/sessions/{session_id}/run")
 @guarded
 async def run_session(session_id: str, request: Request):
-    return await call(service.run_session, session_id, await viewer_of(request))
+    # mode=async: 실행 자리만 차지하고 202 {sessionId, status, runId, after}. 진행은 /stream으로 본다
+    viewer = await viewer_of(request)
+    mode = request.query_params.get("mode", "")
+    if mode == "async":
+        started = await call(service.start_run, session_id, viewer)
+        launch_run(get_state(), session_id, started["runId"])
+        return JSONResponse(started, status_code=202)
+    if mode not in ("", "sync"):
+        raise ApiError("INVALID_VALUE", "mode는 async나 sync여야 합니다.", 422)
+    return await call(service.run_session, session_id, viewer)
+
+
+def _resume_point(request: Request) -> int:
+    """이어 받을 지점: ?after=와 Last-Event-ID 헤더 가운데 큰 값(없으면 0, 처음부터)."""
+    try:
+        return live.resume_point(
+            request.query_params.get("after"), request.headers.get("last-event-id")
+        )
+    except ValueError:
+        raise ApiError("INVALID_VALUE", "after는 0 이상의 정수여야 합니다.", 422) from None
+
+
+async def _stream_body(
+    request: Request, session_id: str, viewer: str, demo: bool, first: dict[str, Any]
+) -> AsyncIterator[str]:
+    """live.stream_chunks와 같은 순서를 비동기로 한다(이벤트 루프를 막지 않는다)."""
+    yield f"retry: {live.STREAM_RETRY_MS}\n\n"  # 첫 조각을 곧바로 보내 프록시가 붙들지 않게 한다
+    batch, last = first, int(first["lastSeq"])
+    seen = live.HUB.version(session_id)
+    clock = time.monotonic
+    read_at = sent_at = checked_at = clock()
+    while True:
+        for item in batch["events"]:
+            yield live.sse(item["event"], item["data"], item["id"])
+            sent_at = clock()
+        last = max(last, int(batch["lastSeq"]))
+        if not batch["running"]:
+            yield live.sse("done", {"status": batch["status"], "lastSeq": last})
+            return
+        while True:  # 새 기록을 기다린다
+            await asyncio.sleep(live.STREAM_POLL_SECONDS)
+            now = clock()
+            if now - sent_at >= live.STREAM_KEEPALIVE_SECONDS:
+                yield ": keep-alive\n\n"
+                sent_at = now
+            if now - checked_at >= live.STREAM_READ_SECONDS:
+                checked_at = now
+                if await request.is_disconnected():
+                    return
+            version = live.HUB.version(session_id)
+            if version != seen or now - read_at >= live.STREAM_READ_SECONDS:
+                seen, read_at = version, now
+                break
+        try:
+            batch = await run_in_threadpool(
+                _invoke, service.stream_events, (session_id, viewer, last), demo
+            )
+        except service.ServiceError as error:  # 도중에 볼 수 없게 됐다(시연 되돌리기로 지워짐 등)
+            yield live.sse("error", {"code": error.code, "message": error.message})
+            return
+        except Exception:  # 저장소가 잠시 닿지 않는 등. 브라우저는 Last-Event-ID로 다시 붙는다
+            logger.exception("진행 기록을 읽지 못했다: %s", session_id)
+            yield live.sse("error", {"code": "INTERNAL", "message": "서버에서 오류가 났습니다."})
+            return
+
+
+@router.get("/sessions/{session_id}/stream")
+@guarded
+async def session_stream(session_id: str, request: Request):
+    viewer = await viewer_of(request)
+    after = _resume_point(request)
+    demo = _demo_view.get()
+    # 첫 읽기에서 권한을 확인한다. 볼 수 없으면 SSE가 아니라 보통의 오류 응답이 나간다
+    first = await call(service.stream_events, session_id, viewer, after)
+    return StreamingResponse(
+        _stream_body(request, session_id, viewer, demo, first),
+        media_type="text/event-stream",
+        headers=live.STREAM_HEADERS,
+    )
 
 
 @router.post("/sessions/{session_id}/answers")

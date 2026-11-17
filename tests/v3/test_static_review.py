@@ -76,7 +76,7 @@ def test_migration_chain_is_unbroken():
         assert assigned(module, "down_revision") == previous, file.name
         previous = assigned(module, "revision")
         assert previous == file.stem, file.name
-    assert previous == "0005_v3_accounts"
+    assert previous == "0006_v3_activity"
 
 
 def call_name(node: ast.AST) -> str:
@@ -110,7 +110,11 @@ def model_tables() -> dict[str, dict[str, tuple[str, bool]]]:
     return tables
 
 
-V3_MIGRATIONS = ("migrations/versions/0004_v3.py", "migrations/versions/0005_v3_accounts.py")
+V3_MIGRATIONS = (
+    "migrations/versions/0004_v3.py",
+    "migrations/versions/0005_v3_accounts.py",
+    "migrations/versions/0006_v3_activity.py",
+)
 
 
 def migration_tables() -> dict[str, dict[str, tuple[str, bool]]]:
@@ -130,15 +134,18 @@ def migration_tables() -> dict[str, dict[str, tuple[str, bool]]]:
 
 
 def test_v3_models_and_migration_have_the_same_columns():
-    """모델(sql.py)과 마이그레이션(0004, 0005 계정)이 같은 테이블·열·기본 키를 만든다."""
+    """모델(sql.py)과 마이그레이션(0004, 0005 계정, 0006 진행 기록)이 같은 테이블·열·기본 키를 만든다."""
     models = model_tables()
     accounts = {"v3_users", "v3_memberships", "v3_invites"}
-    assert set(models) == {"v3_evidence", "v3_records", "v3_events", *accounts}
+    activity = {"v3_activity"}
+    assert set(models) == {"v3_evidence", "v3_records", "v3_events", *accounts, *activity}
     assert models == migration_tables()
     downgrade = read("migrations/versions/0004_v3.py").split("def downgrade", 1)[1]
-    assert all(f'drop_table("{name}")' in downgrade for name in set(models) - accounts)
+    assert all(f'drop_table("{name}")' in downgrade for name in set(models) - accounts - activity)
     downgrade = read("migrations/versions/0005_v3_accounts.py").split("def downgrade", 1)[1]
     assert all(f'drop_table("{name}")' in downgrade for name in accounts)
+    downgrade = read("migrations/versions/0006_v3_activity.py").split("def downgrade", 1)[1]
+    assert all(f'drop_table("{name}")' in downgrade for name in activity)
 
 
 def test_sql_store_never_changes_json_in_place():

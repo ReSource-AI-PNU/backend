@@ -10,6 +10,7 @@ from __future__ import annotations
 import copy
 import json
 import os
+import threading
 from collections.abc import Callable, Iterable
 from datetime import UTC, datetime
 from pathlib import Path
@@ -28,6 +29,8 @@ _TABLES = (
     "documents",
     "events",
     "counters",
+    "activity",
+    "runs",
 )
 
 
@@ -100,11 +103,22 @@ class Store(Protocol):
     ) -> dict[str, Any]: ...
     def list_events(self, session_id: str) -> list[dict[str, Any]]: ...
 
+    # 실시간 진행 기록(live.py)과 실행 자리(한 진단에 실행 하나). 계약 8장 "실시간 진행"
+    def add_activity(self, session_id: str, entry: dict[str, Any]) -> dict[str, Any]: ...
+    def list_activity(self, session_id: str, after: int = 0) -> list[dict[str, Any]]: ...
+    def claim_run(
+        self, session_id: str, run: dict[str, Any], stale_before: float
+    ) -> dict[str, Any] | None: ...
+    def touch_run(self, session_id: str, run_id: str, at: float) -> bool: ...
+    def release_run(self, session_id: str, run_id: str) -> None: ...
+    def get_run(self, session_id: str) -> dict[str, Any] | None: ...
+
 
 class InMemoryStore:
     def __init__(self, clock: Callable[[], str] | None = None) -> None:
         self._clock = clock or system_clock
         self._data: dict[str, dict[str, Any]] = {table: {} for table in _TABLES}
+        self._runs_lock = threading.Lock()  # 실행 자리를 차지하는 일(확인과 적기)을 한 번에 한다
 
     # ── 공통 ──────────────────────────────────────────────────────────
     def now(self) -> str:
@@ -145,6 +159,8 @@ class InMemoryStore:
             "approvals": sessions,
             "documents": sessions,
             "events": sessions,
+            "activity": sessions,
+            "runs": sessions,
         }
         for table, keys in doomed.items():
             for key in keys:
@@ -379,6 +395,57 @@ class InMemoryStore:
 
     def list_events(self, session_id: str) -> list[dict[str, Any]]:
         return self._per_session("events", session_id)
+
+    # ── 실시간 진행 기록과 실행 자리 ──────────────────────────────────
+    def add_activity(self, session_id: str, entry: dict[str, Any]) -> dict[str, Any]:
+        """seq는 세션마다 1부터 센다. at이 없으면 지금 시각을 적는다."""
+        items = self._data["activity"].setdefault(session_id, [])
+        saved = {**copy.deepcopy(entry), "seq": len(items) + 1}
+        saved.setdefault("at", self.now())
+        items.append(saved)
+        self._changed()
+        return copy.deepcopy(saved)
+
+    def list_activity(self, session_id: str, after: int = 0) -> list[dict[str, Any]]:
+        """seq가 after보다 큰 기록을 seq 순으로."""
+        items = list(self._data["activity"].get(session_id) or [])
+        return [copy.deepcopy(item) for item in items if int(item["seq"]) > after]
+
+    def claim_run(
+        self, session_id: str, run: dict[str, Any], stale_before: float
+    ) -> dict[str, Any] | None:
+        """비어 있거나 heartbeat가 stale_before보다 앞선(멈춘) 자리면 run을 적고 None을 준다.
+
+        다른 실행이 살아 있으면 적지 않고 그 실행을 준다.
+        """
+        with self._runs_lock:
+            current = self._data["runs"].get(session_id)
+            if current is not None and float(current.get("heartbeat") or 0) >= stale_before:
+                return copy.deepcopy(current)
+            self._data["runs"][session_id] = copy.deepcopy(run)
+        self._changed()
+        return None
+
+    def touch_run(self, session_id: str, run_id: str, at: float) -> bool:
+        """살아 있다고 적는다(heartbeat). 자리를 잃었으면 False. 파일에는 쓰지 않는다."""
+        current = self._data["runs"].get(session_id)
+        if current is None or current.get("runId") != run_id:
+            return False
+        # 있는 키의 값만 바꾼다(다른 스레드가 표를 읽고 있어도 표의 크기가 바뀌지 않는다)
+        current["heartbeat"] = float(at)
+        return True
+
+    def release_run(self, session_id: str, run_id: str) -> None:
+        with self._runs_lock:
+            current = self._data["runs"].get(session_id)
+            if current is None or current.get("runId") != run_id:
+                return
+            self._data["runs"].pop(session_id, None)
+        self._changed()
+
+    def get_run(self, session_id: str) -> dict[str, Any] | None:
+        current = self._data["runs"].get(session_id)
+        return copy.deepcopy(current) if current is not None else None
 
 
 class JsonFileStore(InMemoryStore):
