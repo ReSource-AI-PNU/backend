@@ -3324,6 +3324,23 @@
             }
           }
         }
+      },
+      "post": {
+        "tags": [
+          "v3-accounts"
+        ],
+        "summary": "Create Org",
+        "operationId": "create_org_api_v3_orgs_post",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        }
       }
     },
     "/api/v3/orgs/{org_id}/streams": {
@@ -3987,6 +4004,202 @@
         ],
         "summary": "Admin Retrain Runs",
         "operationId": "admin_retrain_runs_api_v3_admin_retrain_runs_post",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v3/accounts/signup": {
+      "post": {
+        "tags": [
+          "v3-accounts"
+        ],
+        "summary": "Signup",
+        "operationId": "signup_api_v3_accounts_signup_post",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v3/accounts/login": {
+      "post": {
+        "tags": [
+          "v3-accounts"
+        ],
+        "summary": "Login",
+        "operationId": "login_api_v3_accounts_login_post",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v3/accounts/me": {
+      "get": {
+        "tags": [
+          "v3-accounts"
+        ],
+        "summary": "Me",
+        "operationId": "me_api_v3_accounts_me_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v3/orgs/{org_id}/members": {
+      "get": {
+        "tags": [
+          "v3-accounts"
+        ],
+        "summary": "Members",
+        "operationId": "members_api_v3_orgs__org_id__members_get",
+        "parameters": [
+          {
+            "name": "org_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Org Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v3/orgs/{org_id}/invites": {
+      "post": {
+        "tags": [
+          "v3-accounts"
+        ],
+        "summary": "Create Invite",
+        "operationId": "create_invite_api_v3_orgs__org_id__invites_post",
+        "parameters": [
+          {
+            "name": "org_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Org Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v3/invites/{token}/accept": {
+      "post": {
+        "tags": [
+          "v3-accounts"
+        ],
+        "summary": "Accept Invite",
+        "operationId": "accept_invite_api_v3_invites__token__accept_post",
+        "parameters": [
+          {
+            "name": "token",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Token"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v3/demo/orgs": {
+      "get": {
+        "tags": [
+          "v3-accounts"
+        ],
+        "summary": "Demo Orgs",
+        "operationId": "demo_orgs_api_v3_demo_orgs_get",
         "responses": {
           "200": {
             "description": "Successful Response",

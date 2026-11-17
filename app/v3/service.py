@@ -7,13 +7,17 @@ viewer는 요청한 조직 ID다. 권한이 없으면 ServiceError(code, message
 
 from __future__ import annotations
 
+import copy
+from dataclasses import replace
 from datetime import datetime
 from typing import Any
 
 from app.v3 import feedback, ids
 from app.v3 import names as naming
 from app.v3.a2a.message import STAGES
+from app.v3.a2a.policy import evidence_owner
 from app.v3.a2a.thread import Thread
+from app.v3.account_store import InMemoryAccounts, LoginLimiter
 from app.v3.agents.draft import model_label
 from app.v3.agents.gateway import LocalVendorGateway
 from app.v3.agents.orchestrator import (
@@ -27,9 +31,9 @@ from app.v3.agents.orchestrator import (
 from app.v3.agents.policy_rule import RulePolicy
 from app.v3.agents.pool import ClaimPool, is_private
 from app.v3.agents.vendor import VendorAgent
-from app.v3.demo.seed import EMITTER, seed_demo
+from app.v3.demo.seed import DEMO_ANSWERS, EMITTER, ORGS, seed_demo
 from app.v3.evidence import search
-from app.v3.evidence.model import KINDS, Evidence
+from app.v3.evidence.model import KINDS, PUBLIC, Evidence
 from app.v3.evidence.registry import EvidenceForbidden, EvidenceNotFound
 from app.v3.evidence.seeds import load_seed_dir
 from app.v3.evidence.units import UnitError, same_value
@@ -106,10 +110,17 @@ class App:
         demo_open: bool = False,
         detector: Any = None,
         auth_mode: str = "header",
+        accounts: Any = None,
     ) -> None:
         self.store = store
-        # HTTP 층이 요청한 조직을 정하는 방법(관리자 화면 표시용). header는 시연 전용이다
+        # HTTP 층이 요청한 조직을 정하는 방법. header는 시연 전용이다. bff면 실제 계정과 조직이 있고
+        # 시연 되돌리기는 시연 조직만 되돌린다(reset_demo)
         self.auth_mode = str(auth_mode)
+        # 사용자, 소속, 초대(account_store.py). bff 모드에서만 쓴다. 없으면 메모리
+        self.accounts = accounts if accounts is not None else InMemoryAccounts()
+        self.login_limiter = LoginLimiter()
+        # 체험하기(시연 조직 읽기 전용)로 만든 앱이면 True. 뷰를 만들 때 다시 확인(쓰기)을 하지 않는다
+        self.read_only = False
         # True면 시연 되돌리기(POST /demo/reset)를 누구나 부를 수 있다(로컬 시연). 기본은 관리자만
         self.demo_open = bool(demo_open)
         self.registry = registry
@@ -258,9 +269,13 @@ def _redact(item: dict[str, Any], viewer: str) -> dict[str, Any]:
 
 def seed(app: App) -> dict[str, Any]:
     """가정값, 근거 시드(법령·기준값), 시연 데이터를 올린다. 서버가 뜰 때와 reset에서 부른다."""
-    register_defaults(app.registry, app.today)
-    loaded = load_seed_dir(app.registry)
-    summary = seed_demo(app.store, app.registry, app.today)
+    return _seed(app, app.registry, wipe=True)
+
+
+def _seed(app: App, registry: Any, *, wipe: bool) -> dict[str, Any]:
+    register_defaults(registry, app.today)
+    loaded = load_seed_dir(registry)
+    summary = seed_demo(app.store, registry, app.today, wipe=wipe)
     return {**summary, "seedEvidence": loaded}
 
 
@@ -269,13 +284,88 @@ def reset_demo(app: App, viewer: str | None = None) -> dict[str, Any]:
 
     App(demo_open=True)이면 누구나 부를 수 있다(로컬 시연). 조직이 하나도 없는 빈 저장소의
     첫 시드도 막지 않는다(관리자 조직이 아직 없어 아무도 부를 수 없게 되는 것을 피한다).
+
+    bff 모드(실제 계정과 조직이 있다)에서는 시연 조직의 자료만 지우고 다시 올린 뒤, 시연 진단 한 건을
+    승인 대기까지 돌려 둔다(_reset_demo_only). 실제 조직의 조직·흐름·진단·근거는 건드리지 않는다.
     """
     if not app.demo_open and app.store.list_orgs():
         _admin(app, viewer)
+    if app.auth_mode == "bff":
+        return _reset_demo_only(app)
     if hasattr(app.registry, "clear"):
         app.registry.clear()
     app.vendor_memo.clear()
     return seed(app)
+
+
+class _KeepAccess:
+    """시연 근거를 다시 올릴 때 실제 조직에 이미 열려 있던 것은 그대로 열어 둔다.
+
+    시연 업체의 허가증·매입 기준 근거는 실제 배출 기업과 대화가 열릴 때 그 기업에도 열린다. 다시 올리며
+    access를 처음 값으로 돌리면 실제 진단이 인용한 근거가 닫히고 판이 올라가므로, 그 조직들을 더해 둔다
+    (내용이 같으면 판도 그대로다).
+    """
+
+    def __init__(self, registry: Any, extra: dict[str, tuple[str, ...]]) -> None:
+        self._registry = registry
+        self._extra = extra
+
+    def put(self, evidence: Evidence) -> Evidence:
+        more = self._extra.get(evidence.id)
+        if more and PUBLIC not in evidence.access:
+            evidence = replace(evidence, access=tuple(dict.fromkeys((*evidence.access, *more))))
+        return self._registry.put(evidence)
+
+    def __getattr__(self, name: str) -> Any:
+        return getattr(self._registry, name)
+
+
+def _reset_demo_only(app: App) -> dict[str, Any]:
+    """bff 모드의 시연 되돌리기. 시연 조직(시드 조직과 운영 조직)의 자료만 지우고 다시 올린다."""
+    seeded = {org["id"] for org in ORGS}
+    removed_threads = app.store.purge_orgs(seeded)
+    for thread_id in removed_threads:
+        app.vendor_memo.pop(thread_id, None)
+    doomed: list[str] = []
+    extra: dict[str, tuple[str, ...]] = {}
+    for evidence in app.registry.list(org_id=None):
+        if PUBLIC in evidence.access:
+            continue
+        outside = tuple(org for org in evidence.access if org not in seeded)
+        if not outside:
+            if evidence.access or evidence_owner(evidence) in seeded:
+                doomed.append(evidence.id)
+        elif len(outside) < len(evidence.access):
+            extra[evidence.id] = outside
+    if doomed:
+        app.registry.delete(doomed)
+    summary = _seed(app, _KeepAccess(app.registry, extra), wipe=False)
+    session_id, status = _demo_diagnosis(app)
+    return {**summary, "demoSessionId": session_id, "demoSessionStatus": status}
+
+
+def _demo_diagnosis(app: App) -> tuple[str, str]:
+    """시연 배출 기업의 진단 한 건을 규칙 정책으로 승인 대기까지 돌린다. 체험하기 화면이 비지 않게 한다.
+
+    질문에는 시연 답(seed.DEMO_ANSWERS, 가상 값)으로, 그 밖에는 "모름"으로 답한다. 모델 설정과 상관없이
+    규칙 정책으로 돌린다(업체 측도 같은 프로세스에서 규칙 정책으로 답한다).
+    """
+    trial = copy.copy(app)
+    trial.llm_factory = None
+    trial.vendor_gateway = LocalVendorGateway(
+        lambda org, message, context: handle_vendor_message(trial, org, message, context)
+    )
+    session_id = create_session(trial, EMITTER, EMITTER)["session"]["id"]
+    view = run_session(trial, session_id, EMITTER)
+    for _ in range(4):
+        if view["session"]["status"] != "awaiting_answers":
+            break
+        for question in view["questions"]:
+            if not question["answered"]:
+                value = DEMO_ANSWERS.get((question["streamId"], question["field"]), "unknown")
+                answer_question(trial, session_id, question["id"], value, EMITTER)
+        view = run_session(trial, session_id, EMITTER)
+    return session_id, view["session"]["status"]
 
 
 def list_orgs(app: App, viewer: str | None = None, scoped: bool = False) -> list[dict[str, Any]]:
@@ -481,6 +571,14 @@ def get_vendor(app: App, org_id: str, viewer: str) -> dict[str, Any]:
         raise ServiceError("VENDOR_NOT_FOUND", "그런 업체가 없습니다.", 404) from None
     if viewer == org_id or me.get("role") == "admin":
         return {**profile, "name": org.get("name")}
+    if app.auth_mode == "bff" and not org.get("demo"):
+        # 실제 업체의 공개 프로필은 대화 상대(그 업체와 스레드가 있는 배출 기업)에게만 보인다
+        counterpart = any(
+            thread.get("vendorOrgId") == org_id and thread.get("emitterOrgId") == viewer
+            for thread in app.store.list_threads(org_id=viewer)
+        )
+        if not counterpart:
+            raise ServiceError("VENDOR_NOT_FOUND", "그런 업체가 없습니다.", 404)
     # 다른 조직에는 허가 품목과 모델 선택만 보인다(매입 기준, 차량, 가드레일은 보이지 않는다)
     return {
         "orgId": org_id,
@@ -1085,8 +1183,9 @@ def _recheck(app: App, org_id: str) -> None:
 
 def get_view(app: App, session_id: str, viewer: str) -> dict[str, Any]:
     session, owner = _session_for(app, session_id, viewer)
-    if session.get("status") == "awaiting_approval":
-        # 저장소를 직접 고친 변경까지 잡으려고 뷰를 만들 때도 다시 확인한다(바뀐 것이 없으면 아무것도 쓰지 않는다)
+    if session.get("status") == "awaiting_approval" and not app.read_only:
+        # 저장소를 직접 고친 변경까지 잡으려고 뷰를 만들 때도 다시 확인한다(바뀐 것이 없으면 아무것도 쓰지 않는다).
+        # 체험하기(읽기 전용)에서는 쓰지 않는다
         Orchestrator(app).recheck(session_id)
     me = app.store.get_org(viewer)
     work = session["work"]
@@ -1521,7 +1620,7 @@ def admin_status(app: App, viewer: str) -> dict[str, Any]:
     return {
         "today": app.today,
         # 요청한 조직을 정하는 방법. header는 X-Org-Id를 그대로 믿는 시연 전용 모드다
-        "auth": {"mode": app.auth_mode, "demoOnly": app.auth_mode != "token"},
+        "auth": {"mode": app.auth_mode, "demoOnly": app.auth_mode == "header"},
         "evidence": {"visible": len(public), "byKind": kinds},
         "laws": {
             "count": kinds["law"],

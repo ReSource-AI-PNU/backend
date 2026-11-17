@@ -9,12 +9,17 @@ tests/v3/test_api.py가 CI에서 확인한다.
   - token: 조직별 서비스 토큰. Authorization: Bearer <토큰>으로 조직을 정하고 X-Org-Id는 무시한다.
     토큰과 조직의 짝은 설정 V3_ORG_TOKENS(JSON, Key Vault에서 주입)로 받고 hmac.compare_digest로
     견준다. GET /orgs는 자기 조직과 대화 상대만 준다. Entra 인증은 아직 연결하지 않았다.
+  - bff: 프런트 서버(Next.js BFF)만 부른다. Authorization: Bearer <V3_BFF_KEY>, X-User-Id, X-Org-Id.
+    사용자가 X-Org-Id의 구성원인지 계정 저장소로 확인한다(아니면 403 NOT_A_MEMBER). X-Demo-View: 1이면
+    체험하기다: X-User-Id 없이 시연 조직만, GET만 받고 서비스 함수를 시연 조직만 보이는 읽기 전용 앱
+    (demo/scope.py)으로 부른다. 계정·조직 경로는 accounts_api.py에 있다.
 - 오류는 {"error": {"code", "message"}}와 상태 코드로 낸다. 본문은 FastAPI 검증에 맡기지 않고
   직접 읽는다(검증 실패 응답의 모양을 계약과 같게 하려는 것).
 - 서비스 함수는 작업 스레드에서 부른다. 메모리 저장소일 때는 한 번에 하나씩만 부른다.
 - 판단과 숫자는 여기서 만들지 않는다. 받은 값을 넘기고 돌려받은 값을 그대로 내보낸다.
 """
 
+import contextvars
 import functools
 import logging
 import threading
@@ -27,8 +32,9 @@ from starlette.concurrency import run_in_threadpool
 from starlette.exceptions import HTTPException
 
 from app.core.config import settings
-from app.v3 import httpio, service
+from app.v3 import accounts, httpio, service
 from app.v3.agents.factory import build_llm_factory
+from app.v3.demo.scope import demo_app
 
 logger = logging.getLogger(__name__)
 
@@ -130,15 +136,18 @@ def build_app() -> service.App:
 
     if settings.database_url:
         from app.platform.db import engine
-        from app.v3.sql import SqlRegistry, SqlStore
+        from app.v3.sql import SqlAccounts, SqlRegistry, SqlStore
 
         store: Any = SqlStore(engine())
         registry: Any = SqlRegistry(engine())
+        account_store: Any = SqlAccounts(engine())
     else:
+        from app.v3.account_store import InMemoryAccounts
         from app.v3.evidence.registry import InMemoryRegistry
         from app.v3.store import InMemoryStore
 
         store, registry = InMemoryStore(), InMemoryRegistry()
+        account_store = InMemoryAccounts()
     factory = make_llm_factory(
         settings.v3_llm,
         endpoint=settings.foundry_endpoint,
@@ -169,10 +178,13 @@ def build_app() -> service.App:
     auth = current_auth()  # 설정이 틀리면(모르는 모드, token인데 토큰 없음) 여기서 멈춘다
     if auth.mode == httpio.AUTH_HEADER:
         logger.warning("V3_AUTH=header: %s", httpio.HEADER_MODE_WARNING)
+    if auth.mode == httpio.AUTH_BFF and not auth.bff_key:
+        logger.warning("V3_AUTH=bff인데 V3_BFF_KEY가 비어 있어 모든 요청을 503으로 거절한다")
     return service.App(
         store,
         registry,
         auth_mode=auth.mode,
+        accounts=account_store,
         llm_factory=factory,
         vendor_gateway=make_vendor_gateway(),
         # V3_DISTANCE=kakao|azure|none. 비어 있으면 AZURE_MAPS_KEY가 있을 때 Azure Maps다.
@@ -197,11 +209,14 @@ def build_app() -> service.App:
 
 
 def current_auth() -> httpio.Auth:
-    """설정 V3_AUTH, V3_ORG_TOKENS(또는 V3_ORG_TOKENS_FILE)로 요청한 조직을 정하는 방법을 만든다.
+    """설정 V3_AUTH, V3_ORG_TOKENS(또는 V3_ORG_TOKENS_FILE), V3_BFF_KEY로 요청한 조직을 정하는 방법을 만든다.
 
     설정이 틀리면 ValueError. header 모드에서는 토큰 설정을 읽지 않는다(파일도 열지 않는다).
     """
-    if (settings.v3_auth or "").strip().lower() != httpio.AUTH_TOKEN:
+    mode = (settings.v3_auth or "").strip().lower()
+    if mode == httpio.AUTH_BFF:
+        return httpio.make_auth(mode, bff_key=settings.v3_bff_key)
+    if mode != httpio.AUTH_TOKEN:
         return httpio.make_auth(settings.v3_auth)
     return httpio.make_auth(
         settings.v3_auth,
@@ -212,6 +227,8 @@ def current_auth() -> httpio.Auth:
 _state: service.App | None = None
 _state_lock = threading.Lock()
 _memory_lock = threading.RLock()
+# 이 요청이 체험하기(시연 조직 읽기 전용)인가. 요청마다 viewer_of가 정한다(요청은 저마다 다른 문맥에서 돈다)
+_demo_view: contextvars.ContextVar[bool] = contextvars.ContextVar("v3_demo_view", default=False)
 
 
 def get_state() -> service.App:
@@ -230,17 +247,20 @@ def set_state(app: service.App | None) -> None:
         _state = app
 
 
-def _invoke(fn: Callable[..., Any], args: tuple[Any, ...]) -> Any:
+def _invoke(fn: Callable[..., Any], args: tuple[Any, ...], demo: bool = False) -> Any:
     app = get_state()
     if settings.database_url:
-        return fn(app, *args)
+        return fn(demo_app(app) if demo else app, *args)
     with _memory_lock:  # 메모리 저장소는 동시에 고치면 깨진다
-        return fn(app, *args)
+        return fn(demo_app(app) if demo else app, *args)
 
 
 async def call(fn: Callable[..., Any], *args: Any) -> Any:
-    """service 함수를 fn(app, *args)로 작업 스레드에서 부른다."""
-    return await run_in_threadpool(_invoke, fn, args)
+    """service 함수를 fn(app, *args)로 작업 스레드에서 부른다.
+
+    체험하기 요청이면 app 대신 시연 조직만 보이는 읽기 전용 앱(demo/scope.py)을 준다.
+    """
+    return await run_in_threadpool(_invoke, fn, args, _demo_view.get())
 
 
 def guarded(handler: Callable[..., Any]) -> Callable[..., Any]:
@@ -266,9 +286,45 @@ def guarded(handler: Callable[..., Any]) -> Callable[..., Any]:
 
 
 # ── 요청 읽기 ────────────────────────────────────────────────────────
-def viewer_of(request: Request, *, required: bool = True) -> str:
-    """요청한 조직. header 모드는 X-Org-Id, token 모드는 Authorization: Bearer 토큰으로 정한다."""
-    return current_auth().viewer(request.headers, required=required)
+async def viewer_of(request: Request, *, required: bool = True) -> str:
+    """요청한 조직. header 모드는 X-Org-Id, token 모드는 Authorization: Bearer 토큰으로 정한다.
+
+    bff 모드는 BFF 키를 확인하고, X-User-Id가 X-Org-Id의 구성원인지 계정 저장소로 확인한다.
+    X-Demo-View: 1이면 체험하기다: GET만 받고(아니면 403 DEMO_READ_ONLY), X-Org-Id는 시연 조직이어야
+    하며(아니면 403 NOT_DEMO_ORG), 이 요청의 서비스 함수는 읽기 전용 시연 앱으로 돈다(call).
+    """
+    auth = current_auth()
+    _demo_view.set(False)
+    if auth.mode != httpio.AUTH_BFF:
+        return auth.viewer(request.headers, required=required)
+    who = auth.bff(request.headers)
+    if who.demo:
+        if request.method != "GET":
+            raise service.ServiceError(
+                "DEMO_READ_ONLY", "체험하기에서는 보기만 할 수 있습니다.", 403
+            )
+        if not who.org_id:
+            raise service.ServiceError("ORG_REQUIRED", "X-Org-Id로 시연 조직을 밝혀야 합니다.", 401)
+        if not await call(accounts.is_demo_org, who.org_id):
+            raise service.ServiceError(
+                "NOT_DEMO_ORG", "체험하기로는 시연 조직만 볼 수 있습니다.", 403
+            )
+        _demo_view.set(True)
+        return who.org_id
+    if not who.org_id:
+        if required:
+            raise service.ServiceError("ORG_REQUIRED", "X-Org-Id로 조직을 밝혀야 합니다.", 401)
+        if who.user_id:
+            await call(accounts.check_user, who.user_id)
+        return ""
+    await call(accounts.check_member, who.user_id, who.org_id)
+    return who.org_id
+
+
+def bff_key_only(request: Request) -> httpio.BffIdentity | None:
+    """bff 모드면 BFF 키만 확인하고 BFF가 밝힌 값을 준다. 다른 모드에서는 아무것도 하지 않는다(None)."""
+    auth = current_auth()
+    return auth.bff(request.headers) if auth.mode == httpio.AUTH_BFF else None
 
 
 async def json_object(request: Request) -> dict[str, Any]:
@@ -317,29 +373,29 @@ async def health(request: Request):
 @guarded
 async def demo_reset(request: Request):
     # 관리자만(설정 V3_DEMO_OPEN이 참이면 누구나). 조직을 밝히지 않았으면 서비스가 401로 답한다
-    viewer = viewer_of(request, required=False) or None
+    viewer = await viewer_of(request, required=False) or None
     return await call(service.reset_demo, viewer)
 
 
 @router.get("/orgs")
 @guarded
 async def orgs(request: Request):
-    # header 모드(시연 전용)는 누구에게나 모든 조직을 준다. token 모드는 자기 조직과 대화 상대만 준다
+    # header 모드(시연 전용)는 누구에게나 모든 조직을 준다. token·bff 모드는 자기 조직과 대화 상대만 준다
     auth = current_auth()
-    viewer = auth.viewer(request.headers, required=auth.scoped) or None
+    viewer = await viewer_of(request, required=auth.scoped) or None
     return await call(service.list_orgs, viewer, auth.scoped)
 
 
 @router.get("/orgs/{org_id}/streams")
 @guarded
 async def streams(org_id: str, request: Request):
-    return await call(service.list_streams, org_id, viewer_of(request))
+    return await call(service.list_streams, org_id, await viewer_of(request))
 
 
 @router.put("/orgs/{org_id}/streams/{stream_id}")
 @guarded
 async def put_stream(org_id: str, stream_id: str, request: Request):
-    viewer = viewer_of(request)
+    viewer = await viewer_of(request)
     patch = await json_object(request)
     return await call(service.update_stream, org_id, stream_id, patch, viewer)
 
@@ -347,13 +403,13 @@ async def put_stream(org_id: str, stream_id: str, request: Request):
 @router.get("/vendors/{org_id}")
 @guarded
 async def vendor(org_id: str, request: Request):
-    return await call(service.get_vendor, org_id, viewer_of(request))
+    return await call(service.get_vendor, org_id, await viewer_of(request))
 
 
 @router.put("/vendors/{org_id}")
 @guarded
 async def put_vendor(org_id: str, request: Request):
-    viewer = viewer_of(request)
+    viewer = await viewer_of(request)
     patch = await json_object(request)
     return await call(service.update_vendor, org_id, patch, viewer)
 
@@ -362,7 +418,7 @@ async def put_vendor(org_id: str, request: Request):
 @router.post("/sessions")
 @guarded
 async def create_session(request: Request):
-    viewer = viewer_of(request)
+    viewer = await viewer_of(request)
     body = await json_object(request)
     return await call(service.create_session, str(body.get("emitterOrgId") or viewer), viewer)
 
@@ -370,25 +426,25 @@ async def create_session(request: Request):
 @router.get("/sessions")
 @guarded
 async def session_list(request: Request):
-    return await call(service.list_sessions, viewer_of(request))
+    return await call(service.list_sessions, await viewer_of(request))
 
 
 @router.get("/sessions/{session_id}")
 @guarded
 async def session_view(session_id: str, request: Request):
-    return await call(service.get_view, session_id, viewer_of(request))
+    return await call(service.get_view, session_id, await viewer_of(request))
 
 
 @router.post("/sessions/{session_id}/run")
 @guarded
 async def run_session(session_id: str, request: Request):
-    return await call(service.run_session, session_id, viewer_of(request))
+    return await call(service.run_session, session_id, await viewer_of(request))
 
 
 @router.post("/sessions/{session_id}/answers")
 @guarded
 async def answer(session_id: str, request: Request):
-    viewer = viewer_of(request)
+    viewer = await viewer_of(request)
     body = await json_object(request)
     question_id, value = httpio.answer_body(body)
     return await call(service.answer_question, session_id, question_id, value, viewer)
@@ -397,7 +453,7 @@ async def answer(session_id: str, request: Request):
 @router.post("/sessions/{session_id}/approvals")
 @guarded
 async def approve(session_id: str, request: Request):
-    viewer = viewer_of(request)
+    viewer = await viewer_of(request)
     body = await json_object(request)
     return await call(service.approve, session_id, str(required(body, "threadId")), viewer)
 
@@ -406,7 +462,7 @@ async def approve(session_id: str, request: Request):
 @router.post("/sessions/{session_id}/corrections")
 @guarded
 async def record_correction(session_id: str, request: Request):
-    viewer = viewer_of(request)
+    viewer = await viewer_of(request)
     body = await json_object(request)
     return await call(service.record_correction, session_id, body, viewer)
 
@@ -414,7 +470,7 @@ async def record_correction(session_id: str, request: Request):
 @router.post("/sessions/{session_id}/outcomes")
 @guarded
 async def record_outcome(session_id: str, request: Request):
-    viewer = viewer_of(request)
+    viewer = await viewer_of(request)
     body = await json_object(request)
     return await call(service.record_outcome, session_id, body, viewer)
 
@@ -423,7 +479,7 @@ async def record_outcome(session_id: str, request: Request):
 @router.get("/evidence")
 @guarded
 async def search_evidence(request: Request):
-    viewer = viewer_of(request)
+    viewer = await viewer_of(request)
     query = request.query_params.get("q", "")
     kinds = [
         kind.strip()
@@ -437,13 +493,14 @@ async def search_evidence(request: Request):
 @router.get("/evidence/{evidence_id:path}")
 @guarded
 async def evidence(evidence_id: str, request: Request):
-    return await call(service.get_evidence, evidence_id, viewer_of(request))
+    return await call(service.get_evidence, evidence_id, await viewer_of(request))
 
 
 # ── 자료 올리기 ──────────────────────────────────────────────────────
 @router.get("/intake/csv/template")
 @guarded
 async def csv_template(request: Request):
+    bff_key_only(request)
     data = await call(service.csv_template)
     return Response(
         content=data,
@@ -455,7 +512,7 @@ async def csv_template(request: Request):
 @router.post("/intake/csv")
 @guarded
 async def upload_csv(request: Request):
-    viewer = viewer_of(request)
+    viewer = await viewer_of(request)
     fields, filename, data = await read_upload(request, "측정값.csv")
     org_id = fields.get("orgId") or viewer
     return await call(service.upload_csv, org_id, filename, data, viewer)
@@ -464,7 +521,7 @@ async def upload_csv(request: Request):
 @router.post("/intake/documents")
 @guarded
 async def upload_document(request: Request):
-    viewer = viewer_of(request)
+    viewer = await viewer_of(request)
     fields, filename, data = await read_upload(request, "문서")
     org_id = fields.get("orgId") or viewer
     kind = fields.get("kind") or ""  # 종류가 없거나 틀리면 서비스가 INVALID_KIND로 답한다
@@ -474,7 +531,7 @@ async def upload_document(request: Request):
 @router.post("/intake/media")
 @guarded
 async def upload_media(request: Request):
-    viewer = viewer_of(request)
+    viewer = await viewer_of(request)
     fields, filename, data = await read_upload(request, "사진")
     org_id = fields.get("orgId") or viewer
     stream_id = fields.get("streamId") or ""
@@ -484,7 +541,7 @@ async def upload_media(request: Request):
 @router.post("/intake/documents/confirm")
 @guarded
 async def confirm_document(request: Request):
-    viewer = viewer_of(request)
+    viewer = await viewer_of(request)
     body = await json_object(request)
     fields = body.get("fields") or []
     if not isinstance(fields, list):
@@ -498,24 +555,24 @@ async def confirm_document(request: Request):
 @router.get("/admin/status")
 @guarded
 async def admin_status(request: Request):
-    return await call(service.admin_status, viewer_of(request))
+    return await call(service.admin_status, await viewer_of(request))
 
 
 @router.post("/admin/eval")
 @guarded
 async def admin_eval(request: Request):
-    return await call(service.run_eval, viewer_of(request))
+    return await call(service.run_eval, await viewer_of(request))
 
 
 @router.get("/admin/retrain/export")
 @guarded
 async def admin_retrain_export(request: Request):
-    return await call(service.export_retraining, viewer_of(request))
+    return await call(service.export_retraining, await viewer_of(request))
 
 
 @router.post("/admin/retrain/runs")
 @guarded
 async def admin_retrain_runs(request: Request):
-    viewer = viewer_of(request)
+    viewer = await viewer_of(request)
     body = await json_object(request)
     return await call(service.register_model_run, body, viewer)

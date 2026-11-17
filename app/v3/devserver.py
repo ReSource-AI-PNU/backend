@@ -480,6 +480,11 @@ def load_auth(
     """
     env = {} if env is None else env
     mode = (mode or env.get("V3_AUTH") or httpio.AUTH_HEADER).strip().lower()
+    if mode == httpio.AUTH_BFF:
+        # bff 모드는 계정 저장소로 소속을 확인해야 한다. 그 일은 FastAPI 경로(api.py)만 한다
+        raise SystemExit(
+            "V3_AUTH=bff는 FastAPI 서버(app.main)에서만 씁니다(로컬 서버는 header, token)."
+        )
     raw = None
     if mode == httpio.AUTH_TOKEN:
         option = "--org-tokens"
@@ -543,7 +548,7 @@ def main(argv: list[str] | None = None) -> None:
     )
     parser.add_argument(
         "--auth",
-        choices=httpio.AUTH_MODES,
+        choices=(httpio.AUTH_HEADER, httpio.AUTH_TOKEN),
         default=None,
         help="요청한 조직을 정하는 방법. header(기본, 시연 전용: X-Org-Id를 믿는다) | "
         "token(조직별 서비스 토큰: Authorization: Bearer). 주지 않으면 환경 변수 V3_AUTH",
