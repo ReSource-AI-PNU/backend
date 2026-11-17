@@ -75,7 +75,8 @@ EXAMPLES = (
         "text": (
             "(주)가나자원 담당자께, 다음 폐기물을 받을 수 있는지와 조건을 문의드립니다.\n"
             "- 스프루·런너(PP, 가공 전): 월 발생량 {{st_sprue_monthlyKg}}, "
-            "오염도 {{st_sprue_contaminationPct}}(측정), 수분 확인 필요\n"
+            "오염도 {{st_sprue_contaminationPct}}(측정), 수분 {{st_sprue_answeredMoisturePct}}"
+            "(담당자 답)\n"
             "조건을 정할 때 다음도 함께 알려 주세요.\n"
             "- 스프루·런너: 반입 검수에서 매입 기준 상한 안으로 확인되면 같은 조건으로 받을 수 있는지"
         ),

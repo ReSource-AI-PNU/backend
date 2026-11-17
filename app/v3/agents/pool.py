@@ -181,15 +181,20 @@ class ClaimPool:
         unit: str | None = None,
         label: str = "",
         source: str = "",
+        name: str | None = None,
         **tags: Any,
     ) -> str | None:
-        """근거가 없거나 첫 근거(값의 출처)를 이 조직이 볼 수 없으면 넣지 않고 None을 돌려준다."""
+        """근거가 없거나 첫 근거(값의 출처)를 이 조직이 볼 수 없으면 넣지 않고 None을 돌려준다.
+
+        name은 사람이 읽는 이름을 정할 키다(names.py). 없으면 field, key, claim ID 순으로 본다.
+        """
         wanted = list(evidence or ())
         visible = self._visible(wanted)
         if value is None or not wanted or not visible or visible[0] != wanted[0]:
             return None
         # 사람이 읽는 이름과 구실은 코드가 키에서 정한다(상대가 보낸 이름은 쓰지 않는다)
-        named, role = names.describe(tags.get("field") or tags.get("key") or claim_id, value, kind)
+        key = name or tags.get("field") or tags.get("key") or claim_id
+        named, role = names.describe(key, value, kind)
         base = safe_id(claim_id)
         claim_id, number = base, 1
         while True:
@@ -262,9 +267,18 @@ class ClaimPool:
             ),
             ("moisturePct", measure.get("moisturePct"), "%", measure.get("evidence"), "수분(측정)"),
         ]
+        # 담당자가 질문에 답한 값은 측정값이 아니다. claim ID와 이름을 answered…로 따로 둔다
+        # ("오염도(담당자 답)"). 돌려주는 사전의 키는 측정값과 같은 항목 이름이다
         if measure.get("moisturePct") is None:
             facts.append(
-                ("moisturePct", answers.get("moisturePct"), "%", answer_ev, "수분(담당자 답변)")
+                (
+                    "moisturePct",
+                    answers.get("moisturePct"),
+                    "%",
+                    answer_ev,
+                    "수분(담당자 답변)",
+                    "answeredMoisturePct",
+                )
             )
         if measure.get("contaminationPct") is None and photo.get("contaminationPct") is None:
             facts.append(
@@ -274,6 +288,7 @@ class ClaimPool:
                     "%",
                     answer_ev,
                     "오염도(담당자 답변)",
+                    "answeredContaminationPct",
                 )
             )
         if stream.get("monthlyKg") is None:
@@ -290,11 +305,11 @@ class ClaimPool:
                 )
             )
         out: dict[str, str] = {}
-        for field_name, value, unit, evidence, label in facts:
+        for field_name, value, unit, evidence, label, *key in facts:
             if field_name in out:
                 continue
             claim_id = self.add_fact(
-                f"{sid}_{field_name}",
+                f"{sid}_{key[0] if key else field_name}",
                 value,
                 unit,
                 evidence,
@@ -302,6 +317,7 @@ class ClaimPool:
                 source="stream",
                 streamId=sid,
                 field=field_name,
+                name=key[0] if key else None,
             )
             if claim_id:
                 out[field_name] = claim_id

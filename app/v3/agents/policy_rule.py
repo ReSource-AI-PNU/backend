@@ -8,6 +8,7 @@
 from __future__ import annotations
 
 import json
+import re
 from typing import Any
 
 from app.v3.evidence.render import format_value
@@ -128,14 +129,17 @@ class _Base:
         measured = self.use(facts.get("contaminationPct"))
         photo = None if measured else self.use(facts.get("photoContaminationPct"))
         if measured:
-            parts.append(f"오염도 {measured}(측정)")
+            # 담당자가 질문에 답한 값은 측정값이 아니다(pool이 claim ID를 answered…로 둔다)
+            source = "담당자 답" if _answered(facts.get("contaminationPct")) else "측정"
+            parts.append(f"오염도 {measured}({source})")
         elif photo:
             parts.append(f"사진 추정 오염 비율 {photo}")
         else:
             parts.append("오염도 확인 필요")
         moisture = self.use(facts.get("moisturePct"))
         if moisture:
-            parts.append(f"수분 {moisture}")
+            answered = _answered(facts.get("moisturePct"))
+            parts.append(f"수분 {moisture}(담당자 답)" if answered else f"수분 {moisture}")
         elif "moisturePct" in unknown:
             parts.append("수분은 담당자도 모른다고 답했습니다")
         else:
@@ -145,6 +149,14 @@ class _Base:
             parts.append(f"혼입물 {', '.join(mixed)}")
         label = f"{self.name(stream_id)}({head})" if head else self.name(stream_id)
         return f"- {label}: {', '.join(parts)}"
+
+
+def _answered(claim_id: Any) -> bool:
+    """담당자가 질문에 답한 값의 claim인가(pool.add_stream의 answered… ID)."""
+    return bool(_ANSWERED.search(str(claim_id or "")))
+
+
+_ANSWERED = re.compile(r"answered(?:Contamination|Moisture)Pct(?:_\d+)?$")
 
 
 class _Company(_Base):

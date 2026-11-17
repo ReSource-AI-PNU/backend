@@ -253,12 +253,18 @@ def grade_of(rec: Recorder, material, contamination, moisture):
 
 
 def quality(stream: dict) -> dict:
-    """흐름의 오염도·수분과 그 출처. 측정값이 사진 추정보다 우선한다."""
+    """흐름의 오염도·수분과 그 출처. 측정값, 사진 추정, 담당자가 질문에 답한 값 순으로 쓴다.
+
+    담당자 답("대략 5%")도 매입 기준과 대조한다. 상한 안이어도 측정값이 아니므로 조건부이고(반입 검수에서
+    확인), 상한을 넘으면 그 기준은 맞지 않는다(criterion_checks).
+    """
     measure, photo = stream.get("measure") or {}, stream.get("photo") or {}
     answers = stream.get("answers") or {}
     cont, basis_name, evidence = num(measure.get("contaminationPct")), "measured", measure
     if cont is None:
         cont, basis_name, evidence = num(photo.get("contaminationPct")), "photo_estimate", photo
+    if cont is None:
+        cont, basis_name, evidence = num(answers.get("contaminationPct")), "answered", {}
     moist, moist_basis = num(measure.get("moisturePct")), "measured"
     if moist is None:
         moist, moist_basis = num(answers.get("moisturePct")), "answered"
@@ -269,7 +275,9 @@ def quality(stream: dict) -> dict:
         # 값마다의 출처. 측정값이 아니면 매입 기준을 충족해도 "확정"이 아니다(criterion_checks)
         "contaminationBasis": basis_name if cont is not None else None,
         "moistureBasis": moist_basis if moist is not None else None,
-        "evidence": list(evidence.get("evidence") or []) + list(answers.get("evidence") or []),
+        "evidence": list(
+            dict.fromkeys([*(evidence.get("evidence") or []), *(answers.get("evidence") or [])])
+        ),
     }
 
 
@@ -340,7 +348,13 @@ def criterion_checks(stream: dict, criterion: dict, q: dict) -> list[tuple]:
                     )
                 )
         else:
-            out.append((field, "unmet", f"{subject(name)} 매입 기준 상한을 넘습니다.", None))
+            source = _ESTIMATED.get(q.get(basis_key))
+            text = (
+                f"{subject(f'{name}({source})')} 매입 기준 상한을 넘습니다."
+                if source
+                else f"{subject(name)} 매입 기준 상한을 넘습니다."
+            )
+            out.append((field, "unmet", text, None))
     want, have = criterion.get("form"), stream.get("form")
     if want:
         if not have:

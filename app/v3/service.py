@@ -48,7 +48,7 @@ from app.v3.evidence.validator import validate_message, validate_text
 from app.v3.intake import csv_measure, documents, shields
 from app.v3.intake import detector as media
 from app.v3.judge import basis
-from app.v3.judge.common import without_emitter_only
+from app.v3.judge.common import quality, without_emitter_only
 from app.v3.judge.defaults import register_defaults
 from app.v3.store import InMemoryStore, NotFound
 from app.v3.untrusted import contaminant_labels, counterparty_stream, org_label, stream_label
@@ -963,6 +963,7 @@ def _stream_view(
         stream = counterparty_stream(without_emitter_only(stream))
     pool = ClaimPool(app.registry, viewer)
     facts = pool.add_stream(stream, private=owner)
+    quality_of = quality(stream)
     grade = ((session["work"]["identify"].get(stream["id"]) or {}).get("grade")) or {}
     view = {
         "id": stream["id"],
@@ -985,6 +986,11 @@ def _stream_view(
         "contamination": _claim(pool, facts.get("contaminationPct")),
         "photoContamination": _claim(pool, facts.get("photoContaminationPct")),
         "moisture": _claim(pool, facts.get("moisturePct")),
+        # contamination·moisture 값의 출처: measured(측정) | answered(담당자 답) | photo_estimate | null
+        "contaminationBasis": _basis_of(
+            facts.get("contaminationPct"), quality_of["contaminationBasis"]
+        ),
+        "moistureBasis": _basis_of(facts.get("moisturePct"), quality_of["moistureBasis"]),
         "unknownFields": list(stream.get("unknownFields") or []),
         "grade": {
             "value": grade.get("value"),
@@ -1029,6 +1035,13 @@ def _stream_view(
             else None,
         }
     return view
+
+
+def _basis_of(claim_id: str | None, basis_name: str | None) -> str | None:
+    """화면에 보인 claim의 출처. 사진 추정 오염 비율은 photoContamination에 따로 있다."""
+    if not claim_id:
+        return None
+    return "answered" if "answered" in claim_id else ("measured" if basis_name else None)
 
 
 # 대화 화면에 보여 줄 작성자 이름. 구현 이름(모델 배포 이름, "규칙 정책(모델 미연결)")은 쓰지 않는다.

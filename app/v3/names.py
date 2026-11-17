@@ -92,6 +92,9 @@ _KEYS: dict[str, tuple[str, str | None]] = {
     "contaminationPct": ("contamination", "오염도(측정)"),
     "measuredContaminationPct": ("contamination", "오염도(측정)"),
     "photoContaminationPct": ("contamination", "사진 추정 오염 비율"),
+    # 담당자가 질문에 답한 값(측정값이 아니다)
+    "answeredContaminationPct": ("contamination", "오염도(담당자 답)"),
+    "answeredMoisturePct": ("moisture", "수분(담당자 답)"),
     "moisturePct": ("moisture", None),
     "measuredMoisturePct": ("moisture", "수분(측정)"),
     "photoMoisturePct": ("moisture", "수분(담당자 답)"),
