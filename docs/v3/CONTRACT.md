@@ -222,11 +222,13 @@ VendorProfile {"orgId": "org_saegil",
                "costInputs": {"pretreatHoursPerMonth": 4, "laborCostKrwPerHour": 12000,
                               "reuse": {"virginPriceKrwPerKg": 1500, "reusableKgPerMonth": 400, "regrindCostKrwPerKg": 120}}}],
   "threads": [{"id": "th_1", "vendorOrgId": "org_saegil", "vendorName": "(주)새길자원", "vendorModel": {"provider": "foundry", "name": "gpt-5-mini"},
+               "vendorAuthor": {"side": "vendor", "kind": "agent", "label": "업체 측 AI"},
                "status": "not_opened | open | agreed | declined | handoff | confirmed", "statusReason": "...", "reasonEvidence": ["..."],
                "streamIds": ["st_sprue"], "turns": 4, "maxTurns": 12,
                "messages": [{"id": "msg_1", "seq": 1, "from": "org_hanbit", "to": "org_saegil", "type": "inquiry", "stage": 4,
                              "streamIds": ["st_sprue"], "text": "... {{c1}} ...", "claims": [{"claim"}],
-                             "validation": {"ok": true, "attempts": 1, "rejections": []}, "createdAt": "..."}]}],
+                             "validation": {"ok": true, "attempts": 1, "rejections": []}, "createdAt": "...",
+                             "author": {"side": "company", "kind": "agent", "label": "회사 측 AI"}}]}],
   "graph": {"nodes": [{"id": "st_sprue", "type": "stream | criterion | vendor | evidence", "label": "..."}],
             "edges": [{"from": "st_sprue", "to": "pc_pp_a", "status": "met | conditional | unmet", "label": "...", "evidence": ["..."]}]},
   "result": {"status": "calculated | conditional | needs_information",
@@ -302,6 +304,23 @@ VendorProfile {"orgId": "org_saegil",
 - **`result.assumptions`의 모양이 바뀌었다.** 이전에는 근거 ID 문자열의 배열(`["assumption:..."]`)이었고, 지금은 `[{"id", "label", "value", "unit"}]`이다. `id`는 근거 ID(눌러서 근거 패널을 연다), `label`은 근거의 이름, `value`·`unit`은 근거의 값이다. 값 하나로 적을 수 없는 가정(등급 기준표)은 `value`와 `unit`이 `null`이다.
 - **`messages[].meta.asks[].field`에 올 수 있는 값.** `material | origin | form | contaminationPct | moisturePct | lotSame | monthlyKg | terms`. 앞의 일곱은 업체가 배출 기업에 묻는 흐름 항목이고(`questions[].field`와 같은 낱말이다), `terms`는 회사 측이 업체에 조건을 달라고 할 때다. 이 밖의 값은 메시지에 실리지 않는다(`agents/questions.py`의 `ASK_FIELDS`).
 
+### 작성자 표시 (`author`, `vendorAuthor`)
+
+대화 화면에는 구현 이름(모델 배포 이름, "규칙 정책(모델 미연결)")을 보여 주지 않는다. 화면은 `threads[].messages[].author.label`과 `threads[].vendorAuthor.label`을 쓴다.
+
+```json
+{"side": "company | vendor", "kind": "agent | system", "label": "회사 측 AI | 업체 측 AI | 자동 안내"}
+```
+
+| `side` | `kind` | `label` | 언제 |
+|---|---|---|---|
+| `company` | `agent` | 회사 측 AI | 회사 측 에이전트가 쓴 메시지(모델이든 규칙 정책이든 같다) |
+| `vendor` | `agent` | 업체 측 AI | 업체 측 에이전트가 쓴 메시지 |
+| `company`, `vendor` | `system` | 자동 안내 | 코드가 쓴 안내(`model.provider`가 `code`. handoff, 허가 품목 decline 등) |
+
+- `vendorAuthor`는 그 대화의 업체 측 작성자 표시다(`{"side": "vendor", "kind": "agent", "label": "업체 측 AI"}`).
+- 아래 `model`과 `vendorModel`은 그대로 남아 있다(화면이 `author`로 옮겨 가는 동안 지우지 않는다). 구현 이름은 운영 정보이므로 일반 화면에는 쓰지 않고, 관리자 화면(`GET /admin/status`의 `models`)과 실행 기록에서만 본다. 화면이 옮겨 가면 일반 뷰의 `model`·`vendorModel`은 지울 수 있다.
+
 ### 메시지를 쓴 구현 (`model.provider`)
 
 `threads[].messages[].model`과 `threads[].vendorModel`은 `{"provider", "name"}`이다. 실제로 그 메시지를 쓴 구현을 적는다(쓰지 않은 모델 이름을 붙이지 않는다). `provider`에 올 수 있는 값:
@@ -350,7 +369,7 @@ VendorProfile {"orgId": "org_saegil",
 
 - `session.phase`, `session.today`
 - `streams[]`: `orgId`, `process`, `wasteItem`, `lot`, `contaminants`, `monthlyKgBasis`, `contamination`·`photoContamination`·`moisture`(claim), `unknownFields`, `grade.label`. 업체가 보는 뷰에서는 `currentTreatment`가 `null`이다.
-- `threads[]`: `emitterOrgId`, `assignedStreamIds`(최적안에서 이 업체에 배정된 흐름), `agreedSeq`, `vendorModel.configured`·`vendorModel.used`. `messages[]`에는 `model`과 `meta`(`asks`, `excluded`, `reason`, `terms`의 `items[{streamId, claimId}]`·`days`·`conditions`)가 붙는다. 조건의 값은 `claims`에만 있다.
+- `threads[]`: `emitterOrgId`, `assignedStreamIds`(최적안에서 이 업체에 배정된 흐름), `agreedSeq`, `vendorModel.configured`·`vendorModel.used`, `vendorAuthor`. `messages[]`에는 `author`, `model`과 `meta`(`asks`, `excluded`, `reason`, `terms`의 `items[{streamId, claimId}]`·`days`·`conditions`)가 붙는다. 조건의 값은 `claims`에만 있다.
 - `graph.edges[]`: `kind`(`permit | criterion | assignment | excluded | regulation | document`). `excluded` 엣지의 `evidence`에는 허가 품목 때문에 뺀 경우 허가증 근거가 실린다.
 - **업체가 보는 뷰의 `graph`.** 자기 매입 기준 노드(`type: "criterion"`)와, 흐름을 그 기준과 대조한 엣지(`kind: "criterion"`, 흐름 → 기준은 `met | conditional | unmet`과 첫 번째 확인할 것, 기준 → 업체는 "매입 기준표"), 최적안 배정 엣지(`kind: "assignment"`)가 들어간다. 같은 판단 도구(`judge_route`)의 결과에서 업체의 매입 기준·허가 품목과, 대화에서 업체에 열린 흐름 자료(오염도, 수분, 형태, 혼입물, 물량의 근거)를 대조한 검사만 쓴다. 배출 기업의 현행 처리와 비용·탄소에 관한 검사, 규정 엣지(`regulation`), 다른 업체의 기준은 넣지 않는다. 엣지의 `evidence`는 업체가 열 수 있는 근거뿐이다.
 - `result`: `referencePrices[{key, material, form, label, asOf, price: claim, note}]`(가격조사 참고 시세. 손익 계산에는 쓰지 않는다), `carbonInObjective`, `evidence`. `assignments[]`에는 `vendorName`, `threadId`, `carbonValue`(claim, KAU 환산), `currentAssumed`가 붙고, `checks[]`는 `{key, status, text, evidence}`에 업체가 내건 조건이면 `claims`가 붙는다(`text`의 자리표시자를 그 claims로 그린다). `alternatives[]`에는 `vendorName`, `unitPrice`(claim)가 붙는다. `sensitivity[]`는 흐름별이고 `streamId`가 붙는다.
