@@ -410,34 +410,114 @@ def test_remote_vendor_agents_need_a_service_key(monkeypatch):
 
 
 def test_build_app_connects_azure_parts_only_when_configured(monkeypatch):
-    """도로 거리, 검색 백엔드, 추적은 설정이 있을 때만 켜진다."""
+    """도로 거리, 검색 백엔드, 문서 추출, Prompt Shields, 추적은 설정이 있을 때만 켜진다."""
     from app.v3 import tracing
     from app.v3.evidence import search
+    from app.v3.intake.documents import DocumentIntelligenceClient
+    from app.v3.intake.shields import PromptShieldsClient
     from app.v3.judge.distance import AzureMapsDistance
 
-    monkeypatch.setattr(settings, "database_url", "")
-    monkeypatch.setattr(settings, "azure_maps_key", "")
-    monkeypatch.setattr(settings, "azure_search_endpoint", "")
-    monkeypatch.setattr(settings, "azure_search_api_key", "")
-    monkeypatch.delenv("APPLICATIONINSIGHTS_CONNECTION_STRING", raising=False)
-    monkeypatch.delenv("V3_EMBEDDINGS", raising=False)
+    for name in (
+        "database_url",
+        "azure_maps_key",
+        "azure_search_endpoint",
+        "azure_search_api_key",
+        "v3_embeddings",
+        "azure_document_intelligence_endpoint",
+        "azure_document_intelligence_api_key",
+        "azure_content_safety_endpoint",
+        "azure_content_safety_api_key",
+        "applicationinsights_connection_string",
+    ):
+        monkeypatch.setattr(settings, name, "")
     monkeypatch.delenv("V3_AGENT_FRAMEWORK", raising=False)
     plain = api.build_app()
     assert plain.distance_provider is None and search.backend_name() == "local"
     assert not isinstance(plain.store, tracing.TracingStore)
+    assert plain.documents is None and plain.shields is None
 
     monkeypatch.setattr(settings, "azure_maps_key", "test-key")
     monkeypatch.setattr(settings, "azure_search_endpoint", "https://search.invalid")
     monkeypatch.setattr(settings, "azure_search_api_key", "test-key")
+    monkeypatch.setattr(settings, "azure_document_intelligence_endpoint", "https://di.invalid/")
+    monkeypatch.setattr(settings, "azure_document_intelligence_api_key", "test-key")
+    monkeypatch.setattr(settings, "azure_content_safety_endpoint", "https://cs.invalid/")
+    monkeypatch.setattr(settings, "azure_content_safety_api_key", "test-key")
     connected = api.build_app()
     assert isinstance(connected.distance_provider, AzureMapsDistance)
     assert search.backend_name() == "azure"
+    assert isinstance(connected.documents, DocumentIntelligenceClient)
+    assert connected.documents.endpoint == "https://di.invalid"
+    assert isinstance(connected.shields, PromptShieldsClient)
+    assert connected.shields.endpoint == "https://cs.invalid"
 
-    monkeypatch.setenv("V3_EMBEDDINGS", "ollama")  # 주소가 없으면 로컬 검색으로 돈다
+    monkeypatch.setattr(settings, "v3_embeddings", "ollama")  # 주소가 없으면 로컬 검색으로 돈다
     monkeypatch.setattr(settings, "ollama_base_url", "")
     api.build_app()
     assert search.backend_name() == "local"
     search.use_backend(None)
+
+
+def test_search_settings_match_the_index_script(monkeypatch):
+    """질의 임베딩과 색인은 같은 설정(같은 이름)을 거친다. foundry 임베딩이면 그 배포를 부른다."""
+    from app.v3.evidence import search_azure
+
+    monkeypatch.setattr(settings, "azure_search_endpoint", "https://search.invalid")
+    monkeypatch.setattr(settings, "azure_search_api_key", "test-key")
+    monkeypatch.setattr(settings, "azure_search_index", "rsai-evidence-test")
+    monkeypatch.setattr(settings, "azure_search_vector_dimensions", "1536")
+    monkeypatch.setattr(settings, "v3_embeddings", "foundry")
+    monkeypatch.setattr(settings, "foundry_endpoint", "https://foundry.invalid")
+    monkeypatch.setattr(settings, "foundry_api_key", "test-key")
+    monkeypatch.setattr(settings, "foundry_embedding_deployment", "embed-test")
+    calls = []
+
+    def embed_transport(method, url, headers, body, timeout):
+        calls.append(url)
+        return 200, {}, b'{"data": [{"index": 0, "embedding": [0.5, 0.5]}]}'
+
+    client = search_azure.client_from_env(api.search_settings(), embed_transport=embed_transport)
+    assert client.index == "rsai-evidence-test" and client.vector_dimensions == 1536
+    assert client._embed(["폐합성수지"]) == [[0.5, 0.5]]
+    assert calls[0].startswith("https://foundry.invalid/openai/deployments/embed-test/embeddings")
+
+
+def test_document_upload_uses_document_intelligence_and_prompt_shields(client, monkeypatch):
+    """둘 다 설정돼 있으면 문서를 Document Intelligence로 읽고 Prompt Shields로 검사한다."""
+    import json
+
+    from app.v3.intake.documents import DocumentIntelligenceClient
+    from app.v3.intake.shields import PromptShieldsClient
+
+    calls = []
+    layout = {"status": "succeeded", "analyzeResult": {"content": "허가 품목: 폐합성수지"}}
+
+    def di_transport(method, url, headers, body):
+        calls.append(("di", method))
+        if method == "POST":
+            return 202, {"Operation-Location": "https://di.invalid/op/1"}, b""
+        return 200, {}, json.dumps(layout).encode()
+
+    def cs_transport(method, url, headers, body):
+        calls.append(("cs", json.loads(body)["documents"]))
+        return 200, {}, b'{"documentsAnalysis": [{"attackDetected": false}]}'
+
+    state = api.get_state()
+    documents = DocumentIntelligenceClient("https://di.invalid", "k", di_transport)
+    monkeypatch.setattr(state, "documents", documents)
+    monkeypatch.setattr(
+        state, "shields", PromptShieldsClient("https://cs.invalid", "k", cs_transport)
+    )
+    response = client.post(
+        "/api/v3/intake/documents",
+        headers=org(EMITTER),
+        data={"kind": "permit"},
+        files={"file": ("permit.pdf", b"%PDF-1.4 fake", "application/pdf")},
+    )
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert body["extraction"] == "document_intelligence" and body["shieldUnavailable"] is False
+    assert ("cs", ["허가 품목: 폐합성수지"]) in calls and ("di", "POST") in calls
 
 
 # ── 요청한 조직: token 모드 ──────────────────────────────────────────

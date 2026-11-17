@@ -78,6 +78,26 @@ class Settings(BaseSettings):
     v3_detector_endpoint: str = ""
     v3_detector_api_key: str = ""
     v3_detector_deployment: str = ""
+    # 문서 추출(Document Intelligence prebuilt-layout). 둘 중 하나라도 비면 UTF-8 글 파일만 읽는다
+    azure_document_intelligence_endpoint: str = ""
+    azure_document_intelligence_api_key: str = ""
+    # 업로드 문서의 지시문 주입 검사(Content Safety Prompt Shields). 비면 검사하지 않고
+    # shieldUnavailable=true로 표시한다
+    azure_content_safety_endpoint: str = ""
+    azure_content_safety_api_key: str = ""
+    # 근거 검색 색인(주소와 키는 위의 AZURE_SEARCH_ENDPOINT, AZURE_SEARCH_API_KEY).
+    # 벡터 차원은 임베딩 모델과 같아야 한다(bge-m3 1024, text-embedding-3-small 1536). 정수가 아니면
+    # 경고를 남기고 로컬 검색으로 돈다
+    azure_search_index: str = "rsai-evidence"
+    azure_search_vector_dimensions: str = "1024"
+    # 임베딩: ollama | foundry | 비움(벡터 없이 글과 시맨틱 랭커). 색인과 질의가 같은 값을 써야 한다.
+    # ollama는 OLLAMA_BASE_URL, foundry는 FOUNDRY_ENDPOINT·FOUNDRY_API_KEY와 아래 배포 이름을 쓴다
+    v3_embeddings: str = ""
+    ollama_embed_model: str = "bge-m3"
+    foundry_embedding_deployment: str = ""
+    # 실행 기록을 OpenTelemetry span으로 Application Insights에 내보낸다(app/v3/tracing.py).
+    # azure-monitor-opentelemetry(extra tracing)가 없으면 경고만 남긴다
+    applicationinsights_connection_string: str = ""
 
     # ① 식별 모델 (backend#8). 가중치는 git 에 없다 -> scripts/fetch_models.py 가 MODEL_BLOB_URL 에서 받는다.
     classifier_backend: str = "auto"  # auto | trained | zeroshot
