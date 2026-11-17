@@ -2442,6 +2442,9 @@ dev = [
 foundry-check = [
     { name = "openai" },
 ]
+mcp-server = [
+    { name = "mcp" },
+]
 ml = [
     { name = "numpy" },
     { name = "opencv-python-headless" },
@@ -2452,16 +2455,13 @@ ml = [
     { name = "torchvision" },
     { name = "transformers" },
 ]
-v3 = [
-    { name = "mcp" },
-]
 
 [package.metadata]
 requires-dist = [
     { name = "alembic", specifier = ">=1.14,<2" },
     { name = "fastapi", specifier = ">=0.115" },
     { name = "httpx", specifier = ">=0.27" },
-    { name = "mcp", marker = "extra == 'v3'", specifier = ">=1.10,<2" },
+    { name = "mcp", marker = "extra == 'mcp-server'", specifier = ">=1.10,<2" },
     { name = "numpy", marker = "extra == 'ml'", specifier = ">=1.26" },
     { name = "openai", specifier = ">=3.50,<4" },
     { name = "openai", marker = "extra == 'foundry-check'", specifier = ">=3.50,<4" },
@@ -2481,7 +2481,7 @@ requires-dist = [
     { name = "transformers", marker = "extra == 'ml'", specifier = ">=4.57" },
     { name = "uvicorn", extras = ["standard"], specifier = ">=0.30" },
 ]
-provides-extras = ["foundry-check", "dev", "ml", "v3"]
+provides-extras = ["foundry-check", "dev", "ml", "mcp-server"]
 
 [[package]]
 name = "rich"

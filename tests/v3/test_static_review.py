@@ -53,7 +53,7 @@ def test_lockfile_lists_every_declared_dependency():
 
 def test_ci_installs_the_extras_the_v3_tests_need():
     workflow = read(".github/workflows/ci.yml")
-    assert "uv sync --extra dev --extra v3 --locked" in workflow
+    assert "uv sync --extra dev --extra mcp-server --locked" in workflow
     assert "uv run ruff check ." in workflow and "uv run pytest -q" in workflow
 
 

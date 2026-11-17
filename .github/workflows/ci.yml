@@ -27,9 +27,9 @@ jobs:
           enable-cache: true
 
       # ml extra(torch)는 넣지 않는다. 테스트는 스텁 탐지기로 돈다.
-      # v3 extra(mcp)는 tests/v3/test_mcp_server.py가 건너뛰지 않고 돌게 넣는다.
+      # mcp-server extra(mcp)는 tests/v3/test_mcp_server.py가 건너뛰지 않고 돌게 넣는다.
       - name: 의존성 설치
-        run: uv sync --extra dev --extra v3 --locked
+        run: uv sync --extra dev --extra mcp-server --locked
 
       - name: ruff
         run: uv run ruff check .

@@ -288,7 +288,7 @@ PY
 python3 -m app.v3.devserver
 
 # 2) FastAPI: 기존 /api/v1과 함께 /api/v3를 낸다
-uv sync --extra dev --extra v3
+uv sync --extra dev --extra mcp-server
 uv run uvicorn app.main:app --reload --port 8000
 
 curl -X POST http://localhost:8000/api/v3/demo/reset                      # 시연 시작 상태
@@ -343,7 +343,7 @@ MCP 도구의 입력은 `{"org_id", "today", "arguments"}`이고 `arguments`가 
 ### 테스트
 
 ```bash
-uv sync --extra dev --extra v3
+uv sync --extra dev --extra mcp-server
 uv run pytest -q tests/v3          # 핵심 + 가장자리
 uv run ruff check .
 ```

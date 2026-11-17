@@ -18,7 +18,7 @@
 
 | 파일 | 무엇이 왜 틀렸나 | 고친 방법 |
 |---|---|---|
-| `uv.lock` | `pyproject.toml`에 더한 `sqlalchemy`, `alembic`, `psycopg`, `ortools`와 v3 extra의 `mcp`가 lock에 없었다(병합 커밋에 "다음 커밋에서 다시 만든다"고만 적혀 있었다). CI의 `uv sync --extra dev --extra v3 --locked`는 lock이 맞지 않으면 설치에서 멈춘다. 테스트가 하나도 돌지 않는다 | `uv lock`으로 다시 만들었다(해석만 하고 설치하지 않았다). 기존 고정 버전은 그대로이고 23개가 더해졌다 |
+| `uv.lock` | `pyproject.toml`에 더한 `sqlalchemy`, `alembic`, `psycopg`, `ortools`와 v3 extra의 `mcp`가 lock에 없었다(병합 커밋에 "다음 커밋에서 다시 만든다"고만 적혀 있었다). CI의 `uv sync --extra dev --extra mcp-server --locked`는 lock이 맞지 않으면 설치에서 멈춘다. 테스트가 하나도 돌지 않는다 | `uv lock`으로 다시 만들었다(해석만 하고 설치하지 않았다). 기존 고정 버전은 그대로이고 23개가 더해졌다 |
 | `app/v3/api.py` | starlette는 읽을 수 없는 multipart(경계 없음 등)를 `HTTPException(400)`으로 알리는데, `guarded`의 마지막 `except Exception`이 이것을 삼켜 500 `INTERNAL`로 답했다. `devserver`는 같은 요청에 400 `INVALID_MULTIPART`다 | `read_upload`에서 받아 400 `INVALID_MULTIPART`로 답한다. 계약 8장의 표도 맞췄다 |
 | `infra/deploy.sh` | ACR 작업의 단계는 이미지의 `WORKDIR`가 아니라 `/workspace`에서 돈다. `alembic upgrade head`가 `alembic.ini`와 `app` 패키지(`/app`)를 찾지 못해 마이그레이션이 실패하고 배포가 멈춘다 | 단계에 `workingDirectory: /app`을 더했다 |
 | `infra/appservice.bicep`, `infra/deploy.sh` | API 앱 설정에 `V3_AUTH`, `V3_DEMO_OPEN`, `V3_ORG_TOKENS` 자리가 없어 token 모드로 배포할 방법이 없었다 | 매개변수 `v3Auth`(기본 `header`, README의 기본값과 같다), `v3DemoOpen`(기본 `false`)과 Key Vault 참조(`v3-org-tokens`)를 더했다. token일 때만 참조를 넣는다. `deploy.sh`는 환경 변수 `V3_AUTH`, `V3_DEMO_OPEN`을 받고, token인데 비밀이 없으면 배포 전에 멈춘다. Container Apps 경로에도 같은 설정을 넣었다 |
@@ -48,7 +48,7 @@ CI에서 깨질 가능성이 남은 것:
 
 확인한 것:
 
-- import 경로와 `importorskip` 대상이 CI 설치(`--extra dev --extra v3`)와 맞는다. `test_mcp_server.py`는 v3 extra가 있어야 돌고, `track-d.yml`(`--extra dev`만)에서는 건너뛴다.
+- import 경로와 `importorskip` 대상이 CI 설치(`--extra dev --extra mcp-server`)와 맞는다. `test_mcp_server.py`는 mcp-server extra가 있어야 돌고, `track-d.yml`(`--extra dev`만)에서는 건너뛴다.
 - `test_api.py`·`test_vendor_service.py`의 기대값은 가짜 모듈로 돌려 서비스 동작과 맞는 것을 확인했다.
 - `test_mcp_server.py`가 보내는 `search_clauses` 입력은 toolbox의 스키마에 맞고, 도구 10개의 스키마에 JSON Schema로 틀린 모양은 없다(SDK가 호출 전에 `jsonschema.validate`를 한다. 스키마가 틀리면 `isError`가 된다).
 
@@ -109,14 +109,14 @@ CI에서 깨질 가능성이 남은 것:
 
 확인한 것:
 
-- `ci.yml`: `uv sync --extra dev --extra v3 --locked` → `ruff check .` → `pytest -q`(전체). `track-d.yml`: `--frozen --extra dev`(mcp 없음) → 플랫폼 범위 ruff → `pytest -q`(전체, PostGIS 포함) → openapi 검사.
+- `ci.yml`: `uv sync --extra dev --extra mcp-server --locked` → `ruff check .` → `pytest -q`(전체). `track-d.yml`: `--frozen --extra dev`(mcp 없음) → 플랫폼 범위 ruff → `pytest -q`(전체, PostGIS 포함) → openapi 검사.
 - CI의 ruff는 lock의 0.17.3이고 로컬과 같은 버전이다.
 - `start.sh`의 역할(api, vendor-agent, mcp, migrate)이 실제 모듈 경로와 맞다. `alembic.ini`와 `migrations`를 이미지에 복사한다.
 - ortools가 numpy와 pandas를 기본 의존성으로 끌고 온다. v3 코드와 테스트에 "numpy가 없을 때"에 기대는 곳은 없다.
 
 CI에서 깨질 가능성이 남은 것:
 
-- `Dockerfile`은 lock을 쓰지 않고 `pip install ".[v3,ml]"`로 그때의 최신 버전을 받는다. CI 테스트가 본 버전과 이미지의 버전이 다를 수 있다. `pyproject.toml`만 복사한 상태에서 설치하는 방식은 원래 Dockerfile과 같다.
+- `Dockerfile`은 lock을 쓰지 않고 `pip install ".[mcp-server,ml]"`로 그때의 최신 버전을 받는다. CI 테스트가 본 버전과 이미지의 버전이 다를 수 있다. `pyproject.toml`만 복사한 상태에서 설치하는 방식은 원래 Dockerfile과 같다.
 
 ### `infra/deploy.sh`, `infra/appservice.bicep`, `.github/workflows/deploy.yml`
 
