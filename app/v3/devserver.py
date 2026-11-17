@@ -21,6 +21,9 @@
   없거나 호출이 실패하면 직선 거리 × 우회 계수(가정값)로 계산하고 결과에 가정값이라고 남긴다.
 - 사진·영상 업로드(POST /intake/media)는 V3_DETECTOR_ENDPOINT(와 V3_DETECTOR_API_KEY)가 있을 때만
   탐지 모델을 부른다. 없으면 {"detectorUnavailable": true}로 답한다(탐지 결과를 지어내지 않는다).
+- 문서 업로드(POST /intake/documents)는 AZURE_DOCUMENT_INTELLIGENCE_ENDPOINT와 _API_KEY가 있으면
+  Document Intelligence(prebuilt-layout)로 읽고, 없으면 UTF-8 글 파일만 읽는다. AZURE_CONTENT_SAFETY_ENDPOINT와
+  _API_KEY가 있으면 Prompt Shields로 지시문 주입을 검사하고, 없으면 shieldUnavailable로 표시한다.
 - 요청하는 조직은 X-Org-Id 헤더로 밝힌다(--auth header, 기본). 이 모드는 시연 전용이며 공개 주소에
   그대로 두면 조직 경계가 지켜지지 않는다. --auth token --org-tokens <파일>을 주면 조직별 서비스 토큰
   (Authorization: Bearer <토큰>)으로 조직을 정하고 X-Org-Id는 무시한다. 파일은
@@ -61,7 +64,7 @@ from app.v3.agents.factory import (
     normalize_mode,
 )
 from app.v3.evidence.registry import InMemoryRegistry, JsonFileRegistry
-from app.v3.intake import detector
+from app.v3.intake import detector, documents, shields
 from app.v3.judge.distance import distance_provider_from_env
 from app.v3.store import InMemoryStore, JsonFileStore
 
@@ -454,6 +457,8 @@ def build_app(
         distance_provider=distance_provider,
         # V3_DETECTOR_ENDPOINT가 없으면 None이고, 사진·영상 업로드는 "미연결"이라고 답한다
         detector=detector.client_from_env(settings),
+        documents=documents.client_from_env(settings),
+        shields=shields.client_from_env(settings),
     )
     app.resumed = resumed  # 이어 간 것인지(서버가 뜰 때 알려 준다)
     if remote_vendors:
