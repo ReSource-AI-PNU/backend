@@ -7,6 +7,14 @@ ARG EXTRAS=ml
 WORKDIR /app
 COPY pyproject.toml ./
 RUN pip install --no-cache-dir --extra-index-url https://download.pytorch.org/whl/cpu ".[mcp-server${EXTRAS:+,${EXTRAS}}]"
+# supervision이 GUI용 opencv-python을 함께 깔아 cv2가 그쪽으로 잡히는데, slim 이미지에는 그 판이 쓰는
+# libxcb·libGL·libgthread가 없어 import부터 실패한다. 같은 버전의 headless 판만 남긴다.
+RUN if pip show opencv-python >/dev/null 2>&1; then \
+      v="$(pip show opencv-python-headless | sed -n 's/^Version: //p')"; \
+      pip uninstall -y opencv-python && \
+      pip install --no-cache-dir --no-deps --force-reinstall "opencv-python-headless==${v}" && \
+      python -c "import cv2"; \
+    fi
 COPY app ./app
 COPY scripts ./scripts
 # 배포 때마다 같은 이미지로 마이그레이션을 돌린다: alembic upgrade head
@@ -14,8 +22,8 @@ COPY alembic.ini ./
 COPY migrations ./migrations
 
 # 가중치는 이미지에 넣지 않는다. 시작 시 MODEL_BLOB_URL 이 있으면 models/ 로 내려받고, 없으면 제로샷(Azure OpenAI)으로 동작.
-# 같은 이미지에서 환경 변수 APP_ROLE(api | vendor-agent | mcp | migrate)이나 실행 명령만 바꿔 띄운다.
-# 기본(api)은 이전 CMD와 같은 순서다. v3 부분은 미실행·미검증이다. 직접 띄우는 명령:
+# 같은 이미지에서 환경 변수 APP_ROLE(api | vendor-agent | mcp | migrate | detector)이나 실행 명령만 바꿔 띄운다.
+# 기본(api)은 이전 CMD와 같은 순서다. api, migrate, detector는 앱 VM에서 돌려 확인했다. 직접 띄우는 명령:
 #   업체 측 에이전트 : uvicorn app.v3.vendor_service:app --host 0.0.0.0 --port 8000
 #   판단 도구 MCP    : python -m app.v3.mcp_server --host 0.0.0.0 --port 8000
 EXPOSE 8000
