@@ -98,6 +98,25 @@ def clean_asks(items: Any) -> list[dict[str, str]]:
     return out
 
 
+# 메시지 meta.asks의 항목을 본문에 적을 때의 이름
+ASK_LABELS = {**{field: spec["label"] for field, spec in FIELDS.items()}, "terms": "받는 조건"}
+
+
+def with_ask_lines(text: str, asks: list[dict[str, str]], names: dict[str, str]) -> str:
+    """질문(question) 본문에 묻는 항목 목록이 없으면 '- 이름: 항목'으로 붙인다.
+
+    모델이 "아래 값을 회신해 주시면"이라고만 쓰고 항목은 asks에만 적어, 상대가 무엇을 묻는지 본문에서
+    알 수 없던 경우다. 본문에 '- ' 목록이 이미 있으면 그대로 둔다. 이름은 상대에게 보이는 이름이다.
+    """
+    if not asks or any(line.lstrip().startswith("- ") for line in text.splitlines()):
+        return text
+    lines = []
+    for stream_id in dict.fromkeys(a["streamId"] for a in asks):
+        fields = [ASK_LABELS.get(a["field"], "확인할 값") for a in asks if a["streamId"] == stream_id]
+        lines.append(f"- {names.get(stream_id) or '폐기물'}: {', '.join(dict.fromkeys(fields))}")
+    return "\n".join([text.rstrip(), *lines])
+
+
 _EVIDENCE_LABEL = {
     "moisturePct": "수분",
     "contaminationPct": "오염도",

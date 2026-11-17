@@ -197,7 +197,7 @@ def test_uploads_and_profile_edits_over_http(base):
     api(base, "POST", "/demo/reset")
     status, headers, template = call(base, "GET", "/intake/csv/template")
     assert status == 200 and headers["Content-Type"].startswith("text/csv")
-    assert template.startswith(b"\xef\xbb\xbf") and "흐름 이름" in template.decode("utf-8-sig")
+    assert template.startswith(b"\xef\xbb\xbf") and "폐기물 이름" in template.decode("utf-8-sig")
     csv = "흐름 이름,공정,재질,오염도(%),수분(%),측정일\n포장 필름,포장,LDPE,3.5,1.2,2026-11-12\n"
     body, headers = multipart({"orgId": HANBIT}, "측정값 11월.csv", csv.encode("utf-8"))
     status, _, raw = call(base, "POST", "/intake/csv", raw=body, headers=headers)

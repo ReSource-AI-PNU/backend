@@ -21,6 +21,8 @@
 
 from __future__ import annotations
 
+import re
+
 # 조사 쌍: (받침 있을 때, 받침 없을 때). 으로/로는 ㄹ 받침일 때도 "로"다
 PAIRS: dict[str, tuple[str, str]] = {
     "은는": ("은", "는"),
@@ -150,3 +152,12 @@ def particle(word: str, pair: str) -> str:
 def josa(word: str, pair: str) -> str:
     """word에 조사를 붙인 글. josa("수분", "이가") -> "수분이"."""
     return f"{word}{particle(word, pair)}"
+
+
+# 같은 낱말(한글이 들어간 두 글자 이상)이 빈칸을 두고 잇따라 나온 것. "처리비는 처리비는 {{x}}"
+_REPEATED = re.compile(r"(?<![가-힣A-Za-z0-9])([가-힣][가-힣A-Za-z0-9]+)(?:[ \t]+\1)+(?=[\s.,!?)]|$)")
+
+
+def drop_repeats(text: str) -> str:
+    """잇따라 두 번 쓴 낱말을 한 번으로 줄인다(모델 글의 "처리비는 처리비는"). 다른 글은 그대로다."""
+    return _REPEATED.sub(r"\1", str(text))

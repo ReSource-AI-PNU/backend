@@ -15,7 +15,12 @@ from app.v3.textutil import josa
 
 # 필드 -> (양식에 쓰는 한국어 머리글, 필수 여부, 받아 주는 별칭)
 COLUMNS: dict[str, tuple[str, bool, tuple[str, ...]]] = {
-    "streamName": ("흐름 이름", True, ("흐름", "흐름명", "stream", "stream name", "name")),
+    # 화면과 양식은 "폐기물 이름"이다. 예전 양식의 "흐름 이름"도 받는다
+    "streamName": (
+        "폐기물 이름",
+        True,
+        ("폐기물", "폐기물명", "흐름 이름", "흐름", "흐름명", "stream", "stream name", "name"),
+    ),
     "process": ("공정", True, ("process",)),
     "material": ("재질", True, ("material",)),
     "contaminationPct": (
@@ -215,7 +220,7 @@ def parse_csv(data: bytes) -> dict[str, Any]:
                 fail(
                     number,
                     column("streamName"),
-                    f"{seen[key]}행과 흐름 이름·측정일이 같습니다. 한 흐름은 측정일마다 한 줄만 올려 주세요.",
+                    f"{seen[key]}행과 폐기물 이름·측정일이 같습니다. 한 폐기물은 측정일마다 한 줄만 올려 주세요.",
                 )
             else:
                 seen[key] = number

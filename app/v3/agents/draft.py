@@ -24,6 +24,7 @@ from app.v3.agents.llm import LLM, LLMError
 from app.v3.agents.pool import ClaimPool, UnknownClaimRef
 from app.v3.evidence.validator import find_numbers
 from app.v3.judge.toolbox import TOOLS, call_tool
+from app.v3.textutil import drop_repeats
 
 MAX_ATTEMPTS = 2  # 첫 초안과 재작성 한 번
 MAX_TOOL_ROUNDS = 4
@@ -61,6 +62,7 @@ RULES = (
         "(id가 answered로 끝나는 claim, label '…(담당자 답)')은 '(담당자 답)', 사진 추정은 '사진 추정'으로 쓴다."
     ),
     "'아래', '다음'처럼 가리키는 말을 쓰면 가리킨 항목을 본문에 '- '로 적는다.",
+    "본문에서는 '흐름'이라고 쓰지 않고 '폐기물'이라고 쓴다.",
     (
         "reason이나 terms.conditions에 쓴 {{id}}는 본문(text)에도 쓴다. 조건 문장은 본문에 쓴 문장을 "
         "그대로 옮긴다."
@@ -405,7 +407,8 @@ def build_message(
         recipient=recipient,
         type=str(kind),
         stage=stage,
-        text=text.strip(),
+        # 모델이 낱말을 두 번 잇따라 쓴 것("처리비는 처리비는")은 한 번으로 줄인다(숫자와 자리표시자는 그대로)
+        text=drop_repeats(text.strip()),
         stream_ids=tuple(wanted),
         claims=claims,
     )

@@ -341,12 +341,11 @@ def guide(
                 and field not in unknown
                 and (sid, field) not in told
             ):
-                need.append(f"{name(sid)}의 {field}")
+                need.append(f"{name(sid)}의 {questions.ASK_LABELS[field]}({field})")
     if need:
         lines.append(
-            "매입 기준과 대조할 값이 없다. question으로 묻고 asks에 {streamId, field}를 적는다: "
-            + ", ".join(need)
-            + "."
+            "매입 기준과 대조할 값이 없다. question으로 묻고 asks에 {streamId, field}를 적는다. "
+            "본문에도 묻는 값을 '- 폐기물 이름: 항목'으로 적는다: " + ", ".join(need) + "."
         )
         return lines
     todo = [sid for sid in acceptable if sid not in offered]
@@ -990,6 +989,9 @@ class VendorAgent:
             asks = questions.clean_asks(output.get("asks"))
             if asks:
                 reply.meta["asks"] = asks
+                if reply.type == "question":
+                    names = {sid: str(s.get("name") or "") for sid, s in by_id.items()}
+                    reply.text = questions.with_ask_lines(reply.text, asks, names)
             # 받지 않는 흐름은 이 대화의 흐름 ID와 이유 문장만 남긴다(다른 항목은 싣지 않는다)
             excluded = [
                 {"streamId": x["streamId"], "reason": str(x.get("reason") or "").strip()}

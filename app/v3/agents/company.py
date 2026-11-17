@@ -471,6 +471,9 @@ class CompanyAgent:
             asks = questions.clean_asks(output.get("asks"))
             if asks:
                 message.meta["asks"] = asks
+                if message.type == "question":
+                    names = {s["id"]: stream_label(s) for s in streams}
+                    message.text = questions.with_ask_lines(message.text, asks, names)
             if isinstance(output.get("reason"), str) and output["reason"].strip():
                 message.meta["reason"] = output["reason"].strip()
             return message

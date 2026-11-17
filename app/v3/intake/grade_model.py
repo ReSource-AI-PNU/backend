@@ -301,7 +301,7 @@ def grade_stream(
                     "key": "moisture_missing",
                     "status": "conditional",
                     "text": "수분 값이 없어 사진만으로는 등급을 낼 수 없습니다.",
-                    "ask": "이 흐름의 수분은 대략 몇 %인가요? 모르면 '모름'으로 답해 주세요.",
+                    "ask": "이 폐기물의 수분은 대략 몇 %인가요? 모르면 '모름'으로 답해 주세요.",
                     "field": "moisturePct",
                     "evidence": _evidence_ids(photo),
                 }
