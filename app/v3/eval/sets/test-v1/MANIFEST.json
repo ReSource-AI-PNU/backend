@@ -1,0 +1,66 @@
+{
+ "version": "test-v1",
+ "created": "2026-11-18",
+ "labelingGuide": "v1",
+ "frozen": true,
+ "note": "동결된 시험셋. 파일을 고치면 CI의 동결 시험이 실패한다. 고치려면 새 판(test-v2)을 만들고 MANIFEST를 새로 쓴다(app/v3/eval/sets/README.md).",
+ "files": {
+  "l2_queries.json": {
+   "sha256": "34fa196aead58df6e2a8a552ff78c199d86a9899c8fed34435b2ce91bfb0773b",
+   "bytes": 26507,
+   "count": {
+    "queries": 80
+   }
+  },
+  "l5_negotiation.json": {
+   "sha256": "96c000366ea406e189854709f47a8f1196b3b8549c34fadb8ae409a8b00984da",
+   "bytes": 3716,
+   "count": {
+    "cases": 29,
+    "variants": 29
+   }
+  },
+  "l6_attacks.json": {
+   "sha256": "24117490711fa56a0e703f175d3cd04dadd1ac9753abbe40b40672f8be313eff",
+   "bytes": 53393,
+   "count": {
+    "attacks": 60
+   }
+  },
+  "l6_pii.json": {
+   "sha256": "153aaa706e00f2b1a50162eab52d9271272adbb86e62a2c31a82a5153932d43f",
+   "bytes": 12617,
+   "count": {
+    "items": 20
+   }
+  },
+  "l6_probes.json": {
+   "sha256": "6d3baa470f4cde059cf7a588e27b09a49091a3881617769ecea0b9730b3750b0",
+   "bytes": 9164,
+   "count": {
+    "probes": 30
+   }
+  },
+  "scenarios.json": {
+   "sha256": "1a7a8e79e2513749458c721c3164b662fbd88323decf05329daa0b84b2c827d7",
+   "bytes": 308404,
+   "count": {
+    "cases": 70
+   }
+  },
+  "variants.json": {
+   "sha256": "4140355e655fc4990843e282bb0fac0a514a1be3d838ffdc86910bd349c0c424",
+   "bytes": 373454,
+   "count": {
+    "variants": 80
+   }
+  },
+  "../corpus/laws_extra.json": {
+   "sha256": "006d2826bb1ca697b474ed48883647f4bd2d2298d5ab583a7c0706809d1dd57e",
+   "bytes": 1103168,
+   "count": {
+    "items": 348
+   }
+  }
+ }
+}

@@ -1,0 +1,29 @@
+{
+  "note": "개발셋(dev)으로 고른 방식과 답 없음 문턱값, S0·S1의 nDCG@10. CI가 이 값보다 0.02 넘게 떨어지는지 본다(평가 설계 16장). 질의나 말뭉치를 바꾸면 python -m app.v3.eval.retrieval --write-baseline 으로 다시 쓰고 이유를 커밋에 적는다.",
+  "chosenBy": "dev nDCG@10",
+  "chosen": "S1",
+  "thresholds": {
+    "S0": 79.5,
+    "S1": 6.064286
+  },
+  "ndcg@10": {
+    "S0": {
+      "dev": 0.15721411526899423,
+      "test": 0.13823468927529722
+    },
+    "S1": {
+      "dev": 0.41571418098913826,
+      "test": 0.481428225999226
+    }
+  },
+  "corpus": {
+    "documents": 396,
+    "byKind": {
+      "assumption": 11,
+      "law": 374,
+      "ref": 11
+    },
+    "extraLaws": 348,
+    "extraLawsSha256": "006d2826bb1ca697b474ed48883647f4bd2d2298d5ab583a7c0706809d1dd57e"
+  }
+}
