@@ -129,7 +129,11 @@ def judge_route(registry, *, org_id, today, stream, vendor=None):
     matched, permit_ev = permit_match(stream, vendor)
     if matched is False:
         rec.check(
-            "permit", "unmet", "업체의 허가 품목에 이 흐름의 품목·재질이 없습니다.", None, permit_ev
+            "permit",
+            "unmet",
+            "업체의 허가 품목에 이 폐기물의 품목·재질이 없습니다.",
+            None,
+            permit_ev,
         )
         output.update(
             acceptable=False, route="keep", reason="허가 품목이 맞지 않아 현행을 유지합니다."
@@ -154,7 +158,7 @@ def judge_route(registry, *, org_id, today, stream, vendor=None):
         rec.check(
             "form",
             "conditional",
-            "흐름의 형태가 확인되지 않았고, 형태에 따라 매입 기준이 다릅니다.",
+            "폐기물의 형태가 확인되지 않았고, 형태에 따라 매입 기준이 다릅니다.",
             f"형태를 모르는 상태입니다. 매입 기준이 형태({forms})에 따라 다릅니다. 형태를 확인하는 "
             "방법이나 형태와 관계없이 받는 조건이 있는지 알려 주세요.",
             [e for c in by_form for e in (c.get("evidence") or [])] + q["evidence"],
@@ -341,20 +345,20 @@ def check_loading(registry, *, org_id, today, streams, vendor, pickupsPerMonth=N
     """출처(PIR·PCR)를 보지 않는다. 같은 공장의 흐름을 합친 뒤 최소 물량과 적재를 검사한다."""
     orgs = sorted({str(s.get("orgId")) for s in streams})
     if len(orgs) > 1:
-        raise ValueError("한 번에 한 공장의 흐름만 합칠 수 있다")
+        raise ValueError("한 번에 한 공장의 폐기물만 합칠 수 있다")
     if org_id is not None and orgs and orgs[0] != org_id and vendor.get("orgId") != org_id:
-        raise ValueError("다른 조직의 흐름은 검사할 수 없다")
+        raise ValueError("다른 조직의 폐기물은 검사할 수 없다")
     args = {"streams": streams, "vendor": vendor, "pickups": pickupsPerMonth}
     rec = Recorder("check_loading", registry, org_id, today, args, [vendor.get("orgId"), *orgs])
     output = {"vendorOrgId": vendor.get("orgId"), "streamIds": [s.get("id") for s in streams]}
     kgs = [num(s.get("monthlyKg")) for s in streams]
     if not streams or any(k is None or k <= 0 for k in kgs):
         rec.check(
-            "monthly_kg", "conditional", "월 발생량을 모르는 흐름이 있어 검사하지 못했습니다."
+            "monthly_kg", "conditional", "월 발생량을 모르는 폐기물이 있어 검사하지 못했습니다."
         )
         return rec.result("needs_information", output)
     total = math.fsum(kgs)
-    rec.number("totalKg", total, "kg/월", "같은 업체로 가는 흐름의 월 발생량 합")
+    rec.number("totalKg", total, "kg/월", "같은 업체로 가는 폐기물의 월 발생량 합")
 
     materials = {s.get("material") for s in streams}
     crits = [c for c in vendor.get("criteria") or [] if c.get("material") in materials]
@@ -423,7 +427,7 @@ def check_loading(registry, *, org_id, today, streams, vendor, pickupsPerMonth=N
             )
         else:
             volume = math.fsum(k / d for k, d in zip(kgs, densities, strict=True))
-            rec.number("totalM3", volume, "m3", "흐름별 월 발생량 ÷ 겉보기 밀도의 합")
+            rec.number("totalM3", volume, "m3", "폐기물별 월 발생량 ÷ 겉보기 밀도의 합")
             per_m3 = volume / pickups
             rec.number("perPickupM3", per_m3, "m3", "합친 월 부피 ÷ 월 수거 횟수", fleet_ev)
             rec.number("capacityM3", cap_m3, "m3", "차량 적재 부피", fleet_ev)

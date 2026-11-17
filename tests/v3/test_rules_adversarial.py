@@ -1380,7 +1380,7 @@ def test_rule7_permit_partly_lost_after_agreement_drops_that_stream_and_asks_aga
         app, SAEGIL, {"permits": [{"wasteItem": "포장재", "materials": ["LDPE", "LLDPE"]}]}, SAEGIL
     )
     error = raises("PERMIT_MISMATCH", service.approve, app, session_id, thread["id"], SAEGIL)
-    assert error.status == 409 and "그 흐름만" in error.message
+    assert error.status == 409 and "그 폐기물만" in error.message
     view = service.get_view(app, session_id, HANBIT)
     kept = thread_of(view, SAEGIL)
     assert kept["status"] == "agreed" and kept["assignedStreamIds"] == ["st_film"]

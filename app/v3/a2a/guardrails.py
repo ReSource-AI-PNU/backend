@@ -135,7 +135,7 @@ def auto_decline_reason(guardrails: dict[str, Any] | None, stream: dict[str, Any
     texts = _stream_texts(stream)
     for keyword in (guardrails or {}).get("autoDecline") or []:
         if any(_norm(keyword) in _norm(text) for text in texts):
-            name = stream.get("name") or stream.get("id") or "이 흐름"
+            name = stream.get("name") or stream.get("id") or "이 폐기물"
             return f"{josa(name, '은는')} 업체의 자동 거절 조건({keyword})에 해당합니다."
     return None
 

@@ -166,7 +166,7 @@ class _Company(_Base):
             return {"type": "inquiry", "stage": 4, "streamIds": stream_ids, "toolCalls": calls}
         org, other = self.b.get("org") or {}, self.b.get("counterpart") or {}
         hello = (
-            f"{other.get('name')} 담당자께, {org.get('name')}의 다음 흐름을 받을 수 있는지와 "
+            f"{other.get('name')} 담당자께, {org.get('name')}의 다음 폐기물을 받을 수 있는지와 "
             "조건을 문의드립니다."
         )
         lines = [hello, *[self.describe(sid) for sid in stream_ids]]
@@ -194,7 +194,7 @@ class _Company(_Base):
             return {"type": "accept", "stage": 5, "toolCalls": calls}
         uncovered = list(state.get("uncovered") or [])
         if uncovered and not state.get("asked"):
-            lines = ["제안 감사합니다. 아직 조건을 받지 못한 흐름이 있어 여쭙니다."]
+            lines = ["제안 감사합니다. 아직 조건을 받지 못한 폐기물이 있어 여쭙니다."]
             asks = self._asks(uncovered)
             for sid in uncovered:
                 if not any(line.startswith(f"- {self.name(sid)}:") for line in asks):
@@ -354,9 +354,9 @@ class _Vendor(_Base):
         }
 
     def decline(self, stream_ids: list[str], excluded: list[dict[str, str]]) -> dict[str, Any]:
-        lines = ["문의하신 흐름은 받을 수 없습니다."]
+        lines = ["문의하신 폐기물은 받을 수 없습니다."]
         lines += [f"- {self.name(x['streamId'])}: {x['reason']}" for x in excluded]
-        reason = excluded[0]["reason"] if excluded else "받을 수 있는 흐름이 없습니다."
+        reason = excluded[0]["reason"] if excluded else "받을 수 있는 폐기물이 없습니다."
         return {
             "type": "decline",
             "stage": 4,
@@ -470,12 +470,12 @@ class _Vendor(_Base):
         if total and minimum:
             if checks.get("min_volume") == "met":
                 tail_lines.append(
-                    f"받을 수 있는 흐름을 합친 물량 {total}{self.after(total_id, '은는')} "
+                    f"받을 수 있는 폐기물을 합친 물량 {total}{self.after(total_id, '은는')} "
                     f"최소 물량 {minimum} 이상입니다."
                 )
             else:
                 tail_lines.append(
-                    f"받을 수 있는 흐름을 합친 물량 {total}{self.after(total_id, '이가')} "
+                    f"받을 수 있는 폐기물을 합친 물량 {total}{self.after(total_id, '이가')} "
                     f"최소 물량 {minimum}에 못 미쳐, "
                     "기존 노선에 묶어 수거하는 조건입니다."
                 )
@@ -492,16 +492,16 @@ class _Vendor(_Base):
             # 노선 묶음처럼 조건이 붙는 답은 그대로 받을 수 있는 제안(offer)이 아니다
             kind = "conditional"
         head = (
-            "다음 흐름은 지금 조건으로 받을 수 있습니다."
+            "다음 폐기물은 지금 조건으로 받을 수 있습니다."
             if kind == "offer"
-            else "다음 흐름은 조건부로 받을 수 있습니다."
+            else "다음 폐기물은 조건부로 받을 수 있습니다."
         )
         first = not ((self.b.get("state") or {}).get("offered"))
         for item in excluded if first else []:  # 받지 않는 흐름은 첫 조건 메시지에서 한 번만 알린다
-            tail_lines.append(f"받지 않는 흐름: {self.name(item['streamId'])}. {item['reason']}")
+            tail_lines.append(f"받지 않는 폐기물: {self.name(item['streamId'])}. {item['reason']}")
         if later:
             names = ", ".join(self.name(sid) for sid in later)
-            tail_lines.append(f"조건을 더 확인해야 하는 흐름은 따로 답하겠습니다: {names}.")
+            tail_lines.append(f"조건을 더 확인해야 하는 폐기물은 따로 답하겠습니다: {names}.")
         output = {
             "type": kind,
             "stage": 5,

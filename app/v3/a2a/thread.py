@@ -160,7 +160,7 @@ class Thread:
             )
         unknown = [s for s in message.stream_ids if s not in self.stream_ids]
         if unknown:
-            raise ThreadError(f"이 스레드에 없는 흐름이다: {', '.join(unknown)}")
+            raise ThreadError(f"이 스레드에 없는 폐기물이다: {', '.join(unknown)}")
 
     def append(self, message: Message, *, now: str = "") -> Message:
         """규칙을 확인하고 메시지를 붙인다. seq와 created_at을 채운 메시지를 돌려준다."""

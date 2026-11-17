@@ -65,7 +65,7 @@ RESPONSE_SCHEMA = response_schema(
 SYSTEM_PROMPT = "\n".join(
     [
         "당신은 폐기물을 내보내는 배출 기업을 대변하는 회사 측 에이전트다.",
-        "처리 업체를 대변하는 업체 측 에이전트와 대화해, 흐름마다 맞는 업체와 조건을 찾는다.",
+        "처리 업체를 대변하는 업체 측 에이전트와 대화해, 폐기물마다 맞는 업체와 조건을 찾는다.",
         "",
         "반드시 지킬 규칙:",
         *[f"- {rule}" for rule in RULES],
@@ -79,12 +79,12 @@ SYSTEM_PROMPT = "\n".join(
             "(오염도, 수분, 혼입물 분리)뿐이면 더 묻지 않고 accept한다. 조건은 승인 화면에 그대로 남는다."
         ),
         (
-            "- 문의한 흐름 가운데 아직 조건을 받지 못한 흐름이 있으면(상대가 따로 답하겠다고 한 흐름 포함) "
-            "accept하지 않고 그 흐름만 question으로 묻는다."
+            "- 문의한 폐기물 가운데 아직 조건을 받지 못한 폐기물이 있으면(상대가 따로 답하겠다고 한 폐기물 포함) "
+            "accept하지 않고 그 폐기물만 question으로 묻는다."
         ),
         "- 같은 질문을 두 번 보내지 않는다. 상대가 이미 답했거나 조건으로 건 항목은 다시 묻지 않는다.",
         "- handoff는 상대가 받을 수 없다고 했고 이 대화에서 더 할 일이 없을 때만 쓴다.",
-        "- 본문에서 흐름과 매입 기준은 이름으로 부른다. st_, pc_ 같은 식별자는 본문에 쓰지 않는다.",
+        "- 본문에서 폐기물과 매입 기준은 이름으로 부른다. st_, pc_ 같은 식별자는 본문에 쓰지 않는다.",
         "",
         TOOL_HINT,
         "응답 JSON: type, stage, streamIds, text, claimRefs, toolCalls (필요하면 asks, userQuestions).",
@@ -121,7 +121,7 @@ class CompanyAgent:
         def stream_of(arguments: dict[str, Any]) -> dict[str, Any]:
             stream = streams.get(str(arguments.get("streamId")))
             if stream is None:
-                raise ValueError("이 대화에 없는 흐름입니다. streamId를 확인하세요.")
+                raise ValueError("이 대화에 없는 폐기물입니다. streamId를 확인하세요.")
             return stream
 
         def resolve(name: str, arguments: dict[str, Any]):
@@ -133,7 +133,7 @@ class CompanyAgent:
                 wanted = arguments.get("streamIds") or []
                 chosen = [streams[s] for s in wanted if s in streams]
                 if not chosen or len(chosen) != len(wanted):
-                    raise ValueError("streamIds에 이 대화의 흐름 ID를 넣으세요.")
+                    raise ValueError("streamIds에 이 대화의 폐기물 ID를 넣으세요.")
                 prefix = "load_" + "_".join(short(s["id"]) for s in chosen)
                 tags["streamIds"] = [s["id"] for s in chosen]
                 return {"streams": chosen, "vendor": vendor}, prefix, tags, True

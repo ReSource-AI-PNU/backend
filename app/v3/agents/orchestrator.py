@@ -517,7 +517,7 @@ class Orchestrator:
             "thread",
             "합의한 뒤에 업체의 조건이 바뀌어 대화를 다시 열었습니다. 새 조건으로 이어 갑니다."
             if was_agreed
-            else "업체의 조건이 바뀌어 남은 흐름의 조건을 다시 묻습니다.",
+            else "업체의 조건이 바뀌어 남은 폐기물의 조건을 다시 묻습니다.",
             thread.id,
             status=thread.status,
             vendorOrgId=thread.vendor_org,
@@ -906,7 +906,7 @@ class Orchestrator:
             for reason, names in groups.items()
         )
         head = "" if base in groups else f"{base.rstrip('.')}. "
-        return f"{head}받지 않는 흐름: {listed}."
+        return f"{head}받지 않는 폐기물: {listed}."
 
     def _handoff(
         self,
@@ -1023,7 +1023,7 @@ class Orchestrator:
         """허가 품목이 맞지 않음을 연 뒤에 알았다. 회사 측이 근거와 함께 decline으로 닫는다."""
         if thread.closed or thread.blocked:
             return False
-        reason = "업체의 허가 품목이 이 대화의 흐름과 맞지 않아 근거와 함께 대화를 닫습니다."
+        reason = "업체의 허가 품목이 이 대화의 폐기물과 맞지 않아 근거와 함께 대화를 닫습니다."
         message = make_decline(
             thread_id=thread.id,
             sender=thread.emitter_org,
@@ -1107,7 +1107,7 @@ class Orchestrator:
             session["id"],
             "system",
             "thread",
-            f"허가 품목이 맞지 않는 흐름({names})만 이 대화에서 뺐습니다. 나머지 흐름은 그대로 둡니다.",
+            f"허가 품목이 맞지 않는 폐기물({names})만 이 대화에서 뺐습니다. 나머지 폐기물은 그대로 둡니다.",
             thread.id,
             vendorOrgId=thread.vendor_org,
             status=thread.status,
@@ -1161,8 +1161,8 @@ class Orchestrator:
                 thread_id=thread.id,
                 sender=thread.emitter_org,
                 recipient=thread.vendor_org,
-                text=f"허가 품목이 맞지 않는 흐름({names})은 이 대화에서 뺍니다. "
-                "나머지 흐름을 받을 수 있는지와 조건을 다시 알려 주세요.",
+                text=f"허가 품목이 맞지 않는 폐기물({names})은 이 대화에서 뺍니다. "
+                "나머지 폐기물을 받을 수 있는지와 조건을 다시 알려 주세요.",
                 stage=4,
                 stream_ids=tuple(left),
                 evidence=evidence,
@@ -1267,7 +1267,7 @@ class Orchestrator:
                     session["id"],
                     "system",
                     "thread",
-                    "최적안을 다시 계산해 이 대화에 배정된 흐름이 바뀌었습니다. 승인을 다시 받습니다.",
+                    "최적안을 다시 계산해 이 대화에 배정된 폐기물이 바뀌었습니다. 승인을 다시 받습니다.",
                     thread.id,
                     status="agreed",
                     streamIds=new,
@@ -1298,7 +1298,7 @@ class Orchestrator:
             {
                 "permit": "합의한 대화가 허가 품목 불일치로 닫혀 그 업체를 빼고 "
                 "최적안을 다시 계산했습니다.",
-                "permit_stream": "허가 품목이 맞지 않게 된 흐름을 그 업체의 배정에서 빼고 "
+                "permit_stream": "허가 품목이 맞지 않게 된 폐기물을 그 업체의 배정에서 빼고 "
                 "최적안을 다시 계산했습니다.",
                 "terms": "업체의 조건이 바뀐 대화를 새 조건으로 이어 간 뒤 최적안을 다시 계산했습니다.",
             }.get(
@@ -1898,7 +1898,7 @@ class Orchestrator:
         reason = "근거 확인에 실패한 항목이 있어 승인할 수 없습니다: " + ", ".join(failed)
         codes = block_codes(reason)
         if "STREAM_CHANGED" in codes:
-            reason += ". 합의한 뒤에 흐름 자료가 바뀌었습니다. 진단을 새로 진행해 주세요."
+            reason += ". 합의한 뒤에 폐기물 자료가 바뀌었습니다. 진단을 새로 진행해 주세요."
         if "VENDOR_TERMS_CHANGED" in codes:
             reason += (
                 ". 합의한 뒤에 업체의 조건(매입 기준표·허가 품목·가드레일)이 바뀌었습니다. "
@@ -2103,13 +2103,13 @@ class Orchestrator:
                         "status": "needs_information",
                         "text": (
                             f"{names.get(handed[sid]['vendorOrgId']) or '업체'}의 허가 품목이 맞지 "
-                            "않게 되어 합의한 대화를 닫고 이 흐름의 배정을 뺐습니다. 확인 필요."
+                            "않게 되어 합의한 대화를 닫고 이 폐기물의 배정을 뺐습니다. 확인 필요."
                             if handed[sid].get("cause") == "permit"
                             else f"{names.get(handed[sid]['vendorOrgId']) or '업체'}의 허가 품목이 "
-                            "이 흐름과 맞지 않게 되어 배정을 뺐습니다. 확인 필요."
+                            "이 폐기물과 맞지 않게 되어 배정을 뺐습니다. 확인 필요."
                             if handed[sid].get("cause") == "permit_stream"
                             else f"{josa(names.get(handed[sid]['vendorOrgId']) or '업체', '와과')} 합의한 대화가 "
-                            "담당자에게 넘어가 이 흐름의 배정을 뺐습니다. 확인 필요."
+                            "담당자에게 넘어가 이 폐기물의 배정을 뺐습니다. 확인 필요."
                         ),
                         "evidence": [],
                     }
@@ -2335,9 +2335,9 @@ class Orchestrator:
             self._save(session)
             raise OrchestratorError(
                 "PERMIT_MISMATCH",
-                "업체의 허가 품목이 흐름과 맞지 않게 되어 승인하지 않고 대화를 닫았습니다."
+                "업체의 허가 품목이 폐기물과 맞지 않게 되어 승인하지 않고 대화를 닫았습니다."
                 if done == "closed"
-                else "업체의 허가 품목이 일부 흐름과 맞지 않게 되어 그 흐름만 뺐습니다. "
+                else "업체의 허가 품목이 일부 폐기물과 맞지 않게 되어 그 폐기물만 뺐습니다. "
                 "남은 조건을 확인하고 다시 승인해 주세요.",
             )
         blocked = self._verify(session, thread)
@@ -2481,10 +2481,10 @@ class Orchestrator:
 
             lines = [
                 title,
-                f"보내는 곳: {emitter.get('name')} ({emitter['id']})",
-                f"받는 곳: {vendor.get('name')} ({vendor['id']})",
+                # 조직 ID와 대화 ID는 본문에 적지 않는다(문서의 threadId 항목에 있다). 사람이 읽는 글이다
+                f"보내는 곳: {emitter.get('name')}",
+                f"받는 곳: {vendor.get('name')}",
                 f"작성일: {self.today}",
-                f"대화: {thread.id}",
                 "",
                 *lines_for(use),
                 "",
@@ -2517,7 +2517,7 @@ class Orchestrator:
             return {"stream": stream, "kg": kg, "offer": offers.get(sid)}
 
         def request_lines(use) -> list[str]:
-            lines = ["아래 흐름의 수거와 처리를 요청합니다."]
+            lines = ["아래 폐기물의 수거와 처리를 요청합니다."]
             for number, sid in enumerate(assigned, 1):
                 facts, tag = stream_facts(sid), safe_id(sid)
                 stream, offer = facts["stream"], facts["offer"]
@@ -2554,7 +2554,7 @@ class Orchestrator:
             per_kg = use(claim_in(loading, "perPickupKg", "x"), "perPickupKg")
             lines.append(f"수거 횟수: {pickups}" if pickups else "수거 횟수: 확인 필요")
             if per_kg:
-                lines.append(f"한 번 수거량(확정한 흐름을 합친 값): {per_kg}")
+                lines.append(f"한 번 수거량(확정한 폐기물을 합친 값): {per_kg}")
             for number, sid in enumerate(assigned, 1):
                 facts, tag = stream_facts(sid), safe_id(sid)
                 stream = facts["stream"]

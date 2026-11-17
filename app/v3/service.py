@@ -316,7 +316,7 @@ def list_streams(app: App, org_id: str, viewer: str) -> list[dict[str, Any]]:
     if me.get("role") == "vendor":
         shared = [s for s in app.store.streams_visible_to(viewer) if s["orgId"] == org_id]
         return [_vendor_stream(s) for s in shared]
-    raise ServiceError("FORBIDDEN", "다른 조직의 흐름은 볼 수 없습니다.", 403)
+    raise ServiceError("FORBIDDEN", "다른 조직의 폐기물은 볼 수 없습니다.", 403)
 
 
 def update_stream(
@@ -328,10 +328,10 @@ def update_stream(
     try:
         stream = app.store.get_stream(stream_id)
         if stream["orgId"] != org_id:
-            raise ServiceError("STREAM_NOT_FOUND", "그런 흐름이 없습니다.", 404)
+            raise ServiceError("STREAM_NOT_FOUND", "그런 폐기물이 없습니다.", 404)
     except NotFound:
         if not patch.get("name"):
-            raise ServiceError("STREAM_NOT_FOUND", "그런 흐름이 없습니다.", 404) from None
+            raise ServiceError("STREAM_NOT_FOUND", "그런 폐기물이 없습니다.", 404) from None
         stream = {"id": stream_id, "orgId": org_id, "contaminants": []}
     for key in STREAM_FIELDS:
         if key in patch:
@@ -1207,9 +1207,9 @@ def record_correction(
     try:
         stream = app.store.get_stream(str(body.get("streamId") or ""), viewer)
     except NotFound:
-        raise ServiceError("STREAM_NOT_FOUND", "그런 흐름이 없습니다.", 404) from None
+        raise ServiceError("STREAM_NOT_FOUND", "그런 폐기물이 없습니다.", 404) from None
     if stream.get("orgId") != viewer:
-        raise ServiceError("STREAM_NOT_FOUND", "그런 흐름이 없습니다.", 404)
+        raise ServiceError("STREAM_NOT_FOUND", "그런 폐기물이 없습니다.", 404)
     record = _feedback_call(feedback.record_correction, app, session, stream, body)
     return {"correction": record, "evidence": [record["id"]]}
 
@@ -1239,11 +1239,11 @@ def record_outcome(app: App, session_id: str, body: dict[str, Any], viewer: str)
         )
     stream_id = str(body.get("streamId") or "")
     if stream_id not in (session["work"]["assigned"].get(thread["id"]) or []):
-        raise ServiceError("STREAM_NOT_IN_THREAD", "이 대화에서 확정된 흐름이 아닙니다.", 422)
+        raise ServiceError("STREAM_NOT_IN_THREAD", "이 대화에서 확정된 폐기물이 아닙니다.", 422)
     try:
         stream = app.store.get_stream(stream_id)
     except NotFound:
-        raise ServiceError("STREAM_NOT_FOUND", "그런 흐름이 없습니다.", 404) from None
+        raise ServiceError("STREAM_NOT_FOUND", "그런 폐기물이 없습니다.", 404) from None
     record = _feedback_call(feedback.record_outcome, app, session, thread, stream, body)
     return {"outcome": record, "evidence": list(record["evidence"].values())}
 
@@ -1424,9 +1424,9 @@ def upload_media(
     try:
         stream = app.store.get_stream(str(stream_id or ""))
     except NotFound:
-        raise ServiceError("STREAM_NOT_FOUND", "그런 흐름이 없습니다.", 404) from None
+        raise ServiceError("STREAM_NOT_FOUND", "그런 폐기물이 없습니다.", 404) from None
     if stream.get("orgId") != org_id:
-        raise ServiceError("STREAM_NOT_FOUND", "그런 흐름이 없습니다.", 404)
+        raise ServiceError("STREAM_NOT_FOUND", "그런 폐기물이 없습니다.", 404)
     # 형식 검사가 먼저다. 탐지 모델이 연결되지 않았어도 지원하지 않는 형식은 415로 답한다
     if media.media_type(filename) is None:
         raise ServiceError(

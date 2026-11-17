@@ -42,14 +42,14 @@ _SPECS = [
     ToolSpec(
         "identify_stream",
         1,
-        "흐름의 재질·출처·형태를 정리하고 등급을 낸다. 측정값이 사진 추정보다 우선한다.",
+        "폐기물의 재질·출처·형태를 정리하고 등급을 낸다. 측정값이 사진 추정보다 우선한다.",
         _schema({"stream": OBJ}, {"moisturePct": NUM}),
         identify_stream,
     ),
     ToolSpec(
         "judge_route",
         2,
-        "흐름의 경로를 확정·조건부·확인 필요로 판정하고 업체 매입 기준과 대조한다.",
+        "폐기물의 경로를 확정·조건부·확인 필요로 판정하고 업체 매입 기준과 대조한다.",
         _schema({"stream": OBJ}, {"vendor": OBJ}),
         judge_route,
     ),
@@ -63,7 +63,7 @@ _SPECS = [
     ToolSpec(
         "check_loading",
         2,
-        "같은 업체로 가는 한 공장의 흐름을 합쳐 최소 물량과 적재(무게·부피)를 검사한다.",
+        "같은 업체로 가는 한 공장의 폐기물을 합쳐 최소 물량과 적재(무게·부피)를 검사한다.",
         _schema({"streams": ARR, "vendor": OBJ}, {"pickupsPerMonth": NUM}),
         check_loading,
     ),
@@ -77,14 +77,14 @@ _SPECS = [
     ToolSpec(
         "check_requirements",
         3,
-        "흐름과 경로에 걸리는 조항을 찾아 담당자 확인 항목으로 낸다.",
+        "폐기물과 경로에 걸리는 조항을 찾아 담당자 확인 항목으로 낸다.",
         _schema({"stream": OBJ, "route": STR}, {"topics": ARR}),
         check_requirements,
     ),
     ToolSpec(
         "match_permit",
         3,
-        "업체 허가 품목과 흐름을 대조한다. 맞지 않으면 대화를 열지 않는다.",
+        "업체 허가 품목과 폐기물을 대조한다. 맞지 않으면 대화를 열지 않는다.",
         _schema({"stream": OBJ, "vendor": OBJ}),
         match_permit,
     ),
@@ -119,7 +119,7 @@ _SPECS = [
     ToolSpec(
         "optimize_assignment",
         6,
-        "흐름을 업체나 현행 유지에 배정해 회사 측 월 순비용을 최소화한다.",
+        "폐기물을 업체나 현행 유지에 배정해 회사 측 월 순비용을 최소화한다.",
         _schema({"streams": ARR, "vendors": ARR}, {"carbonWeight": NUM, "exclude": ARR}),
         optimize_assignment,
     ),

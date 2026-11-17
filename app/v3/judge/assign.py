@@ -176,9 +176,9 @@ def optimize_assignment(
     """
     orgs = sorted({str(s.get("orgId")) for s in streams})
     if len(orgs) > 1:
-        raise ValueError("한 번에 한 배출 기업의 흐름만 배정할 수 있다")
+        raise ValueError("한 번에 한 배출 기업의 폐기물만 배정할 수 있다")
     if org_id is not None and orgs and orgs[0] != org_id:
-        raise ValueError("다른 조직의 흐름은 배정할 수 없다")
+        raise ValueError("다른 조직의 폐기물은 배정할 수 없다")
     weight = num(carbonWeight) or 0.0
     vendors = sorted(vendors, key=lambda v: str(v.get("orgId")))  # 입력 순서가 달라도 같은 근거 ID
     args = {"streams": streams, "vendors": vendors, "carbonWeight": weight}
@@ -298,7 +298,7 @@ def optimize_assignment(
     if cp_solver is _AUTO:
         cp_solver = cp_sat_pick if HAS_ORTOOLS else None
     if too_many and cp_solver is None:
-        raise ValueError("배정 조합이 너무 많다. 흐름이나 업체 수를 줄인다")
+        raise ValueError("배정 조합이 너무 많다. 폐기물이나 업체 수를 줄인다")
 
     def feasible(combo) -> bool:
         groups: dict[str, list[int]] = {}
@@ -356,7 +356,7 @@ def optimize_assignment(
             found = None
     if too_many:
         if found is None:
-            raise ValueError("배정 조합이 너무 많다. 흐름이나 업체 수를 줄인다")
+            raise ValueError("배정 조합이 너무 많다. 폐기물이나 업체 수를 줄인다")
         best, output["solver"] = found, "ortools"
     else:
         best = exhaustive()
@@ -432,7 +432,7 @@ def optimize_assignment(
                     "원/월",
                     "운반비는 업체 단가에 들어 있습니다(수거 포함)"
                     if charge["paidBy"] == "vendor"
-                    else "업체의 1회 운반비 × 월 수거 횟수를 이 업체로 가는 흐름의 물량 비율로 나눈 값",
+                    else "업체의 1회 운반비 × 월 수거 횟수를 이 업체로 가는 폐기물의 물량 비율로 나눈 값",
                     charge["evidence"],
                     label=names.calc_label("transport", who),
                 )
@@ -518,8 +518,8 @@ def optimize_assignment(
                 no_factor.append(str(who or stream.get("id")))
         output["assignments"].append(entry)
         now_total, after_total = now_total + now, after_total + after
-    rec.number("totalNow", now_total, "원/월", "흐름별 현행 월 손익의 합", parts["now"])
-    rec.number("totalAfter", after_total, "원/월", "흐름별 배정 뒤 월 손익의 합", parts["after"])
+    rec.number("totalNow", now_total, "원/월", "폐기물별 현행 월 손익의 합", parts["now"])
+    rec.number("totalAfter", after_total, "원/월", "폐기물별 배정 뒤 월 손익의 합", parts["after"])
     rec.number(
         "totalDifference",
         after_total - now_total,
@@ -538,21 +538,21 @@ def optimize_assignment(
             "totalCarbon",
             carbon_total,
             "tCO2e/월",
-            "배출계수가 있는 흐름의 탄소 변화 합",
+            "배출계수가 있는 폐기물의 탄소 변화 합",
             parts["carbon"],
         )["id"]
     if no_factor:
         rec.check(
             "carbon",
             "conditional",
-            f"배출계수가 없는 처리 방식으로 가는 흐름({', '.join(no_factor)})은 "
+            f"배출계수가 없는 처리 방식으로 가는 폐기물({', '.join(no_factor)})은 "
             "탄소 계산에서 뺐습니다. 확인 필요.",
         )
     if any(a["currentAssumed"] for a in output["assignments"]):
         rec.check(
             "current_assumed",
             "met",
-            "현행 처리를 입력하지 않은 흐름은 혼합 소각 가정값을 썼습니다.",
+            "현행 처리를 입력하지 않은 폐기물은 혼합 소각 가정값을 썼습니다.",
         )
     conditional = output["skipped"] or any(
         a["status"] == "conditional" for a in output["assignments"]

@@ -103,7 +103,7 @@ def cost_carbon(
                 "monthlyTransport",
                 transport,
                 "원/월",
-                "1회 운반비 × 월 수거 횟수 (이 흐름만 보낼 때)",
+                "1회 운반비 × 월 수거 횟수 (이 폐기물만 보낼 때)",
                 terms_ev,
             )
             output["transportAssumed"] = False

@@ -117,17 +117,17 @@ SYSTEM_PROMPT = "\n".join(
         ),
         "- terms의 단가는 숫자로 적지 않고 unitPriceRef에 claim ID로 적는다.",
         "- 허가 품목이 맞지 않으면 근거와 함께 decline으로 답한다.",
-        "- 다른 배출 기업의 이름, 흐름, 물량을 알리지 않는다.",
+        "- 다른 배출 기업의 이름, 폐기물, 물량을 알리지 않는다.",
         (
             "- 오염도나 수분이 측정값이 아니면(사진 추정, 담당자 답변) 반입 검수에서 매입 기준 상한 "
             "이내로 확인될 것을 조건으로 건 conditional로 답한다. 상한은 매입 기준의 claim으로 인용한다."
         ),
         (
-            "- 혼입물이 섞인 흐름은 '확인 필요'로 미루지 않는다. 혼입물은 분리해 내보내거나 반입 검수에서 "
+            "- 혼입물이 섞인 폐기물은 '확인 필요'로 미루지 않는다. 혼입물은 분리해 내보내거나 반입 검수에서 "
             "오염도가 매입 기준 상한 이내로 확인될 것을 조건으로 건다. 이것이 업체의 기본 반입 조건이다."
         ),
         "- 이미 낸 조건을 상대가 받아들였으면 같은 조건(terms)을 바꾸지 않는다. 새 조건을 덧붙이지 않는다.",
-        "- 본문에서 흐름과 매입 기준은 이름으로 부른다. st_, pc_ 같은 식별자는 본문에 쓰지 않는다.",
+        "- 본문에서 폐기물과 매입 기준은 이름으로 부른다. st_, pc_ 같은 식별자는 본문에 쓰지 않는다.",
         "",
         TOOL_HINT,
         "응답 JSON: type, stage, streamIds, text, claimRefs, toolCalls, terms, asks, excluded, reason.",
@@ -224,7 +224,7 @@ class VendorAgent:
             wanted = arguments.get("streamIds") or []
             chosen = [streams[s] for s in wanted if s in streams]
             if not chosen or len(chosen) != len(wanted):
-                raise ValueError("streamIds에 이 대화의 흐름 ID를 넣으세요.")
+                raise ValueError("streamIds에 이 대화의 폐기물 ID를 넣으세요.")
             return chosen
 
         def resolve(name: str, arguments: dict[str, Any]):
@@ -264,7 +264,7 @@ class VendorAgent:
                 return real, prefix, tags, False
             stream = streams.get(str(arguments.get("streamId")))
             if stream is None:
-                raise ValueError("이 대화에 없는 흐름입니다. streamId를 확인하세요.")
+                raise ValueError("이 대화에 없는 폐기물입니다. streamId를 확인하세요.")
             sid = stream["id"]
             tags["streamId"] = sid
             if name == "identify_stream":
@@ -292,7 +292,7 @@ class VendorAgent:
             return None, [
                 rejection(
                     "GUARDRAIL_TERMS_MISSING",
-                    "조건을 내는 메시지에는 terms.items가 있어야 합니다. 흐름마다 streamId와 "
+                    "조건을 내는 메시지에는 terms.items가 있어야 합니다. 폐기물마다 streamId와 "
                     "unitPriceRef(claim ID)를 넣으세요.",
                 )
             ]
@@ -307,7 +307,7 @@ class VendorAgent:
                 found.append(
                     rejection(
                         "GUARDRAIL_TERMS_REF",
-                        "terms.items의 streamId는 메시지의 흐름이어야 하고, unitPriceRef는 "
+                        "terms.items의 streamId는 메시지의 폐기물이어야 하고, unitPriceRef는 "
                         "본문에 쓴 claim ID여야 합니다.",
                     )
                 )
@@ -394,7 +394,7 @@ class VendorAgent:
             if reason:
                 found["AUTO_DECLINE_STREAM"] = rejection(
                     "GUARDRAIL_AUTO_DECLINE_STREAM",
-                    f"{reason} 이 흐름에는 조건을 낼 수 없습니다.",
+                    f"{reason} 이 폐기물에는 조건을 낼 수 없습니다.",
                 )
         return list(found.values())
 
@@ -420,8 +420,8 @@ class VendorAgent:
         return [
             rejection(
                 "PERMIT_MISMATCH",
-                f"허가 품목이 맞지 않는 흐름({', '.join(bad)})에는 조건을 낼 수 없습니다. "
-                "그 흐름은 excluded에 이유와 함께 넣고, 받을 흐름이 없으면 decline으로 답하세요.",
+                f"허가 품목이 맞지 않는 폐기물({', '.join(bad)})에는 조건을 낼 수 없습니다. "
+                "그 폐기물은 excluded에 이유와 함께 넣고, 받을 폐기물이 없으면 decline으로 답하세요.",
                 streamIds=bad,
             )
         ]
@@ -462,7 +462,7 @@ class VendorAgent:
                 thread_id=thread.id,
                 sender=vendor_org,
                 recipient=thread.emitter_org,
-                reason="허가 품목이 맞지 않는 흐름이 있어 이 대화를 닫습니다.",
+                reason="허가 품목이 맞지 않는 폐기물이 있어 이 대화를 닫습니다.",
                 stage=4,
                 stream_ids=tuple(unmatched),
                 evidence=evidence,
@@ -485,8 +485,8 @@ class VendorAgent:
             thread_id=thread.id,
             sender=vendor_org,
             recipient=thread.emitter_org,
-            text=f"허가 품목이 맞지 않는 흐름은 받지 않습니다: {names}. "
-            "나머지 흐름은 이 대화에서 이어서 답하겠습니다.",
+            text=f"허가 품목이 맞지 않는 폐기물은 받지 않습니다: {names}. "
+            "나머지 폐기물은 이 대화에서 이어서 답하겠습니다.",
             stage=4,
             stream_ids=tuple(unmatched),
             evidence=evidence,
@@ -701,7 +701,7 @@ class VendorAgent:
                 found.append(
                     rejection(
                         str(problem["code"]),
-                        f"{problem['message']} 다른 배출 기업의 이름, 흐름, 물량은 알릴 수 없습니다.",
+                        f"{problem['message']} 다른 배출 기업의 이름, 폐기물, 물량은 알릴 수 없습니다.",
                     )
                 )
             if reply.type == "decline":

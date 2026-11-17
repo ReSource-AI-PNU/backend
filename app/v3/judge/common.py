@@ -318,7 +318,7 @@ def criterion_checks(stream: dict, criterion: dict, q: dict) -> list[tuple]:
                 (
                     "form",
                     "conditional",
-                    "흐름의 형태가 확인되지 않았습니다.",
+                    "폐기물의 형태가 확인되지 않았습니다.",
                     f"형태를 모르는 상태입니다. {want} 형태가 아니어도 받을 수 있는지 알려 주세요.",
                 )
             )
@@ -329,7 +329,7 @@ def criterion_checks(stream: dict, criterion: dict, q: dict) -> list[tuple]:
                 (
                     "form",
                     "conditional",
-                    f"흐름은 {have} 형태이고 매입 기준은 {want} 형태입니다.",
+                    f"폐기물은 {have} 형태이고 매입 기준은 {want} 형태입니다.",
                     f"{have} 형태 그대로 받을 수 있는지, 전처리가 필요한지 알려 주세요.",
                 )
             )

@@ -131,11 +131,11 @@ def can_open_thread(permit_result: dict[str, Any] | None) -> tuple[bool, str]:
         return False, "업체의 허가 품목을 확인하지 못해 대화를 열지 않습니다."
     if matched is False or unmet:
         detail = unmet[0].get("text") if unmet else output.get("reason")
-        reason = "업체의 허가 품목에 이 흐름이 없어 대화를 열지 않습니다."
+        reason = "업체의 허가 품목에 이 폐기물이 없어 대화를 열지 않습니다."
         return False, f"{reason} {detail}".strip() if detail else reason
     if permit_result.get("status") == "needs_information" or (matched is None and not checks):
         return False, "업체의 허가 품목을 확인하지 못해 대화를 열지 않습니다."
-    return True, "허가 품목이 흐름과 맞습니다."
+    return True, "허가 품목이 폐기물과 맞습니다."
 
 
 # ── 배출 기업 사이의 정보 차단 ───────────────────────────────────────────
@@ -207,7 +207,7 @@ def check_disclosure(message: Message, registry: Any, store: Any) -> list[dict[s
                 problems.append(
                     {
                         "code": "OTHER_EMITTER_STREAM",
-                        "message": "다른 배출 기업의 흐름이 메시지에 들어 있습니다.",
+                        "message": "다른 배출 기업의 폐기물이 메시지에 들어 있습니다.",
                         "orgId": oid,
                         "streamId": stream["id"],
                     }
