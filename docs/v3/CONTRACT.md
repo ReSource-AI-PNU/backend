@@ -276,6 +276,14 @@ VendorProfile {"orgId": "org_saegil",
 
 화면이 내부 키(`s0Difference`, `pc_pp_a`, `assumption:...`)를 그대로 보여 주지 않도록 이름을 함께 준다. 이름은 모두 코드(`app/v3/names.py`)가 정한다.
 
+- **담당자가 넣은 이름은 믿지 않는 자료다(`app/v3/untrusted.py`).** 흐름 이름, 혼입물 이름, 회사 이름에는 지시문, 링크, 연락처, 근거 없는 숫자·조항이 섞일 수 있다.
+  - 흐름 이름은 다른 조직에 가지 않는다. 메시지, 문서, 닫는 이유, 실행 기록 문장, 상대와 나누는 calc 근거의 이름과 입력, 두 에이전트의 모델 입력에는 **보이는 이름**(`stream_label`)을 쓴다. 정해진 낱말(재질 코드·재질, 형태, 품목)과 흐름 ID로 만든다(예: "PP 분쇄품(sprue)", "LDPE 필름(film)", 정해진 낱말이 없으면 "폐기물(a)"). 흐름 ID는 이미 상대에게 열린 값이다.
+  - 진단 뷰의 `streams[].label`이 보이는 이름이다. 배출 기업의 뷰에서 `name`은 원래 이름이고, 업체의 뷰와 업체가 받는 흐름 목록(`GET /orgs/{orgId}/streams`)에서는 `name`도 보이는 이름이다. 판단 그래프의 흐름 노드도 같다.
+  - 혼입물 이름은 정해진 낱말(종이 라벨, 금속 인서트, PVC 등)이 들어 있으면 그 낱말로, 아니면 정리한 글(숫자 낱말 없이 16자까지)로, 남는 것이 없으면 "기타 혼입물"로 보인다. 업체의 뷰 `streams[].contaminants`, 경로 판단의 `mixture` 검사 문장, 두 에이전트의 모델 입력이 이 이름을 쓴다.
+  - 회사 이름은 정리한 글(`safe_text`)로 보인다: 괄호·대괄호 속 덧붙임(법인 표시 "(주)" 등은 남김), 링크, 이메일, 전화·주민·사업자 번호, 지시문 표지(`---`, `===`, 줄바꿈, `:`, `SYSTEM` 등) 뒤의 글, 연락처를 알리는 낱말(담당, 문의 등)과 직함이 붙은 사람 이름을 빼고 40자까지. `threads[].vendorName`, 문서의 보내는 곳·받는 곳, 모델 입력이 이 이름을 쓴다.
+  - 근거 검증기가 이름에 든 숫자를 수치로 세지 않는 예외(`names`)는 보이는 이름에만 준다.
+  - 업체의 자동 거절 조건 대조는 원래 글로 한다(판단은 그대로이고, 문장에는 보이는 이름이 들어간다).
+
 - **claim의 `label`과 `role`(선택 필드).** `{"id", "kind", "value", "unit", "evidence", "label": "매입 단가", "role": "unitPrice"}`. 이름을 정하지 못한 claim에는 두 필드가 없다. 근거 검증기는 이 두 필드를 보지 않는다. 상대 조직이 보낸 `label`은 쓰지 않고 받는 쪽에서 `role`과 키로 다시 만든다(이름 칸에 숫자를 실어 보내지 못한다).
 
   | `role` | `label` | 비고 |
@@ -372,7 +380,7 @@ VendorProfile {"orgId": "org_saegil",
 구현하면서 더한 항목(있던 항목의 모양은 그대로다):
 
 - `session.phase`, `session.today`
-- `streams[]`: `orgId`, `process`, `wasteItem`, `lot`, `contaminants`, `monthlyKgBasis`, `contamination`·`photoContamination`·`moisture`(claim), `unknownFields`, `grade.label`. 업체가 보는 뷰에서는 `currentTreatment`가 `null`이다.
+- `streams[]`: `orgId`, `label`(보이는 이름), `process`, `wasteItem`, `lot`, `contaminants`, `monthlyKgBasis`, `contamination`·`photoContamination`·`moisture`(claim), `unknownFields`, `grade.label`. 업체가 보는 뷰에서는 `currentTreatment`가 `null`이고, `name`은 보이는 이름, `contaminants`는 보이는 혼입물 이름이며, `unknownFields`에 `currentCost`가 없다.
 - `threads[]`: `emitterOrgId`, `assignedStreamIds`(최적안에서 이 업체에 배정된 흐름), `agreedSeq`, `vendorModel.configured`·`vendorModel.used`, `vendorAuthor`. `messages[]`에는 `author`, `model`과 `meta`(`asks`, `excluded`, `reason`, `terms`의 `items[{streamId, claimId}]`·`days`·`conditions`)가 붙는다. 조건의 값은 `claims`에만 있다.
 - `graph.edges[]`: `kind`(`permit | criterion | assignment | excluded | regulation | document`). `excluded` 엣지의 `evidence`에는 허가 품목 때문에 뺀 경우 허가증 근거가 실린다.
 - **업체가 보는 뷰의 `graph`.** 자기 매입 기준 노드(`type: "criterion"`)와, 흐름을 그 기준과 대조한 엣지(`kind: "criterion"`, 흐름 → 기준은 `met | conditional | unmet`과 첫 번째 확인할 것, 기준 → 업체는 "매입 기준표"), 최적안 배정 엣지(`kind: "assignment"`)가 들어간다. 같은 판단 도구(`judge_route`)의 결과에서 업체의 매입 기준·허가 품목과, 대화에서 업체에 열린 흐름 자료(오염도, 수분, 형태, 혼입물, 물량의 근거)를 대조한 검사만 쓴다. 배출 기업의 현행 처리와 비용·탄소에 관한 검사, 규정 엣지(`regulation`), 다른 업체의 기준은 넣지 않는다. 엣지의 `evidence`는 업체가 열 수 있는 근거뿐이다.

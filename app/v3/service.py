@@ -44,6 +44,7 @@ from app.v3.judge import basis
 from app.v3.judge.common import without_emitter_only
 from app.v3.judge.defaults import register_defaults
 from app.v3.store import InMemoryStore, NotFound
+from app.v3.untrusted import contaminant_labels, counterparty_stream, org_label, stream_label
 
 STREAM_FIELDS = (
     "name",
@@ -396,7 +397,8 @@ def list_orgs(app: App, viewer: str | None = None, scoped: bool = False) -> list
 
 
 def _vendor_stream(stream: dict[str, Any]) -> dict[str, Any]:
-    return without_emitter_only(stream)
+    """업체가 받는 흐름: 배출 기업만의 항목을 빼고, 이름과 혼입물은 보이는 이름으로(untrusted)."""
+    return counterparty_stream(without_emitter_only(stream))
 
 
 def list_streams(app: App, org_id: str, viewer: str) -> list[dict[str, Any]]:
@@ -785,8 +787,10 @@ def _visible_ids(app: App, evidence_ids, viewer: str) -> list[str]:
 def _stream_view(
     app: App, stream: dict[str, Any], session: dict[str, Any], viewer: str, owner: bool
 ) -> dict[str, Any]:
+    label = stream_label(stream)
     if not owner:
-        stream = without_emitter_only(stream)  # 현행 처리비 답과 '모름' 표시도 업체에는 없다
+        # 현행 처리비 답과 '모름' 표시도 업체에는 없다. 이름과 혼입물은 보이는 이름이다(untrusted)
+        stream = counterparty_stream(without_emitter_only(stream))
     pool = ClaimPool(app.registry, viewer)
     facts = pool.add_stream(stream, private=owner)
     grade = ((session["work"]["identify"].get(stream["id"]) or {}).get("grade")) or {}
@@ -794,13 +798,18 @@ def _stream_view(
         "id": stream["id"],
         "orgId": stream["orgId"],
         "name": stream.get("name"),
+        "label": label,
         "process": stream.get("process"),
         "wasteItem": stream.get("wasteItem"),
         "material": stream.get("material"),
         "origin": stream.get("origin"),
         "form": stream.get("form"),
         "lot": stream.get("lot"),
-        "contaminants": [c.get("name") or c.get("label") for c in stream.get("contaminants") or []],
+        "contaminants": (
+            [c.get("name") or c.get("label") for c in stream.get("contaminants") or []]
+            if owner
+            else contaminant_labels(stream)
+        ),
         "monthlyKg": _claim(pool, facts.get("monthlyKg")),
         "monthlyKgBasis": stream.get("monthlyKgBasis"),
         "contamination": _claim(pool, facts.get("contaminationPct")),
@@ -915,7 +924,7 @@ def _thread_view(app: App, thread: dict[str, Any], session: dict[str, Any], view
         "id": thread["id"],
         "emitterOrgId": thread["emitterOrgId"],
         "vendorOrgId": vendor,
-        "vendorName": app.store.get_org(vendor).get("name"),
+        "vendorName": org_label(app.store.get_org(vendor).get("name"), vendor),
         "vendorModel": vendor_model(app, session, profile),
         "vendorAuthor": _author("vendor"),
         "status": thread["status"],
@@ -969,7 +978,9 @@ def _graph(
         for item in profile.get("criteria") or []:
             criteria[(profile["orgId"], str(item.get("id")))] = item
     for stream in streams:
-        node(stream["id"], "stream", stream.get("name") or stream["id"])
+        node(
+            stream["id"], "stream", (stream.get("name") if owner else None) or stream_label(stream)
+        )
     vendors = {t["vendorOrgId"] for t in threads}
     for vendor in sorted(vendors):
         node(vendor, "vendor", org_names.get(vendor) or vendor)

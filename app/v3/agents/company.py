@@ -32,6 +32,7 @@ from app.v3.agents.draft import (
 from app.v3.agents.llm import LLM
 from app.v3.agents.pool import ClaimPool
 from app.v3.evidence.validator import validate_message
+from app.v3.untrusted import contaminant_labels, org_label, stream_label
 
 ACTOR = "company_agent"
 TYPES = ("inquiry", "question", "answer", "counter", "decline", "handoff", "confirm")
@@ -336,7 +337,8 @@ class CompanyAgent:
             for s in m.stream_ids
         }
 
-        names = {s["id"]: str(s.get("name") or s["id"]) for s in streams}
+        # 업체에 가는 글에는 담당자가 넣은 흐름 이름 대신 상대에게 보이는 이름을 쓴다(untrusted)
+        names = {s["id"]: stream_label(s) for s in streams}
         asked_now = bool(uncovered) and set(uncovered) <= asked_streams
 
         def schema() -> dict[str, Any]:
@@ -384,8 +386,11 @@ class CompanyAgent:
                     results=tools.results,
                 ),
                 "today": self.today,
-                "org": {"id": self.org_id, "name": self.org.get("name")},
-                "counterpart": {"id": vendor_org.get("id"), "name": vendor_org.get("name")},
+                "org": {"id": self.org_id, "name": org_label(self.org.get("name"))},
+                "counterpart": {
+                    "id": vendor_org.get("id"),
+                    "name": org_label(vendor_org.get("name")),
+                },
                 "thread": {
                     "id": thread.id,
                     "streamIds": list(thread.stream_ids),
@@ -396,14 +401,12 @@ class CompanyAgent:
                 "streams": [
                     {
                         "id": s["id"],
-                        "name": s.get("name"),
+                        "name": stream_label(s),
                         "wasteItem": s.get("wasteItem"),
                         "material": s.get("material"),
                         "origin": s.get("origin"),
                         "form": s.get("form"),
-                        "contaminants": [
-                            c.get("name") or c.get("label") for c in s.get("contaminants") or []
-                        ],
+                        "contaminants": contaminant_labels(s),
                         "facts": facts[s["id"]],
                         "unknownFields": list(s.get("unknownFields") or []),
                     }
@@ -478,9 +481,9 @@ class CompanyAgent:
             except ThreadError as error:
                 found.append(rejection("THREAD_RULE", f"대화 규칙에 맞지 않습니다: {error}"))
             names = [
-                self.org.get("name"),
-                vendor_org.get("name"),
-                *[x.get("name") for x in streams],
+                org_label(self.org.get("name")),
+                org_label(vendor_org.get("name")),
+                *[stream_label(x) for x in streams],
             ]
             result = validate_message(message, self.registry, today=self.today, names=names)
             found += [r.to_dict() for r in result.rejections]

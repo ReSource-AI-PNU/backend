@@ -41,7 +41,8 @@ from app.v3.agents.llm import LLM
 from app.v3.agents.pool import ClaimPool
 from app.v3.evidence.units import UnitError, convert
 from app.v3.evidence.validator import validate_message
-from app.v3.judge.common import EMITTER_ONLY_KEYS
+from app.v3.judge.common import without_emitter_only
+from app.v3.untrusted import counterparty_stream, org_label
 
 ACTOR = "vendor_agent"
 TYPES = ("question", "answer", "offer", "counter", "conditional", "decline", "handoff")
@@ -780,10 +781,16 @@ class VendorAgent:
         if thread.vendor_org != vendor_org:
             raise ValueError("이 업체의 대화가 아니다")
         emitter = dict(context.get("emitter") or {"id": thread.emitter_org})
-        streams = [dict(s) for s in context.get("streams") or [] if s["id"] in thread.stream_ids]
-        for stream in streams:
-            for key in EMITTER_ONLY_KEYS:  # 배출 기업만의 값은 업체 쪽에서 쓰지 않는다
-                stream.pop(key, None)
+        # 배출 기업만의 값은 업체 쪽에서 쓰지 않는다
+        streams = [
+            without_emitter_only(s)
+            for s in context.get("streams") or []
+            if s["id"] in thread.stream_ids
+        ]
+        # 담당자가 넣은 이름과 혼입물은 자동 거절 조건 대조에만 쓴다. 모델 입력, 도구, 메시지에는
+        # 상대에게 보이는 이름(untrusted.counterparty_stream)을 쓴다
+        raw = {s["id"]: s for s in streams}
+        streams = [counterparty_stream(s) for s in streams]
         by_id = {s["id"]: s for s in streams}
         guard = profile.get("guardrails") or {}
         trace = Trace()
@@ -829,7 +836,7 @@ class VendorAgent:
 
         days = list(guard.get("days") or [])
         auto_declined = {
-            s["id"]: reason for s in streams if (reason := rails.auto_decline_reason(guard, s))
+            s["id"]: reason for s in raw.values() if (reason := rails.auto_decline_reason(guard, s))
         }
 
         def schema() -> dict[str, Any]:
@@ -906,8 +913,8 @@ class VendorAgent:
                     roles={e.claim.id: e.claim.role for e in pool.entries()},
                 ),
                 "today": self.today,
-                "org": {"id": vendor_org, "name": org.get("name")},
-                "counterpart": {"id": emitter.get("id"), "name": emitter.get("name")},
+                "org": {"id": vendor_org, "name": org_label(org.get("name"))},
+                "counterpart": {"id": emitter.get("id"), "name": org_label(emitter.get("name"))},
                 "thread": {
                     "id": thread.id,
                     "streamIds": list(thread.stream_ids),
@@ -931,7 +938,7 @@ class VendorAgent:
                         ],
                         "facts": facts[s["id"]],
                         "unknownFields": list(s.get("unknownFields") or []),
-                        "autoDecline": rails.auto_decline_reason(guard, s),
+                        "autoDecline": rails.auto_decline_reason(guard, raw[s["id"]]),
                     }
                     for s in streams
                 ],
@@ -994,7 +1001,13 @@ class VendorAgent:
                 thread.check(reply)
             except ThreadError as error:
                 found.append(rejection("THREAD_RULE", f"대화 규칙에 맞지 않습니다: {error}"))
-            names = [org.get("name"), emitter.get("name"), *[x.get("name") for x in streams]]
+            # 이름에 든 숫자를 수치로 세지 않는 예외는 보이는 이름에만 준다(담당자가 넣은 원래 이름은
+            # 이 글에 나올 일이 없다)
+            names = [
+                org_label(org.get("name")),
+                org_label(emitter.get("name")),
+                *[x.get("name") for x in streams],
+            ]
             # 조건(terms)을 먼저 붙인다. 조건 문장과 요일도 본문과 같은 근거 검증을 받는다
             terms, problems = self._terms(output, reply, pool)
             if terms is not None:
@@ -1003,7 +1016,7 @@ class VendorAgent:
             found += [r.to_dict() for r in result.rejections]
             found += problems
             if terms is not None:
-                found += self._guard(guard, reply, terms, by_id)
+                found += self._guard(guard, reply, terms, raw)
             known = {item["code"] for item in found}
             if "GUARDRAIL_DAY_NOT_ALLOWED" in known:
                 known.add("GUARDRAIL_DAY_NOT_DECLARED")

@@ -24,6 +24,7 @@ from typing import Any
 from app.v3.a2a import term_words as words
 from app.v3.a2a.message import Message
 from app.v3.textutil import josa
+from app.v3.untrusted import stream_label
 
 ENFORCED_TYPES = ("offer", "counter", "conditional")
 WEEKDAYS = ("월", "화", "수", "목", "금", "토", "일")
@@ -135,7 +136,8 @@ def auto_decline_reason(guardrails: dict[str, Any] | None, stream: dict[str, Any
     texts = _stream_texts(stream)
     for keyword in (guardrails or {}).get("autoDecline") or []:
         if any(_norm(keyword) in _norm(text) for text in texts):
-            name = stream.get("name") or stream.get("id") or "이 폐기물"
+            # 조건 대조는 담당자가 넣은 글로 하고, 문장에는 상대에게 보이는 이름을 쓴다
+            name = stream_label(stream) if stream.get("id") else "이 폐기물"
             return f"{josa(name, '은는')} 업체의 자동 거절 조건({keyword})에 해당합니다."
     return None
 

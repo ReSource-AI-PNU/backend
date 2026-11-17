@@ -55,6 +55,7 @@ from app.v3.judge import basis
 from app.v3.judge.common import best_criterion, permit_match, quality, without_emitter_only
 from app.v3.judge.toolbox import TOOLS, call_tool
 from app.v3.textutil import josa
+from app.v3.untrusted import org_label, stream_label
 
 PHASES = ("identify", "discover", "converse", "propose", "approval", "done")
 TERMS_TYPES = ("offer", "counter", "conditional")
@@ -283,17 +284,21 @@ def reported_trace(trace: Any, registry: Any = None) -> list[dict[str, Any]]:
 
 
 def thread_names(store: Any, thread: Any) -> list[str]:
-    """대화에 나오는 조직과 흐름의 이름. 검증기가 이름에 든 숫자를 수치로 세지 않게 넘긴다."""
+    """대화에 나오는 조직과 흐름의 이름. 검증기가 이름에 든 숫자를 수치로 세지 않게 넘긴다.
+
+    대화 글에 나오는 이름은 보이는 이름(untrusted)이므로 그것만 넘긴다. 담당자가 넣은 원래 이름을
+    넘기면 이름에 실어 넣은 숫자·조항("제99조")이 검사를 비켜 간다.
+    """
     raw = thread.to_dict() if hasattr(thread, "to_dict") else thread
     names: list[str] = []
     for org_id in (raw.get("emitterOrgId"), raw.get("vendorOrgId")):
         try:
-            names.append(store.get_org(org_id).get("name"))
+            names.append(org_label(store.get_org(org_id).get("name")))
         except KeyError:
             continue
     for stream_id in raw.get("streamIds") or []:
         try:
-            names.append(store.get_stream(stream_id).get("name"))
+            names.append(stream_label(store.get_stream(stream_id)))
         except KeyError:
             continue
     return [n for n in names if n]
@@ -907,7 +912,7 @@ class Orchestrator:
             if not reason:
                 continue
             try:
-                name = self.store.get_stream(item["streamId"]).get("name") or item["streamId"]
+                name = stream_label(self.store.get_stream(item["streamId"]))
             except KeyError:
                 name = item["streamId"]
             if name not in groups.setdefault(reason, []):
@@ -1118,7 +1123,7 @@ class Orchestrator:
             return "closed"
         work = session["work"]
         self._mark_excluded(session, thread, failed, evidence)
-        names = ", ".join(str(self.store.get_stream(sid).get("name") or sid) for sid in failed)
+        names = ", ".join(stream_label(self.store.get_stream(sid)) for sid in failed)
         self._event(
             session["id"],
             "system",
@@ -2041,16 +2046,17 @@ class Orchestrator:
                 if offer["type"] == "conditional":
                     # 조건이 "흐름 이름: 조건" 꼴로 나뉘어 있으면 조건이 걸린 흐름만 조건부다.
                     # 어느 흐름의 것인지 알 수 없는 조건이 하나라도 있으면 모두 조건부로 둔다
-                    heads = [f"{s.get('name')}:" for s in by_id.values() if s.get("name")]
+                    # 업체 쪽 글은 흐름을 보이는 이름(stream_label)으로 적는다
+                    heads = [f"{stream_label(s)}:" for s in by_id.values()]
                     loose = [t for t in offer["conditions"] if not t.startswith(tuple(heads))]
                     mine = any(
-                        t.startswith(f"{by_id[sid].get('name')}:") for t in offer["conditions"]
+                        t.startswith(f"{stream_label(by_id[sid])}:") for t in offer["conditions"]
                     )
                     if mine or loose or not offer["conditions"]:
                         status = "conditional"
                 known = {c["id"]: c for c in self._thread_claims(threads[vendor_id])}
                 for text in offer["conditions"]:
-                    if text.startswith(f"{by_id[sid].get('name')}:"):
+                    if text.startswith(f"{stream_label(by_id[sid])}:"):
                         cited = [
                             known[m.group(1)]
                             for m in PLACEHOLDER.finditer(text)
@@ -2498,8 +2504,8 @@ class Orchestrator:
             lines = [
                 title,
                 # 조직 ID와 대화 ID는 본문에 적지 않는다(문서의 threadId 항목에 있다). 사람이 읽는 글이다
-                f"보내는 곳: {emitter.get('name')}",
-                f"받는 곳: {vendor.get('name')}",
+                f"보내는 곳: {org_label(emitter.get('name'), emitter.get('id') or '')}",
+                f"받는 곳: {org_label(vendor.get('name'), vendor.get('id') or '')}",
                 f"작성일: {self.today}",
                 "",
                 *lines_for(use),
@@ -2509,7 +2515,7 @@ class Orchestrator:
             return {
                 "kind": kind,
                 "threadId": thread.id,
-                "title": f"{title} · {vendor.get('name')}",
+                "title": f"{title} · {org_label(vendor.get('name'), vendor.get('id') or '')}",
                 "text": "\n".join(lines),
                 "claims": claims,
                 "streamIds": list(assigned),
@@ -2550,9 +2556,11 @@ class Orchestrator:
                 after = use(claim_in(route, "monthlyAfter", "x"), f"{tag}_monthlyAfter")
                 if after:
                     parts.append(f"월 예상 금액 {after}(운송비 제외)")
-                lines.append(f"{number}. {stream.get('name')}: {' / '.join(parts)}")
+                # 문서는 업체와 함께 본다. 흐름은 보이는 이름으로 적는다(업체 조건의 머리도 같다)
+                label = stream_label(stream)
+                lines.append(f"{number}. {label}: {' / '.join(parts)}")
                 for text in (offer or {}).get("conditions") or []:
-                    head = f"{stream.get('name')}:"
+                    head = f"{label}:"
                     if text.startswith(head):
                         own = text[len(head) :].strip()
                         lines.append(f"   조건: {self._with_claims(own, thread, use)}")
@@ -2575,10 +2583,11 @@ class Orchestrator:
                 facts, tag = stream_facts(sid), safe_id(sid)
                 stream = facts["stream"]
                 kg = use(facts["kg"], f"{tag}_monthlyKg")
+                label = stream_label(stream)  # 문서는 업체와 함께 본다(보이는 이름)
                 lines.append(
-                    f"{number}. {stream.get('name')}: 월 {kg} 반출"
+                    f"{number}. {label}: 월 {kg} 반출"
                     if kg
-                    else f"{number}. {stream.get('name')}: 반출 물량 확인 필요"
+                    else f"{number}. {label}: 반출 물량 확인 필요"
                 )
                 # 문서는 업체와 함께 본다. 배출 기업의 현행 처리 방법이나 그것에 견준 값(탄소 변화,
                 # 현행 대비 차이)은 싣지 않는다. 그 값은 배출 기업만 보는 결과 한 장에 있다

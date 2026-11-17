@@ -16,6 +16,7 @@ from app.v3.a2a.message import Claim, Message
 from app.v3.evidence.registry import EvidenceForbidden, EvidenceNotFound
 from app.v3.evidence.units import UnitError, same_value
 from app.v3.textutil import josa
+from app.v3.untrusted import stream_label
 
 _UNSAFE = re.compile(r"[^A-Za-z0-9_]+")
 # 배출 기업의 현행 처리 단가에서 나온 값. 업체와 나누는 대화의 풀에는 넣지 않는다.
@@ -232,7 +233,8 @@ class ClaimPool:
     def add_stream(self, stream: dict[str, Any], *, private: bool = False) -> dict[str, str]:
         """흐름의 값(근거가 붙은 것). private이면 현행 처리 단가도 넣는다. {필드: claim ID}."""
         sid = stream["id"]
-        name = stream.get("name") or sid
+        # 풀의 이름은 모델 입력에 실린다. 담당자가 넣은 흐름 이름 대신 보이는 이름을 쓴다(untrusted)
+        name = stream_label(stream)
         measure, photo = stream.get("measure") or {}, stream.get("photo") or {}
         answers = stream.get("answers") or {}
         answer_ev = answers.get("evidence") or []

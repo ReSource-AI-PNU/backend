@@ -13,6 +13,7 @@ from app.v3.evidence.registry import EvidenceForbidden, EvidenceNotFound
 from app.v3.intake import grade_model
 from app.v3.judge import basis
 from app.v3.textutil import josa
+from app.v3.untrusted import contaminant_labels, counterparty_stream, stream_label
 
 WORST = {"calculated": 0, "conditional": 1, "needs_information": 2}
 
@@ -60,11 +61,14 @@ class Recorder:
         # 부른 조직만 볼 검사(현행 처리, 탄소처럼 상대에게 열지 않는 값에 관한 것)와 계산 근거
         self._private_checks: list[dict] = []
         self._private_ids: set[str] = set()
-        # calc 근거의 이름에 붙일 흐름 이름(흐름 하나를 다루는 도구일 때)
+        # calc 근거의 이름에 붙일 흐름 이름(흐름 하나를 다루는 도구일 때). 상대와 나누는 근거나
+        # 다른 조직의 흐름이면 담당자가 넣은 이름 대신 상대에게 보이는 이름(stream_label)을 쓴다
         stream = arguments.get("stream") if isinstance(arguments, dict) else None
-        self.subject = (
-            str(stream.get("name")) if isinstance(stream, dict) and stream.get("name") else None
-        )
+        self.subject = None
+        if isinstance(stream, dict) and stream.get("name"):
+            own = stream.get("orgId") in (None, org_id)
+            raw = str(stream.get("name"))
+            self.subject = raw if own and not self.shared else stream_label(stream)
 
     def visible(self, evidence_ids: Iterable[str] | None) -> list[str]:
         """레지스트리에 있고 이 조직이 볼 수 있는 근거 ID만 남긴다."""
@@ -426,13 +430,10 @@ def stream_cautions(stream: dict) -> list[tuple]:
                 "재질을 확인할 자료가 없습니다. 반입 전에 어떤 방법으로 재질을 확인하는지 알려 주세요.",
             )
         )
-    mixed = [
-        c.get("label") or c.get("name")
-        for c in stream.get("contaminants") or []
-        if not c.get("removed")
-    ]
+    # 혼입물 이름은 담당자가 넣은 글이라 상대에게 갈 문장에는 정리한 이름을 쓴다(untrusted)
+    mixed = contaminant_labels(stream)
     if stream.get("singleMaterial") is False or mixed:
-        names = ", ".join(str(m) for m in mixed if m) or "다른 재질"
+        names = ", ".join(mixed) or "다른 재질"
         out.append(
             (
                 "mixture",
@@ -568,18 +569,22 @@ def without_emitter_only(stream: dict) -> dict:
     return out
 
 
-def shareable(value: Any) -> Any:
+def shareable(value: Any, key: str | None = None) -> Any:
     """상대 조직과 나누는 calc 근거에 실을 입력. 한쪽만의 값을 어디에 있든 뺀 새 값.
 
     흐름(dict)에서는 배출 기업만의 항목을(without_emitter_only), 업체 프로필의 fleet에서는 차량 운행
-    단가를 뺀다. 나머지는 그대로 둔다.
+    단가를 뺀다. 도구 인자의 흐름(stream, streams)은 담당자가 넣은 이름 대신 상대에게 보이는 이름을
+    쓴다(untrusted.counterparty_stream). 나머지는 그대로 둔다.
     """
     if isinstance(value, dict):
-        out = {k: shareable(v) for k, v in without_emitter_only(value).items()}
+        if key == "stream":
+            value = counterparty_stream(value)
+        out = {k: shareable(v, k) for k, v in without_emitter_only(value).items()}
         fleet = out.get("fleet")
         if isinstance(fleet, dict) and any(k in fleet for k in VENDOR_ONLY_FLEET_KEYS):
             out["fleet"] = {k: v for k, v in fleet.items() if k not in VENDOR_ONLY_FLEET_KEYS}
         return out
     if isinstance(value, (list, tuple)):
-        return [shareable(v) for v in value]
+        inner = "stream" if key == "streams" else None
+        return [shareable(v, inner) for v in value]
     return value
