@@ -1,6 +1,7 @@
 """표준 라이브러리 HTTP 서버. 계약 8장의 API를 service 함수에 그대로 잇는다(로컬 시연, 개발용).
 
-    python3 -m app.v3.devserver --port 8000 [--store 경로.json] [--reset] [--llm rule|foundry]
+    python3 -m app.v3.devserver --port 8000 [--store 경로.json] [--reset]
+                                [--llm rule|foundry|anthropic]
                                 [--auth header|token --org-tokens 토큰.json]
 
 - 시작할 때 가정값, 근거 시드(법령·기준값), 시연 데이터를 올린다.
@@ -10,6 +11,11 @@
 - 기본은 --llm rule(규칙 정책, 모델 미연결)이다. --llm foundry일 때만 환경 변수
   FOUNDRY_ENDPOINT, FOUNDRY_DEPLOYMENT, FOUNDRY_API_KEY를 읽는다. 업체가 ollama를 골랐으면
   OLLAMA_BASE_URL이 있을 때만 그 모델을 쓰고, 없으면 그 업체는 규칙 정책으로 돈다(화면에 그렇게 나온다).
+- --llm anthropic은 실제 모델로 돌려 보는 로컬 전용 선택지다(설계의 기본 모델은 Foundry gpt-5-mini).
+  키는 ANTHROPIC_API_KEY, 없으면 ANTHROPIC_API_KEY_FILE이 가리키는 파일에서 읽는다. 모델은
+  ANTHROPIC_MODEL(기본 claude-sonnet-5-5). 화면에는 실제로 답한 모델 이름이 그대로 나온다.
+  업체가 ollama를 골랐고 OLLAMA_BASE_URL이 없으면 그 업체는 규칙 정책으로 돈다. V3_LLM_ALL_VENDORS=1을
+  주면 그 업체도 이 모델이 답한다(설정한 모델과 답한 모델이 다르다는 것은 화면에 따로 나온다).
 - 사진·영상 업로드(POST /intake/media)는 V3_DETECTOR_ENDPOINT(와 V3_DETECTOR_API_KEY)가 있을 때만
   탐지 모델을 부른다. 없으면 {"detectorUnavailable": true}로 답한다(탐지 결과를 지어내지 않는다).
 - 요청하는 조직은 X-Org-Id 헤더로 밝힌다(--auth header, 기본). 이 모드는 시연 전용이며 공개 주소에
@@ -36,7 +42,7 @@ from typing import Any
 from urllib.parse import parse_qs, unquote, urlsplit
 
 from app.v3 import httpio, service
-from app.v3.agents.llm import FoundryChat, OllamaChat
+from app.v3.agents.llm import AnthropicChat, FoundryChat, OllamaChat
 from app.v3.evidence.registry import InMemoryRegistry, JsonFileRegistry
 from app.v3.intake import detector
 from app.v3.store import InMemoryStore, JsonFileStore
@@ -378,6 +384,34 @@ def foundry_factory(env: Mapping[str, str]) -> Callable[..., Any]:
     return factory
 
 
+def anthropic_factory(env: Mapping[str, str]) -> Callable[..., Any]:
+    """llm_factory(role, org_id, model). 키가 없으면 무엇이 없는지만 밝히고 멈춘다(키는 출력하지 않는다)."""
+    key = (env.get("ANTHROPIC_API_KEY") or "").strip()
+    key_file = (env.get("ANTHROPIC_API_KEY_FILE") or "").strip()
+    if not key and key_file:
+        try:
+            key = Path(key_file).expanduser().read_text(encoding="utf-8").strip()
+        except OSError:
+            raise SystemExit("ANTHROPIC_API_KEY_FILE이 가리키는 파일을 읽을 수 없습니다.") from None
+    if not key:
+        raise SystemExit(
+            "--llm anthropic에는 ANTHROPIC_API_KEY나 ANTHROPIC_API_KEY_FILE이 필요합니다."
+        )
+    name = (env.get("ANTHROPIC_MODEL") or "claude-sonnet-5-5").strip()
+    ollama = (env.get("OLLAMA_BASE_URL") or "").strip()
+    all_vendors = (env.get("V3_LLM_ALL_VENDORS") or "").strip() == "1"
+
+    def factory(role: str, _org_id: str, model: dict[str, Any] | None):
+        if role == "vendor" and (model or {}).get("provider") == "ollama":
+            if ollama:
+                return OllamaChat(ollama, str(model["name"]))
+            if not all_vendors:
+                return None  # 규칙 정책으로 돈다(화면에 모델 미연결로 나온다)
+        return AnthropicChat(key, name)
+
+    return factory
+
+
 def build_app(
     *,
     store_path: str | None = None,
@@ -399,7 +433,13 @@ def build_app(
     else:
         store, registry = InMemoryStore(), InMemoryRegistry()
     settings = os.environ if env is None else env
-    factory = foundry_factory(settings) if llm == "foundry" else None
+    factory = (
+        foundry_factory(settings)
+        if llm == "foundry"
+        else anthropic_factory(settings)
+        if llm == "anthropic"
+        else None
+    )
     app = service.App(
         store,
         registry,
@@ -447,7 +487,7 @@ def main(argv: list[str] | None = None) -> None:
     parser.add_argument(
         "--reset", action="store_true", help="--store 파일이 있어도 시연 시작 상태로 되돌린다"
     )
-    parser.add_argument("--llm", choices=("rule", "foundry"), default="rule")
+    parser.add_argument("--llm", choices=("rule", "foundry", "anthropic"), default="rule")
     parser.add_argument("--today", default=None, help="기준일 YYYY-MM-DD(없으면 오늘)")
     parser.add_argument(
         "--demo-closed", action="store_true", help="시연 되돌리기를 관리자 조직만 부르게 한다"
@@ -474,7 +514,11 @@ def main(argv: list[str] | None = None) -> None:
         reset=args.reset,
     )
     server = make_server(app, args.host, args.port, quiet=False, auth=auth)
-    mode = "규칙 정책(모델 미연결)" if args.llm == "rule" else "Foundry"
+    mode = {
+        "rule": "규칙 정책(모델 미연결)",
+        "foundry": "Foundry",
+        "anthropic": "Anthropic(Claude)",
+    }[args.llm]
     state = "이전 진단을 이어 갑니다" if app.resumed else "시연 시작 상태"
     who = (
         "조직 식별: token(조직별 서비스 토큰)"

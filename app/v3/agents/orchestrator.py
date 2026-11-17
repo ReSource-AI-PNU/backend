@@ -1998,7 +1998,15 @@ class Orchestrator:
                         )
             if offer:
                 if offer["type"] == "conditional":
-                    status = "conditional"
+                    # 조건이 "흐름 이름: 조건" 꼴로 나뉘어 있으면 조건이 걸린 흐름만 조건부다.
+                    # 어느 흐름의 것인지 알 수 없는 조건이 하나라도 있으면 모두 조건부로 둔다
+                    heads = [f"{s.get('name')}:" for s in by_id.values() if s.get("name")]
+                    loose = [t for t in offer["conditions"] if not t.startswith(tuple(heads))]
+                    mine = any(
+                        t.startswith(f"{by_id[sid].get('name')}:") for t in offer["conditions"]
+                    )
+                    if mine or loose or not offer["conditions"]:
+                        status = "conditional"
                 known = {c["id"]: c for c in self._thread_claims(threads[vendor_id])}
                 for text in offer["conditions"]:
                     if text.startswith(f"{by_id[sid].get('name')}:"):
