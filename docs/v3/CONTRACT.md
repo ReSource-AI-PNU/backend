@@ -50,6 +50,10 @@
 - **근거 목록에는 같은 ID가 두 번 실리지 않는다.** claim의 `evidence`, 그래프 엣지와 검사의 `evidence`는 처음 나온 순서를 지킨 채 중복을 뺀다. number claim의 첫 번째 근거가 값의 출처라는 규칙은 그대로다.
 - `access`는 볼 수 있는 조직 ID 목록이고 `"*"`는 공개다. 조직에게 근거를 내보낼 때(`search.get_evidence`, `search_evidence`, `evidence_chain`)는 이 목록에서 보는 조직과 근거를 가진 조직(`meta.ownerOrgId`)만 남긴다. 업체의 매입 기준 근거는 그 업체와 대화한 배출 기업 모두에게 열려 있어, 목록을 그대로 내면 한 배출 기업이 같은 업체와 거래하는 다른 배출 기업을 알게 된다.
 - 판단 도구는 호출마다 호출 기록을 calc 근거로 남긴다: `calc:<도구>:<입력 지문>:call`. 값은 없고 `excerpt`에 판정과 검사 결과, `meta`에 `{"tool", "inputs", "status", "checks": [{key, status}], "inputEvidence", "call": true}`가 있다. 숫자를 내지 않는 호출(`match_permit`, `check_requirements`)도 근거 저장소에 남는다. 도구 결과의 `evidence` 마지막 항목이 이 기록이다.
+- **상대 조직과 나누는 calc 근거에는 한쪽만의 값이 없다.** 판단 도구가 대화 상대에게도 여는 근거(`access`에 부른 조직 밖의 조직이 있다)는 `meta.inputs`와 ID의 입력 지문을 한쪽만의 값을 뺀 입력(`judge.common.shareable`)으로 만든다. 빼는 값은 흐름의 배출 기업만의 항목(`currentTreatment`, `reuse`, `pretreatHoursPerMonth`, `laborCostKrwPerHour`, `pretreatEvidence`), 현행 처리비 답(`answers.currentCost`, `unknownFields`의 `currentCost`), 업체의 차량 운행 단가(`fleet.costPerKm`)다. 그래서 나누는 근거의 ID는 상대가 모르는 값에 따라 달라지지 않는다(ID로 값을 맞혀 볼 수 없다).
+  - 그런 값에서 나온 수치(`currentUnitCost`, `monthlyNow`, `difference`, 민감도, `carbonDifference`, `kauValue`, `pretreatHours`, `laborRate`, `monthlyLabor`, 인건비를 뺀 `cost_carbon`의 `monthlyAfter`)는 부른 조직만 보는 근거이고, 입력 원본과 그 지문을 쓴다.
+  - 나누는 호출 기록에는 현행 처리와 탄소에 관한 검사(`current_cost`, `current_assumed`, `current_method`, `carbon`, `kau`)와 부른 조직만 보는 계산 근거의 ID를 싣지 않는다. 도구 결과(`checks`, `evidence`)에는 그대로 있다.
+  - 근거를 조직에게 내보낼 때(`search.shown`을 거치는 조회, 검색, 계산 사슬)는 계산한 조직(`meta.inputs.orgId`)이 아니면 `meta.inputs`를 `{"hidden": true}`로 가린다. 이 규칙 전에 저장된 근거도 가려진다.
 
 ID는 `app/v3/ids.py`의 함수로만 만든다.
 

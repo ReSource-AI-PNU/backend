@@ -35,6 +35,7 @@ from app.v3.evidence.registry import EvidenceForbidden, EvidenceNotFound
 from app.v3.evidence.validator import validate_message, validate_text
 from app.v3.intake import csv_measure
 from app.v3.intake.shields import PromptShieldsClient
+from app.v3.judge.common import PRIVATE_CHECKS
 from app.v3.judge.toolbox import TOOLS, call_tool
 from tests.v3.runtime_fixtures import (
     DAON,
@@ -650,7 +651,11 @@ def test_rule2_every_tool_call_leaves_a_calc_record(confirmed_demo):
         record = records[0]
         assert record.kind == "calc" and record.meta["tool"] == detail["tool"]
         assert record.meta["status"] == detail["status"]
-        assert record.meta["checks"] == detail["checks"]
+        # 상대와 나누는 기록에는 현행 처리·탄소에 관한 검사를 싣지 않는다(도구 결과에는 있다)
+        shared = set(record.access) != {detail["orgId"]}
+        assert record.meta["checks"] == [
+            c for c in detail["checks"] if not (shared and c["key"] in PRIVATE_CHECKS)
+        ]
         assert detail["orgId"] in record.access
         # 같은 입력으로 다시 부르면 같은 기록이다
         assert record.id == f"calc:{detail['tool']}:{record.id.split(':')[2]}:call"

@@ -133,6 +133,8 @@ def _from_backend(
 def shown(evidence: Evidence, org_id: str | None) -> dict[str, Any]:
     """org_id에게 보여 줄 근거. 누구와 나눴는지(access)는 보는 조직과 근거를 가진 조직만 남긴다.
 
+    계산 근거의 입력 원본(meta.inputs)은 계산한 조직(inputs.orgId)이 아니면 {"hidden": True}로 가린다.
+
     업체의 매입 기준 근거는 그 업체와 대화한 배출 기업 모두에게 열려 있다. 목록을 그대로 내면
     한 배출 기업이 같은 업체와 거래하는 다른 배출 기업을 알게 된다. org_id가 None이면(시스템 내부)
     그대로 준다.
@@ -140,6 +142,11 @@ def shown(evidence: Evidence, org_id: str | None) -> dict[str, Any]:
     data = evidence.to_dict()
     if org_id is None:
         return data
+    inputs = data["meta"].get("inputs")
+    if isinstance(inputs, dict) and "orgId" in inputs and inputs.get("orgId") != org_id:
+        # 계산 근거의 입력 원본은 계산한 조직만 본다. 나누는 근거에는 처음부터 상대가 볼 수 있는
+        # 입력만 싣지만(judge.common.shareable), 그 전에 저장된 근거도 여기서 가린다
+        data["meta"] = {**data["meta"], "inputs": {"hidden": True}}
     if PUBLIC in evidence.access:
         data["access"] = [PUBLIC]
         return data

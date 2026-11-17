@@ -33,18 +33,33 @@ def worst(*statuses: str) -> str:
 
 
 CALL_KEY = "call"  # 호출 기록 calc 근거의 값 이름
+# 배출 기업의 현행 처리(입력했는지, 처리 방법)와 탄소에 관한 검사. 상대 조직과 나누는 호출 기록에는
+# 싣지 않는다(업체가 보는 뷰의 checks에도 없다. 계약 7장)
+PRIVATE_CHECKS = ("current_cost", "current_assumed", "current_method", "carbon", "kau")
 
 
 class Recorder:
-    """도구 한 번 호출의 claim, check, calc 근거를 모은다."""
+    """도구 한 번 호출의 claim, check, calc 근거를 모은다.
+
+    상대 조직과 나누는 calc 근거(share)에는 상대가 볼 수 있는 입력만 싣는다. 입력 원본(inputs)에는
+    배출 기업만의 흐름 항목(현행 처리, 인건비, 재투입)이나 업체만의 차량 운행 단가가 들어 있을 수
+    있으므로, 나누는 근거의 meta.inputs와 ID 지문은 shareable()로 그 값을 뺀 입력(shared_inputs)에서
+    만든다. 그래서 나누는 근거의 ID는 상대가 모르는 값에 따라 달라지지 않는다(ID로 값을 맞혀 볼 수
+    없다). 그런 값에서 나온 수치(private=True)는 부른 조직만 보고, 입력 원본과 그 지문을 쓴다.
+    """
 
     def __init__(self, tool, registry, org_id, today, arguments, share: Iterable[str] = ()):
         self.tool, self.registry, self.org_id, self.today = tool, registry, org_id, today
         self.inputs = {"orgId": org_id, "today": today, "args": arguments}
         self.access = tuple(sorted({o for o in (org_id, *share) if o})) or ("*",)
+        self.shared = self.access != (org_id,)
+        self.shared_inputs = shareable(self.inputs) if self.shared else self.inputs
         self.claims: list[dict] = []
         self.checks: list[dict] = []
         self.created: list[str] = []
+        # 부른 조직만 볼 검사(현행 처리, 탄소처럼 상대에게 열지 않는 값에 관한 것)와 계산 근거
+        self._private_checks: list[dict] = []
+        self._private_ids: set[str] = set()
         # calc 근거의 이름에 붙일 흐름 이름(흐름 하나를 다루는 도구일 때)
         stream = arguments.get("stream") if isinstance(arguments, dict) else None
         self.subject = (
@@ -71,7 +86,9 @@ class Recorder:
         """private이면 calc 근거를 부른 조직만 본다(현행 처리 단가처럼 상대에게 열지 않는 값)."""
         value = rnd(value)
         inputs = self.visible(input_evidence)
-        evidence_id = ids.calc_id(self.tool, self.inputs, key)
+        own = bool(private and self.org_id)
+        recorded = self.inputs if own else self.shared_inputs
+        evidence_id = ids.calc_id(self.tool, recorded, key)
         self.registry.put(
             Evidence(
                 id=evidence_id,
@@ -82,16 +99,18 @@ class Recorder:
                 excerpt=formula,
                 source=f"판단 도구 {self.tool}",
                 as_of=self.today,
-                access=(self.org_id,) if private and self.org_id else self.access,
+                access=(self.org_id,) if own else self.access,
                 meta={
                     "tool": self.tool,
-                    "inputs": self.inputs,
+                    "inputs": recorded,
                     "formula": formula,
                     "inputEvidence": inputs,
                 },
             )
         )
         self.created.append(evidence_id)
+        if own and self.shared:
+            self._private_ids.add(evidence_id)
         claim = {
             "id": key,
             "kind": "number",
@@ -114,6 +133,7 @@ class Recorder:
         return claim
 
     def check(self, key, status, text, ask=None, evidence=()) -> dict:
+        """PRIVATE_CHECKS의 검사는 나누는 호출 기록에 싣지 않는다(도구 결과에는 그대로 있다)."""
         item = {
             "key": key,
             "status": status,
@@ -122,6 +142,8 @@ class Recorder:
             "evidence": self.visible(evidence),
         }
         self.checks.append(item)
+        if key in PRIVATE_CHECKS and self.shared:
+            self._private_checks.append(item)
         return item
 
     def record_call(self, status: str) -> str:
@@ -130,10 +152,14 @@ class Recorder:
         ID는 입력에서만 나오므로 같은 입력이면 같은 기록이다. 판정과 검사 결과를 담고, 검사에 쓴
         근거(허가증, 조항 등)와 이 호출이 낸 계산 근거를 입력 근거로 잇는다.
         """
-        evidence_id = ids.calc_id(self.tool, self.inputs, CALL_KEY)
-        checked = [e for check in self.checks for e in check.get("evidence") or []]
-        linked = list(dict.fromkeys([*self.created, *self.visible(checked)]))
-        summary = ", ".join(f"{c['key']}={c['status']}" for c in self.checks)
+        evidence_id = ids.calc_id(self.tool, self.shared_inputs, CALL_KEY)
+        # 나누는 기록에는 상대가 볼 수 있는 검사와 근거만 잇는다(부른 조직만 볼 계산 근거의 ID는
+        # 입력 원본의 지문이라 싣지 않는다)
+        checks = [c for c in self.checks if not any(c is p for p in self._private_checks)]
+        checked = [e for check in checks for e in check.get("evidence") or []]
+        created = [e for e in self.created if e not in self._private_ids]
+        linked = list(dict.fromkeys([*created, *self.visible(checked)]))
+        summary = ", ".join(f"{c['key']}={c['status']}" for c in checks)
         text = f"판정 {status}" + (f". 검사: {summary}" if summary else "")
         self.registry.put(
             Evidence(
@@ -146,11 +172,11 @@ class Recorder:
                 access=self.access,
                 meta={
                     "tool": self.tool,
-                    "inputs": self.inputs,
+                    "inputs": self.shared_inputs,
                     "formula": "판단 도구 호출 기록(판정과 검사 결과)",
                     "inputEvidence": linked,
                     "status": status,
-                    "checks": [{"key": c["key"], "status": c["status"]} for c in self.checks],
+                    "checks": [{"key": c["key"], "status": c["status"]} for c in checks],
                     "call": True,
                 },
             )
@@ -523,6 +549,37 @@ EMITTER_ONLY_KEYS = (
 )
 
 
+# 배출 기업만 답하는 질문 항목(현행 처리비). 흐름의 answers와 unknownFields에도 남으므로 함께 뺀다.
+# agents.questions.PRIVATE_FIELDS와 같다
+EMITTER_ONLY_ANSWERS = ("currentCost",)
+# 업체만의 값: 차량 운행 단가. 배출 기업 쪽 도구에는 넘기지 않는다(agents.vendor.public_profile)
+VENDOR_ONLY_FLEET_KEYS = ("costPerKm",)
+
+
 def without_emitter_only(stream: dict) -> dict:
-    """업체에 넘길 흐름. 배출 기업만의 항목을 뺀 새 dict."""
-    return {k: v for k, v in stream.items() if k not in EMITTER_ONLY_KEYS}
+    """업체에 넘길 흐름. 배출 기업만의 항목(현행 처리비 답과 '모름' 표시 포함)을 뺀 새 dict."""
+    out = {k: v for k, v in stream.items() if k not in EMITTER_ONLY_KEYS}
+    answers = out.get("answers")
+    if isinstance(answers, dict) and any(k in answers for k in EMITTER_ONLY_ANSWERS):
+        out["answers"] = {k: v for k, v in answers.items() if k not in EMITTER_ONLY_ANSWERS}
+    unknown = out.get("unknownFields")
+    if isinstance(unknown, list) and any(f in unknown for f in EMITTER_ONLY_ANSWERS):
+        out["unknownFields"] = [f for f in unknown if f not in EMITTER_ONLY_ANSWERS]
+    return out
+
+
+def shareable(value: Any) -> Any:
+    """상대 조직과 나누는 calc 근거에 실을 입력. 한쪽만의 값을 어디에 있든 뺀 새 값.
+
+    흐름(dict)에서는 배출 기업만의 항목을(without_emitter_only), 업체 프로필의 fleet에서는 차량 운행
+    단가를 뺀다. 나머지는 그대로 둔다.
+    """
+    if isinstance(value, dict):
+        out = {k: shareable(v) for k, v in without_emitter_only(value).items()}
+        fleet = out.get("fleet")
+        if isinstance(fleet, dict) and any(k in fleet for k in VENDOR_ONLY_FLEET_KEYS):
+            out["fleet"] = {k: v for k, v in fleet.items() if k not in VENDOR_ONLY_FLEET_KEYS}
+        return out
+    if isinstance(value, (list, tuple)):
+        return [shareable(v) for v in value]
+    return value

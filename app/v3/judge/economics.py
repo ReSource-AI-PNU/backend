@@ -122,9 +122,21 @@ def cost_carbon(
     borne = transport if (transport is not None and paid_by == "emitter") else 0.0
     labor, labor_ev, hours, rate = labor_cost(rec, stream)
     if labor is not None:
-        rec.number("pretreatHours", hours, "시간/월", "담당자가 넣은 월 전처리 작업 시간", labor_ev)
-        rec.number("laborRate", rate, "원/시간", "전처리 작업의 시간당 인건비", labor_ev)
-        rec.number("monthlyLabor", labor, "원/월", "월 작업 시간 × 시간당 인건비", labor_ev)
+        # 전처리 작업 시간과 인건비는 배출 기업만의 입력이다. 그 값과 그것을 뺀 월 손익은 업체에 열지 않는다
+        rec.number(
+            "pretreatHours",
+            hours,
+            "시간/월",
+            "담당자가 넣은 월 전처리 작업 시간",
+            labor_ev,
+            private=True,
+        )
+        rec.number(
+            "laborRate", rate, "원/시간", "전처리 작업의 시간당 인건비", labor_ev, private=True
+        )
+        rec.number(
+            "monthlyLabor", labor, "원/월", "월 작업 시간 × 시간당 인건비", labor_ev, private=True
+        )
     after = revenue - borne - (labor or 0.0)
     rec.number(
         "monthlyAfter",
@@ -132,23 +144,32 @@ def cost_carbon(
         "원/월",
         "월 매입액 − 배출 기업이 내는 운반비 − 전처리 인건비",
         [*crit_ev, *labor_ev],
+        private=labor is not None,
     )
     output["current"], _ = baseline(rec, stream, kg, after)
 
     method = current_cost(rec, stream)[3]
     per_kg, carbon_ev, why = carbon_per_kg(rec, stream, vendor, price, method)
+    # 탄소 변화와 그 환산액은 배출 기업의 현행 처리 방법에 견준 값이라 부른 조직만 본다
     if per_kg is None:
         rec.check("carbon", "conditional", why)
     else:
         delta = per_kg * kg
-        claim = rec.number("carbonDifference", delta, "tCO2e/월", CARBON_FORMULA, carbon_ev)
+        claim = rec.number(
+            "carbonDifference", delta, "tCO2e/월", CARBON_FORMULA, carbon_ev, private=True
+        )
         output["carbon"] = claim["id"]
         kau = rec.basis("kau.price")
         if kau is None:
             rec.check("kau", "conditional", "KAU 시세 근거가 없어 환산하지 않았습니다. 확인 필요.")
         else:
             output["kau"] = rec.number(
-                "kauValue", -delta * float(kau.value), "원/월", "감축량 × KAU 단가", [kau.id]
+                "kauValue",
+                -delta * float(kau.value),
+                "원/월",
+                "감축량 × KAU 단가",
+                [kau.id],
+                private=True,
             )["id"]
     conditional = any(c["status"] == "conditional" for c in rec.checks)
     return rec.result("conditional" if conditional else "calculated", output)

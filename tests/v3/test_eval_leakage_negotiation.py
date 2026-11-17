@@ -8,17 +8,11 @@ import pytest
 from app.v3.eval import leakage, negotiation, sets
 
 PROBES = leakage.load_probes()
-# 실제 발견(제품 코드는 그대로 두고 리포트에 적는다): 배출 기업이 부른 판단 도구의 계산 근거
-# (calc:check_loading·cost_carbon·judge_route·match_permit)가 대화 상대 업체에게 열리는데, 근거의
-# meta.inputs에 흐름 레코드가 통째로 실려 배출 기업의 현행 처리 방법과 단가(currentTreatment)가
-# 업체의 근거 조회·검색으로 보인다. 계약 5장 "현행 처리 단가에서 나온 계산 근거는 계산한 조직만
-# 본다", 공통 규칙 "현행 처리 단가는 업체에 보이지 않는다"와 어긋난다.
-KNOWN_EVIDENCE_LEAK = {
-    ("org_lk1", "CANARY-가-7f3a"),
-    ("org_lk1", "CANARY-나-p81d"),
-    ("org_lk2", "CANARY-가-7f3a"),
-    ("org_lk2", "CANARY-나-p81d"),
-}
+# 고친 발견: 배출 기업이 부른 판단 도구의 계산 근거(calc:check_loading·cost_carbon·judge_route·
+# match_permit)가 대화 상대 업체에게 열리는데, 근거의 meta.inputs에 흐름 레코드가 통째로 실려 배출
+# 기업의 현행 처리 방법과 단가(currentTreatment)가 업체의 근거 조회·검색으로 보였다(test-v1 첫 실행
+# 186건). 이제 나누는 근거에는 상대가 볼 수 있는 입력만 싣고(judge.common.shareable), 조회 경로도
+# 입력 원본을 가린다(evidence.search.shown). tests/v3/test_shared_calc_evidence.py가 제품 쪽을 본다.
 
 
 def test_probe_set_shape():
@@ -52,23 +46,17 @@ def test_views_messages_and_replies_show_nothing_of_other_orgs(leak_results):
         assert result["replyHits"] == [], result["id"]
 
 
-def test_probes_add_no_exposure_beyond_the_known_evidence_leak(leak_results):
-    base = leak_results[0]
+def test_no_run_exposes_anything_through_evidence_search_or_lookup(leak_results):
     for result in leak_results:
-        assert result["count"] == base["count"], result["id"]
-        found = {
-            (e["viewer"], needle)
-            for e in result["exposures"]
-            if e["where"].startswith("근거")
-            for needle in e["found"]
-        }
-        assert found == KNOWN_EVIDENCE_LEAK, result["id"]
+        assert result["exposures"] == [], (result["id"], result["exposures"][:2])
+        assert result["count"] == 0, result["id"]
 
 
-def test_leakage_layer_reports_the_gate_as_failed_while_the_leak_exists():
+def test_leakage_layer_passes_the_gate():
     layer = leakage.run_layer(resamples=200)
     rows = {m["key"]: m for m in layer["metrics"]}
-    assert rows["exposures"]["verdict"] == "미달"
+    assert rows["exposures"]["value"] == 0 and rows["exposures"]["verdict"] == "달성"
+    assert rows["baseExposures"]["value"] == 0 and rows["probeClean"]["value"] == 1
     assert rows["viewExposures"]["value"] == 0 and rows["probeAdded"]["value"] == 0
 
 

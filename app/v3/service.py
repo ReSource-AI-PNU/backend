@@ -785,6 +785,8 @@ def _visible_ids(app: App, evidence_ids, viewer: str) -> list[str]:
 def _stream_view(
     app: App, stream: dict[str, Any], session: dict[str, Any], viewer: str, owner: bool
 ) -> dict[str, Any]:
+    if not owner:
+        stream = without_emitter_only(stream)  # 현행 처리비 답과 '모름' 표시도 업체에는 없다
     pool = ClaimPool(app.registry, viewer)
     facts = pool.add_stream(stream, private=owner)
     grade = ((session["work"]["identify"].get(stream["id"]) or {}).get("grade")) or {}
