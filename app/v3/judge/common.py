@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import math
 from collections.abc import Iterable
+from dataclasses import replace
 from typing import Any
 
 from app.v3 import ids, names
@@ -182,12 +183,36 @@ def distance_matrix(rec: Recorder, points, distance_provider=None):
     if distance_provider is not None:
         road = distance_provider(points)
         if road is not None:
-            return [[float(v) for v in row] for row in road], False, []
+            return (
+                [[float(v) for v in row] for row in road],
+                False,
+                _road_evidence(rec, points, distance_provider),
+            )
     factor = rec.basis("distance.detourFactor")
     if factor is None:
         return None, True, []
     matrix = [[haversine_km(a, b) * float(factor.value) for b in points] for a in points]
     return matrix, True, [factor.id]
+
+
+def _road_evidence(rec: Recorder, points, distance_provider) -> list[str]:
+    """도로 거리 제공자가 조회한 값을 근거 저장소에 올리고 ID를 돌려준다(가정값이 아니라 조회한 값이다).
+
+    같은 구간을 다른 조직의 도구가 다시 물어도 앞서 연 조직이 계속 볼 수 있게 접근 조직을 합친다.
+    제공자가 evidence()를 내지 않으면(예: 근거 없는 행렬) 빈 목록이다.
+    """
+    make = getattr(distance_provider, "evidence", None)
+    if make is None:
+        return []
+    out = []
+    for record in make(points, rec.today, rec.access):
+        try:
+            seen = rec.registry.get(record.id, None)
+            access = tuple(sorted({*seen.access, *record.access}))
+        except EvidenceNotFound:
+            access = tuple(record.access)
+        out.append(rec.registry.put(replace(record, access=access)).id)
+    return out
 
 
 def grade_of(rec: Recorder, material, contamination, moisture):

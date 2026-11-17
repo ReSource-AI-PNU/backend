@@ -301,3 +301,48 @@ def test_cost_inputs_are_validated_and_never_reach_a_vendor():
     assert "costInputs" not in seen and "인건비" not in seen and "전처리 작업" not in seen
     assert "48000" not in seen and "12000" not in seen
     assert all("pretreatHoursPerMonth" not in s for s in service.list_streams(app, HANBIT, MISO))
+
+
+# ── 도로 거리 제공자의 값은 가정값이 아니라 근거가 된다 ──────────────────
+def test_road_distance_from_a_provider_is_registered_as_evidence():
+    from app.v3.judge.distance import KakaoDistance
+    from app.v3.judge.toolbox import call_tool
+    from tests.v3.judge_fixtures import EMITTER, ORIGIN, TODAY, VENDOR
+
+    def transport(method, url, headers, body):
+        import json
+
+        body = {"routes": [{"result_code": 0, "summary": {"distance": 12345}}]}
+        return 200, json.dumps(body).encode("utf-8")
+
+    provider = KakaoDistance("test-key", transport=transport)
+    reg = registry()
+    cost = call_tool(
+        "cost_carbon",
+        {"stream": stream(), "vendor": vendor(), "origin": ORIGIN},
+        registry=reg,
+        org_id=EMITTER,
+        today=TODAY,
+        distance_provider=provider,
+    )
+    km = claim(cost, "roundTripKm")
+    assert km["value"] == pytest.approx(24.69)
+    road = [e for e in km["evidence"] if e.startswith("ref:도로거리:")]
+    assert len(road) == 2  # 가는 길과 오는 길
+    found = reg.get(road[0], EMITTER)
+    assert found.kind == "ref" and found.unit == "km" and found.value == pytest.approx(12.345)
+    assert "카카오" in found.label and not any(
+        e.startswith("assumption:distance") for e in km["evidence"]
+    )
+    # 같은 구간을 업체 쪽 도구가 다시 물어도 배출 기업은 계속 볼 수 있다
+    stop = {"id": "n", "location": ORIGIN, "kg": 600, "m3": 2.4}
+    call_tool(
+        "route_extra_cost",
+        {"vendor": vendor(), "stops": [], "newStop": stop},
+        registry=reg,
+        org_id=VENDOR,
+        today=TODAY,
+        distance_provider=provider,
+    )
+    assert reg.get(road[0], EMITTER).value == pytest.approx(12.345)
+    assert reg.get(road[0], VENDOR).value == pytest.approx(12.345)

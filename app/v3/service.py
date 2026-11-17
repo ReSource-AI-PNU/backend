@@ -1513,7 +1513,12 @@ def admin_status(app: App, viewer: str) -> dict[str, Any]:
         "documentIntelligence": {"configured": bool(app.documents and app.documents.configured)},
         "gradeEndpoint": {"configured": bool(app.grade_client and app.grade_client.configured)},
         "detector": {"configured": bool(app.detector and app.detector.configured)},
-        "distance": {"provider": app.distance_provider is not None},
+        "distance": {
+            "provider": app.distance_provider is not None,
+            # 어떤 제공자인지와 마지막 실패 이유(키는 싣지 않는다). 없으면 직선 거리 × 우회 계수(가정값)다
+            "kind": type(app.distance_provider).__name__ if app.distance_provider else None,
+            "lastError": getattr(app.distance_provider, "last_error", None),
+        },
         "vendorGateway": type(app.vendor_gateway).__name__,
         "store": type(app.store).__name__,
         # 재학습 표: 실제 등급 라벨 수, 교정 건수, 배포 게이트, 기준값 보정 후보, 모델 버전
