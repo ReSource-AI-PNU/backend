@@ -22,6 +22,10 @@
   그대로 두면 조직 경계가 지켜지지 않는다. --auth token --org-tokens <파일>을 주면 조직별 서비스 토큰
   (Authorization: Bearer <토큰>)으로 조직을 정하고 X-Org-Id는 무시한다. 파일은
   {"조직 ID": "토큰"} 꼴의 JSON이고, GET /orgs는 자기 조직과 대화 상대만 준다.
+  옵션 대신 환경 변수로도 켠다(FastAPI 경로와 같은 이름): V3_AUTH=token과 V3_ORG_TOKENS(JSON 글)
+  또는 V3_ORG_TOKENS_FILE(그 JSON을 담은 파일 경로).
+- 브라우저가 부를 수 있는 출처는 http://localhost:3000, http://127.0.0.1:3000이다. 더하려면
+  --cors-origins나 환경 변수 V3_CORS_ORIGINS에 쉼표로 나눠 적는다.
 - /admin/* 은 관리자 조직(org_admin)만 부른다. 시연 되돌리기(POST /demo/reset)는 로컬 시연에서는
   누구나 부를 수 있다(App(demo_open=True)). --demo-closed를 주면 관리자만 부른다.
 """
@@ -430,20 +434,52 @@ def build_app(
     return app
 
 
-def load_auth(mode: str, tokens_path: str | None) -> httpio.Auth:
-    """--auth와 --org-tokens로 Auth를 만든다. 설정이 틀리면 무엇이 틀렸는지만 밝히고 멈춘다."""
+def load_auth(
+    mode: str | None, tokens_path: str | None, env: Mapping[str, str] | None = None
+) -> httpio.Auth:
+    """--auth와 --org-tokens(없으면 환경 변수)로 Auth를 만든다. 틀리면 무엇이 틀렸는지만 밝히고 멈춘다.
+
+    옵션을 주지 않았을 때 읽는 환경 변수는 FastAPI 경로와 같다: V3_AUTH(header | token),
+    V3_ORG_TOKENS(JSON 글 {"조직 ID": "토큰"}). 로컬 서버는 V3_ORG_TOKENS_FILE(그 JSON을 담은 파일
+    경로)도 받는다. 순서는 --org-tokens 파일, V3_ORG_TOKENS_FILE, V3_ORG_TOKENS다.
+    """
+    env = {} if env is None else env
+    mode = (mode or env.get("V3_AUTH") or httpio.AUTH_HEADER).strip().lower()
     raw = None
     if mode == httpio.AUTH_TOKEN:
-        if not tokens_path:
-            raise SystemExit("--auth token에는 --org-tokens 파일이 필요합니다.")
-        try:
-            raw = Path(tokens_path).read_text(encoding="utf-8")
-        except OSError:
-            raise SystemExit(f"--org-tokens 파일을 읽을 수 없습니다: {tokens_path}") from None
+        option = "--org-tokens"
+        if not tokens_path and (env.get("V3_ORG_TOKENS_FILE") or "").strip():
+            tokens_path, option = env["V3_ORG_TOKENS_FILE"].strip(), "V3_ORG_TOKENS_FILE"
+        if tokens_path:
+            try:
+                raw = Path(tokens_path).expanduser().read_text(encoding="utf-8")
+            except OSError:
+                raise SystemExit(f"{option} 파일을 읽을 수 없습니다: {tokens_path}") from None
+        else:
+            raw = env.get("V3_ORG_TOKENS") or None
+        if not raw:
+            raise SystemExit(
+                "--auth token에는 --org-tokens 파일이나 환경 변수 V3_ORG_TOKENS, "
+                "V3_ORG_TOKENS_FILE이 필요합니다."
+            )
     try:
         return httpio.make_auth(mode, raw)
     except ValueError as error:
         raise SystemExit(f"조직 토큰 설정이 틀렸습니다: {error}") from None
+
+
+def cors_origins(extra: str | None) -> tuple[str, ...]:
+    """기본 허용 출처에 쉼표로 나눈 출처를 더한다(V3_CORS_ORIGINS, --cors-origins). http(s) 주소만 받는다."""
+    found = list(ALLOWED_ORIGINS)
+    for origin in (extra or "").split(","):
+        origin = origin.strip().rstrip("/")
+        if not origin:
+            continue
+        if not re.fullmatch(r"https?://[A-Za-z0-9.\-]+(:\d+)?", origin):
+            raise SystemExit(f"허용 출처는 http(s)://호스트[:포트] 꼴이어야 합니다: {origin}")
+        if origin not in found:
+            found.append(origin)
+    return tuple(found)
 
 
 def evidence_file(store_path: str) -> Path:
@@ -473,17 +509,26 @@ def main(argv: list[str] | None = None) -> None:
     parser.add_argument(
         "--auth",
         choices=httpio.AUTH_MODES,
-        default=httpio.AUTH_HEADER,
+        default=None,
         help="요청한 조직을 정하는 방법. header(기본, 시연 전용: X-Org-Id를 믿는다) | "
-        "token(조직별 서비스 토큰: Authorization: Bearer)",
+        "token(조직별 서비스 토큰: Authorization: Bearer). 주지 않으면 환경 변수 V3_AUTH",
     )
     parser.add_argument(
         "--org-tokens",
         default=None,
-        help='--auth token일 때 조직별 토큰 JSON 파일 경로({"조직 ID": "토큰"})',
+        help='--auth token일 때 조직별 토큰 JSON 파일 경로({"조직 ID": "토큰"}). 주지 않으면 '
+        "환경 변수 V3_ORG_TOKENS_FILE(파일 경로)이나 V3_ORG_TOKENS(JSON 글)",
+    )
+    parser.add_argument(
+        "--cors-origins",
+        default=None,
+        help="브라우저에서 부를 수 있게 더 허용할 출처(쉼표로 나눔). 주지 않으면 환경 변수 "
+        "V3_CORS_ORIGINS. 기본 허용은 http://localhost:3000, http://127.0.0.1:3000",
     )
     args = parser.parse_args(argv)
-    auth = load_auth(args.auth, args.org_tokens)
+    global ALLOWED_ORIGINS
+    ALLOWED_ORIGINS = cors_origins(args.cors_origins or os.environ.get("V3_CORS_ORIGINS"))
+    auth = load_auth(args.auth, args.org_tokens, os.environ)
     try:
         llm = normalize_mode(args.llm or os.environ.get("V3_LLM"))
     except LlmConfigError as error:

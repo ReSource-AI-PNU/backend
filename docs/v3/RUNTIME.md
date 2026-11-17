@@ -238,8 +238,22 @@ def register_model_run(app, run, viewer) -> dict                    # 재학습 
   - 업체가 ollama를 골랐으면 `OLLAMA_BASE_URL`이 있을 때만 그 모델을 쓰고, 없으면 그 업체는 규칙 정책으로 돈다. `anthropic`에서 `V3_LLM_ALL_VENDORS=1`(설정에서는 `true`)을 주면 그 업체도 anthropic 모델이 답한다. 화면에는 설정한 모델과 실제로 답한 모델이 따로 나온다.
   - 설정이 빠졌을 때 로컬 서버는 어떤 값이 없는지만 밝히고 멈춘다. FastAPI 경로는 경고를 남기고 규칙 정책으로 돈다(서버는 뜨고, 관리자 화면과 대화에 "규칙 정책(모델 미연결)"로 나온다). 키 값은 어느 쪽도 출력하거나 기록하지 않는다.
   - `rule`이면 위 환경 변수를 읽지 않는다.
-- CORS는 `http://localhost:3000`과 `http://127.0.0.1:3000`만 허용한다(`X-Org-Id`, `Authorization`, `Content-Type` 헤더, `OPTIONS` 처리).
+- CORS는 기본으로 `http://localhost:3000`과 `http://127.0.0.1:3000`만 허용한다(`X-Org-Id`, `Authorization`, `Content-Type` 헤더, `OPTIONS` 처리). 다른 출처를 더하려면 `--cors-origins`나 환경 변수 `V3_CORS_ORIGINS`에 쉼표로 나눠 적는다(예: `http://localhost:3100`). `*`는 받지 않는다.
 - 요청한 조직은 기본으로 `X-Org-Id` 헤더에서 읽는다(`--auth header`). header 모드는 시연 전용이며 공개 주소에 그대로 두면 조직 경계가 지켜지지 않는다. `--auth token --org-tokens <JSON 파일>`을 주면 조직별 서비스 토큰(`Authorization: Bearer`)으로 정하고 `X-Org-Id`는 무시한다(계약 8장 "요청한 조직").
+- **토큰 모드를 환경 변수로 켜기(두 서버가 같은 이름을 읽는다).**
+
+  | 환경 변수 | 값 | 읽는 곳 |
+  |---|---|---|
+  | `V3_AUTH` | `header`(기본, 시연 전용) \| `token` | FastAPI, 로컬 서버(`--auth`를 주지 않았을 때) |
+  | `V3_ORG_TOKENS` | JSON 글 한 줄. `{"org_hanbit": "토큰", "org_saegil": ["새 토큰", "옛 토큰"]}` | FastAPI, 로컬 서버 |
+  | `V3_ORG_TOKENS_FILE` | 위 JSON을 담은 파일의 경로 | 로컬 서버만(`--org-tokens`와 같다) |
+
+  - 토큰은 16자 이상이고 조직마다 달라야 한다. 값이 목록이면 그 조직의 토큰 여럿을 함께 받는다(교체 기간).
+  - 요청은 `Authorization: Bearer <토큰>` 헤더로 보낸다. 토큰에 묶인 조직이 요청한 조직이고 `X-Org-Id`는 보지 않는다.
+  - 토큰이 없으면 401 `TOKEN_REQUIRED`, 어느 조직의 것도 아니면 401 `INVALID_TOKEN`이다. 맞는 토큰으로 다른 조직의 자료를 부르면 서비스 함수가 403(`FORBIDDEN`)이나 404로 답한다. `GET /health`만 토큰 없이 답한다.
+  - 로컬 서버에서 읽는 순서는 `--org-tokens` 파일, `V3_ORG_TOKENS_FILE`, `V3_ORG_TOKENS`다. token 모드인데 셋 다 없거나 모양이 틀리면 서버를 띄우지 않고 멈춘다(문구에 토큰 값은 싣지 않는다).
+  - 실행 확인(2026-11-18, 로컬 서버 8031, `V3_AUTH=token` + `V3_ORG_TOKENS_FILE`): 토큰 없음과 `X-Org-Id`만 보낸 요청은 401 `TOKEN_REQUIRED`, 틀린 토큰은 401 `INVALID_TOKEN`, 다른 배출 기업의 토큰으로 흐름을 부르면 403, 그 토큰으로 남의 진단을 부르면 404, 자기 토큰은 200이었다. FastAPI 경로는 로컬에서 띄우지 못해 CI의 테스트(`tests/v3/test_api.py`)로만 확인한다.
+  - 화면(브라우저)이 토큰을 직접 들고 있으면 안 된다. 프런트 서버가 로그인한 사용자의 조직에 맞는 토큰을 붙여 대신 부르는 구조(BFF)가 필요하다.
 - 업로드는 `multipart/form-data`(`file`, `orgId`, 문서는 `kind`)로 받는다.
 
 ## 9. 평가 (8단계)
