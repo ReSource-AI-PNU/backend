@@ -243,3 +243,91 @@ def test_ollama_vendor_gets_the_same_turn_schema_as_format():
         assert request["format"]["properties"]["type"]["enum"] == allowed
         assert "claimRefs" not in request["format"]["properties"]
     assert recheck(app, view)[0] == recheck(app, view)[1]
+
+
+def vendor_guide(results, **overrides):
+    stream = {"id": "st_x", "name": "퍼지 덩어리", "contaminants": [{"name": "ABS 혼입"}]}
+    options = {
+        "types": ("question", "answer", "offer", "conditional", "decline"),
+        "stream_ids": ("st_x",),
+        "streams": {"st_x": stream},
+        "auto_declined": {},
+        "results": results,
+        "criteria": {"pc_mixed": {"maxContaminationPct": "pc_mixed_maxContaminationPct"}},
+        "offered": [],
+        "asked": [],
+        "days": ["월", "수"],
+        **overrides,
+    }
+    return vendor.guide(**options)
+
+
+def test_vendor_guide_follows_the_tool_results_step_by_step():
+    one = {"streamId": "st_x"}
+    lines = vendor_guide([])
+    assert "match_permit과 judge_route" in lines[-1] and "st_x" in lines[-1]
+    permit = {"tool": "match_permit", "arguments": one, "status": "calculated"}
+    refused = [
+        {**permit, "output": {"matched": False, "reason": "허가 품목이 아닙니다."}},
+        {"tool": "judge_route", "arguments": one, "status": "calculated", "output": {}},
+    ]
+    assert vendor_guide(refused)[-1].startswith("받을 수 있는 흐름이 없다. decline")
+    route = {
+        "tool": "judge_route",
+        "arguments": one,
+        "status": "conditional",
+        "output": {"acceptable": True, "criterionId": "pc_mixed"},
+        "claims": {"unitPrice": "route_x_unitPrice"},
+        "checks": [
+            {"key": "contamination_basis", "status": "conditional"},
+            {"key": "mixture", "status": "conditional"},
+        ],
+    }
+    ready = [{**permit, "output": {"matched": True}}, route]
+    assert "check_loading과 route_extra_cost" in vendor_guide(ready)[-1]
+    many = {"streamIds": ["st_x"]}
+    loading = {
+        "tool": "check_loading",
+        "arguments": many,
+        "status": "calculated",
+        "claims": {"pickupsPerMonth": "load_x_pickupsPerMonth"},
+        "checks": [{"key": "min_volume", "status": "unmet"}],
+    }
+    extra = {"tool": "route_extra_cost", "arguments": many, "status": "calculated"}
+    lines = vendor_guide([*ready, loading, extra], roles={"route_x_unitPrice": "treatmentFee"})
+    text = "\n".join(lines)
+    assert "처리비는 {{route_x_unitPrice}}입니다" in text and "'매입 단가'라고 쓰지 않는다" in text
+    assert "오염도가 매입 기준 상한 {{pc_mixed_maxContaminationPct}} 이하로 확인될 것" in text
+    assert "혼입물(ABS 혼입)은 분리해 내보내거나" in text
+    assert "{{load_x_pickupsPerMonth}}" in text and "월·수" in text
+    assert "기존 노선에 묶어 수거할 것" in text
+    assert lines[-1] == "조건이 하나라도 있으니 type은 conditional이다."
+    priced = vendor_guide([*ready, loading, extra], roles={"route_x_unitPrice": "unitPrice"})
+    assert any("매입 단가는 {{route_x_unitPrice}}입니다" in line for line in priced)
+    done = vendor_guide([*ready, loading, extra], offered=["st_x"])
+    assert "모두 조건을 냈다" in done[-1]
+
+
+def test_company_guide_says_what_this_turn_is_for():
+    class Incoming:
+        type = "conditional"
+
+    results = [
+        {
+            "tool": "judge_route",
+            "arguments": {"streamId": "st_a"},
+            "checks": [{"ask": "혼입 상태로 받을 수 있는지 알려 주세요."}],
+        }
+    ]
+    names = {"st_a": "스프루", "st_b": "필름"}
+    common = {"asked": False, "cannot_ask_user": False, "names": names, "results": results}
+    first = company.guide(task="inquiry", types=("inquiry",), incoming=None, uncovered=[], **common)
+    assert first[0] == "이번 차례에 쓸 수 있는 type: inquiry."
+    assert "스프루: 혼입 상태로 받을 수 있는지" in first[-1]
+    types = ("question", "answer", "accept", "ask_user")
+    pending = company.guide(
+        task="reply", types=types, incoming=Incoming(), uncovered=["st_b"], **common
+    )
+    assert "아직 조건을 받지 못한 폐기물: 필름" in pending[-1]
+    settled = company.guide(task="reply", types=types, incoming=Incoming(), uncovered=[], **common)
+    assert "accept한다" in settled[-1]

@@ -6,7 +6,7 @@
 - 모델 설정은 서버와 같은 함수(agents/factory.build_llm_factory)로 고른다. --llm foundry면 환경 변수
   FOUNDRY_ENDPOINT, FOUNDRY_DEPLOYMENT, FOUNDRY_API_KEY를 읽는다. 키 값은 출력하지 않는다.
 - 업체가 ollama를 골랐는데 OLLAMA_BASE_URL이 없으면 그 업체는 규칙 정책으로 돈다(서버와 같다).
-  결과에는 업체마다 실제로 쓴 구현이 나온다.
+  --all-vendors를 주면 그 업체도 회사 측과 같은 모델이 답한다. 결과에는 업체마다 실제로 쓴 구현이 나온다.
 - 담당자 질문에는 시연 값으로 답한다(오염도 0.5%, 수분 0.8%, 로트 일치 "예", 나머지는 "모름").
 - 승인은 하지 않는다. 진단이 승인 대기(awaiting_approval)까지 가는지와 대화마다의 결과를 본다.
 
@@ -118,9 +118,13 @@ class MeteredLLM:
         )
 
 
-def metered_factory(base: Any, meter: Meter):
+def metered_factory(base: Any, meter: Meter, *, all_vendors: bool = False):
+    """all_vendors면 ollama를 고른 업체도 회사 측과 같은 모델이 답한다(Ollama에 닿지 못할 때의 대용)."""
+
     def factory(role: str, org_id: str, model: dict[str, Any] | None = None) -> Any:
         llm = base(role, org_id, model) if base is not None else None
+        if llm is None and all_vendors and base is not None:
+            llm = base("company", org_id, None)
         return MeteredLLM(llm if llm is not None else RulePolicy(), meter, role, org_id)
 
     return factory
@@ -137,13 +141,14 @@ def run(
     max_calls: int,
     dump: Path | None = None,
     env: Any = None,
+    all_vendors: bool = False,
 ) -> dict[str, Any]:
     meter = Meter(max_calls, dump)
     base = build_llm_factory(mode, os.environ if env is None else env, strict=True)
     app = service.App(
         InMemoryStore(),
         InMemoryRegistry(),
-        llm_factory=metered_factory(base, meter),
+        llm_factory=metered_factory(base, meter, all_vendors=all_vendors),
         today=today,
     )
     service.seed(app)
@@ -246,9 +251,20 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--max-calls", type=int, default=120)
     parser.add_argument("--out", type=Path)
     parser.add_argument("--dump", type=Path)
+    parser.add_argument(
+        "--all-vendors",
+        action="store_true",
+        help="ollama를 고른 업체도 회사 측과 같은 모델로 답하게 한다(Ollama에 닿지 못할 때)",
+    )
     args = parser.parse_args(argv)
     mode = normalize_mode(args.llm or os.environ.get("V3_LLM"))
-    result = run(mode, today=args.today, max_calls=args.max_calls, dump=args.dump)
+    result = run(
+        mode,
+        today=args.today,
+        max_calls=args.max_calls,
+        dump=args.dump,
+        all_vendors=args.all_vendors,
+    )
     result = {"llm": mode, **result}
     text = json.dumps(result, ensure_ascii=False, indent=2)
     if args.out:

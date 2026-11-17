@@ -265,8 +265,14 @@ def guide(
     offered: list[str],
     asked: list[dict[str, Any]],
     days: list[str],
+    roles: dict[str, str | None] | None = None,
 ) -> list[str]:
-    """이번 차례에 할 일(코드가 도구 결과와 대화 상태에서 쓴다). 판단은 도구 결과 그대로다."""
+    """이번 차례에 할 일(코드가 도구 결과와 대화 상태에서 쓴다). 판단은 도구 결과 그대로다.
+
+    roles는 claim ID → role(names.py)이다. 단가가 처리비(treatmentFee, 배출 기업이 내는 돈)인지
+    매입 단가인지에 따라 본문의 문장이 다르다(CONTRACT.md "처리비 문장").
+    """
+    roles = roles or {}
     lines = [f"이번 차례에 쓸 수 있는 type: {', '.join(types)}."]
 
     def name(sid: str) -> str:
@@ -356,9 +362,15 @@ def guide(
         criterion = criteria.get(str((route.get("output") or {}).get("criterionId"))) or {}
         found = condition_lines(route, criterion, streams.get(sid) or {})
         conditional = conditional or bool(found) or route.get("status") != "calculated"
-        lines.append(
-            f"- {name(sid)}: 단가 {{{{{price}}}}}" if price else f"- {name(sid)}: 단가 claim 없음"
-        )
+        if not price:
+            lines.append(f"- {name(sid)}: 단가 claim 없음")
+        elif roles.get(price) == "treatmentFee":
+            lines.append(
+                f"- {name(sid)}: 배출 기업이 내는 처리비다. 본문에 '처리비는 {{{{{price}}}}}입니다'로 "
+                "쓴다('매입 단가'라고 쓰지 않는다)"
+            )
+        else:
+            lines.append(f"- {name(sid)}: 본문에 '매입 단가는 {{{{{price}}}}}입니다'로 쓴다")
         # 조건은 한 줄에 하나씩 준다(본문에는 '  · ' 목록으로, terms.conditions에는 '이름: 조건'으로)
         lines += [f"  · {name(sid)}의 조건: {condition}" for condition in found]
     tail = []
@@ -891,6 +903,7 @@ class VendorAgent:
                     offered=offered,
                     asked=asked,
                     days=days,
+                    roles={e.claim.id: e.claim.role for e in pool.entries()},
                 ),
                 "today": self.today,
                 "org": {"id": vendor_org, "name": org.get("name")},
