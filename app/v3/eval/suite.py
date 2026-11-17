@@ -55,8 +55,18 @@ def _git(*args: str) -> str | None:
 
 
 def commit_label() -> str | None:
+    """HEAD의 짧은 해시. 평가가 만드는 파일 말고 고친 파일이 있으면 '+수정본'을 붙인다."""
     head = _git("rev-parse", "--short", "HEAD")
-    if head and _git("status", "--porcelain", "--untracked-files=no"):
+    changed = _git(
+        "status",
+        "--porcelain",
+        "--untracked-files=no",
+        "--",
+        ".",
+        ":!docs/v3/eval",
+        ":!docs/v3/eval-report.md",
+    )
+    if head and changed:
         head += "+수정본"
     return head
 
