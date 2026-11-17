@@ -1,4 +1,6 @@
 // Ollama VM: bge-m3 임베딩과 업체 측 오픈 모델. 공용 IP가 없고 11434는 VNet 안에서만 열린다.
+// Ollama는 0.0.0.0이 아니라 VM의 사설 IP에만 바인딩한다(설계안 v3 10.2, tests/v3/test_rules_adversarial.py).
+// 그래서 같은 VM 안의 ollama 명령도 OLLAMA_HOST로 그 주소를 가리켜야 한다.
 // 주의: 새 VNet은 기본 아웃바운드가 없을 수 있다. 모델을 내려받으려면 NAT Gateway 같은 아웃바운드 경로를 따로 승인받아야 한다.
 param location string
 param tags object
@@ -18,12 +20,12 @@ package_update: true
 runcmd:
   - curl -fsSL https://ollama.com/install.sh | sh
   - mkdir -p /etc/systemd/system/ollama.service.d
-  - printf '[Service]\nEnvironment="OLLAMA_HOST=0.0.0.0:11434"\n' > /etc/systemd/system/ollama.service.d/override.conf
+  - printf '[Service]\nEnvironment="OLLAMA_HOST=%s:11434"\n' "$(hostname -I | cut -d' ' -f1)" > /etc/systemd/system/ollama.service.d/override.conf
   - systemctl daemon-reload
   - systemctl enable ollama
   - systemctl restart ollama
   - sleep 15
-  - for m in {0}; do ollama pull "$m"; done
+  - for m in {0}; do OLLAMA_HOST="$(hostname -I | cut -d' ' -f1):11434" ollama pull "$m"; done
 ''', join(pullModels, ' '))
 
 resource vnet 'Microsoft.Network/virtualNetworks@2023-11-01' existing = {
