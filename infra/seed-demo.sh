@@ -6,6 +6,8 @@
 #   예) bash infra/seed-demo.sh https://app-rsai-demo-api-xxxxxx.azurewebsites.net
 # 주소를 주지 않으면 API_BASE_URL, 그것도 없으면 리소스 그룹에서 API 앱을 찾는다(az 로그인 필요).
 # 진행 중인 진단과 대화 기록이 모두 지워진다. 시연 데이터의 회사와 수치는 모두 가상이다.
+# API가 token 모드(V3_AUTH=token)면 관리자 조직의 토큰만 담은 파일을 준다(값은 화면과 명령줄에 나오지 않는다).
+#   ADMIN_TOKEN_FILE=<관리자 토큰만 담은 파일> bash infra/seed-demo.sh
 set -euo pipefail
 
 RG="${RG:-team_AIBIC2026_03_RG_EUS2}"
@@ -32,14 +34,22 @@ for i in $(seq 1 30); do
   sleep 10
 done
 
-CODE="$(curl -sS -o "$TMP/reset.json" -w '%{http_code}' --max-time 120 -X POST -H "X-Org-Id: ${ADMIN_ORG_ID:-org_admin}" "$BASE/api/v3/demo/reset")"
+# 요청한 조직을 밝히는 머리글. 파일로 넘겨 토큰이 명령줄에 남지 않게 한다(curl -H @파일).
+if [ -n "${ADMIN_TOKEN_FILE:-}" ]; then
+  [ -r "$ADMIN_TOKEN_FILE" ] || { echo "[seed-demo] 오류: ADMIN_TOKEN_FILE을 읽을 수 없다" >&2; exit 1; }
+  printf 'Authorization: Bearer %s\n' "$(tr -d '\r\n' < "$ADMIN_TOKEN_FILE")" > "$TMP/headers"
+else
+  printf 'X-Org-Id: %s\n' "${ADMIN_ORG_ID:-org_admin}" > "$TMP/headers"
+fi
+
+CODE="$(curl -sS -o "$TMP/reset.json" -w '%{http_code}' --max-time 120 -X POST -H "@$TMP/headers" "$BASE/api/v3/demo/reset")"
 if [ "$CODE" != 200 ]; then
   echo "[seed-demo] 오류: /api/v3/demo/reset 이 $CODE 로 답했다" >&2
   head -c 600 "$TMP/reset.json" >&2 || true; echo >&2
   exit 1
 fi
 
-CODE="$(curl -sS -o "$TMP/orgs.json" -w '%{http_code}' --max-time 60 "$BASE/api/v3/orgs")"
+CODE="$(curl -sS -o "$TMP/orgs.json" -w '%{http_code}' --max-time 60 -H "@$TMP/headers" "$BASE/api/v3/orgs")"
 [ "$CODE" = 200 ] || { echo "[seed-demo] 오류: /api/v3/orgs 가 $CODE 로 답했다" >&2; exit 1; }
 COUNT="$(python3 -c 'import json,sys; print(len(json.load(open(sys.argv[1]))))' "$TMP/orgs.json")"
 [ "$COUNT" -gt 0 ] || { echo "[seed-demo] 오류: 되돌린 뒤에 조직이 하나도 없다" >&2; exit 1; }
