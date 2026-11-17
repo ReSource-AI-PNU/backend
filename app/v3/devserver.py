@@ -53,6 +53,8 @@ from collections.abc import Callable, Mapping
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any
+
+TRUST_FILE = Path(__file__).resolve().parents[2] / "docs" / "v3" / "eval" / "latest.json"
 from urllib.parse import parse_qs, unquote, urlsplit
 
 from app.v3 import httpio, live, localshare, service
@@ -217,7 +219,7 @@ def route(app: service.App, request: Request) -> Any:
     method = request.method
     # 상태 확인은 조직을 밝히지 않고 부른다(토큰이 없거나 틀려도 답한다). token 모드에서는 그 밖의
     # 모든 경로에 토큰이 있어야 한다(시연 되돌리기만 예외: 누가 부를 수 있는지는 서비스가 정한다)
-    if parts == ["health"]:
+    if parts in (["health"], ["trust"]):
         viewer = ""
     else:
         needed = request.auth.scoped and parts != ["demo", "reset"]
@@ -225,6 +227,9 @@ def route(app: service.App, request: Request) -> Any:
     match (method, parts):
         case ("GET", ["health"]):
             return {"ok": True}
+        case ("GET", ["trust"]):
+            # 공개 신뢰 페이지가 읽는 최신 평가 요약 (FastAPI 경로와 같은 파일)
+            return json.loads(TRUST_FILE.read_text(encoding="utf-8"))
         case ("POST", ["demo", "reset"]):
             return service.reset_demo(app, viewer or None)
         case ("GET", ["orgs"]):

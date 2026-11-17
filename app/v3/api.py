@@ -25,10 +25,12 @@ tests/v3/test_api.py가 CI에서 확인한다.
 import asyncio
 import contextvars
 import functools
+import json
 import logging
 import threading
 import time
 from collections.abc import AsyncIterator, Callable
+from pathlib import Path
 from typing import Any
 
 from fastapi import APIRouter, Request
@@ -473,6 +475,20 @@ async def read_upload(request: Request, default_name: str) -> tuple[dict[str, st
 @guarded
 async def health(request: Request):
     return {"ok": True}
+
+
+# 공개 신뢰 페이지(평가 설계 17장)가 읽는 최신 평가 요약. 평가 실행(scripts/v3/eval/run_all)이 만든다
+TRUST_FILE = Path(__file__).resolve().parents[2] / "docs" / "v3" / "eval" / "latest.json"
+
+
+@router.get("/trust")
+@guarded
+async def trust(request: Request):
+    """최신 평가 요약을 인증 없이 돌려준다. 조직 데이터는 들어 있지 않다."""
+    try:
+        return json.loads(TRUST_FILE.read_text(encoding="utf-8"))
+    except (OSError, ValueError) as error:
+        raise service.ServiceError("TRUST_UNAVAILABLE", "평가 결과를 불러오지 못했습니다.", 503) from error
 
 
 @router.post("/demo/reset")

@@ -3288,6 +3288,26 @@
         }
       }
     },
+    "/api/v3/trust": {
+      "get": {
+        "tags": [
+          "v3"
+        ],
+        "summary": "Trust",
+        "description": "최신 평가 요약을 인증 없이 돌려준다. 조직 데이터는 들어 있지 않다.",
+        "operationId": "trust_api_v3_trust_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v3/demo/reset": {
       "post": {
         "tags": [
