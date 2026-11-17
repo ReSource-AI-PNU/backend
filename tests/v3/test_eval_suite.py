@@ -93,6 +93,28 @@ JARGON = (
 )
 
 
+def test_the_committed_latest_json_speaks_plain_korean():
+    """신뢰 페이지가 읽는 latest.json: 이름·풀이·재지 못한 것에 기술 용어가 없다(기술 이름은 따로)."""
+    latest = json.loads((run_all.OUT_DIR / "latest.json").read_text(encoding="utf-8"))
+    for run in latest["runs"].values():
+        texts = [run["aiVersion"]]
+        for layer in run["layers"].values():
+            texts += [layer["title"], layer["explain"], *layer["notMeasured"]]
+            for m in layer["metrics"]:
+                texts += [m["label"], m["explain"] or ""]
+                if m["ci"] is not None:
+                    assert m["ciMethod"] in ("wilson", "bootstrap")
+                    # 비율 지표는 Wilson 구간이라 n이 있으면 폭이 0이 아니다
+                    if m["ciMethod"] == "wilson":
+                        assert m["ci"][1] - m["ci"][0] > 0, m["key"]
+        texts += [h["label"] for h in run["headline"].values() if h]
+        for text in texts:
+            assert not any(word in text for word in JARGON), text
+    # 지난 결과는 지금 결과가 아니라고 적혀 있다
+    for old in latest.get("history") or []:
+        assert old["current"] is False and old["supersededBy"] and old["reason"]
+
+
 def test_wilson_interval_for_proportions_and_bootstrap_for_scores():
     low, high = stats.wilson_ci(1.0, 10)
     assert high == 1.0 and abs(low - 0.7225) < 1e-3  # 10/10이어도 폭이 0이 아니다
