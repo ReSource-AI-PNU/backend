@@ -162,10 +162,14 @@ def run_suite(
         else:
             notes.append("변형(metamorphic)은 시험셋에만 있다")
         opened = [c["caseId"] for c in outcome["cases"] if c["open"]]
+        fixes = sets.errata() if split == "test" else {}
         if opened:
             notes.append(
                 f"open 사례(설계 판단 필요) {', '.join(opened)}는 성공률에 그대로 들어 있다"
             )
+        for case_id in opened:
+            if case_id in fixes:
+                notes.append(f"{case_id} 정오표(sets/README.md): {fixes[case_id]}")
         if "L4" in layers:
             out_layers.append(
                 trials.l4_layer(

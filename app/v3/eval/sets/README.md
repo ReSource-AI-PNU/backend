@@ -39,3 +39,19 @@
 python3 -m app.v3.eval.sets --verify test-v1     # 동결 그대로인지
 python3 -m scripts.v3.eval.build_test_v1         # 시나리오·변형 다시 만들기(동결 뒤에는 거부한다)
 ```
+
+## 정오표(다음 판 test-v2에서 고친다)
+
+동결된 판의 기대가 틀렸다고 정한 사례다. 동결된 파일은 고치지 않으므로 그 판의 결과(성공률, 금지 위반)에는 그대로 들어가고, 리포트의 L4 메모에 이 이유가 함께 적힌다(`app/v3/eval/sets.py`의 `ERRATA`). test-v2를 만들 때 생성기(`build_test_v2.py`)에서 고치고 `triage`에 옮긴다.
+
+### test-v1 T042 · 출처를 모르는 흐름의 판정(2026-11-18 결정: 기대 오류)
+
+- 사례: PE 분쇄품(st_a)의 출처(PIR·PCR)를 담당자도 모른다고 답했다. 업체 org_k1의 매입 기준(재질 PE, 등급 B, 오염도·수분 상한, 최소 물량)은 모두 충족한다. `scenarios.json`은 `status: "open"`이고, `forbidden`에 "st_a 판정 calculated 금지"가 있다(생성기 블록 `missing`이 C38의 "모르는 값이 남았는데 확정으로 두지 않는다"를 따랐다).
+- 구현: st_a를 org_k1에 배정하고 `calculated`로 낸다. 모르는 출처는 `unresolved[{st_a, origin}]`과 `streams[].unknownFields`에 남는다.
+- 결정: **기대가 틀렸고 구현이 맞다.**
+  - 판정 상태의 뜻(설계안 v3 8.2, 용어집): `conditional`은 "확인할 것이 남아 있어 확정할 수 없는 판정"이다. 확인할 것은 그 경로의 판단에 들어가는 값이다.
+  - 출처는 매각 경로의 판단에 들어가지 않는다. 업체 매입 기준 대조는 재질, 등급, 수분, 형태, 최소 물량만 본다(8.3). 최소 물량과 적재 검사는 출처와 관계없다(8.2, 개발 사례 C36). 출처는 공정 재투입 후보(`judge_reuse`의 `reuse_origin`)와 PCR 인정 표시("미확인", H3)에만 쓰인다. 이 사례에는 재투입 입력이 없다.
+  - C38의 규칙은 질문 한도를 넘겨 판단에 쓰는 값(오염도, 수분 등)을 모르는 채 남긴 경우다. 판단에 쓰이지 않는 값까지 넓히면 출처만 모르는 흐름이 업체 기준을 모두 충족해도 확정되지 못한다. 같은 이유로 C16(출처를 답으로 받은 경우)은 `calculated`이고, 답이 "모름"이어도 경로 판단은 같아야 한다.
+  - 모르는 값은 숨기지 않는다. 결과 한 장의 `unresolved`와 흐름 카드의 `unknownFields`에 남는다.
+- test-v2에서 고칠 것: T042의 `forbidden`에서 `{"kind": "verdict", "stream": "st_a", "status": "calculated"}`를 빼고 `expect.assignments.st_a.status: "calculated"`를 적는다. `status`를 `open`에서 빼고 `triage`에 "기대 오류: 판단에 쓰이지 않는 빠진 값(출처)은 확정을 막지 않는다"로 옮긴다. 생성기 블록 `missing`은 빠진 값이 경로 판단에 쓰이는 항목(재질, 형태, 오염도, 수분, 물량)일 때만 `calculated`를 금지한다. st_b의 금지(오염도 측정값 없음)는 그대로 둔다.
+- test-v1 결과에서는 T042가 L4 실패 1건(금지 위반 `verdict`)으로 남는다. 판이 다른 결과끼리 숫자를 비교하지 않는다.

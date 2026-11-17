@@ -29,6 +29,23 @@ SHARED = ("corpus/laws_extra.json",)  # 시험셋이 함께 쓰는 말뭉치(set
 LABEL_GUIDE = "v1"
 # 파일 안에서 건수를 셀 배열의 키
 COUNT_KEYS = ("cases", "variants", "queries", "attacks", "probes", "items")
+# 동결된 판의 정오표. 기대가 틀렸다고 정한 사례와 이유다. 동결된 파일은 고치지 않으므로 그 판의
+# 결과에는 그대로 들어가고, 리포트가 이유를 함께 적는다. 다음 판에서 고친다(sets/README.md 정오표).
+ERRATA: dict[str, dict[str, str]] = {
+    "test-v1": {
+        "T042": (
+            "기대 오류(test-v2에서 고친다): st_a의 calculated 금지는 틀렸다. 출처(PIR·PCR)는 매각 "
+            "경로의 매입 기준과 적재 검사에 쓰이지 않으므로(설계안 v3 8.2·8.3, C36) 담당자가 "
+            "모른다고 답해도 확인할 것이 남지 않는다. 모르는 출처는 unresolved와 unknownFields에 "
+            "남는다. st_b의 금지와 나머지 기대는 그대로 맞다"
+        ),
+    },
+}
+
+
+def errata(version: str = CURRENT_TEST) -> dict[str, str]:
+    """그 판의 정오표 {사례 ID: 이유}."""
+    return dict(ERRATA.get(version) or {})
 
 
 def set_dir(version: str) -> Path:
