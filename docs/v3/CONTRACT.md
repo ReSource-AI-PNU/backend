@@ -34,6 +34,7 @@
 | `app/v3/eval/` | 평가(8단계): 사례 세트 `cases/*.json`, 실행기, 형식 준수 시험, Foundry 평가 입력, 리포트 |
 | `app/v3/api.py`, `sql.py`, `mcp_server.py`, `vendor_service.py` | 프레임워크 가장자리 |
 | `app/v3/tracing.py`, `agents/maf.py`, `judge/distance.py`, `evidence/search_azure.py` | Azure 연결부(추적, Agent Framework, 도로 거리, 색인). 설정이 있을 때만 켜진다 |
+| `app/v3/live.py` | 실시간 진행: 진행 기록 쓰기(`Recorder`, `Turn`), 실행 자리(heartbeat), SSE 조각(8장 "실시간 진행") |
 | `scripts/v3/ingest_laws.py`, `index_evidence.py`, `register_foundry_agents.py` | 법령 수집, 근거 색인, 에이전트 등록 스크립트 |
 | `tests/v3/` | 테스트. 가장자리 테스트는 `pytest.importorskip`으로 시작한다 |
 
@@ -249,6 +250,9 @@ VendorProfile {"orgId": "org_saegil",
 ```
 
 `{"claim"}`은 `{"id", "kind", "value", "unit", "evidence"}` 객체다. 값이 없으면 `null`을 넣고 화면은 "확인 필요"를 보여 준다.
+
+- `session.status`의 `running`은 그 진단의 실행 자리가 살아 있다는 뜻이다(8장 "실시간 진행"). 뒤에서 도는 실행이 아직 진단을 고치기 전에도 `running`이고, 저장된 상태가 `running`이어도 실행 자리가 비었거나 멈췄으면(프로세스가 죽음) `idle`로 보인다. `GET /sessions`의 `status`도 같다.
+- `events[].kind`에 `error`가 더해졌다. 진행 중 오류(`detail.error`: 오류 종류 이름이나 코드, `detail.runId`)와 멈춘 실행 자리를 이어받은 일(`detail.reason: "stale"`)이다. 업체가 보는 뷰에는 나오지 않는다.
 
 ### 순비용의 내역과 공정 재투입
 
@@ -499,6 +503,83 @@ VendorProfile {"orgId": "org_saegil",
 | `GET /admin/retrain/export`, `POST /admin/retrain/runs` | 재학습 행 내보내기, 재학습 실행 결과 등록(관리자만) |
 
 오류는 `{"error": {"code": "...", "message": "한국어 문장"}}`과 맞는 상태 코드로 낸다.
+
+### 실시간 진행 (`?mode=async`, 스트림)
+
+두 에이전트가 주고받는 대화를 화면이 바로 보여 주게 한다. 실행은 뒤에서 돌고 화면은 진행 기록을 SSE로 받는다. 구현은 `app/v3/live.py`(기록 쓰기, 실행 자리, SSE 조각), `service.start_run`·`execute_run`·`stream_events`, `api.py`와 `devserver.py`의 같은 두 경로다.
+
+**뒤에서 돌리기.** `POST /sessions/{id}/run?mode=async` → 202 `{"sessionId": "ses_1", "status": "running", "runId": "run_3", "after": 41}`.
+
+- 동기 실행과 같이 배출 기업(과 관리자)만 부른다(업체는 403 `FORBIDDEN`, 체험하기는 403 `DEMO_READ_ONLY`). 질의가 없거나 `mode=sync`면 전처럼 이 요청 안에서 돌리고 진단 뷰를 준다. 다른 `mode`는 422 `INVALID_VALUE`.
+- `after`는 이 실행이 남길 첫 기록 바로 앞의 seq다. 스트림을 `?after=<after>`로 열면 이 실행의 기록만 받는다(0이면 처음부터).
+- 실행 중 오류: events에 `kind: "error"`(`detail.error`는 오류 종류 이름이나 코드. 내용은 싣지 않는다)와 진행 기록의 안내 한 줄(`status`)을 남기고, `running`으로 남은 진단을 `idle`(답할 질문이 있으면 `awaiting_answers`)로 돌린다. 동기 실행의 오류는 전처럼 오류 응답(500 `INTERNAL` 등)이고 같은 기록이 남는다.
+
+**실행 자리(한 진단에 진행 하나).**
+
+- run(동기·비동기), 답(`POST /sessions/{id}/answers`), 승인(`POST /sessions/{id}/approvals`)은 시작할 때 그 진단의 실행 자리를 차지하고 끝나면 비운다. 자리가 살아 있으면 409 `RUN_IN_PROGRESS`다.
+- 자리는 저장소에 있다(메모리, SQL은 `v3_records`의 kind `runs`). 도는 동안 10초마다 살아 있다고 적고(heartbeat), 60초 동안 적지 않은 자리는 멈춘 것(프로세스가 죽거나 다시 뜸)으로 본다. 멈춘 자리는 다음 진행이 이어받고 events에 `kind: "error"`, `detail.reason: "stale"`을 남긴다. 진행기는 저장된 단계부터 이어 간다.
+
+**스트림.** `GET /sessions/{id}/stream` → `text/event-stream`.
+
+- 처음 읽을 때 권한을 확인한다. 볼 수 없으면 SSE가 아니라 보통의 오류(404 `SESSION_NOT_FOUND`, 401 등)다. 체험하기(`X-Demo-View: 1`, GET)로 시연 진단을 볼 수 있고 실제 조직의 진단은 보이지 않는다.
+- 응답 헤더 `Cache-Control: no-cache`, `X-Accel-Buffering: no`. 첫 조각은 `retry: 3000`이다(프록시가 응답 머리를 곧바로 넘기게 한다).
+- 기록 하나는 `id: <seq>`, `event: activity | status | question`, `data: <JSON 한 줄>`이다. seq는 진단마다 1부터 늘어나는 진행 기록 번호다. 보는 조직에게 걸러진 기록이 있으면 번호를 건너뛴다.
+- 15초 동안 보낼 것이 없으면 주석 줄 `: keep-alive`를 보낸다.
+- 실행 자리가 비었고(실행이 끝남) 기록을 다 보냈으면 `event: done`, `data: {"status": "awaiting_approval", "lastSeq": 158}`(id 없음)를 보내고 닫는다. 실행 중이면 열어 둔다. 실행 중이 아닌 진단을 열면 지난 기록을 보내고 곧바로 `done`이다. 그래서 화면은 run을 부른 뒤(202) 스트림을 연다.
+- 이어 받기: `Last-Event-ID` 헤더와 `?after=<seq>` 가운데 큰 값보다 큰 seq만 보낸다. 기록은 저장소에 남으므로 다시 붙어도 빠뜨리거나 두 번 보내지 않는다. `after`가 0 이상의 정수가 아니면 422 `INVALID_VALUE`, 읽을 수 없는 `Last-Event-ID`는 쓰지 않는다.
+- 도중에 볼 수 없게 되면(시연 되돌리기로 지워짐 등) `event: error`, `data: {"code", "message"}`를 보내고 닫는다.
+
+`event: activity`:
+
+```json
+{"seq": 64, "at": "2026-11-18T05:12:09+00:00", "stage": 4,
+ "actor": "company_agent | vendor_agent | validator | tool | system",
+ "kind": "drafting | validating | rejected | rewriting | sent | handoff | tool | question | status",
+ "threadId": "th_1", "vendorOrgId": "org_saegil", "vendorName": "(주)새길자원",
+ "author": {"side": "company", "kind": "agent", "label": "회사 측 AI"},
+ "text": "회사 측 AI가 메시지를 쓰고 있습니다.", "attempt": 1}
+```
+
+| `kind` | `actor` | 언제 | 더 붙는 필드 |
+|---|---|---|---|
+| `drafting` | `company_agent`, `vendor_agent` | 에이전트가 첫 초안을 쓰기 시작했다(모델을 부르기 전) | `attempt: 1` |
+| `validating` | `validator` | 보내기 전에 초안의 숫자·조항을 근거와 대조한다. 회사 측이 받은 업체 답을 다시 확인할 때도 나온다(작성자는 업체, 문장은 "회사 측에서 …") | `attempt`(있을 때) |
+| `rejected` | `validator` | 근거 확인에서 초안을 돌려보냈다 | `reasons`(화면용 사유 분류), `codes`(관리자 조직만), `attempt` |
+| `rewriting` | `company_agent`, `vendor_agent` | 거부 사유를 고쳐 다시 쓴다 | `attempt: 2` |
+| `sent` | `company_agent`, `vendor_agent` | 메시지가 대화에 붙었다(보냄) | `message`, `messageType`, `evidenceCount`(검증을 통과한 claim 수) |
+| `handoff` | `company_agent`, `vendor_agent` | 담당자에게 넘기는 메시지가 붙었다 | `message`, `messageType` |
+| `tool` | `tool` | 판단 도구를 불렀다 | `tool: {"name", "label", "status"}` |
+| `question` | `system` | 담당자 질문 묶음을 냈다(배출 기업만) | |
+| `status` | `system` | 단계 시작, 대화 열기, 조건 정리, 합의, 승인, 확정, 문서, 멈춤, 오류 안내 | |
+
+- `author`는 그 일이 붙는 말풍선의 쪽이다(7장 "작성자 표시"와 같은 값). 코드가 쓴 메시지(허가 품목 decline, handoff)는 `kind: "system"`, `label: "자동 안내"`다. 진행기의 안내(`status`, `question`)는 `null`이다.
+- `text`는 화면에 그대로 보일 한국어 한 줄이다. 숫자, 근거 ID, 내부 코드를 넣지 않는다(거부 사유도 분류만 쓴다). 값은 `message`의 claims에 있다.
+- `message`는 같은 조직이 `GET /sessions/{id}`로 받는 `threads[].messages[]`의 그 메시지와 같다(같은 함수로 만든다). 보는 조직이 그 대화를 볼 수 없으면(관리자 조직) `null`이다.
+- `reasons`(거부 사유 분류, 코드는 아래 "초안 거부 코드"): 근거에 없는 숫자(`NUMBER_OUTSIDE_PLACEHOLDER`), 근거에 없는 값(`UNKNOWN_PLACEHOLDER`, `UNKNOWN_CLAIM_REF`, `CLAIM_WITHOUT_EVIDENCE`, `EVIDENCE_NOT_FOUND`), 본문과 값이 맞지 않음(`UNUSED_CLAIM`), 근거와 다른 값(`VALUE_MISMATCH`, `UNIT_MISMATCH`), 원문과 다른 조항 인용, 볼 수 없는 근거, 기한이 지난 근거, 지금 보낼 수 없는 종류(`TYPE_NOT_ALLOWED`, `APPROVAL_REQUIRED`), 대화 규칙에 맞지 않음, 대화에 없는 폐기물, 허가 품목이 맞지 않음, 근거 없는 조건 낱말, 업체 기준 밖의 조건(`GUARDRAIL_*`), 다른 회사 정보(`OTHER_EMITTER_*`), 응답 형식 오류, 모델 호출 실패. 모르는 코드는 "검사를 통과하지 못함". 표는 `live.REASONS`다.
+- `tool.label`은 도구의 한국어 이름(`live.TOOL_LABELS`), `status`는 `calculated | conditional | needs_information | error`다.
+
+`event: status`: `{"seq", "at", "status", "phase", "stages": [7장의 stages와 같은 모양]}`. 진단 상태, 진행 단계(`phase`), 단계별 상태가 바뀔 때 나온다.
+
+`event: question`: `{"seq", "at", "stage", "questions": [7장의 questions와 같은 모양]}`. 담당자 질문 묶음이다. 배출 기업(과 관리자 조직)만 받는다.
+
+보는 조직에 따른 거르기는 진단 뷰와 같다.
+
+- 배출 기업(과 관리자 조직): 모든 기록.
+- 업체: 자기와 열린 대화(`not_opened`가 아닌)의 기록 가운데 두 당사자가 함께 보는 것(`sent`, `handoff`, 대화 열기·합의·승인·확정·문서 안내)과 자기 쪽이 한 일(자기 에이전트의 작성 중·근거 확인·거부·다시 쓰기·도구)만 받는다. 회사 측의 작성·검증·도구, 회사 측의 재확인, 다른 업체의 대화, 담당자 질문, 대화 밖의 안내는 받지 않는다. `status`는 받는다(진단 뷰의 `session`·`stages`와 같다).
+- 거부 코드(`codes`)는 관리자 조직에만 나간다.
+
+저장과 실시간:
+
+- 진행기는 그 일을 할 때 곧바로 기록을 저장소에 쓴다. 메모리 저장은 프로세스 안 목록, SQL은 `v3_activity` 테이블(마이그레이션 `0006_v3_activity`)이고 기록 하나가 트랜잭션 하나라 곧바로 커밋된다. 스트림은 저장소에서 읽으므로 실행이 끝나기 전에도 보이고 이어 받기가 정확하다.
+- 같은 프로세스에서는 기록을 쓸 때 기다리는 스트림을 깨운다(0.1초 안에 나간다). 다른 프로세스가 쓴 기록도 1초마다 저장소를 다시 읽어 잡는다.
+- 작성 중·근거 확인·거부·다시 쓰기는 `draft.run_draft`가 모델을 부르기 전과 검사하기 전에 알린다(`draft.LIVE`, `live.Turn`). 실제 모델이면 차례마다 몇 초씩 걸리므로 작성 중이 그만큼 보이고, 규칙 정책(시연)이면 곧바로 지나가도 같은 순서(작성 중 → 근거 확인 → 보냄)가 남는다.
+- 업체 측 에이전트가 다른 프로세스에 있으면(`V3_VENDOR_AGENTS`) 업체 측 작성 중은 회사 측이 부를 때 남기고, 업체 측의 거부·다시 쓰기·도구는 답을 받은 뒤 업체 측이 보낸 기록(정해 둔 값만 옮긴 것)으로 채운다.
+
+배포에서 주의할 것:
+
+- 프록시(Caddy, nginx)와 프런트 서버(Next.js BFF)는 `text/event-stream` 응답을 모아 두지 말고 그대로 흘려보내야 한다. 백엔드는 위 헤더를 보낸다. 브라우저의 `EventSource`는 헤더를 붙일 수 없으므로 BFF가 같은 출처의 주소로 받아 `Authorization`, `X-User-Id`, `X-Org-Id`(체험하기면 `X-Demo-View`)와 `Last-Event-ID`를 붙여 넘긴다.
+- 뒤에서 도는 실행은 요청을 받은 프로세스의 스레드다. 배포는 컨테이너 하나에 uvicorn 프로세스 하나다. 프로세스를 여럿 띄워도 실행 자리와 기록이 PostgreSQL에 있어 409와 스트림은 맞게 돌지만, 다른 프로세스가 쓴 기록은 1초 간격으로 보인다. 프로세스가 죽으면 그 실행은 이어지지 않는다(60초 뒤 멈춘 것으로 보고 다시 진행할 수 있다).
+- 메모리 저장(로컬, 테스트)에서 동기 실행은 끝날 때까지 다른 요청을 기다리게 하므로(전과 같다) 스트림도 끝에 한꺼번에 받는다. 실시간으로 보려면 `mode=async`를 쓴다(뒤에서 도는 실행은 저장소를 부를 때만 잠근다).
 
 ### 오류 코드 전체 목록
 
