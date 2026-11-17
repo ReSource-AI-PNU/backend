@@ -102,6 +102,33 @@ def discoverable_profiles(store: Any, emitter: dict[str, Any]) -> dict[str, dict
     }
 
 
+# 대화의 끝 상태(threadOutcome) → 화면 문장. 실행이 멈출 때 실시간 기록과 진단 뷰(threads[].outcome)에 쓴다
+THREAD_OUTCOMES = {
+    "agreed": "조건이 맞아 양쪽 담당자의 승인을 기다립니다.",
+    "confirmed": "확정했습니다.",
+    "declined": "업체가 받을 수 없다고 답해 대화를 마쳤습니다.",
+    "handoff": "담당자에게 넘겨 대화를 마쳤습니다.",
+    "not_selected": "조건을 받았지만 이번 최적안에는 들지 않아 대화를 마쳤습니다.",
+    "ended": "조건을 다 받지 못한 채 대화를 마쳤습니다.",
+    "waiting": "배출 기업 담당자의 답을 기다리는 동안 멈췄습니다.",
+}
+
+
+def thread_outcome(session: dict[str, Any], thread_id: str, status: str) -> tuple[str | None, str]:
+    """(끝 상태, 문장). 열지 않은 대화와 아직 진행 중인 대화는 (None, "")다."""
+    if status in ("agreed", "confirmed", "declined", "handoff"):
+        return status, THREAD_OUTCOMES[status]
+    if status != "open":
+        return None, ""
+    if session.get("status") == "awaiting_answers":
+        return "waiting", THREAD_OUTCOMES["waiting"]
+    if session.get("phase") in ("approval", "done") and session.get("status") != "running":
+        offered = bool(((session.get("work") or {}).get("offers") or {}).get(thread_id))
+        outcome = "not_selected" if offered else "ended"
+        return outcome, THREAD_OUTCOMES[outcome]
+    return None, ""
+
+
 class OrchestratorError(RuntimeError):
     """진행기 규칙 위반. code는 서비스 오류 코드로 그대로 쓴다."""
 
@@ -493,6 +520,31 @@ class Orchestrator:
         text = STATUS_NOTES.get(str(session.get("status")))
         if text:
             self.feed.note(session["id"], text, org_id=session["emitterOrgId"])
+        self._note_threads(session)
+
+    def _note_threads(self, session: dict[str, Any]) -> None:
+        """실행이 멈출 때 대화마다 끝 상태를 한 줄씩 남긴다(두 당사자가 함께 본다).
+
+        실시간 화면은 대화마다 마지막 기록으로 상태를 보인다. 실행이 끝났는데 조건을 받고 배정되지 않은
+        대화가 "조건을 묻는 중"으로 남지 않게 한다. 지난번에 남긴 끝 상태와 같으면 다시 남기지 않는다.
+        """
+        last: dict[str, str] = {}
+        for entry in self.store.list_activity(session["id"], 0):
+            if entry.get("kind") == "status" and entry.get("threadOutcome"):
+                last[str(entry.get("threadId"))] = str(entry["threadOutcome"])
+        for thread in self._threads(session["id"]):
+            outcome, text = thread_outcome(session, thread.id, thread.status)
+            if outcome is None or last.get(thread.id) == outcome:
+                continue
+            self.feed.note(
+                session["id"],
+                text,
+                thread=thread,
+                org_id=thread.emitter_org,
+                shared=True,
+                threadStatus=thread.status,
+                threadOutcome=outcome,
+            )
 
     # ── 합의 뒤 업체 조건 변경: 새 조건으로 대화를 이어 간다 ───────────
     def _renegotiate(self, session: dict[str, Any]) -> bool:

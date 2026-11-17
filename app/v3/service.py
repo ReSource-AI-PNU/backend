@@ -33,6 +33,7 @@ from app.v3.agents.orchestrator import (
     block_codes,
     memo_result,
     thread_names,
+    thread_outcome,
     vendor_model,
 )
 from app.v3.agents.policy_rule import RulePolicy
@@ -1124,8 +1125,16 @@ def _thread_view(app: App, thread: dict[str, Any], session: dict[str, Any], view
         "turns": thread["turns"],
         "maxTurns": thread["maxTurns"],
         "agreedSeq": thread.get("agreedSeq"),
+        # 실행이 멈춘 뒤의 끝 상태와 문장(agreed, confirmed, declined, handoff, not_selected, ended,
+        # waiting). 진행 중이거나 열지 않은 대화는 null이다
+        **_outcome_view(session, thread),
         "messages": [_message_view(m, thread["emitterOrgId"]) for m in thread["messages"]],
     }
+
+
+def _outcome_view(session: dict[str, Any], thread: dict[str, Any]) -> dict[str, Any]:
+    outcome, text = thread_outcome(session, thread["id"], thread["status"])
+    return {"outcome": outcome, "outcomeText": text or None}
 
 
 def _graph(
@@ -1662,6 +1671,10 @@ def _activity_view(
         data["reasons"] = list(entry.get("reasons") or [live.DEFAULT_REASON])
         if admin:
             data["codes"] = list(entry.get("codes") or [])
+    elif kind == "status" and entry.get("threadOutcome"):
+        # 실행이 멈출 때 남긴 대화의 끝 상태. 화면은 그 대화의 상태 표시를 이것으로 바꾼다
+        data["threadStatus"] = entry.get("threadStatus")
+        data["threadOutcome"] = entry.get("threadOutcome")
     elif kind == "tool":
         name = entry.get("tool")
         data["tool"] = {

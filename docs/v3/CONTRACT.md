@@ -566,13 +566,14 @@ VendorProfile {"orgId": "org_saegil",
 | `handoff` | `company_agent`, `vendor_agent` | 담당자에게 넘기는 메시지가 붙었다 | `message`, `messageType` |
 | `tool` | `tool` | 판단 도구를 불렀다 | `tool: {"name", "label", "status"}` |
 | `question` | `system` | 담당자 질문 묶음을 냈다(배출 기업만) | |
-| `status` | `system` | 단계 시작, 대화 열기, 조건 정리, 합의, 승인, 확정, 문서, 멈춤, 오류 안내 | |
+| `status` | `system` | 단계 시작, 대화 열기, 조건 정리, 합의, 승인, 확정, 문서, 멈춤, 오류 안내, 대화의 끝 상태 | 대화의 끝 상태면 `threadStatus`, `threadOutcome` |
 
 - `author`는 그 일이 붙는 말풍선의 쪽이다(7장 "작성자 표시"와 같은 값). 코드가 쓴 메시지(허가 품목 decline, handoff)는 `kind: "system"`, `label: "자동 안내"`다. 진행기의 안내(`status`, `question`)는 `null`이다.
 - `text`는 화면에 그대로 보일 한국어 한 줄이다. 숫자, 근거 ID, 내부 코드를 넣지 않는다(거부 사유도 분류만 쓴다). 값은 `message`의 claims에 있다.
 - `message`는 같은 조직이 `GET /sessions/{id}`로 받는 `threads[].messages[]`의 그 메시지와 같다(같은 함수로 만든다). 보는 조직이 그 대화를 볼 수 없으면(관리자 조직) `null`이다.
 - `reasons`(거부 사유 분류, 코드는 아래 "초안 거부 코드"): 근거에 없는 숫자(`NUMBER_OUTSIDE_PLACEHOLDER`), 근거에 없는 값(`UNKNOWN_PLACEHOLDER`, `UNKNOWN_CLAIM_REF`, `CLAIM_WITHOUT_EVIDENCE`, `EVIDENCE_NOT_FOUND`), 본문과 값이 맞지 않음(`UNUSED_CLAIM`), 근거와 다른 값(`VALUE_MISMATCH`, `UNIT_MISMATCH`), 원문과 다른 조항 인용, 볼 수 없는 근거, 기한이 지난 근거, 지금 보낼 수 없는 종류(`TYPE_NOT_ALLOWED`, `APPROVAL_REQUIRED`), 대화 규칙에 맞지 않음, 대화에 없는 폐기물, 허가 품목이 맞지 않음, 근거 없는 조건 낱말, 업체 기준 밖의 조건(`GUARDRAIL_*`), 다른 회사 정보(`OTHER_EMITTER_*`), 응답 형식 오류, 모델 호출 실패. 모르는 코드는 "검사를 통과하지 못함". 표는 `live.REASONS`다.
 - `tool.label`은 도구의 한국어 이름(`live.TOOL_LABELS`), `status`는 `calculated | conditional | needs_information | error`다.
+- **대화의 끝 상태.** 실행이 멈출 때(승인 대기, 끝남, 답 대기) 열린 대화마다 `kind: "status"` 기록 하나가 `threadId`와 함께 나온다(두 당사자가 함께 본다). `threadOutcome`은 `agreed`(승인 대기) | `confirmed` | `declined` | `handoff` | `not_selected`(조건을 받았지만 최적안에 들지 않음) | `ended`(조건을 다 받지 못하고 끝남) | `waiting`(배출 기업 담당자 답 대기)이고 `text`가 그 문장이다. 화면은 대화마다 마지막 끝 상태로 "조건을 묻는 중" 표시를 바꾼다. 지난번과 같은 끝 상태는 다시 나오지 않는다. 진단 뷰 `threads[]`에도 같은 값이 `outcome`, `outcomeText`(진행 중이거나 열지 않은 대화는 `null`)로 있다.
 
 `event: status`: `{"seq", "at", "status", "phase", "stages": [7장의 stages와 같은 모양]}`. 진단 상태, 진행 단계(`phase`), 단계별 상태가 바뀔 때 나온다.
 
