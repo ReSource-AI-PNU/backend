@@ -40,7 +40,7 @@ def rpc(client, method, params=None, headers=None, request_id=1):
 
 def test_definitions_come_from_toolbox():
     definitions = mcp_server.tool_definitions()
-    assert [d["name"] for d in definitions] == list(TOOLS) and len(definitions) == 10
+    assert [d["name"] for d in definitions] == list(TOOLS) and len(definitions) == 11
     for definition in definitions:
         spec = TOOLS[definition["name"]]
         assert spec.description in definition["description"]

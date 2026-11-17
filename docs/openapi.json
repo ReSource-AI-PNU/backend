@@ -3494,6 +3494,23 @@
       }
     },
     "/api/v3/sessions": {
+      "get": {
+        "tags": [
+          "v3"
+        ],
+        "summary": "Session List",
+        "operationId": "session_list_api_v3_sessions_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      },
       "post": {
         "tags": [
           "v3"
