@@ -16,6 +16,7 @@ import re
 from collections.abc import Callable, Iterable
 from typing import Any
 
+from app.v3 import names
 from app.v3.evidence import lexical
 from app.v3.evidence.model import PUBLIC, Evidence
 from app.v3.evidence.registry import EvidenceForbidden, EvidenceNotFound, EvidenceRegistry
@@ -171,6 +172,13 @@ def shown(evidence: Evidence, org_id: str | None) -> dict[str, Any]:
     data = evidence.to_dict()
     if org_id is None:
         return data
+    # 출처는 화면 이름으로 보인다. 저장된 글(도구 ID 등)은 sourceRaw에, 도구 ID는 tool에 남긴다(관리자·기술 정보)
+    data["sourceRaw"] = data["source"]
+    data["source"] = names.source_label(evidence.kind, evidence.source, evidence.meta)
+    tool = (evidence.meta or {}).get("tool")
+    if tool:
+        data["tool"] = str(tool)
+        data["toolLabel"] = names.tool_label(tool)
     inputs = data["meta"].get("inputs")
     if isinstance(inputs, dict) and "orgId" in inputs and inputs.get("orgId") != org_id:
         # 계산 근거의 입력 원본은 계산한 조직만 본다. 나누는 근거에는 처음부터 상대가 볼 수 있는

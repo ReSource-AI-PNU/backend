@@ -12,6 +12,23 @@ from __future__ import annotations
 import re
 from typing import Any
 
+# 판단 도구 이름(기계 ID) -> 화면에 보여 줄 한국어 이름. 실시간 진행(live.py)과 근거의 출처가 함께 쓴다.
+# 도구 ID(judge_route 등)는 관리자 화면과 기술 정보에만 둔다(DESIGN.md 제품 문구 원칙)
+TOOL_LABELS: dict[str, str] = {
+    "identify_stream": "폐기물 식별·등급",
+    "judge_route": "경로 판정·매입 기준 대조",
+    "judge_reuse": "공정 재투입 검토",
+    "check_loading": "최소 물량·적재 검사",
+    "search_clauses": "법령 조항 찾기",
+    "check_requirements": "규정 확인 항목",
+    "match_permit": "허가 품목 대조",
+    "find_vendors": "업체 찾기",
+    "cost_carbon": "비용·탄소 계산",
+    "route_extra_cost": "노선 추가 비용 계산",
+    "optimize_assignment": "최적 배정 계산",
+    "grade_stream": "등급 판정",
+}
+
 # role -> 화면에 보여 줄 이름
 LABELS: dict[str, str] = {
     "unitPrice": "매입 단가",
@@ -195,3 +212,41 @@ def criterion_label(criterion: dict[str, Any] | None, fallback: str = "") -> str
 
 def has_digit(text: Any) -> bool:
     return bool(_DIGIT.search(str(text or "")))
+
+
+# ── 근거의 출처 ────────────────────────────────────────────────────────
+_TOOL_SOURCE = re.compile(r"^판단 도구 ([a-z_]+)$")
+_DOCUMENT_SOURCE = re.compile(r"^(?P<doc>.*) \(Document Intelligence 추출, .*확인\)$")
+_DETECTOR_SOURCE = re.compile(r"^탐지 모델 \S+ \S+ · (?P<file>.*)$")
+_PLAIN_SOURCES = {
+    "카카오모빌리티 자동차 길찾기 API (GET /v1/directions)": "카카오모빌리티 자동차 길찾기",
+    "Azure ML 재학습 작업(compare_and_gate.py)이 낸 결과를 관리자가 등록": "재학습 결과(관리자가 등록)",
+}
+
+
+def tool_label(tool: Any) -> str | None:
+    return TOOL_LABELS.get(str(tool)) if tool else None
+
+
+def source_label(kind: str | None, source: str | None, meta: dict[str, Any] | None = None) -> str:
+    """근거 출처의 화면 이름. 도구 ID, 서비스 이름, 조직 ID 같은 개발자 말을 하는 일로 바꾼다.
+
+    저장된 출처(source)는 그대로 두고 보여 줄 때만 바꾼다(근거 내용이 바뀌면 판이 올라간다).
+    """
+    text = str(source or "")
+    meta = meta or {}
+    tool = meta.get("tool")
+    if kind == "calc" and tool_label(tool):
+        return str(tool_label(tool))
+    found = _TOOL_SOURCE.match(text)
+    if found and tool_label(found.group(1)):
+        return str(tool_label(found.group(1)))
+    if kind == "model" and tool == "grade_stream":
+        return "등급 판정 모델" if "엔드포인트" in text else "등급 기준값 규칙(가정값)"
+    found = _DOCUMENT_SOURCE.match(text)
+    if found:
+        return f"{found.group('doc')} · 문서에서 읽고 담당자가 확인한 값"
+    found = _DETECTOR_SOURCE.match(text)
+    if found:
+        return f"사진 탐지 모델 · {found.group('file')}"
+    return _PLAIN_SOURCES.get(text, text)

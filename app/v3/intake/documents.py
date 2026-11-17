@@ -689,7 +689,8 @@ def confirm_field_map(
                 value=value,
                 unit=item.get("unit"),
                 excerpt=raw,
-                source=f"{document_name} (Document Intelligence 추출, {confirmed_by} 확인)",
+                # 화면에 그대로 보이는 출처다. 읽은 방법과 확인한 조직은 meta에 둔다
+                source=f"{document_name} · 문서에서 읽고 담당자가 확인한 값",
                 as_of=today,
                 access=(org_id,),
                 meta={

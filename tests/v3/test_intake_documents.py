@@ -243,7 +243,7 @@ def test_confirm_fields_registers_only_confirmed_values():
         "원/kg",
         "2026-11-17",
     )
-    assert "김담당 확인" in evidence.source
+    assert evidence.meta["confirmedBy"] == "김담당"
     with pytest.raises(PermissionError):
         registry.get(ids_[0], "org_hanbit")
 

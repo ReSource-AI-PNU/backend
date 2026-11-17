@@ -56,6 +56,8 @@
   - 나누는 호출 기록에는 현행 처리와 탄소에 관한 검사(`current_cost`, `current_assumed`, `current_method`, `carbon`, `kau`)와 부른 조직만 보는 계산 근거의 ID를 싣지 않는다. 도구 결과(`checks`, `evidence`)에는 그대로 있다.
   - 근거를 조직에게 내보낼 때(`search.shown`을 거치는 조회, 검색, 계산 사슬)는 계산한 조직(`meta.inputs.orgId`)이 아니면 `meta.inputs`를 `{"hidden": true}`로 가린다. 이 규칙 전에 저장된 근거도 가려진다.
 
+- **출처는 화면 이름으로 나간다.** 조직에게 근거를 내보낼 때(`search.shown`) `source`는 사람이 읽는 이름(`names.source_label`)이고, 저장된 글은 `sourceRaw`에 있다. 도구가 만든 근거(`calc`, 등급 `model`)에는 `tool`(기계 ID, 관리자·기술 정보용)과 `toolLabel`(예: `judge_route` → "경로 판정·매입 기준 대조", `optimize_assignment` → "최적 배정 계산", `cost_carbon` → "비용·탄소 계산")이 붙는다. 화면은 `source`와 `toolLabel`만 보이고 도구 ID를 쓰지 않는다. 실행 기록(`events[]`)의 도구 호출에도 `detail.toolLabel`이 붙는다. 저장된 근거는 바꾸지 않는다(내용이 바뀌면 판이 올라간다).
+
 ID는 `app/v3/ids.py`의 함수로만 만든다.
 
 ### 단위

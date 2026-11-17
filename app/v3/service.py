@@ -1340,6 +1340,9 @@ def _event_view(
     detail = scrub(event.get("detail") or {})
     if hidden:
         detail["hiddenEvidenceCount"] = len(hidden)
+    if naming.tool_label(detail.get("tool")):
+        # 화면에는 도구 ID(detail.tool) 대신 이 이름을 쓴다
+        detail["toolLabel"] = naming.tool_label(detail.get("tool"))
     return {**event, "detail": detail}
 
 

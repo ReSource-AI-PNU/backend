@@ -28,6 +28,7 @@ import time
 from collections.abc import Callable, Iterator
 from typing import Any, Self
 
+from app.v3 import names
 from app.v3.agents import draft
 from app.v3.judge.toolbox import TOOLS
 from app.v3.textutil import josa
@@ -76,19 +77,7 @@ TYPE_LABELS = {
     "confirm": "확정",
 }
 
-TOOL_LABELS = {
-    "identify_stream": "폐기물 식별·등급",
-    "judge_route": "경로 판정·매입 기준 대조",
-    "judge_reuse": "공정 재투입 검토",
-    "check_loading": "최소 물량·적재 검사",
-    "search_clauses": "법령 조항 찾기",
-    "check_requirements": "규정 확인 항목",
-    "match_permit": "허가 품목 대조",
-    "find_vendors": "업체 찾기",
-    "cost_carbon": "비용·탄소 계산",
-    "route_extra_cost": "노선 추가 비용 계산",
-    "optimize_assignment": "최적 배정 계산",
-}
+TOOL_LABELS = names.TOOL_LABELS  # 판단 도구의 화면 이름(names.py)
 TOOL_STATUS_LABELS = {
     "calculated": "확인됨",
     "conditional": "조건부",
