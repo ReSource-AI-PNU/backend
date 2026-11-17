@@ -12,11 +12,10 @@
 ```json
 {"type": "offer", "stage": 5, "streamIds": ["st_sprue"],
  "text": "분쇄 상태로 받으면 단가는 {{unitPrice}}입니다.",
- "claimRefs": ["unitPrice"],
- "toolCalls": [{"name": "judge_route", "arguments": {}}]}
+ "toolCalls": []}
 ```
 
-3. 코드가 `claimRefs`를 풀에서 찾아 claims를 채운다. 풀에 없는 ID를 쓰면 그 자체로 거부다.
+3. 코드가 본문의 자리표시자를 풀에서 찾아 claims를 채운다(`draft.claim_refs`). 풀에 없는 ID를 쓰면 그 자체로 거부다. `claimRefs`는 모델이 내지 않아도 된다. 냈으면 그 순서를 따르되 본문에 없는 ID는 싣지 않고 본문에만 있는 ID는 더한다(값은 언제나 풀에서 오고, 본문에 보이지 않는 claim이 메시지에 실리지 않는다. 근거 검증기의 `UNUSED_CLAIM`·`UNKNOWN_PLACEHOLDER` 검사는 그대로 돈다).
 4. 근거 검증기가 메시지를 검사한다. 거부되면 거부 사유를 모델에게 돌려주고 한 번 다시 쓰게 한다. 두 번째도 거부되면 `handoff` 메시지를 보내고 스레드를 사람에게 넘긴다.
 5. 통과한 메시지만 스레드에 붙고 상대에게 전달된다. 모든 시도는 실행 기록에 남는다. 거부된 초안은 본문 없이 거부한 사실(코드와 일반 문장)만 남는다. 거부된 초안에 들어 있던 값은 화면으로 나가지 않는다.
 
@@ -31,6 +30,11 @@
 - **거부 기록은 줄여서 남긴다.** 회사 측과 업체 측 모두 거부 사유는 코드와 일반 문장만 실행 기록에 남는다(거부된 값, 가드레일 수치, 다른 배출 기업의 근거 ID가 새지 않게 한다).
 - **본문 밖 문장도 같은 검사를 받는다.** 모델이 쓰는 `reason`, `excluded[].reason`, `terms.conditions`는 화면과 문서에 그대로 나가므로 근거 검증기(자리표시자 밖 숫자, 이 메시지의 claim만 가리키는 자리표시자)와 정보 차단 검사(`check_disclosure`)를 본문과 함께 받는다. `excluded`에는 이 대화의 흐름 ID와 이유만, `terms.days`에는 요일 낱말만 남긴다.
 - **도구 인자 기록.** 실행 기록에는 도구 인자 가운데 식별자만 남긴다. 쓸 수 없는 도구를 부르면 이름도 옮기지 않는다.
+- **차례마다 응답 스키마를 다시 만든다(`draft.turn_schema`).** 지금 보낼 수 있는 `type`(대화 규칙과 차례에 맞는 것만), 이 대화의 흐름 ID, 도구 이름과 입력 키, 업체 측의 단가 claim ID(`terms.items[].unitPriceRef`, 풀에서 kg당 금액인 것만)와 수거 요일(가드레일의 요일)이 enum으로 들어간다. Foundry는 structured outputs strict로, Ollama는 `format`으로 이 스키마를 지키게 하므로 `TYPE_NOT_ALLOWED`, 모르는 흐름, 지어낸 단가 ID는 나오지 않는다. 숫자는 스키마로 막지 않는다(근거 검증기가 본다. 2026-11-18에 `pattern`으로 숫자를 막아 보니 모델이 숫자를 쓰려던 자리에 뜻 없는 글자를 냈다). 엄격 모드의 모델은 쓰지 않는 항목을 `null`로 내고, 코드는 `null`을 없는 것으로 본다(`draft.drop_nulls`).
+- **입력에 이번 차례의 할 일(`guide`)을 싣는다.** 코드가 대화 상태와 도구 결과에서 쓴다(모델이 판단을 새로 하지 않는다). 회사 측: 첫 문의에 물을 것(`judge_route`의 확인할 것), 아직 조건을 받지 못한 흐름이 있으면 그 흐름만 `question`, 모두 받았고 남은 조건이 반입 검수뿐이면 `accept`. 업체 측: 먼저 부를 도구, 받을 흐름과 받지 않을 흐름, 흐름마다 단가 claim과 그것이 처리비인지 매입 단가인지, 걸 조건 문장(규칙 정책과 같은 문장), 수거 횟수 claim과 요일, `offer`인지 `conditional`인지. 재작성 때는 거부 코드마다 고칠 것을 한 줄씩 덧붙인다(`draft.retry_guide`). 자세한 거부 사유(거부된 숫자 포함)는 다시 쓰는 모델에게만 가고 화면과 실행 기록에는 일반 문장만 남는다.
+- **풀은 줄여서 보여 준다(`PoolEntry.brief`).** 모델에게는 `id`, 사람이 읽는 이름, 값, 단위, `role`, 흐름 ID, 출처만 준다. 근거 ID와 내부 표시(조직 ID, 도구 키)는 싣지 않는다(입력이 약 3분의 1로 준다. 근거 ID에 든 날짜·해시를 본문에 옮겨 적지 않게 한다). claims를 채울 때는 풀의 근거가 그대로 붙는다.
+- **도구는 응답 JSON의 `toolCalls`로만 받는다.** 모델 고유의 도구 호출 목록은 보내지 않는다(입력 모양을 스키마 하나로 묶는다). 입력의 `tools`에 도구 이름, 하는 일, 받는 입력 키를 싣는다.
+- **시스템 지시.** 숫자 규칙을 구체적으로 적고(아라비아 숫자를 한 글자도 쓰지 않는다, 목록 번호·날짜도 숫자로 쓰지 않는다, `{{id}}` 뒤에 단위를 붙이지 않는다, 조건 문장의 `{{id}}`는 본문에도 쓴다, 처리비는 "처리비는 {{id}}"), 규칙 정책이 실제로 낸 메시지를 줄인 형식 예시 두 개를 붙인다(`company.EXAMPLES`, `vendor.EXAMPLES`). 시스템 글은 고정이고 문서·상대 메시지의 글은 들어가지 않는다.
 
 ## 2. 모델 구현 세 가지
 
@@ -38,8 +42,8 @@
 
 | 구현 | 쓰임 |
 |---|---|
-| `FoundryChat` | 회사 측 에이전트와 업체 측 기본 모델 |
-| `OllamaChat` | 업체가 오픈 모델을 고른 경우 |
+| `FoundryChat` | 회사 측 에이전트와 업체 측 기본 모델. 응답 스키마를 structured outputs strict로 보내고(`llm.strict_schema`), `reasoning_effort`(기본 low)를 보낸다. 추론에 토큰을 다 써서 본문이 비어 오거나(`finish_reason: length`) 모델이 거절하면 `LLMError`(→ `MODEL_ERROR`)다 |
+| `OllamaChat` | 업체가 오픈 모델을 고른 경우. 같은 차례 스키마를 `format`으로 보내고, 문맥 길이 `num_ctx`(기본 16384. Ollama 기본값은 에이전트 입력보다 짧다)와 출력 상한 `num_predict`(2048)를 보낸다. `done_reason: length`면 `LLMError`다 |
 | `RulePolicy` | 네트워크 없이 도는 결정적 정책. 로컬 시연과 테스트에 쓴다. 화면에는 모델 이름 대신 "규칙 정책(모델 미연결)"이라고 표시한다 |
 | `MafChat`, `RegisteredAgentChat` (`agents/maf.py`) | Microsoft Agent Framework로 같은 Foundry 모델을 부른다. `V3_AGENT_FRAMEWORK=chat`이면 `FoundryChatClient`, `agent`이면 Foundry Agent Service에 등록한 Prompt Agent(`scripts/v3/register_foundry_agents.py`)다. 설정이 없으면 `FoundryChat` 그대로다 |
 
@@ -252,7 +256,8 @@ def register_model_run(app, run, viewer) -> dict                    # 재학습 
 - 이어 갈 때는 근거 시드(법령·기준값)를 다시 올리지 않는다. 시드 파일을 바꿨으면 `--reset`으로 다시 시작한다.
 - `/admin/*`은 운영 조직(`org_admin`)으로 부른다. 시연 되돌리기는 누구나 부를 수 있고(`demo_open`), `--demo-closed`를 주면 관리자만 부른다.
 - **모델 고르기는 두 서버가 같은 함수로 한다**(`app/v3/agents/factory.py`의 `build_llm_factory`). FastAPI 경로(`api.py`)는 설정 `V3_LLM`을, 로컬 서버는 `--llm`(주지 않으면 환경 변수 `V3_LLM`)을 읽는다. 값은 `rule`(기본) | `foundry` | `anthropic`이다.
-  - `foundry`: `FOUNDRY_ENDPOINT`, `FOUNDRY_DEPLOYMENT`, `FOUNDRY_API_KEY`가 모두 있어야 한다.
+  - `foundry`: `FOUNDRY_ENDPOINT`, `FOUNDRY_DEPLOYMENT`, `FOUNDRY_API_KEY`가 모두 있어야 한다. `FOUNDRY_REASONING_EFFORT`는 `minimal | low | medium | high | none`(기본 `low`, `none`이면 보내지 않는다. 추론 모델이 아닌 배포), `FOUNDRY_MAX_COMPLETION_TOKENS`는 응답 토큰 상한(기본 4000, 추론 토큰 포함)이다. gpt-5 계열의 기본 추론 강도(medium)는 차례마다 추론 토큰을 3천~4천 개 써서, 한 번에 20~30초가 걸리고 상한 4000을 다 쓰면 본문이 빈 채로 돌아왔다(2026-11-18 배포 서버의 `INVALID_OUTPUT`).
+  - `OLLAMA_NUM_CTX`: Ollama 문맥 길이(기본 16384).
   - `anthropic`: 키는 `ANTHROPIC_API_KEY`, 비어 있으면 `ANTHROPIC_API_KEY_FILE`이 가리키는 파일(키만 담은 글)에서 읽는다. 모델 이름은 `ANTHROPIC_MODEL`(기본 `claude-sonnet-5-5`)이다. 설계의 기본 모델은 Foundry gpt-5-mini이고, 이 선택지는 Foundry를 쓸 수 없을 때 실제 모델로 돌리려고 둔 것이다.
   - 업체가 ollama를 골랐으면 `OLLAMA_BASE_URL`이 있을 때만 그 모델을 쓰고, 없으면 그 업체는 규칙 정책으로 돈다. `anthropic`에서 `V3_LLM_ALL_VENDORS=1`(설정에서는 `true`)을 주면 그 업체도 anthropic 모델이 답한다. 화면에는 설정한 모델과 실제로 답한 모델이 따로 나온다.
   - 설정이 빠졌을 때 로컬 서버는 어떤 값이 없는지만 밝히고 멈춘다. FastAPI 경로는 경고를 남기고 규칙 정책으로 돈다(서버는 뜨고, 관리자 화면과 대화에 "규칙 정책(모델 미연결)"로 나온다). 키 값은 어느 쪽도 출력하거나 기록하지 않는다.
@@ -263,7 +268,8 @@ def register_model_run(app, run, viewer) -> dict                    # 재학습 
 
   | 환경 변수 | 값 | 읽는 곳 |
   |---|---|---|
-  | `V3_AUTH` | `header`(기본, 시연 전용) \| `token` | FastAPI, 로컬 서버(`--auth`를 주지 않았을 때) |
+  | `V3_AUTH` | `header`(기본, 시연 전용) \| `token` \| `bff`(FastAPI만. 실제 계정·조직, CONTRACT 9장) | FastAPI, 로컬 서버(`--auth`를 주지 않았을 때. `bff`면 로컬 서버는 뜨지 않는다) |
+  | `V3_BFF_KEY` | 프런트 서버가 `Authorization: Bearer`로 보내는 키 | FastAPI(`V3_AUTH=bff`) |
   | `V3_ORG_TOKENS` | JSON 글 한 줄. `{"org_hanbit": "토큰", "org_saegil": ["새 토큰", "옛 토큰"]}` | FastAPI, 로컬 서버 |
   | `V3_ORG_TOKENS_FILE` | 위 JSON을 담은 파일의 경로 | 로컬 서버만(`--org-tokens`와 같다) |
 
@@ -298,10 +304,31 @@ def register_model_run(app, run, viewer) -> dict                    # 재학습 
 | `app/v3/eval/world.py` | 사례의 가상 세계(저장소, 근거)를 만든다 |
 | `app/v3/eval/runner.py` | `run_cases(app 또는 registry 또는 None, cases)`. 사례별로 판정 일치, 금지 위반, 검증기 통과를 보고 집계한다. 결정적이다 |
 | `app/v3/eval/format_compliance.py` | 모델 형식 준수 시험. `python3 -m app.v3.eval.format_compliance --provider rule\|scripted\|foundry\|ollama` |
+| `scripts/v3/llm_conformance.py` | 시연 시나리오를 실제 모델로 처음부터 승인 대기까지 돌려 대화별 결과, 초안 수, 거부 코드, 첫 초안 통과율, 모델 호출 수와 시간을 낸다. `uv run python scripts/v3/llm_conformance.py --llm foundry [--max-calls 40] [--all-vendors] [--dump 기록.jsonl]`. 담당자 질문에는 시연 값(오염도 0.5%, 수분 0.8%, 로트 일치 "예", 나머지 "모름")으로 답한다 |
 | `app/v3/eval/foundry_eval.py` | Foundry 평가(근거 충실도) 입력 JSONL(`query`, `response`, `context`)을 실행 기록에서 만든다 |
 | `app/v3/eval/report.py` | `docs/v3/eval-report.md`를 만든다. 숫자는 실행 결과에서만 나오고, 테스트가 저장된 파일과 지금 결과를 견준다 |
 | `scripts/v3/eval/run_foundry_eval.py` | Azure AI Evaluation SDK로 근거 충실도를 잰다(미실행) |
 
 - 설계 판단이 필요한 사례는 `"status": "open"`과 `openNote`를 붙여 남긴다. open이 아닌 사례는 기대와 모두 맞아야 테스트가 통과하고, open 사례가 기대와 같아지면 표시를 지우라고 테스트가 알려 준다.
 - 금지 위반은 사례의 `forbidden`과, 모든 사례에 걸리는 공통 규칙(가드레일, 허가 품목, 승인 전 확정, 턴 상한, 질문 한도, 조직 경계, 검증 없이 나간 메시지)을 함께 센다.
-- 실제 모델의 형식 준수율과 Foundry 근거 충실도는 재지 않았다. 리포트에 "미측정"으로 적힌다.
+- 형식 준수 시험(`format_compliance`)의 실제 모델 결과와 Foundry 근거 충실도는 재지 않았다. 리포트에 "미측정"으로 적힌다. 시연 시나리오의 실제 모델 결과는 아래에 적는다.
+
+### 시연 시나리오, 실제 모델(2026-11-18, Foundry gpt-5-mini)
+
+`scripts/v3/llm_conformance.py --llm foundry`로 로컬에서 쟀다. 회사 측과 새길자원·미소환경은 Foundry, 남해열분해(ollama 설정)는 Ollama 주소가 없어 규칙 정책으로 돌았다(`--all-vendors` 줄은 남해열분해도 Foundry). 첫 초안 통과율은 모델이 쓴 초안(메시지와 accept·ask_user 결정) 가운데 첫 시도에 통과한 비율이다. 고친 뒤 1~3, minimal, `--all-vendors` 1은 처리비 안내를 더하기 전 코드이고, 고친 뒤 4와 `--all-vendors` 2가 지금 코드(일시적 실패 재시도만 빠짐)다. 쓴 Foundry 호출은 확인 호출을 더해 모두 124번이다.
+
+| 실행 | 첫 초안 통과 | 거부 코드 | 합의한 대화 | 진단 상태 | 모델 호출 | 걸린 시간 |
+|---|---|---|---|---|---|---|
+| 고치기 전(추론 강도 기본값) | 1/4 (25%) | INVALID_OUTPUT 4, TYPE_NOT_ALLOWED 1, UNBACKED_TERM 1 | 0/3 (모두 handoff) | idle | 7 | 178초 |
+| 고친 뒤 1 | 11/11 | 없음 | 3/3 | awaiting_approval | 13 | 88초 |
+| 고친 뒤 2 | 11/11 | 없음 | 3/3 | awaiting_approval | 13 | 76초 |
+| 고친 뒤 3 | 11/11 | 없음 | 3/3 | awaiting_approval | 13 | 73초 |
+| 고친 뒤 4 | 10/11 | MODEL_ERROR 1(60초 시간 초과, 다음 시도 통과) | 3/3 | awaiting_approval | 14 | 140초 |
+| 고친 뒤, `FOUNDRY_REASONING_EFFORT=minimal` | 11/11 | 없음 | 3/3 | awaiting_approval | 13 | 65초 |
+| 고친 뒤, `--all-vendors` 1 | 9/9 | 없음 | 3/3 | awaiting_approval | 15 | 96초 |
+| 고친 뒤, `--all-vendors` 2 | 9/9 | 없음 | 3/3 | awaiting_approval | 15 | 92초 |
+
+- 고치기 전에는 회사 측 초안이 `TYPE_NOT_ALLOWED`(첫 문의에 `accept`), `UNBACKED_TERM`으로, 회사 측 첫 문의 하나와 업체 측 첫 답이 `INVALID_OUTPUT`(추론 토큰 4000개를 다 써서 본문이 빔)으로 두 번씩 거부돼 세 대화가 모두 handoff로 끝났다(배포 서버에서는 여기에 `NUMBER_OUTSIDE_PLACEHOLDER`, `UNUSED_CLAIM`도 나왔다). 근거 검증기는 바꾸지 않았다.
+- 업체 측 한 차례는 도구 두 번(허가·경로 판단, 적재·노선 계산)과 메시지 한 번, 모두 세 번 모델을 부른다. 추론 강도 low에서 한 번에 3~12초, minimal에서 3~9초다. 기본값은 low로 둔다(minimal도 이 시나리오는 모두 통과했지만 한 번만 쟀다).
+- 측정 4의 시간 초과 뒤로 일시적 연결 실패는 초안 시도로 세기 전에 한 번 다시 부른다(`retries`).
+- Ollama(남해열분해의 qwen2.5:7b)는 이 환경에서 닿지 않아 실제로 돌리지 않았다. 같은 차례 스키마·안내·문맥 길이를 쓰는 것은 가짜 transport로만 확인했다(`tests/v3/test_agents_turn.py`).

@@ -81,6 +81,28 @@ class PoolEntry:
     def to_dict(self) -> dict[str, Any]:
         return {**self.claim.to_dict(), "label": self.label, "source": self.source, **self.tags}
 
+    def brief(self) -> dict[str, Any]:
+        """모델에게 보여 주는 모양. 근거 ID와 내부 표시는 빼고, 고를 때 필요한 것만 남긴다.
+
+        근거 ID는 모델이 고를 일이 없고(코드가 claim에서 채운다) 날짜와 해시가 들어 있어 본문에
+        숫자로 옮겨 적기 쉽다. name은 사람이 읽는 이름이다(흐름·기준 값은 풀의 설명, 도구와 메시지
+        값은 코드가 키에서 정한 이름).
+        """
+        claim = self.claim
+        name = self.label if self.source in ("stream", "profile") else claim.label or self.label
+        out: dict[str, Any] = {"id": claim.id, "name": name, "value": claim.value}
+        if claim.unit:
+            out["unit"] = claim.unit
+        if claim.kind != "number":
+            out["kind"] = claim.kind
+        if claim.role:
+            out["role"] = claim.role
+        for key in ("streamId", "streamIds", "criterionId", "tool", "seq"):
+            if self.tags.get(key) is not None:
+                out[key] = self.tags[key]
+        out["source"] = self.source
+        return out
+
 
 class ClaimPool:
     def __init__(self, registry: Any, org_id: str) -> None:
@@ -115,8 +137,8 @@ class ClaimPool:
         return found[0] if found else None
 
     def describe(self) -> list[dict[str, Any]]:
-        """모델에게 보여 주는 풀 목록."""
-        return [entry.to_dict() for entry in self._entries.values()]
+        """모델에게 보여 주는 풀 목록(PoolEntry.brief)."""
+        return [entry.brief() for entry in self._entries.values()]
 
     # ── 모델 출력 → claims ────────────────────────────────────────────
     def resolve(self, claim_refs: Iterable[Any]) -> tuple[Claim, ...]:

@@ -9,6 +9,7 @@
 
 from __future__ import annotations
 
+import json
 import re
 from typing import Any
 
@@ -26,6 +27,7 @@ from app.v3.agents.draft import (
     Outcome,
     Trace,
     build_message,
+    enum_string,
     make_decline,
     make_handoff,
     make_notice,
@@ -33,6 +35,7 @@ from app.v3.agents.draft import (
     rejection,
     response_schema,
     run_draft,
+    turn_schema,
 )
 from app.v3.agents.llm import LLM
 from app.v3.agents.pool import ClaimPool
@@ -101,6 +104,42 @@ RESPONSE_SCHEMA = response_schema(
     },
 )
 
+EXAMPLES = (
+    # 규칙 정책이 실제로 낸 메시지를 줄인 것(형식 예시. 이름과 ID는 입력의 것으로 바꿔 쓴다)
+    {
+        "type": "conditional",
+        "stage": 5,
+        "streamIds": ["st_defect"],
+        "text": (
+            "다음 폐기물은 조건부로 받을 수 있습니다.\n"
+            "- 불량 사출품: 아래 조건이 확인되면 받습니다. 매입 단가는 {{route_defect_unitPrice}}입니다.\n"
+            "  · 반입 검수에서 오염도가 매입 기준 상한 {{pc_x_maxContaminationPct}} 이하로 확인될 것\n"
+            "수거는 화·목요일 가운데 정하고 수거 횟수는 {{load_defect_pickupsPerMonth}}입니다."
+        ),
+        "terms": {
+            "items": [{"streamId": "st_defect", "unitPriceRef": "route_defect_unitPrice"}],
+            "days": ["화", "목"],
+            "pickupsPerMonthRef": "load_defect_pickupsPerMonth",
+            "conditions": [
+                "불량 사출품: 반입 검수에서 오염도가 매입 기준 상한 {{pc_x_maxContaminationPct}} 이하로 확인될 것"
+            ],
+        },
+        "toolCalls": [],
+    },
+    {
+        "type": "answer",
+        "stage": 4,
+        "streamIds": ["st_sprue", "st_defect"],
+        "text": "",
+        "toolCalls": [
+            {"name": "match_permit", "arguments": {"streamId": "st_sprue"}},
+            {"name": "judge_route", "arguments": {"streamId": "st_sprue"}},
+            {"name": "match_permit", "arguments": {"streamId": "st_defect"}},
+            {"name": "judge_route", "arguments": {"streamId": "st_defect"}},
+        ],
+    },
+)
+
 SYSTEM_PROMPT = "\n".join(
     [
         "당신은 폐기물 처리 업체를 대변하는 업체 측 에이전트다.",
@@ -115,7 +154,7 @@ SYSTEM_PROMPT = "\n".join(
             "- terms.conditions의 각 항목은 '흐름 이름: 조건' 꼴로 쓴다. 조건이 없는 흐름은 적지 않는다. "
             "수거 요일은 conditions가 아니라 days에 적는다."
         ),
-        "- terms의 단가는 숫자로 적지 않고 unitPriceRef에 claim ID로 적는다.",
+        "- terms의 단가는 숫자로 적지 않고 unitPriceRef에 claim ID로 적는다. 그 단가는 본문에도 {{id}}로 쓴다.",
         "- 허가 품목이 맞지 않으면 근거와 함께 decline으로 답한다.",
         "- 다른 배출 기업의 이름, 폐기물, 물량을 알리지 않는다.",
         (
@@ -126,11 +165,16 @@ SYSTEM_PROMPT = "\n".join(
             "- 혼입물이 섞인 폐기물은 '확인 필요'로 미루지 않는다. 혼입물은 분리해 내보내거나 반입 검수에서 "
             "오염도가 매입 기준 상한 이내로 확인될 것을 조건으로 건다. 이것이 업체의 기본 반입 조건이다."
         ),
+        "- offer는 조건 없이 그대로 받을 수 있을 때만 쓴다. 조건이 하나라도 붙으면 conditional이다.",
         "- 이미 낸 조건을 상대가 받아들였으면 같은 조건(terms)을 바꾸지 않는다. 새 조건을 덧붙이지 않는다.",
         "- 본문에서 폐기물과 매입 기준은 이름으로 부른다. st_, pc_ 같은 식별자는 본문에 쓰지 않는다.",
         "",
         TOOL_HINT,
-        "응답 JSON: type, stage, streamIds, text, claimRefs, toolCalls, terms, asks, excluded, reason.",
+        "응답 JSON: type, stage, streamIds, text, toolCalls (필요하면 terms, asks, excluded, reason).",
+        "stage는 질문·답이면 4, 조건을 내면 5다.",
+        "",
+        "형식 예시(값은 모두 {{id}}로 쓰고, 숫자는 한 글자도 없다):",
+        *[json.dumps(example, ensure_ascii=False) for example in EXAMPLES],
     ]
 )
 
@@ -161,6 +205,205 @@ def public_profile(profile: dict[str, Any], *, fleet_cost: bool = True) -> dict[
 
 def short(stream_id: str) -> str:
     return stream_id.removeprefix("st_")
+
+
+def _result(results: list[dict[str, Any]], tool: str, **arguments: Any) -> dict[str, Any] | None:
+    for item in results:
+        given = item.get("arguments") or {}
+        if (
+            item.get("tool") == tool
+            and item.get("status") != "error"
+            and all(given.get(k) == v for k, v in arguments.items())
+        ):
+            return item
+    return None
+
+
+def condition_lines(
+    route: dict[str, Any], criterion: dict[str, str], stream: dict[str, Any]
+) -> list[str]:
+    """judge_route의 조건부 검사를 업체가 내거는 조건 문장으로 바꾼다(값은 {{id}}).
+
+    규칙 정책(policy_rule._Vendor._conditions)과 같은 문장이다. 모델에게 고를 수 있는 문장으로 준다.
+    """
+    out = []
+    for check in route.get("checks") or []:
+        if check.get("status") != "conditional":
+            continue
+        key = {"moisture_basis": "moisturePct", "contamination_basis": "contaminationPct"}.get(
+            check.get("key"), check.get("key")
+        )
+        if key in ("moisturePct", "contaminationPct"):
+            subject = "수분이" if key == "moisturePct" else "오염도가"
+            limit = criterion.get(
+                "maxMoisturePct" if key == "moisturePct" else "maxContaminationPct"
+            )
+            bound = f"매입 기준 상한 {{{{{limit}}}}}" if limit else "매입 기준 상한"
+            out.append(f"반입 검수에서 {subject} {bound} 이하로 확인될 것")
+        elif key == "mixture":
+            mixed = ", ".join(
+                str(c.get("name") or c.get("label"))
+                for c in stream.get("contaminants") or []
+                if c.get("name") or c.get("label")
+            )
+            out.append(f"혼입물({mixed or '다른 재질'})은 분리해 내보내거나 검수 기준 안일 것")
+        elif key == "monthly_kg_basis":
+            out.append("월 발생량이 추정값이므로 실제 계량한 물량으로 정산할 것")
+        elif check.get("text"):
+            out.append(str(check["text"]))
+    return list(dict.fromkeys(out))
+
+
+def guide(
+    *,
+    types: tuple[str, ...],
+    stream_ids: tuple[str, ...],
+    streams: dict[str, dict[str, Any]],
+    auto_declined: dict[str, str],
+    results: list[dict[str, Any]],
+    criteria: dict[str, dict[str, str]],
+    offered: list[str],
+    asked: list[dict[str, Any]],
+    days: list[str],
+    roles: dict[str, str | None] | None = None,
+) -> list[str]:
+    """이번 차례에 할 일(코드가 도구 결과와 대화 상태에서 쓴다). 판단은 도구 결과 그대로다.
+
+    roles는 claim ID → role(names.py)이다. 단가가 처리비(treatmentFee, 배출 기업이 내는 돈)인지
+    매입 단가인지에 따라 본문의 문장이 다르다(CONTRACT.md "처리비 문장").
+    """
+    roles = roles or {}
+    lines = [f"이번 차례에 쓸 수 있는 type: {', '.join(types)}."]
+
+    def name(sid: str) -> str:
+        return str((streams.get(sid) or {}).get("name") or sid)
+
+    live = [sid for sid in stream_ids if sid in streams and sid not in auto_declined]
+    missing = [
+        sid
+        for sid in live
+        if _result(results, "match_permit", streamId=sid) is None
+        or _result(results, "judge_route", streamId=sid) is None
+    ]
+    if missing:
+        lines.append(
+            "먼저 판단 도구를 부른다. text는 비우고 toolCalls에 흐름마다 match_permit과 judge_route를 "
+            "한 번에 넣는다: " + ", ".join(missing) + "."
+        )
+        return lines
+    acceptable: list[str] = []
+    refused = [f"{name(sid)}({reason})" for sid, reason in auto_declined.items()]
+    for sid in live:
+        permit = (_result(results, "match_permit", streamId=sid) or {}).get("output") or {}
+        route = (_result(results, "judge_route", streamId=sid) or {}).get("output") or {}
+        if permit.get("matched") is not True:
+            refused.append(f"{name(sid)}({permit.get('reason') or '허가 품목이 맞지 않습니다.'})")
+        elif route.get("acceptable") is not True:
+            refused.append(f"{name(sid)}({route.get('reason') or '매입 기준에 맞지 않습니다.'})")
+        else:
+            acceptable.append(sid)
+    if not acceptable:
+        lines.append(
+            "받을 수 있는 흐름이 없다. decline으로 답하고 excluded에 흐름마다 이유를 적는다: "
+            + ", ".join(refused)
+            + "."
+        )
+        return lines
+    if any(
+        _result(results, tool, streamIds=acceptable) is None
+        for tool in ("check_loading", "route_extra_cost")
+    ):
+        lines.append(
+            "받을 수 있는 흐름을 모아 check_loading과 route_extra_cost를 한 번에 부른다(text는 비운다). "
+            f'arguments는 {{"streamIds": {json.dumps(acceptable)}}}이다.'
+        )
+        return lines
+    told = {(a.get("streamId"), a.get("field")) for a in asked}
+    need = []
+    for sid in acceptable:
+        unknown = (streams.get(sid) or {}).get("unknownFields") or []
+        route = _result(results, "judge_route", streamId=sid) or {}
+        for check in route.get("checks") or []:
+            field = check.get("key")
+            if (
+                field in ("contaminationPct", "moisturePct")
+                and check.get("status") == "conditional"
+                and field not in unknown
+                and (sid, field) not in told
+            ):
+                need.append(f"{name(sid)}의 {field}")
+    if need:
+        lines.append(
+            "매입 기준과 대조할 값이 없다. question으로 묻고 asks에 {streamId, field}를 적는다: "
+            + ", ".join(need)
+            + "."
+        )
+        return lines
+    todo = [sid for sid in acceptable if sid not in offered]
+    if not todo:
+        lines.append(
+            "받을 흐름에는 모두 조건을 냈다(state.offered). 조건을 바꾸거나 덧붙이지 않는다. "
+            "상대의 말에 answer로 짧게 답한다(새 값이 필요 없으면 {{id}} 없이)."
+        )
+        return lines
+    loading = _result(results, "check_loading", streamIds=acceptable) or {}
+    load_claims = loading.get("claims") or {}
+    load_checks = {c.get("key"): c.get("status") for c in loading.get("checks") or []}
+    lines.append(
+        "조건을 낼 흐름: "
+        + ", ".join(name(sid) for sid in todo)
+        + ". 이 흐름을 모두 한 메시지에 담고, streamIds와 terms.items에 흐름마다 넣는다. "
+        "상대에게 되묻지 않는다(확인할 것은 조건으로 건다)."
+    )
+    conditional = False
+    for sid in todo:
+        route = _result(results, "judge_route", streamId=sid) or {}
+        price = (route.get("claims") or {}).get("unitPrice")
+        criterion = criteria.get(str((route.get("output") or {}).get("criterionId"))) or {}
+        found = condition_lines(route, criterion, streams.get(sid) or {})
+        conditional = conditional or bool(found) or route.get("status") != "calculated"
+        if not price:
+            lines.append(f"- {name(sid)}: 단가 claim 없음")
+        elif roles.get(price) == "treatmentFee":
+            lines.append(
+                f"- {name(sid)}: 배출 기업이 내는 처리비다. 본문에 '처리비는 {{{{{price}}}}}입니다'로 "
+                "쓴다('매입 단가'라고 쓰지 않는다)"
+            )
+        else:
+            lines.append(f"- {name(sid)}: 본문에 '매입 단가는 {{{{{price}}}}}입니다'로 쓴다")
+        # 조건은 한 줄에 하나씩 준다(본문에는 '  · ' 목록으로, terms.conditions에는 '이름: 조건'으로)
+        lines += [f"  · {name(sid)}의 조건: {condition}" for condition in found]
+    tail = []
+    if load_claims.get("pickupsPerMonth"):
+        tail.append(
+            f"수거 횟수는 {{{{{load_claims['pickupsPerMonth']}}}}}"
+            "(terms.pickupsPerMonthRef에 그 id를 적는다)"
+        )
+    tail.append(f"수거 요일은 {'·'.join(days) or '가드레일의 요일'} 가운데에서 terms.days에 적는다")
+    if load_checks.get("min_volume") not in (None, "met"):
+        conditional = True
+        tail.append(
+            "합친 물량이 최소 물량에 못 미친다: '기존 노선에 묶어 수거할 것'을 조건으로 건다"
+        )
+    if load_checks.get("loading") not in (None, "met"):
+        conditional = True
+        tail.append(
+            "한 번 수거량이 차량 용량을 넘는다: '수거 횟수를 늘려 나눠 실을 것'을 조건으로 건다"
+        )
+    if load_checks.get("loading_volume") not in (None, "met"):
+        conditional = True
+        tail.append(
+            "부피 적재를 확인하지 못했다: '겉보기 밀도를 확인한 뒤 정할 것'을 조건으로 건다"
+        )
+    lines.append(". ".join(tail) + ".")
+    lines.append(
+        "조건이 하나라도 있으니 type은 conditional이다."
+        if conditional
+        else "붙는 조건이 없으니 type은 offer다."
+    )
+    if refused and not offered:
+        lines.append("받지 않는 흐름은 excluded에 이유와 함께 적는다: " + ", ".join(refused) + ".")
+    return lines
 
 
 def _is_number(value: Any) -> bool:
@@ -584,10 +827,84 @@ class VendorAgent:
         ]
         holder: dict[str, Any] = {}
 
+        days = list(guard.get("days") or [])
+        auto_declined = {
+            s["id"]: reason for s in streams if (reason := rails.auto_decline_reason(guard, s))
+        }
+
+        def schema() -> dict[str, Any]:
+            prices = [e.claim.id for e in pool.entries() if _price(e.claim) is not None]
+            pickups = [e.claim.id for e in pool.entries() if e.claim.unit == "회/월"]
+            terms = {
+                "type": "object",
+                "properties": {
+                    "items": {
+                        "type": "array",
+                        "items": {
+                            "type": "object",
+                            "properties": {
+                                "streamId": enum_string(thread.stream_ids),
+                                "unitPriceRef": enum_string(prices),
+                            },
+                            "required": ["streamId", "unitPriceRef"],
+                        },
+                    },
+                    "days": {"type": "array", "items": enum_string(days or rails.WEEKDAYS)},
+                    "pickupsPerMonthRef": enum_string(pickups),
+                    "conditions": {"type": "array", "items": {"type": "string"}},
+                },
+                "required": ["items", "days", "conditions"],
+            }
+            asks = {
+                "type": "array",
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "streamId": enum_string(thread.stream_ids),
+                        "field": enum_string(f for f in questions.ASK_FIELDS if f != "terms"),
+                    },
+                    "required": ["streamId", "field"],
+                },
+            }
+            excluded = {
+                "type": "array",
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "streamId": enum_string(thread.stream_ids),
+                        "reason": {"type": "string"},
+                    },
+                    "required": ["streamId", "reason"],
+                },
+            }
+            return turn_schema(
+                types=allowed,
+                stream_ids=thread.stream_ids,
+                tools=TOOLS,
+                extra={
+                    "terms": terms,
+                    "asks": asks,
+                    "excluded": excluded,
+                    "reason": {"type": "string"},
+                },
+            )
+
         def briefing(rejections: list[dict[str, Any]]) -> dict[str, Any]:
             return {
                 "role": "vendor",
                 "task": "reply",
+                "guide": guide(
+                    types=allowed,
+                    stream_ids=thread.stream_ids,
+                    streams=by_id,
+                    auto_declined=auto_declined,
+                    results=tools.results,
+                    criteria=criteria,
+                    offered=offered,
+                    asked=asked,
+                    days=days,
+                    roles={e.claim.id: e.claim.role for e in pool.entries()},
+                ),
                 "today": self.today,
                 "org": {"id": vendor_org, "name": org.get("name")},
                 "counterpart": {"id": emitter.get("id"), "name": emitter.get("name")},
@@ -599,7 +916,7 @@ class VendorAgent:
                     "allowedTypes": list(allowed),
                 },
                 "guardrails": {
-                    "days": list(guard.get("days") or []),
+                    "days": days,
                     "autoDecline": list(guard.get("autoDecline") or []),
                 },
                 "streams": [
@@ -638,7 +955,7 @@ class VendorAgent:
                     for m in thread.messages
                 ],
                 "state": {"offered": offered, "asked": asked},
-                "tools": list(TOOLS),
+                "tools": tools.catalog(),
                 "toolResults": tools.results,
                 "pool": pool.describe(),
                 "rejections": rejections,
@@ -716,7 +1033,7 @@ class VendorAgent:
             llm=self.llm,
             system=SYSTEM_PROMPT,
             briefing=briefing,
-            schema=RESPONSE_SCHEMA,
+            schema=schema,
             pool=pool,
             tools=tools,
             make=make,

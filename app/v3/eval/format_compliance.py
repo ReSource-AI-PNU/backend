@@ -214,7 +214,9 @@ def check_response(situation: Situation, content: Any) -> dict[str, Any]:
             _problem(UNKNOWN_STREAM, f"이 대화에 없는 흐름입니다: {', '.join(unknown)}.")
         )
     if calls:
-        allowed_tools = {t["name"] for t in situation.tools}
+        allowed_tools = {t["name"] for t in situation.tools} or {
+            str(t.get("name")) for t in situation.briefing.get("tools") or [] if isinstance(t, dict)
+        }
         for call in calls:
             name = call.get("name") if isinstance(call, dict) else None
             arguments = call.get("arguments", {}) if isinstance(call, dict) else None
@@ -262,15 +264,18 @@ def check_response(situation: Situation, content: Any) -> dict[str, Any]:
     text = output.get("text") if isinstance(output.get("text"), str) else ""
     if not text.strip():
         problems.append(_problem(SCHEMA, "본문(text)이 비어 있습니다."))
-    refs = [r for r in output.get("claimRefs") or [] if isinstance(r, str)]
+    used = list(dict.fromkeys(m.group(1) for m in PLACEHOLDER.finditer(text)))
+    # 차례마다 만든 스키마(turn_schema)는 claimRefs를 받지 않는다. 에이전트가 본문의 자리표시자에서
+    # 정한다(draft.claim_refs). 모델이 claimRefs를 함께 냈으면 그것이 본문과 맞는지도 본다
+    given = "claimRefs" in output
+    refs = [r for r in output.get("claimRefs") or [] if isinstance(r, str)] if given else used
     pool = situation.pool
     outside = [r for r in dict.fromkeys(refs) if r not in pool]
     if outside:
         problems.append(
             _problem(UNKNOWN_CLAIM_REF, f"claim 풀에 없는 ID입니다: {', '.join(outside)}.")
         )
-    used = list(dict.fromkeys(m.group(1) for m in PLACEHOLDER.finditer(text)))
-    if set(used) != set(refs):
+    if given and set(used) != set(refs):
         problems.append(
             _problem(REF_MISMATCH, "본문의 자리표시자와 claimRefs가 서로 맞지 않습니다.")
         )
@@ -285,7 +290,13 @@ def check_response(situation: Situation, content: Any) -> dict[str, Any]:
         )
     if not outside:
         claims = [
-            {k: pool[r][k] for k in ("id", "kind", "value", "unit", "evidence")}
+            {
+                "id": r,
+                "kind": pool[r].get("kind", "number"),
+                "value": pool[r].get("value"),
+                "unit": pool[r].get("unit"),
+                "evidence": pool[r].get("evidence") or [],
+            }
             for r in dict.fromkeys(refs)
         ]
         checked = validate_text(
@@ -301,6 +312,12 @@ def check_response(situation: Situation, content: Any) -> dict[str, Any]:
             # 자리표시자와 claimRefs의 어긋남은 위에서 한 번 셌다
             if rejection.code in ("UNKNOWN_PLACEHOLDER", "UNUSED_CLAIM") and REF_MISMATCH in seen:
                 continue
+            # 모델에게 보여 주는 풀(PoolEntry.brief)에는 근거 ID가 없다. 풀에는 이 조직이 볼 수 있는
+            # 근거가 붙은 값만 들어가므로(ClaimPool.add) 근거 자체는 여기서 다시 보지 않는다
+            if rejection.code == "CLAIM_WITHOUT_EVIDENCE" and not pool[rejection.claim_id].get(
+                "evidence"
+            ):
+                continue
             if rejection.code not in seen:
                 problems.append(_problem(rejection.code, rejection.message))
                 seen.add(rejection.code)
@@ -313,7 +330,7 @@ def check_response(situation: Situation, content: Any) -> dict[str, Any]:
             and all(
                 isinstance(i, dict)
                 and i.get("streamId") in known_streams
-                and i.get("unitPriceRef") in refs
+                and i.get("unitPriceRef") in used
                 for i in items
             )
         )

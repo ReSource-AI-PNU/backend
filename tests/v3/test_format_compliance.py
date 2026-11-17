@@ -80,7 +80,9 @@ def test_each_check_names_its_own_problem(situations):
     assert fc.check_response(situation, "죄송합니다, 다시 쓰겠습니다.")["problems"][0]["code"] == (
         fc.INVALID_JSON
     )
-    assert codes(situation, {k: v for k, v in good.items() if k != "claimRefs"})[0] == fc.SCHEMA
+    assert codes(situation, {k: v for k, v in good.items() if k != "text"})[0] == fc.SCHEMA
+    # claimRefs는 차례 스키마에 없다(에이전트가 본문의 자리표시자에서 정한다). 빠져도 통과한다
+    assert codes(situation, {k: v for k, v in good.items() if k != "claimRefs"}) == []
     assert codes(situation, {**good, "stage": "5"}) == [fc.SCHEMA]
     assert codes(situation, {**good, "type": "inquiry"}) == [fc.TYPE_NOT_ALLOWED]
     assert codes(situation, {**good, "streamIds": ["st_nowhere"]})[0] == fc.UNKNOWN_STREAM
@@ -136,7 +138,10 @@ def test_company_decisions_and_tool_calls_are_checked(situations):
     assert codes(reply, {**base, "type": "answer", "toolCalls": [{"name": "transfer_money"}]}) == [
         fc.TOOL_CALL
     ]
-    assert situation.tools  # 도구 목록이 함께 간다
+    # 도구는 입력의 목록(이름, 하는 일, 입력 키)과 응답 스키마의 enum으로 함께 간다
+    names = {t["name"] for t in situation.briefing["tools"]}
+    calls = situation.schema["properties"]["toolCalls"]["items"]["properties"]
+    assert names and set(calls["name"]["enum"]) == names
 
 
 def test_tool_only_answers_and_model_errors_fail_the_situation(situations):

@@ -85,7 +85,13 @@ def test_foundry_request_and_tool_call_parsing():
     assert "max_completion_tokens" in body and "max_tokens" not in body
     assert body["tools"][0]["function"]["parameters"] == TOOLS[0]["input_schema"]
     assert body["response_format"]["type"] == "json_schema"
-    assert body["response_format"]["json_schema"]["schema"] == SCHEMA
+    # structured outputs strict: 정해진 모양 밖의 키를 받지 않는다
+    assert body["response_format"]["json_schema"]["strict"] is True
+    assert body["response_format"]["json_schema"]["schema"] == {
+        **SCHEMA,
+        "additionalProperties": False,
+    }
+    assert "reasoning_effort" not in body  # 주지 않으면 보내지 않는다(추론 모델이 아닌 배포)
     assert (
         body["messages"][2]["tool_calls"][0]["function"]["arguments"] == '{"streamId": "st_sprue"}'
     )

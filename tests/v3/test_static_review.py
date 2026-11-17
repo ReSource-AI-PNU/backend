@@ -76,7 +76,7 @@ def test_migration_chain_is_unbroken():
         assert assigned(module, "down_revision") == previous, file.name
         previous = assigned(module, "revision")
         assert previous == file.stem, file.name
-    assert previous == "0004_v3"
+    assert previous == "0005_v3_accounts"
 
 
 def call_name(node: ast.AST) -> str:
@@ -110,9 +110,13 @@ def model_tables() -> dict[str, dict[str, tuple[str, bool]]]:
     return tables
 
 
+V3_MIGRATIONS = ("migrations/versions/0004_v3.py", "migrations/versions/0005_v3_accounts.py")
+
+
 def migration_tables() -> dict[str, dict[str, tuple[str, bool]]]:
     tables = {}
-    for node in ast.walk(tree("migrations/versions/0004_v3.py")):
+    nodes = [node for path in V3_MIGRATIONS for node in ast.walk(tree(path))]
+    for node in nodes:
         if isinstance(node, ast.Call) and call_name(node) == "create_table":
             columns = {}
             for column in node.args[1:]:
@@ -126,12 +130,15 @@ def migration_tables() -> dict[str, dict[str, tuple[str, bool]]]:
 
 
 def test_v3_models_and_migration_have_the_same_columns():
-    """모델(sql.py)과 마이그레이션(0004)이 같은 테이블·열·기본 키를 만든다."""
+    """모델(sql.py)과 마이그레이션(0004, 0005 계정)이 같은 테이블·열·기본 키를 만든다."""
     models = model_tables()
-    assert set(models) == {"v3_evidence", "v3_records", "v3_events"}
+    accounts = {"v3_users", "v3_memberships", "v3_invites"}
+    assert set(models) == {"v3_evidence", "v3_records", "v3_events", *accounts}
     assert models == migration_tables()
     downgrade = read("migrations/versions/0004_v3.py").split("def downgrade", 1)[1]
-    assert all(f'drop_table("{name}")' in downgrade for name in models)
+    assert all(f'drop_table("{name}")' in downgrade for name in set(models) - accounts)
+    downgrade = read("migrations/versions/0005_v3_accounts.py").split("def downgrade", 1)[1]
+    assert all(f'drop_table("{name}")' in downgrade for name in accounts)
 
 
 def test_sql_store_never_changes_json_in_place():

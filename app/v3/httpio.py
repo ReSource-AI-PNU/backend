@@ -10,17 +10,23 @@
 | TOO_LARGE | 413 | 본문이 상한보다 크다 |
 | TOKEN_REQUIRED | 401 | token 모드인데 Authorization: Bearer 헤더가 없거나 모양이 틀렸다 |
 | INVALID_TOKEN | 401 | token 모드인데 토큰이 어느 조직의 것도 아니다 |
+| BFF_KEY_NOT_SET | 503 | bff 모드인데 V3_BFF_KEY가 비어 있다(모든 요청을 거절한다) |
+| INVALID_BFF_KEY | 401 | bff 모드인데 Authorization: Bearer 키가 없거나 맞지 않다 |
 
 업체 측 에이전트 서비스(vendor_service.py, vendor_devserver.py)의 서비스 키와 본문 확인도 여기에 둔다:
 SERVICE_KEY_NOT_SET 503, UNAUTHORIZED 401, VENDOR_NOT_SET 503, WRONG_RECIPIENT 403.
 
-요청한 조직을 정하는 일(Auth)도 여기에 둔다. 두 가지 모드가 있다.
+요청한 조직을 정하는 일(Auth)도 여기에 둔다. 세 가지 모드가 있다.
 
 - header(기본, 시연 전용): X-Org-Id 헤더를 그대로 믿는다. 헤더만 바꾸면 다른 조직이 되므로 공개
   주소에 그대로 두면 조직 경계가 지켜지지 않는다.
 - token: 조직별 서비스 토큰. Authorization: Bearer <토큰>으로 조직을 정하고 X-Org-Id는 무시한다.
   토큰과 조직의 짝은 설정 V3_ORG_TOKENS(JSON, {"조직 ID": "토큰"} 또는 {"조직 ID": ["토큰", …]})로
   받는다(Key Vault에서 주입). 비교는 hmac.compare_digest로 한다.
+- bff: 프런트 서버(Next.js BFF)만 부른다. Authorization: Bearer <V3_BFF_KEY>로 BFF임을 확인하고,
+  사용자는 X-User-Id, 조직은 X-Org-Id로 받는다. 사용자가 그 조직의 구성원인지는 api.py가 계정
+  저장소로 확인한다(여기서는 키와 헤더만 읽는다). 로컬 서버(devserver)는 이 모드를 쓰지 않는다.
+  X-Demo-View: 1이면 체험하기(시연 조직 읽기 전용)다.
 """
 
 from __future__ import annotations
@@ -29,7 +35,7 @@ import hmac
 import json
 import re
 from collections.abc import Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
@@ -44,9 +50,11 @@ TOO_LARGE = "TOO_LARGE"
 REQUEST_ERRORS = {INVALID_JSON: 400, INVALID_BODY: 422, FILE_REQUIRED: 422, TOO_LARGE: 413}
 
 # ── 요청한 조직 ──────────────────────────────────────────────────────
-AUTH_HEADER, AUTH_TOKEN = "header", "token"
-AUTH_MODES = (AUTH_HEADER, AUTH_TOKEN)
+AUTH_HEADER, AUTH_TOKEN, AUTH_BFF = "header", "token", "bff"
+AUTH_MODES = (AUTH_HEADER, AUTH_TOKEN, AUTH_BFF)
 ORG_HEADER = "X-Org-Id"
+USER_HEADER = "X-User-Id"
+DEMO_HEADER = "X-Demo-View"
 TOKEN_REQUIRED = "TOKEN_REQUIRED"
 INVALID_TOKEN = "INVALID_TOKEN"
 MIN_TOKEN_CHARS = 16  # 이보다 짧은 토큰은 설정 오류로 본다
@@ -113,11 +121,22 @@ def match_token(presented: str, tokens: tuple[tuple[str, str], ...]) -> str | No
 
 
 @dataclass(frozen=True)
+class BffIdentity:
+    """bff 모드에서 BFF가 밝힌 사용자, 조직, 체험하기 여부. 소속 확인 전의 값이다."""
+
+    user_id: str
+    org_id: str
+    demo: bool
+
+
+@dataclass(frozen=True)
 class Auth:
-    """요청한 조직을 정하는 방법. header(X-Org-Id를 믿는다, 시연 전용) | token(조직별 서비스 토큰)."""
+    """요청한 조직을 정하는 방법. header(X-Org-Id를 믿는다, 시연 전용) | token(조직별 서비스 토큰)
+    | bff(프런트 서버가 사용자와 조직을 밝힌다. 소속은 api.py가 확인한다)."""
 
     mode: str = AUTH_HEADER
     tokens: tuple[tuple[str, str], ...] = ()
+    bff_key: str = field(default="", repr=False)
 
     def __post_init__(self) -> None:
         if self.mode not in AUTH_MODES:
@@ -130,14 +149,37 @@ class Auth:
     @property
     def scoped(self) -> bool:
         """조직 목록(GET /orgs)을 자기 조직과 대화 상대로 좁히는가."""
-        return self.mode == AUTH_TOKEN
+        return self.mode in (AUTH_TOKEN, AUTH_BFF)
+
+    def bff(self, headers: Mapping[str, str] | None) -> BffIdentity:
+        """bff 모드: BFF 키를 확인하고 X-User-Id, X-Org-Id, X-Demo-View를 읽는다.
+
+        키가 설정되지 않았으면 모든 요청을 503으로 거절한다. 키 비교는 hmac.compare_digest로 한다.
+        """
+        if self.mode != AUTH_BFF:
+            raise ValueError("bff 모드가 아니다")
+        if not self.bff_key:
+            raise ServiceError("BFF_KEY_NOT_SET", "V3_BFF_KEY가 설정되지 않았습니다.", 503)
+        scheme, _, given = header(headers, "Authorization").partition(" ")
+        if scheme.lower() != "bearer" or not hmac.compare_digest(
+            given.strip().encode("utf-8"), self.bff_key.encode("utf-8")
+        ):
+            raise ServiceError("INVALID_BFF_KEY", "프런트 서버 키가 맞지 않습니다.", 401)
+        return BffIdentity(
+            user_id=header(headers, USER_HEADER),
+            org_id=header(headers, ORG_HEADER),
+            demo=header(headers, DEMO_HEADER) == "1",
+        )
 
     def viewer(self, headers: Mapping[str, str] | None, *, required: bool = False) -> str:
         """요청한 조직 ID. 밝히지 않았으면 빈 문자열(required면 401).
 
         token 모드에서는 X-Org-Id를 보지 않는다. Authorization 헤더가 있는데 Bearer 꼴이 아니거나
         토큰이 틀리면 required가 아니어도 401이다(틀린 토큰으로 익명 경로를 타지 못하게 한다).
+        bff 모드에서는 쓰지 않는다(소속 확인 없이 X-Org-Id를 믿게 되므로 RuntimeError).
         """
+        if self.mode == AUTH_BFF:
+            raise RuntimeError("bff 모드의 조직은 api.py가 소속을 확인한 뒤 정한다")
         if self.mode == AUTH_HEADER:
             org_id = header(headers, ORG_HEADER)
             if not org_id and required:
@@ -162,12 +204,16 @@ class Auth:
         return org_id
 
 
-def make_auth(mode: str | None, raw_tokens: Any = None) -> Auth:
-    """설정 값(V3_AUTH, V3_ORG_TOKENS)으로 Auth를 만든다. header 모드에서는 토큰 설정을 읽지 않는다."""
+def make_auth(mode: str | None, raw_tokens: Any = None, bff_key: str | None = None) -> Auth:
+    """설정 값(V3_AUTH, V3_ORG_TOKENS, V3_BFF_KEY)으로 Auth를 만든다.
+
+    header 모드에서는 토큰 설정을 읽지 않는다. bff 모드는 키가 비어 있어도 만들어진다(요청마다 503).
+    """
     mode = (mode or AUTH_HEADER).strip().lower()
     if mode not in AUTH_MODES:
         raise ValueError(f"V3_AUTH는 {' | '.join(AUTH_MODES)} 가운데 하나여야 한다: {mode!r}")
-    return Auth(mode, org_tokens(raw_tokens) if mode == AUTH_TOKEN else ())
+    key = (bff_key or "").strip() if mode == AUTH_BFF else ""
+    return Auth(mode, org_tokens(raw_tokens) if mode == AUTH_TOKEN else (), key)
 
 
 def tokens_text(raw: Any = None, path: str | None = None) -> Any:

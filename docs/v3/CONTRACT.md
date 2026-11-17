@@ -222,11 +222,13 @@ VendorProfile {"orgId": "org_saegil",
                "costInputs": {"pretreatHoursPerMonth": 4, "laborCostKrwPerHour": 12000,
                               "reuse": {"virginPriceKrwPerKg": 1500, "reusableKgPerMonth": 400, "regrindCostKrwPerKg": 120}}}],
   "threads": [{"id": "th_1", "vendorOrgId": "org_saegil", "vendorName": "(주)새길자원", "vendorModel": {"provider": "foundry", "name": "gpt-5-mini"},
+               "vendorAuthor": {"side": "vendor", "kind": "agent", "label": "업체 측 AI"},
                "status": "not_opened | open | agreed | declined | handoff | confirmed", "statusReason": "...", "reasonEvidence": ["..."],
                "streamIds": ["st_sprue"], "turns": 4, "maxTurns": 12,
                "messages": [{"id": "msg_1", "seq": 1, "from": "org_hanbit", "to": "org_saegil", "type": "inquiry", "stage": 4,
                              "streamIds": ["st_sprue"], "text": "... {{c1}} ...", "claims": [{"claim"}],
-                             "validation": {"ok": true, "attempts": 1, "rejections": []}, "createdAt": "..."}]}],
+                             "validation": {"ok": true, "attempts": 1, "rejections": []}, "createdAt": "...",
+                             "author": {"side": "company", "kind": "agent", "label": "회사 측 AI"}}]}],
   "graph": {"nodes": [{"id": "st_sprue", "type": "stream | criterion | vendor | evidence", "label": "..."}],
             "edges": [{"from": "st_sprue", "to": "pc_pp_a", "status": "met | conditional | unmet", "label": "...", "evidence": ["..."]}]},
   "result": {"status": "calculated | conditional | needs_information",
@@ -302,6 +304,23 @@ VendorProfile {"orgId": "org_saegil",
 - **`result.assumptions`의 모양이 바뀌었다.** 이전에는 근거 ID 문자열의 배열(`["assumption:..."]`)이었고, 지금은 `[{"id", "label", "value", "unit"}]`이다. `id`는 근거 ID(눌러서 근거 패널을 연다), `label`은 근거의 이름, `value`·`unit`은 근거의 값이다. 값 하나로 적을 수 없는 가정(등급 기준표)은 `value`와 `unit`이 `null`이다.
 - **`messages[].meta.asks[].field`에 올 수 있는 값.** `material | origin | form | contaminationPct | moisturePct | lotSame | monthlyKg | terms`. 앞의 일곱은 업체가 배출 기업에 묻는 흐름 항목이고(`questions[].field`와 같은 낱말이다), `terms`는 회사 측이 업체에 조건을 달라고 할 때다. 이 밖의 값은 메시지에 실리지 않는다(`agents/questions.py`의 `ASK_FIELDS`).
 
+### 작성자 표시 (`author`, `vendorAuthor`)
+
+대화 화면에는 구현 이름(모델 배포 이름, "규칙 정책(모델 미연결)")을 보여 주지 않는다. 화면은 `threads[].messages[].author.label`과 `threads[].vendorAuthor.label`을 쓴다.
+
+```json
+{"side": "company | vendor", "kind": "agent | system", "label": "회사 측 AI | 업체 측 AI | 자동 안내"}
+```
+
+| `side` | `kind` | `label` | 언제 |
+|---|---|---|---|
+| `company` | `agent` | 회사 측 AI | 회사 측 에이전트가 쓴 메시지(모델이든 규칙 정책이든 같다) |
+| `vendor` | `agent` | 업체 측 AI | 업체 측 에이전트가 쓴 메시지 |
+| `company`, `vendor` | `system` | 자동 안내 | 코드가 쓴 안내(`model.provider`가 `code`. handoff, 허가 품목 decline 등) |
+
+- `vendorAuthor`는 그 대화의 업체 측 작성자 표시다(`{"side": "vendor", "kind": "agent", "label": "업체 측 AI"}`).
+- 아래 `model`과 `vendorModel`은 그대로 남아 있다(화면이 `author`로 옮겨 가는 동안 지우지 않는다). 구현 이름은 운영 정보이므로 일반 화면에는 쓰지 않고, 관리자 화면(`GET /admin/status`의 `models`)과 실행 기록에서만 본다. 화면이 옮겨 가면 일반 뷰의 `model`·`vendorModel`은 지울 수 있다.
+
 ### 메시지를 쓴 구현 (`model.provider`)
 
 `threads[].messages[].model`과 `threads[].vendorModel`은 `{"provider", "name"}`이다. 실제로 그 메시지를 쓴 구현을 적는다(쓰지 않은 모델 이름을 붙이지 않는다). `provider`에 올 수 있는 값:
@@ -350,7 +369,7 @@ VendorProfile {"orgId": "org_saegil",
 
 - `session.phase`, `session.today`
 - `streams[]`: `orgId`, `process`, `wasteItem`, `lot`, `contaminants`, `monthlyKgBasis`, `contamination`·`photoContamination`·`moisture`(claim), `unknownFields`, `grade.label`. 업체가 보는 뷰에서는 `currentTreatment`가 `null`이다.
-- `threads[]`: `emitterOrgId`, `assignedStreamIds`(최적안에서 이 업체에 배정된 흐름), `agreedSeq`, `vendorModel.configured`·`vendorModel.used`. `messages[]`에는 `model`과 `meta`(`asks`, `excluded`, `reason`, `terms`의 `items[{streamId, claimId}]`·`days`·`conditions`)가 붙는다. 조건의 값은 `claims`에만 있다.
+- `threads[]`: `emitterOrgId`, `assignedStreamIds`(최적안에서 이 업체에 배정된 흐름), `agreedSeq`, `vendorModel.configured`·`vendorModel.used`, `vendorAuthor`. `messages[]`에는 `author`, `model`과 `meta`(`asks`, `excluded`, `reason`, `terms`의 `items[{streamId, claimId}]`·`days`·`conditions`)가 붙는다. 조건의 값은 `claims`에만 있다.
 - `graph.edges[]`: `kind`(`permit | criterion | assignment | excluded | regulation | document`). `excluded` 엣지의 `evidence`에는 허가 품목 때문에 뺀 경우 허가증 근거가 실린다.
 - **업체가 보는 뷰의 `graph`.** 자기 매입 기준 노드(`type: "criterion"`)와, 흐름을 그 기준과 대조한 엣지(`kind: "criterion"`, 흐름 → 기준은 `met | conditional | unmet`과 첫 번째 확인할 것, 기준 → 업체는 "매입 기준표"), 최적안 배정 엣지(`kind: "assignment"`)가 들어간다. 같은 판단 도구(`judge_route`)의 결과에서 업체의 매입 기준·허가 품목과, 대화에서 업체에 열린 흐름 자료(오염도, 수분, 형태, 혼입물, 물량의 근거)를 대조한 검사만 쓴다. 배출 기업의 현행 처리와 비용·탄소에 관한 검사, 규정 엣지(`regulation`), 다른 업체의 기준은 넣지 않는다. 엣지의 `evidence`는 업체가 열 수 있는 근거뿐이다.
 - `result`: `referencePrices[{key, material, form, label, asOf, price: claim, note}]`(가격조사 참고 시세. 손익 계산에는 쓰지 않는다), `carbonInObjective`, `evidence`. `assignments[]`에는 `vendorName`, `threadId`, `carbonValue`(claim, KAU 환산), `currentAssumed`가 붙고, `checks[]`는 `{key, status, text, evidence}`에 업체가 내건 조건이면 `claims`가 붙는다(`text`의 자리표시자를 그 claims로 그린다). `alternatives[]`에는 `vendorName`, `unitPrice`(claim)가 붙는다. `sensitivity[]`는 흐름별이고 `streamId`가 붙는다.
@@ -431,7 +450,7 @@ VendorProfile {"orgId": "org_saegil",
 
 ## 8. HTTP API
 
-접두어는 `/api/v3`이다. 요청하는 조직을 정하는 방법은 설정 `V3_AUTH`로 고른다(아래 "요청한 조직"). 기본은 `X-Org-Id` 헤더다.
+접두어는 `/api/v3`이다. 요청하는 조직을 정하는 방법은 설정 `V3_AUTH`로 고른다(아래 "요청한 조직"). 기본은 `X-Org-Id` 헤더다. 실제 계정과 조직(가입, 로그인, 조직 만들기, 초대, 체험하기)은 `bff` 모드에서만 열리고 경로는 9장에 따로 적는다.
 
 ### 요청한 조직 (인증 모드)
 
@@ -439,6 +458,7 @@ VendorProfile {"orgId": "org_saegil",
 |---|---|---|
 | `header` (기본) | `X-Org-Id` 헤더를 그대로 믿는다 | 조직을 밝히지 않아도 모든 조직을 준다(화면의 조직 고르기용) |
 | `token` | `Authorization: Bearer <토큰>`. 토큰에 묶인 조직이 요청한 조직이고 `X-Org-Id`는 무시한다 | 요청한 조직 자신과 대화 상대만 준다(배출 기업은 자기 진단의 스레드에 있는 업체, 업체는 자기와 열린 대화의 배출 기업, 관리자는 모두) |
+| `bff` | 프런트 서버(Next.js BFF)만 부른다. `Authorization: Bearer <V3_BFF_KEY>`, 사용자는 `X-User-Id`, 조직은 `X-Org-Id`. 사용자가 그 조직의 구성원인지 계정 저장소로 확인한다. `X-Demo-View: 1`이면 체험하기(시연 조직 읽기 전용) | `token`과 같다(자기 조직과 대화 상대만). 체험하기에서는 시연 조직 가운데 자기와 대화 상대만 |
 
 - **header 모드는 시연 전용이며 공개 주소에 그대로 두면 조직 경계가 지켜지지 않는다.** 헤더만 바꾸면 다른 조직의 뷰를 받고 승인할 수 있다. 서비스 함수 아래의 조직 경계(뷰, 근거, 스레드)는 요청한 조직이 맞다는 전제에서만 지켜진다.
 - token 모드의 토큰과 조직의 짝은 설정 `V3_ORG_TOKENS`로 받는다. JSON `{"조직 ID": "토큰"}`이고 값은 목록도 된다(교체 기간에 둘을 함께 둘 때). 토큰은 16자 이상이고 두 조직이 같은 토큰을 쓸 수 없다. Key Vault에서 주입하고 저장소에 넣지 않는다. token 모드인데 비어 있거나 모양이 틀리면 요청을 처리하지 않는다(`devserver`는 뜨지 않고, `api.py`는 500 `INTERNAL`로 답한다).
@@ -449,6 +469,9 @@ VendorProfile {"orgId": "org_saegil",
 - token 모드의 토큰은 FastAPI와 `devserver` 모두 `V3_ORG_TOKENS_FILE`(JSON을 담은 파일 경로)이 있으면 그 파일에서 먼저 읽고, 없으면 `V3_ORG_TOKENS`에서 읽는다.
 - `GET /admin/status`의 `distance`: `{"provider": true | false, "kind": "KakaoDistance | AzureMapsDistance | null", "lastError": "마지막 실패 이유 | null"}`. `provider`가 `false`면 직선 거리에 우회 계수를 곱한 가정값으로 계산한다. `lastError`에 키는 실리지 않는다.
 - Entra 인증에는 연결하지 않았다. token 모드는 조직 단위 식별이고 담당자 개인은 가리지 않는다.
+- bff 모드(9장): 모든 요청에 BFF 키가 있어야 한다(`GET /health`만 키 없이 답한다). 키는 설정 `V3_BFF_KEY`(Key Vault `v3-bff-key`)로 받고 `hmac.compare_digest`로 견준다. 키가 비어 있으면 모든 요청을 503으로 거절한다. 사용자가 `X-Org-Id`의 구성원이 아니면 403(`X-Org-Id`를 바꿔 다른 조직이 될 수 없다). 그다음의 조직 경계는 위 서비스 함수의 규칙 그대로다. `devserver`는 bff 모드를 받지 않는다(FastAPI만).
+- bff 모드에서 실제 업체의 공개 프로필(`GET /vendors/{orgId}`의 허가 품목과 모델 선택)은 그 업체와 스레드가 있는 배출 기업에게만 보인다. 다른 조직에는 404 `VENDOR_NOT_FOUND`다. 시연 업체의 공개 프로필은 전처럼 누구나 본다.
+- `GET /admin/status`의 `auth.demoOnly`는 header 모드에서만 `true`다.
 
 | 메서드와 경로 | 내용 |
 |---|---|
@@ -484,18 +507,28 @@ VendorProfile {"orgId": "org_saegil",
 |---|---|---|
 | `INVALID_JSON` | 400 | 본문이 JSON이 아니다 |
 | `INVALID_MULTIPART` | 400 | `multipart/form-data`에 경계(boundary)가 없다. `api.py`는 starlette가 읽지 못한 multipart 본문 전부에 이 코드로 답한다 |
-| `ORG_REQUIRED` | 401 | 요청한 조직을 밝히지 않았다(header 모드에서 `X-Org-Id`가 없다) |
+| `ORG_REQUIRED` | 401 | 요청한 조직을 밝히지 않았다(header 모드에서 `X-Org-Id`가 없다. bff 모드에서도 같다) |
 | `TOKEN_REQUIRED` | 401 | token 모드인데 `Authorization: Bearer` 헤더가 없거나 모양이 틀렸다 |
 | `INVALID_TOKEN` | 401 | token 모드인데 토큰이 어느 조직의 것도 아니다 |
+| `INVALID_BFF_KEY` | 401 | bff 모드인데 `Authorization: Bearer` 키가 없거나 맞지 않다 |
+| `USER_REQUIRED` | 401 | bff 모드에서 사용자가 필요한 경로인데 `X-User-Id`가 없다 |
+| `UNKNOWN_USER` | 401 | bff 모드에서 `X-User-Id`가 가입한 사용자가 아니다 |
+| `INVALID_CREDENTIALS` | 401 | 로그인 이메일이나 비밀번호가 틀렸다. 어느 쪽이 틀렸는지 알려 주지 않는다(문장도 같다) |
 | `UNKNOWN_ORG` | 401 | 모르는 조직이다 |
 | `FORBIDDEN` | 403 | 그 조직이 할 수 없는 일이다(다른 조직의 자료, 관리자 전용 경로, 배출 기업만 하는 진행·답·교정 등) |
 | `WRONG_ROLE` | 403 | 조직의 역할이 맞지 않는다(배출 기업만, 처리 업체만) |
-| `NOT_FOUND` | 404 | 그런 주소가 없다 |
+| `NOT_A_MEMBER` | 403 | bff 모드에서 사용자가 그 조직(`X-Org-Id`나 주소의 조직)의 구성원이 아니다 |
+| `OWNER_ONLY` | 403 | 조직 소유자(owner)만 할 수 있다(초대 만들기) |
+| `DEMO_READ_ONLY` | 403 | 체험하기(`X-Demo-View: 1`)에서 GET이 아닌 요청을 보냈다 |
+| `NOT_DEMO_ORG` | 403 | 체험하기의 `X-Org-Id`가 시연 조직이 아니다(실제 조직, 운영 조직, 없는 조직) |
+| `NOT_FOUND` | 404 | 그런 주소가 없다(bff가 아닌 모드에서 9장의 경로를 부른 경우도) |
 | `ORG_NOT_FOUND`, `VENDOR_NOT_FOUND`, `STREAM_NOT_FOUND`, `SESSION_NOT_FOUND`, `THREAD_NOT_FOUND`, `QUESTION_NOT_FOUND`, `EVIDENCE_NOT_FOUND` | 404 | 없거나 볼 수 없다(볼 수 없는 것은 있는지도 알려 주지 않는다) |
 | `NOT_AGREED` | 409 | 합의된 조건이 없는 대화를 승인하려 했다 |
+| `EMAIL_TAKEN` | 409 | 이미 가입한 이메일이다(대소문자와 앞뒤 공백은 가리지 않는다) |
 | `APPROVAL_BLOCKED` | 409 | 승인이 막혀 있다. 이유는 `approvals[].blockedReason`과 `blockedCodes`에 있다(아래 "승인을 막는 사유 코드") |
 | `PERMIT_MISMATCH` | 409 | 승인하려는 대화의 업체 허가 품목이 합의 뒤에 바뀌어 흐름과 맞지 않는다. 승인하지 않는다. 맞는 흐름이 남지 않으면 그 대화를 근거와 함께 `decline`으로 닫고, 일부만 맞지 않으면 그 흐름만 빼고 승인을 지운다(남은 조건으로 다시 승인한다) |
 | `THREAD_NOT_CONFIRMED` | 409 | 확정되지 않은 대화에 실제 결과를 기록하려 했다 |
+| `INVITE_INVALID` | 410 | 초대가 없거나, 만료되었거나(7일), 이미 쓰였다 |
 | `TOO_LARGE` | 413 | 본문이 20MB를 넘는다 |
 | `UNSUPPORTED_MEDIA` | 415 | 사진·영상이 아닌 파일이다. 탐지 모델이 연결되지 않았어도 형식 검사가 먼저다 |
 | `INVALID_BODY` | 422 | 본문이 JSON 객체가 아니거나 필수 항목(`questionId`·`value`, `threadId` 등)이 없다 |
@@ -507,9 +540,11 @@ VendorProfile {"orgId": "org_saegil",
 | `NO_CHANGE` | 422 | 교정 전후 값이 같다 |
 | `STREAM_NOT_IN_THREAD` | 422 | 그 대화에서 확정된 흐름이 아니다(실제 결과 기록) |
 | `INVALID_MESSAGE` | 422 | 업체 측 에이전트가 받은 메시지를 처리할 수 없다 |
+| `TOO_MANY_ATTEMPTS` | 429 | 같은 이메일로 15분 안에 로그인을 10번 틀렸다(서버 프로세스 메모리에서 센다) |
 | `INTERNAL` | 500 | 예상하지 못한 오류. 내용은 응답에 싣지 않는다 |
 | `DOCUMENT_FAILED`, `SHIELD_FAILED`, `DETECTOR_FAILED` | 502 | Document Intelligence, Prompt Shields, 탐지 엔드포인트 호출이 실패했거나 계약과 다른 답이 왔다 |
 | `DOCUMENT_INTELLIGENCE_UNAVAILABLE` | 503 | Document Intelligence가 설정되지 않아 글이 아닌 문서를 읽을 수 없다 |
+| `BFF_KEY_NOT_SET` | 503 | bff 모드인데 BFF 키 설정이 비어 있다. 모든 요청을 거절한다 |
 
 업체 측 에이전트 서비스(`vendor_service.py`. `/api/v3`가 아니라 따로 뜨는 서비스다)만 내는 코드: `UNAUTHORIZED`(401, 서비스 키가 틀림), `WRONG_RECIPIENT`(403, 이 서비스의 업체에게 온 메시지가 아님), `SERVICE_KEY_NOT_SET`·`VENDOR_NOT_SET`(503, 설정이 빠짐). 로컬에서 따로 띄우는 표준 라이브러리 서버(`vendor_devserver.py`)는 같은 코드를 내고, 회사 측 서버가 저장 파일을 아직 쓰지 않았으면 `STORE_NOT_READY`(503)를 낸다. 나머지는 위 표와 같다.
 
@@ -549,6 +584,7 @@ HTTP 오류 코드가 아니라 `approvals[].blockedCodes`(배열)와 `blockedRe
 - `/admin/*`(`GET /admin/status`, `POST /admin/eval`, `GET /admin/retrain/export`, `POST /admin/retrain/runs`)는 `X-Org-Id`가 관리자 조직일 때만 답한다. 다른 조직은 403 `FORBIDDEN`, 헤더가 없으면 401 `ORG_REQUIRED`.
 - `POST /demo/reset`도 관리자만 부른다. 예외 두 가지: `App(demo_open=True)`이면 누구나 부른다(`devserver`의 기본값. `--demo-closed`로 끈다. `api.py`는 설정 `V3_DEMO_OPEN`, 기본 `false`). 그리고 조직이 하나도 없는 빈 저장소의 첫 시드는 막지 않는다(관리자 조직이 아직 없다).
 - 배출 기업과 업체는 관리자 화면을 볼 수 없다. 화면에서 조직을 `org_admin`으로 바꿔야 한다.
+- bff 모드의 관리자는 `org_admin`의 구성원인 사용자다(`X-Org-Id: org_admin`). HTTP로는 관리자 조직에 들어갈 수 없고 운영자가 `python -m scripts.v3.accounts_admin grant-admin <이메일>`로 넣는다. 시연 되돌리기는 9장의 규칙(시연 조직만 되돌린다)을 따른다.
 
 사진·영상(`POST /intake/media`):
 
@@ -582,7 +618,55 @@ HTTP 오류 코드가 아니라 `approvals[].blockedCodes`(배열)와 `blockedRe
 
 업로드는 `multipart/form-data`의 `file`, `orgId`, (문서는) `kind`로 받는다. `kind`는 `permit | purchase_criteria | material_spec | msds | contract`다.
 
-## 9. 작업 규칙
+## 9. 계정과 조직 (`V3_AUTH=bff`)
+
+실제 사용자와 회사를 위한 경로다. 부르는 쪽은 프런트 서버(Next.js BFF) 하나다. 브라우저는 BFF와만 말하고, BFF가 로그인 세션으로 사용자를 확인한 뒤 아래 헤더를 붙여 부른다. bff가 아닌 모드에서는 이 장의 경로가 모두 404 `NOT_FOUND`다. 구현은 `app/v3/accounts.py`(판단), `app/v3/accounts_api.py`(경로), `app/v3/account_store.py`·`app/v3/sql.py`(저장)다.
+
+### 헤더
+
+| 헤더 | 뜻 |
+|---|---|
+| `Authorization: Bearer <V3_BFF_KEY>` | 모든 요청(`GET /health` 빼고). 키가 틀리면 401 `INVALID_BFF_KEY`, 키 설정이 비어 있으면 503 `BFF_KEY_NOT_SET` |
+| `X-User-Id` | 요청한 사용자(`usr_…`). 가입·로그인·시연 조직 목록 말고는 모두 필요하다 |
+| `X-Org-Id` | 요청한 조직. 8장의 경로에 필요하다. 사용자가 그 조직의 구성원이어야 한다(아니면 403 `NOT_A_MEMBER`) |
+| `X-Demo-View: 1` | 체험하기. 아래 "체험하기" |
+
+### 경로
+
+| 메서드와 경로 | 필요한 것 | 내용 |
+|---|---|---|
+| `POST /accounts/signup` | 키 | `{email, password, name}` → 201 `{user: {id, email, name}}`. 이메일은 앞뒤 공백을 떼고 소문자로 맞춘다. 비밀번호는 8자 이상 256자 이하. 이미 있으면 409 `EMAIL_TAKEN`, 꼴이 틀리면 422 `INVALID_VALUE` |
+| `POST /accounts/login` | 키 | `{email, password}` → 200 `{user, memberships: [{orgId, orgName, kind, memberRole}]}`. 틀리면 401 `INVALID_CREDENTIALS`(이메일이 없을 때와 비밀번호가 틀릴 때 같은 답), 15분에 10번 틀리면 429 `TOO_MANY_ATTEMPTS` |
+| `GET /accounts/me` | 키, `X-User-Id` | 로그인과 같은 모양 |
+| `POST /orgs` | 키, `X-User-Id` | `{name, kind: "emitter" \| "vendor", bizNo?, region?, address?, location?: [경도, 위도]}` → 201 조직. 만든 사람이 owner다 |
+| `GET /orgs/{orgId}/members` | 키, `X-User-Id`(그 조직의 구성원) | `[{userId, name, email, memberRole}]` |
+| `POST /orgs/{orgId}/invites` | 키, `X-User-Id`(그 조직의 owner) | 201 `{token, expiresAt}`. 구성원이 아니면 403 `NOT_A_MEMBER`, owner가 아니면 403 `OWNER_ONLY` |
+| `POST /invites/{token}/accept` | 키, `X-User-Id` | 200 `{orgId, orgName, kind, memberRole: "member"}`. 없거나 만료되었거나 이미 쓴 초대는 410 `INVITE_INVALID`. 이미 구성원이면 초대를 쓰고 있던 소속을 그대로 준다 |
+| `GET /demo/orgs` | 키 | 체험하기로 볼 수 있는 시연 조직 `[{id, name, kind}]`(조직 목록의 `order` 순) |
+
+- `kind`는 `emitter | vendor | admin`(조직 레코드의 `role`과 같다), `memberRole`은 `owner | member`다. `POST /orgs`로는 `admin`을 만들 수 없다.
+- `POST /orgs`의 응답: `{id, name, kind, bizNo, region, address, location, demo: false, createdAt, memberRole: "owner"}`. `id`는 `org_` + 16진 난수 12자라 시연 조직 ID와 겹치지 않는다. `bizNo`는 숫자 10자리를 `000-00-00000`으로 맞춰 둔다. 조직 레코드 자체는 8장의 저장소(`GET /orgs`)에 들어가므로 8장의 모든 경로가 새 조직에도 그대로 돈다.
+- 새 배출 기업은 흐름 없이 시작한다. 흐름은 `PUT /orgs/{orgId}/streams/{streamId}`(`name` 필수)로 만든다. **흐름 ID는 모든 조직에 걸쳐 하나다.** 다른 조직이 이미 쓴 ID면 404 `STREAM_NOT_FOUND`이므로 BFF가 `st_` + 난수처럼 겹치지 않는 ID를 만든다.
+- 새 업체는 빈 프로필(`permits: [], criteria: [], fleet: {}, guardrails: {}`)로 시작한다. `PUT /vendors/{orgId}`와 문서 올리기로 채운다. 허가 품목이나 매입 기준이 하나라도 생겨야 업체 탐색에 나온다. 실제 배출 기업의 업체 탐색은 시연 업체와 이렇게 채운 가입 업체를 모두 본다. 시연 배출 기업의 진단은 시연 업체만 본다.
+- 비밀번호는 `hashlib.scrypt`(n=2^14, r=8, p=1, 사용자마다 16바이트 소금)로 저장하고 응답과 기록에 싣지 않는다. 확인은 `hmac.compare_digest`로 하고 없는 이메일도 같은 계산을 한다. 로그인 실패 횟수는 서버 프로세스 메모리에서 이메일마다 센다(로그인에 성공하면 지운다).
+- 초대 토큰은 32바이트 난수(URL에 쓸 수 있는 글)이고 sha256 값만 저장한다. 7일 뒤 만료되고 한 번만 쓸 수 있다. 토큰 원문은 만든 응답에만 한 번 나간다.
+- 저장: 메모리 모드는 프로세스 안, SQL 모드는 `v3_users`, `v3_memberships`, `v3_invites`(마이그레이션 `0005_v3_accounts`). 조직 레코드는 `v3_records`(kind `orgs`)에 그대로 둔다.
+
+### 체험하기 (`X-Demo-View: 1`)
+
+- 시연 조직은 시드 조직 가운데 운영 조직을 뺀 다섯 곳(`org_hanbit`, `org_daon`, `org_saegil`, `org_namhae`, `org_miso`)이고 조직 레코드에 `demo: true`가 붙는다. 운영 조직 `org_admin`은 관리자 화면을 여는 조직이라 시연 조직이 아니다(`demo: false`).
+- `X-Demo-View: 1`과 `X-Org-Id`(시연 조직)만 있으면 `X-User-Id` 없이 8장의 경로를 부를 수 있다. **GET만 받는다**(그 밖은 403 `DEMO_READ_ONLY`). `X-Org-Id`가 시연 조직이 아니면 403 `NOT_DEMO_ORG`. 이 헤더가 있으면 `X-User-Id`가 있어도 체험하기로 다룬다.
+- 체험하기 요청의 서비스 함수는 시연 조직만 보이는 읽기 전용 저장소·근거 레지스트리(`app/v3/demo/scope.py`)로 돈다. 실제 조직, 그 흐름·진단, 실제 배출 기업이 시연 업체와 나눈 대화, 실제 조직이 가진 근거는 어떤 경로로도 보이지 않는다. 시연 업체의 허가증·매입 기준 근거(doc)는 실제 배출 기업에도 열려 있을 수 있는데, 체험하기에서는 `access`에서 실제 조직을 지우고 보여 준다. 저장소에 쓰려 하면 403 `DEMO_READ_ONLY`이고 뷰를 만들 때의 재확인(쓰기)도 하지 않는다.
+- `/admin/*`는 시연 조직이 관리자가 아니므로 403 `FORBIDDEN`이다.
+
+### 시연 되돌리기 (bff 모드)
+
+- `POST /demo/reset`은 관리자(`org_admin`의 구성원)만 부른다(8장 "관리자 조직"과 같다. 조직이 하나도 없는 빈 저장소의 첫 시드는 키만 있으면 부를 수 있다).
+- bff 모드에서는 **시연 조직의 자료만** 지우고 다시 올린다: 시드 조직(운영 조직 포함)의 조직·흐름·업체 프로필, 시연 배출 기업의 진단(스레드, 질문, 승인, 문서, 실행 기록), 시드 조직만 볼 수 있는 근거. 실제 조직의 조직·흐름·진단·근거, 사용자와 소속, ID 카운터는 그대로다. 시연 업체 근거 가운데 실제 조직에 열린 것은 지우지 않고 다시 올릴 때도 그 조직들을 열어 둔다(내용이 같으면 판도 그대로다).
+- 다시 올린 뒤 시연 배출 기업 `org_hanbit`의 진단 한 건을 규칙 정책으로 승인 대기(`awaiting_approval`)까지 돌려 둔다. 질문에는 시연 답(`seed.DEMO_ANSWERS`: 포장 필름 수분 2.0%, 가상 값)으로, 그 밖에는 "모름"으로 답한다. 응답에 `demoSessionId`, `demoSessionStatus`가 더 붙는다.
+- 운영자는 HTTP를 거치지 않고 `python -m scripts.v3.accounts_admin reset-demo`로도 되돌린다(관리자 구성원이 아직 없는 처음 배포). header·token 모드의 되돌리기는 전처럼 저장소 전체를 비운다.
+
+## 10. 작업 규칙
 
 - 커밋 작성자는 `Jeonsubb <glvlglvl01@naver.com>`이다. 커밋 메시지는 한국어로 쓰고 `feat:`, `fix:`, `test:`, `docs:` 접두어를 붙인다.
 - 로컬에서는 네이티브 확장을 쓸 수 없다. 핵심 모듈과 그 테스트는 표준 라이브러리와 pytest만으로 돌아야 한다.

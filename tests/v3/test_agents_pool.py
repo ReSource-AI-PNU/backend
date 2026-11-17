@@ -76,7 +76,10 @@ def test_tool_results_are_namespaced_and_private_keys_skipped(app):
         "route_sprue_unitPrice"
     ]
     entry = pool.describe()[0]
-    assert {"id", "kind", "value", "unit", "evidence", "label", "source"} <= set(entry)
+    # 모델에게는 고를 때 필요한 것만 보여 준다. 근거 ID와 내부 표시(조직 ID, 도구 키)는 싣지 않는다
+    assert {"id", "name", "value", "unit", "source", "streamId", "tool"} <= set(entry)
+    assert not {"evidence", "vendorOrgId", "key", "label"} & set(entry)
+    assert pool.get(entry["id"]).claim.evidence  # 근거는 풀(코드 쪽)에 그대로 있다
     full = ClaimPool(app.registry, HANBIT).add_tool_result(result, "route_sprue")
     assert "monthlyNow" in full
 

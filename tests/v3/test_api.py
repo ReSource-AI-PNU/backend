@@ -323,6 +323,21 @@ def test_llm_factory_never_swaps_models():
     chosen = with_ollama("vendor", "org_namhae", ollama)
     assert isinstance(chosen, OllamaChat) and chosen.model == "open-model"
     assert isinstance(with_ollama("vendor", "org_saegil", {"provider": "foundry"}), FoundryChat)
+    # 추론 강도는 기본 low, 설정(FOUNDRY_REASONING_EFFORT 등)을 주면 그 값이다
+    assert company.reasoning_effort == "low" and chosen.num_ctx == 16384
+    tuned = api.make_llm_factory(
+        "foundry",
+        endpoint="https://example.invalid",
+        deployment="chat",
+        api_key="test-key",
+        ollama_base_url="http://ollama.invalid:11434",
+        reasoning_effort="minimal",
+        max_completion_tokens="2000",
+        ollama_num_ctx="32768",
+    )
+    main = tuned("company", EMITTER, None)
+    assert (main.reasoning_effort, main.max_completion_tokens) == ("minimal", 2000)
+    assert tuned("vendor", "org_namhae", ollama).num_ctx == 32768
 
 
 def test_llm_factory_anthropic_option_matches_the_dev_server(tmp_path):
