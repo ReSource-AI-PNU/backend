@@ -1,0 +1,139 @@
+{
+  "privacy": {
+    "totalKg": 1230.0,
+    "group": [
+      {
+        "companyId": "noksan-001",
+        "name": "(주)한빛정밀 사출공장",
+        "kg": 300.0,
+        "distanceM": 0.0,
+        "isSelf": true
+      },
+      {
+        "companyId": "noksan-017",
+        "name": "하늬로지스",
+        "kg": null,
+        "distanceM": 578.0,
+        "isSelf": false
+      },
+      {
+        "companyId": "noksan-018",
+        "name": "아름푸드(주)",
+        "kg": null,
+        "distanceM": 666.0,
+        "isSelf": false
+      }
+    ],
+    "costShare": [
+      {
+        "companyId": "noksan-001",
+        "name": "(주)한빛정밀 사출공장",
+        "sharePct": 24.390243902439025
+      },
+      {
+        "companyId": "noksan-017",
+        "name": "하늬로지스",
+        "sharePct": 34.146341463414636
+      },
+      {
+        "companyId": "noksan-018",
+        "name": "아름푸드(주)",
+        "sharePct": 41.46341463414634
+      }
+    ],
+    "reconstructedKg": [
+      {
+        "companyId": "noksan-001",
+        "kg": 300.0
+      },
+      {
+        "companyId": "noksan-017",
+        "kg": 420.0
+      },
+      {
+        "companyId": "noksan-018",
+        "kg": 510.0
+      }
+    ],
+    "trips": [
+      {
+        "visits": [
+          {
+            "companyId": "noksan-017",
+            "kg": null,
+            "arrivalMinute": 486
+          },
+          {
+            "companyId": "noksan-001",
+            "kg": 300.0,
+            "arrivalMinute": 503
+          }
+        ],
+        "kg": 720.0,
+        "distanceM": 6403
+      },
+      {
+        "visits": [
+          {
+            "companyId": "noksan-018",
+            "kg": null,
+            "arrivalMinute": 486
+          }
+        ],
+        "kg": 510.0,
+        "distanceM": 5358
+      }
+    ]
+  },
+  "stale_after_negotiation": {
+    "bundleSchedule": "목요일 오전 · 월 2회",
+    "matchingSchedule": "미확정 · 사람 승인 필요",
+    "matchingUnchanged": true,
+    "costUnchanged": true,
+    "proposalUnchanged": true,
+    "oldProposalApprovalStatus": 200
+  },
+  "post_matching_question": {
+    "blockedStep": "cost-carbon",
+    "questions": [
+      {
+        "id": "audit-cost-confirm",
+        "step": "cost-carbon",
+        "streamId": "st_6b9310c74503",
+        "text": "Confirm transportation cost",
+        "why": "Cost needs confirmation",
+        "kind": "number",
+        "unit": "KRW",
+        "options": null,
+        "suggested": null,
+        "answer": null
+      }
+    ],
+    "answerStatus": 409,
+    "answerBody": {
+      "detail": "매칭 이후 질문 변경은 새 진단으로 진행하세요"
+    }
+  },
+  "incomplete_multi_stream_matching": {
+    "streamIds": [
+      "st_6b9310c74503",
+      "audit-second-stream"
+    ],
+    "decisions": [
+      {
+        "streamId": "st_6b9310c74503",
+        "route": "bundle"
+      },
+      {
+        "streamId": "audit-second-stream",
+        "route": "bundle"
+      }
+    ],
+    "bundleStreamIds": [
+      "st_6b9310c74503"
+    ],
+    "blockedStep": null,
+    "status": "awaiting-approval",
+    "approvalStatus": 200
+  }
+}

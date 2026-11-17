@@ -1,0 +1,21 @@
+{
+  "kind": "prices",
+  "source_url": "https://example.invalid/replace-with-public-catalog",
+  "endpoint_env": "PUBLIC_PRICES_URL",
+  "license": "원문 이용조건 확인 후 기입",
+  "format": "json",
+  "records_path": "data",
+  "id_field": "id",
+  "fields": {
+    "material": "material",
+    "price": "price",
+    "unit": "unit",
+    "effective_date": "effective_date"
+  },
+  "params": {},
+  "secret_params": {},
+  "page_param": "page",
+  "page_size_param": "perPage",
+  "page_size": 100,
+  "max_pages": 100
+}

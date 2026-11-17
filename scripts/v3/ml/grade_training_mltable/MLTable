@@ -1,0 +1,14 @@
+# 미실행(Azure ML 필요). AutoML 학습 데이터 정의.
+# 같은 폴더에 make_grade_dataset.py로 만든 grade_synthetic.v1.csv를 둔다(저장소에는 넣지 않는다).
+# synthetic, thresholds_version 열은 학습 특징에서 뺀다.
+$schema: https://azuremlschemas.azureedge.net/latest/MLTable.schema.json
+paths:
+  - file: ./grade_synthetic.v1.csv
+transformations:
+  - read_delimited:
+      delimiter: ","
+      encoding: utf8
+      header: all_files_same_headers
+  - drop_columns:
+      - synthetic
+      - thresholds_version

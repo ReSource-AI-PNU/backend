@@ -1,0 +1,83 @@
+# 미실행(Azure ML 필요). 등급 모델 재학습 파이프라인: 합치기 → 학습 → 비교·게이트.
+#   az ml job create -f scripts/v3/ml/retrain_grade_job.yml -g team_AIBIC2026_03_RG_EUS2 -w team-workspace \
+#     --set inputs.real_labels.path=<grade_labels.json 경로>
+# 로컬에 YAML 파서와 az ml이 없어 문법 검사를 하지 못했다(눈으로만 확인). 처음 돌릴 때 스키마 오류가
+# 나면 이 파일과 register_and_deploy.md를 함께 고친다.
+#
+# - real_labels: GET /api/v3/admin/retrain/export 의 gradeLabels(실제 등급 행, synthetic=false)를
+#   저장한 JSON. 관리자만 받을 수 있다. 저장소에 넣지 않는다.
+# - synthetic: make_grade_dataset.py로 만든 합성 데이터(모든 행 synthetic=true).
+# - 게이트 기준은 app.v3.intake.grade_model.deploy_gate 하나다. 실제 등급 행으로만 판정하고,
+#   통과하지 못하면 등록하지 않는다. gate.json을 POST /api/v3/admin/retrain/runs로 올려야
+#   관리자 화면의 모델 버전 표에 나온다.
+# - code는 저장소 루트다(app.v3를 불러와야 한다). .amlignore로 tests, infra, docs를 뺀다.
+$schema: https://azuremlschemas.azureedge.net/latest/pipelineJob.schema.json
+type: pipeline
+experiment_name: rsai-grade
+display_name: rsai-grade-retrain
+description: 실제 등급 기록을 더해 등급 모델을 다시 학습하고, 실제 등급 기준으로 지금 모델과 견준다.
+settings:
+  default_compute: azureml:rsai-cpu
+inputs:
+  synthetic:
+    type: uri_file
+    path: ./grade_training_mltable/grade_synthetic.v1.csv
+  real_labels:
+    type: uri_file
+    path: ./grade_labels.json
+  baseline_version: ""
+jobs:
+  merge:
+    type: command
+    code: ../../..
+    environment: azureml://registries/azureml/environments/sklearn-1.5/labels/latest
+    inputs:
+      synthetic: ${{parent.inputs.synthetic}}
+      real_labels: ${{parent.inputs.real_labels}}
+    outputs:
+      training:
+        type: uri_folder
+    command: >-
+      python scripts/v3/ml/compare_and_gate.py merge
+      --synthetic ${{inputs.synthetic}}
+      --real ${{inputs.real_labels}}
+      --out ${{outputs.training}}/grade_retrain.csv
+  train:
+    type: command
+    code: ../../..
+    environment: azureml://registries/azureml/environments/sklearn-1.5/labels/latest
+    inputs:
+      training: ${{parent.jobs.merge.outputs.training}}
+    outputs:
+      run_info:
+        type: uri_folder
+    # train_grade_sklearn.py는 학습 실행을 MLflow에 남긴다. 실행 ID는 작업 이름과 같다.
+    command: >-
+      python scripts/v3/ml/train_grade_sklearn.py
+      --data ${{inputs.training}}/grade_retrain.csv
+      && echo $AZUREML_RUN_ID > ${{outputs.run_info}}/run_id.txt
+  gate:
+    type: command
+    code: ../../..
+    environment: azureml://registries/azureml/environments/sklearn-1.5/labels/latest
+    inputs:
+      real_labels: ${{parent.inputs.real_labels}}
+      training: ${{parent.jobs.merge.outputs.training}}
+      run_info: ${{parent.jobs.train.outputs.run_info}}
+      baseline_version: ${{parent.inputs.baseline_version}}
+    outputs:
+      result:
+        type: uri_folder
+    command: >-
+      PYTHONPATH=. python scripts/v3/ml/compare_and_gate.py gate-grade
+      --candidate-run $(cat ${{inputs.run_info}}/run_id.txt)
+      --real ${{inputs.real_labels}}
+      --training ${{inputs.training}}/grade_retrain.csv
+      --baseline-version "${{inputs.baseline_version}}"
+      --register
+      --out ${{outputs.result}}/gate.json
+tags:
+  project: resource-ai
+  env: demo
+  managed-by: agent
+  data_basis: synthetic+real

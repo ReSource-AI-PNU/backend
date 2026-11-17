@@ -1,0 +1,21 @@
+# 미실행(Azure ML 필요). rsai-grade 엔드포인트의 배포. 시연 외에는 infra/stop.sh가 이 배포를 내린다.
+#   az ml online-deployment create -f scripts/v3/ml/deployment.yml --all-traffic -g team_AIBIC2026_03_RG_EUS2 -w team-workspace
+# model의 버전은 등록한 뒤 실제 번호로 바꾼다.
+$schema: https://azuremlschemas.azureedge.net/latest/managedOnlineDeployment.schema.json
+name: blue
+endpoint_name: rsai-grade
+model: azureml:resource-ai-grade:1
+code_configuration:
+  code: .
+  scoring_script: score.py
+environment:
+  image: mcr.microsoft.com/azureml/openmpi4.1.0-ubuntu22.04:latest
+  conda_file: ./conda.yml
+instance_type: Standard_D2a_v4
+instance_count: 1
+request_settings:
+  request_timeout_ms: 10000
+tags:
+  project: resource-ai
+  env: demo
+  managed-by: agent

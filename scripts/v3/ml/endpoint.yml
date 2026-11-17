@@ -1,0 +1,9 @@
+# 미실행(Azure ML 필요). rsai-grade 관리형 온라인 엔드포인트.
+#   az ml online-endpoint create -f scripts/v3/ml/endpoint.yml -g team_AIBIC2026_03_RG_EUS2 -w team-workspace
+$schema: https://azuremlschemas.azureedge.net/latest/managedOnlineEndpoint.schema.json
+name: rsai-grade
+auth_mode: key
+tags:
+  project: resource-ai
+  env: demo
+  managed-by: agent
