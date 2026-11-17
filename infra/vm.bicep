@@ -7,7 +7,9 @@
 // Ollama 포트(11434)는 호스트에 열지 않는다. 같은 Compose 네트워크의 백엔드만 닿는다(infra/vm/compose.yml).
 //
 //   az deployment group what-if -g <RG> -f infra/vm.bicep -p sshPublicKey=@~/.ssh/rsai_demo_vm.pub sshSourcePrefix=<내 IP>/32
-param location string = resourceGroup().location
+// PostgreSQL·AI Search와 같은 Central US에 둔다. East US 2에 두었을 때 DB 왕복이 평균 39ms라
+// 근거를 하나씩 읽는 진단 실행이 몇 분씩 걸렸다(2026-11-18 측정).
+param location string = 'centralus'
 param tags object = {
   project: 'resource-ai'
   env: 'demo'

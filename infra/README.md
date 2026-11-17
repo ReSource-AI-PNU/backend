@@ -29,11 +29,12 @@ SEED=1 bash infra/vm/deploy-vm.sh          # 끝에 시연 시작 상태로 되�
 
 | 구성 | 내용 |
 |---|---|
-| `infra/vm.bicep` | VM `vm-rsai-demo-app`(Standard_D4as_v5, 4 vCPU·16GB, Ubuntu 22.04, 디스크 128GB), 공용 IP와 DNS 이름, 별도 VNet `vnet-rsai-demo-app`, NSG(80·443은 인터넷, 22는 `sshSourcePrefix`만). cloud-init이 Docker를 설치한다 |
+| `infra/vm.bicep` | Central US의 VM `vm-rsai-demo-app`(Standard_D4as_v5, 4 vCPU·16GB, Ubuntu 22.04, 디스크 128GB), 공용 IP와 DNS 이름, 별도 VNet `vnet-rsai-demo-app`, NSG(80·443은 인터넷, 22는 `sshSourcePrefix`만). cloud-init이 Docker를 설치한다 |
 | `infra/vm/compose.yml` | Caddy(HTTPS, Let's Encrypt), frontend, backend(API), detector(탐지 채점 서버 `app/ml/score_api.py`, CPU 추론. Azure ML 엔드포인트 대신 `V3_DETECTOR_ENDPOINT`가 부른다), ollama(CPU: `qwen2.5:7b`, `bge-m3`). 인터넷에는 Caddy만 열리고 나머지는 Compose 네트워크 안에서만 닿는다 |
 | `infra/vm/deploy-vm.sh` | Key Vault에서 비밀을 읽어 VM의 `/opt/rsai/env/*.env`(권한 600)에만 쓰고, `git archive`한 소스를 올려 VM 안에서 이미지를 빌드한다. 마이그레이션 → 시작 → Ollama 모델 받기 → HTTPS 응답 확인 순서다 |
 
-- **설정:** `V3_LLM=foundry`(gpt-5-mini), `V3_AUTH=token`(조직별 토큰. Key Vault `v3-org-tokens`, 없으면 스크립트가 만든다), `AUTH_DEV_LOGIN=true`(시연용 로그인). 업체 측 에이전트 한 곳은 Ollama `qwen2.5:7b`를 CPU로 쓴다.
+- **지역:** PostgreSQL·AI Search와 같은 Central US에 둔다. East US 2에 두었을 때 DB 왕복이 평균 39ms라 근거를 하나씩 읽는 진단 실행 한 번이 10분을 넘겼다.
+- **설정:** `V3_LLM=rule`(규칙 정책. 실제 모델 `foundry`는 초안이 근거 검증기에 거부되어 담당자 인계로 끝나므로, 프롬프트를 고치기 전까지 시연은 rule로 한다), `V3_AUTH=token`(조직별 토큰. Key Vault `v3-org-tokens`, 없으면 스크립트가 만든다), `AUTH_DEV_LOGIN=true`(시연용 로그인). 업체 측 에이전트 한 곳은 Ollama `qwen2.5:7b`를 CPU로 쓴다.
 - **모델 가중치:** Storage 비공개 컨테이너 `models`의 `models-v3mat-v4cond.tar.gz`(재질 v3, 상태 v4, 도메인 분류기). 읽기 전용 SAS 주소(2026-12-31까지)를 Key Vault `model-blob-url`에 둔다.
 - **끄고 켜기:** `stop.sh`가 VM을 할당 해제하고, `start.sh`가 다시 켠다(태그 `project=resource-ai`). 할당 해제 중에는 디스크 비용만 든다. Compose 서비스는 `restart: unless-stopped`라 VM이 켜지면 같이 올라온다.
 - **비용(정가):** VM 시간당 0.172달러(월 약 126), 공용 IP 시간당 약 0.005달러, 디스크 128GB StandardSSD.
@@ -69,7 +70,7 @@ SEED=1 bash infra/vm/deploy-vm.sh          # 끝에 시연 시작 상태로 되�
 - **Key Vault 비밀 이름:** `database-url`, `postgres-admin-password`, `storage-connection-string`, `acr-username`, `acr-password`, `appinsights-connection-string`, `foundry-api-key`, `docintel-key`, `contentsafety-key`, `search-admin-key`, `maps-key`(대기)
 - **사람이 넣는 Key Vault 비밀(앱 배포에서 고른 기능에만 필요):** `anthropic-api-key`(`V3_LLM=anthropic`), `v3-org-tokens`(`V3_AUTH=token`, API와 프런트가 같이 읽는다), `kakao-rest-api-key`(`V3_DISTANCE=kakao`), `detector-api-key`(`V3_DETECTOR_ENDPOINT`), `auth-entra-secret`(`AUTH_ENTRA_ID`). `auth-secret`, `vendor-service-key`, `mcp-service-key`는 없으면 `deploy.sh`가 만들어 Key Vault에만 둔다. 값은 파일로 넣는다: `az keyvault secret set --vault-name <이름> -n <비밀 이름> --file <값을 담은 파일>`
 - **PostgreSQL:** 관리자 비밀번호는 `deploy-infra.sh`가 처음 배포할 때 만들어 Key Vault에만 둔다. 공용 접근에 "Azure 서비스 허용" 방화벽 규칙 하나만 열었다. 로컬에서 붙으려면 자기 IP 규칙을 따로 더한다. `POSTGIS`, `VECTOR`, `PG_TRGM` 확장을 허용했다. `CREATE EXTENSION`은 마이그레이션에서 한다.
-- **지역:** 기본은 East US 2다. PostgreSQL과 AI Search만 Central US에 있다. East US 2에서 PostgreSQL B1ms는 `SkuNotAvailable`(영역 1~3 모두), AI Search는 `InsufficientResourcesAvailable`로 만들 수 없었다. 바꾸려면 `POSTGRES_LOCATION`, `SEARCH_LOCATION`을 준다.
+- **지역:** 기본은 East US 2다. PostgreSQL과 AI Search, 그리고 DB 왕복 때문에 앱 VM이 Central US에 있다. East US 2에서 PostgreSQL B1ms는 `SkuNotAvailable`(영역 1~3 모두), AI Search는 `InsufficientResourcesAvailable`로 만들 수 없었다. 바꾸려면 `POSTGRES_LOCATION`, `SEARCH_LOCATION`을 준다.
 - **채팅 모델:** `gpt-5-mini` GlobalStandard 200K TPM. 할당량은 구독 전체가 나눠 쓴다.
 - **AI Search:** Basic, 시맨틱 랭커는 무료 플랜. 중지할 수 없어 켜 두는 동안 시간당 약 0.10달러가 든다.
 - **재사용:** Azure ML 작업 영역 `team-workspace`는 기존 것을 쓰고 컴퓨팅만 더했다. 그 작업 영역에 딸린 저장소, Key Vault, Application Insights는 건드리지 않는다.

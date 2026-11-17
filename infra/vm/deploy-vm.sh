@@ -11,7 +11,9 @@
 #   BACKEND_DIR      백엔드 저장소 (기본 이 저장소), BACKEND_REF (기본 HEAD)
 #   FRONTEND_DIR     프런트 저장소 (기본 ../frontend), FRONTEND_REF (기본 origin/main)
 #                    커밋된 내용만 올린다(git archive). 작업 폴더의 커밋하지 않은 변경은 올라가지 않는다
-#   V3_LLM           foundry(기본) | rule | anthropic
+#   V3_LLM           rule(기본. 규칙 정책) | foundry | anthropic
+#                    실제 모델(foundry)은 2026-11-18 시험에서 초안이 근거 검증기에 거부되어(NUMBER_OUTSIDE_PLACEHOLDER 등)
+#                    대화가 담당자 인계로 끝났다. 프롬프트·출력 형식을 고치기 전까지 시연은 rule로 한다
 #   V3_AUTH          token(기본. 조직별 토큰, 공개 주소용) | header(시연 전용)
 #   AUTH_DEV_LOGIN   true(기본. 시연용 로그인) | false
 #   OLLAMA_MODELS    VM에 받아 둘 Ollama 모델 (기본 "bge-m3 qwen2.5:7b". 시연 업체 한 곳이 qwen2.5:7b를 고른다)
@@ -29,7 +31,7 @@ BACKEND_DIR="${BACKEND_DIR:-$ROOT}"
 BACKEND_REF="${BACKEND_REF:-HEAD}"
 FRONTEND_DIR="${FRONTEND_DIR:-$ROOT/../frontend}"
 FRONTEND_REF="${FRONTEND_REF:-origin/main}"
-V3_LLM="${V3_LLM:-foundry}"
+V3_LLM="${V3_LLM:-rule}"
 V3_AUTH="${V3_AUTH:-token}"
 AUTH_DEV_LOGIN="${AUTH_DEV_LOGIN:-true}"
 OLLAMA_MODELS="${OLLAMA_MODELS:-bge-m3 qwen2.5:7b}"
