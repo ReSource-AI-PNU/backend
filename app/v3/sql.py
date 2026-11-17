@@ -4,6 +4,7 @@
 tests/v3/test_sql.py가 CI에서 SQLite로 확인한다.
 
 - 테이블은 app.platform.db의 Base에 더한다. 만들기는 migrations/versions/0004_v3.py가 한다.
+  계정 테이블(v3_users, v3_memberships, v3_invites)은 0005_v3_accounts.py가 만든다(V3_AUTH=bff).
 - JSON 타입만 쓴다. 조직 필터와 정렬은 파이썬에서 한다(DB마다 JSON 질의와 정렬 규칙이 달라서다).
   시연 규모에 맞춘 선택이고, 근거가 많아지면 access를 별도 테이블로 빼야 한다.
 - 호출 하나가 트랜잭션 하나다. 읽은 값은 항상 깊은 복사이고, 바꾸려면 put_*으로 다시 저장한다.
@@ -20,9 +21,11 @@ from typing import Any
 
 from sqlalchemy import JSON, Integer, String, delete, func, select
 from sqlalchemy.engine import Engine
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Mapped, Session, mapped_column
 
 from app.platform.db import Base
+from app.v3.account_store import EmailTaken, iso, parse_iso, utc_now
 from app.v3.evidence.model import Evidence
 from app.v3.evidence.registry import EvidenceForbidden, EvidenceNotFound
 from app.v3.store import SHARED_THREAD_STATUSES, NotFound, VersionConflict, system_clock
@@ -55,12 +58,41 @@ class EventRow(Base):
     payload: Mapped[dict] = mapped_column(JSON)
 
 
+class UserRow(Base):
+    __tablename__ = "v3_users"
+    id: Mapped[str] = mapped_column(String(40), primary_key=True)
+    email: Mapped[str] = mapped_column(String(254), unique=True)
+    name: Mapped[str] = mapped_column(String(100))
+    password_hash: Mapped[str] = mapped_column(String(300))
+    created_at: Mapped[str] = mapped_column(String(40))
+
+
+class MembershipRow(Base):
+    __tablename__ = "v3_memberships"
+    user_id: Mapped[str] = mapped_column(String(40), primary_key=True)
+    org_id: Mapped[str] = mapped_column(String(100), primary_key=True, index=True)
+    member_role: Mapped[str] = mapped_column(String(10))
+    created_at: Mapped[str] = mapped_column(String(40))
+
+
+class InviteRow(Base):
+    __tablename__ = "v3_invites"
+    token_hash: Mapped[str] = mapped_column(String(64), primary_key=True)
+    org_id: Mapped[str] = mapped_column(String(100), index=True)
+    created_by: Mapped[str] = mapped_column(String(40))
+    created_at: Mapped[str] = mapped_column(String(40))
+    expires_at: Mapped[str] = mapped_column(String(40))
+    used_at: Mapped[str | None] = mapped_column(String(40), nullable=True)
+    used_by: Mapped[str | None] = mapped_column(String(40), nullable=True)
+
+
 V3_TABLES = (EvidenceRow.__table__, RecordRow.__table__, EventRow.__table__)
+ACCOUNT_TABLES = (UserRow.__table__, MembershipRow.__table__, InviteRow.__table__)
 
 
 def create_tables(engine: Engine) -> None:
     """테스트와 로컬 SQLite용. 배포 환경에서는 alembic이 만든다."""
-    Base.metadata.create_all(engine, tables=list(V3_TABLES))
+    Base.metadata.create_all(engine, tables=[*V3_TABLES, *ACCOUNT_TABLES])
 
 
 @contextmanager
@@ -153,6 +185,17 @@ class SqlRegistry:
         with _transaction(self._engine) as db:
             db.execute(delete(EvidenceRow))
 
+    def delete(self, evidence_ids: Iterable[str]) -> int:
+        """주어진 근거를 지운다. 지운 수를 준다. bff 모드의 시연 되돌리기가 시연 조직의 근거만 지울 때 쓴다."""
+        wanted = sorted(set(evidence_ids))
+        removed = 0
+        with _transaction(self._engine) as db:
+            for start in range(0, len(wanted), 500):
+                chunk = wanted[start : start + 500]
+                result = db.execute(delete(EvidenceRow).where(EvidenceRow.id.in_(chunk)))
+                removed += int(result.rowcount or 0)
+        return removed
+
     def list(
         self, *, kinds: Iterable[str] | None = None, org_id: str | None = None
     ) -> list[Evidence]:
@@ -201,6 +244,46 @@ class SqlStore:
         with _transaction(self._engine) as db:
             db.execute(delete(RecordRow))
             db.execute(delete(EventRow))
+
+    def purge_orgs(self, org_ids: Iterable[str]) -> list[str]:
+        """org_ids의 조직, 흐름, 업체 프로필, 그 조직이 배출 기업인 진단을 지운다. 지운 스레드 ID를 준다.
+
+        InMemoryStore.purge_orgs와 같다. ID 카운터는 그대로 둔다.
+        """
+        wanted = set(org_ids)
+        with _transaction(self._engine) as db:
+            sessions = {
+                row.id
+                for row in self._rows(db, SESSIONS)
+                if row.payload.get("emitterOrgId") in wanted
+            }
+            threads = sorted(
+                row.id
+                for row in self._rows(db, THREADS)
+                if row.payload.get("sessionId") in sessions
+                or row.payload.get("emitterOrgId") in wanted
+            )
+            streams = {
+                row.id for row in self._rows(db, STREAMS) if row.payload.get("orgId") in wanted
+            }
+            doomed = {
+                ORGS: wanted,
+                STREAMS: streams,
+                VENDORS: wanted,
+                SESSIONS: sessions,
+                THREADS: set(threads),
+                QUESTIONS: sessions,
+                APPROVALS: sessions,
+                DOCUMENTS: sessions,
+            }
+            for kind, keys in doomed.items():
+                if keys:
+                    db.execute(
+                        delete(RecordRow).where(RecordRow.kind == kind, RecordRow.id.in_(keys))
+                    )
+            if sessions:
+                db.execute(delete(EventRow).where(EventRow.session_id.in_(sessions)))
+        return threads
 
     @staticmethod
     def _row(db: Session, kind: str, key: str, *, lock: bool = False) -> RecordRow | None:
@@ -439,3 +522,144 @@ class SqlStore:
         query = select(EventRow).where(EventRow.session_id == session_id).order_by(EventRow.seq)
         with _transaction(self._engine) as db:
             return [copy.deepcopy(row.payload) for row in db.scalars(query).all()]
+
+
+# ── 계정 (V3_AUTH=bff) ──────────────────────────────────────────────
+def _user(row: UserRow) -> dict[str, Any]:
+    return {
+        "id": row.id,
+        "email": row.email,
+        "name": row.name,
+        "passwordHash": row.password_hash,
+        "createdAt": row.created_at,
+    }
+
+
+def _membership(row: MembershipRow) -> dict[str, Any]:
+    return {
+        "userId": row.user_id,
+        "orgId": row.org_id,
+        "memberRole": row.member_role,
+        "createdAt": row.created_at,
+    }
+
+
+def _invite(row: InviteRow) -> dict[str, Any]:
+    return {
+        "tokenHash": row.token_hash,
+        "orgId": row.org_id,
+        "createdBy": row.created_by,
+        "createdAt": row.created_at,
+        "expiresAt": row.expires_at,
+        "usedAt": row.used_at,
+        "usedBy": row.used_by,
+    }
+
+
+class SqlAccounts:
+    """account_store.AccountStore 구현. InMemoryAccounts와 같은 동작을 한다.
+
+    이메일이 겹치는지는 v3_users.email의 유일 제약이 마지막으로 막는다(동시에 가입해도 하나만 남는다).
+    """
+
+    def __init__(self, engine: Engine, clock: Callable[[], Any] | None = None) -> None:
+        self._engine = engine
+        self._clock = clock or utc_now
+
+    def now(self) -> Any:
+        return self._clock()
+
+    # ── 사용자 ────────────────────────────────────────────────────────
+    def add_user(self, user: dict[str, Any]) -> dict[str, Any]:
+        try:
+            with _transaction(self._engine) as db:
+                taken = db.scalar(select(UserRow.id).where(UserRow.email == user["email"]))
+                if taken is not None:
+                    raise EmailTaken(user["email"])
+                db.add(
+                    UserRow(
+                        id=user["id"],
+                        email=user["email"],
+                        name=user["name"],
+                        password_hash=user["passwordHash"],
+                        created_at=user["createdAt"],
+                    )
+                )
+        except IntegrityError:
+            raise EmailTaken(user["email"]) from None
+        return copy.deepcopy(user)
+
+    def get_user(self, user_id: str) -> dict[str, Any] | None:
+        with _transaction(self._engine) as db:
+            row = db.get(UserRow, user_id)
+            return _user(row) if row is not None else None
+
+    def find_user(self, email: str) -> dict[str, Any] | None:
+        with _transaction(self._engine) as db:
+            row = db.scalar(select(UserRow).where(UserRow.email == email))
+            return _user(row) if row is not None else None
+
+    # ── 소속 ──────────────────────────────────────────────────────────
+    def add_membership(self, membership: dict[str, Any]) -> dict[str, Any]:
+        """이미 소속이면 있던 것을 그대로 돌려준다(역할을 바꾸지 않는다)."""
+        key = {"user_id": membership["userId"], "org_id": membership["orgId"]}
+        try:
+            with _transaction(self._engine) as db:
+                row = db.get(MembershipRow, key)
+                if row is not None:
+                    return _membership(row)
+                db.add(
+                    MembershipRow(
+                        **key,
+                        member_role=membership["memberRole"],
+                        created_at=membership["createdAt"],
+                    )
+                )
+        except IntegrityError:  # 같은 사람이 동시에 두 번 들어왔다
+            found = self.get_membership(membership["userId"], membership["orgId"])
+            if found is None:
+                raise
+            return found
+        return copy.deepcopy(membership)
+
+    def get_membership(self, user_id: str, org_id: str) -> dict[str, Any] | None:
+        with _transaction(self._engine) as db:
+            row = db.get(MembershipRow, {"user_id": user_id, "org_id": org_id})
+            return _membership(row) if row is not None else None
+
+    def list_memberships(
+        self, *, user_id: str | None = None, org_id: str | None = None
+    ) -> list[dict[str, Any]]:
+        query = select(MembershipRow)
+        if user_id is not None:
+            query = query.where(MembershipRow.user_id == user_id)
+        if org_id is not None:
+            query = query.where(MembershipRow.org_id == org_id)
+        with _transaction(self._engine) as db:
+            found = [_membership(row) for row in db.scalars(query).all()]
+        return sorted(found, key=lambda m: (m.get("createdAt") or "", m["orgId"], m["userId"]))
+
+    # ── 초대 ──────────────────────────────────────────────────────────
+    def add_invite(self, invite: dict[str, Any]) -> dict[str, Any]:
+        with _transaction(self._engine) as db:
+            db.add(
+                InviteRow(
+                    token_hash=invite["tokenHash"],
+                    org_id=invite["orgId"],
+                    created_by=invite["createdBy"],
+                    created_at=invite["createdAt"],
+                    expires_at=invite["expiresAt"],
+                    used_at=invite.get("usedAt"),
+                    used_by=invite.get("usedBy"),
+                )
+            )
+        return copy.deepcopy(invite)
+
+    def use_invite(self, token_hash: str, user_id: str, now: Any) -> dict[str, Any] | None:
+        """쓰지 않았고 만료되지 않은 초대면 쓴 것으로 적고 돌려준다. 아니면 None. 한 번만 쓸 수 있다."""
+        with _transaction(self._engine) as db:
+            row = db.get(InviteRow, token_hash, with_for_update=True)
+            if row is None or row.used_at or parse_iso(row.expires_at) <= now:
+                return None
+            row.used_at, row.used_by = iso(now), user_id
+            return _invite(row)

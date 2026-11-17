@@ -10,7 +10,7 @@ from __future__ import annotations
 import copy
 import json
 import os
-from collections.abc import Callable
+from collections.abc import Callable, Iterable
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, Protocol
@@ -47,6 +47,7 @@ class Store(Protocol):
     def now(self) -> str: ...
     def next_id(self, prefix: str) -> str: ...
     def reset(self) -> None: ...
+    def purge_orgs(self, org_ids: Iterable[str]) -> list[str]: ...
 
     def put_org(self, org: dict[str, Any]) -> dict[str, Any]: ...
     def get_org(self, org_id: str) -> dict[str, Any]: ...
@@ -119,6 +120,37 @@ class InMemoryStore:
     def reset(self) -> None:
         self._data = {table: {} for table in _TABLES}
         self._changed()
+
+    def purge_orgs(self, org_ids: Iterable[str]) -> list[str]:
+        """org_ids의 조직, 흐름, 업체 프로필, 그 조직이 배출 기업인 진단을 지운다. 지운 스레드 ID를 준다.
+
+        진단과 함께 그 스레드, 질문, 승인, 문서, 실행 기록도 지운다. 다른 조직이 배출 기업인 진단의
+        스레드는 업체가 org_ids에 있어도 남긴다(그 진단의 기록이다). ID 카운터는 그대로 둔다.
+        """
+        wanted = set(org_ids)
+        data = self._data
+        sessions = {k for k, s in data["sessions"].items() if s.get("emitterOrgId") in wanted}
+        threads = sorted(
+            k
+            for k, t in data["threads"].items()
+            if t.get("sessionId") in sessions or t.get("emitterOrgId") in wanted
+        )
+        doomed = {
+            "orgs": wanted,
+            "streams": {k for k, s in data["streams"].items() if s.get("orgId") in wanted},
+            "vendors": wanted,
+            "sessions": sessions,
+            "threads": set(threads),
+            "questions": sessions,
+            "approvals": sessions,
+            "documents": sessions,
+            "events": sessions,
+        }
+        for table, keys in doomed.items():
+            for key in keys:
+                data[table].pop(key, None)
+        self._changed()
+        return threads
 
     def snapshot(self) -> dict[str, Any]:
         return copy.deepcopy(self._data)
