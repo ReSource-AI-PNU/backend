@@ -31,6 +31,8 @@ def _meta(item: dict[str, Any], registered_on: str) -> dict[str, Any]:
     meta = {"key": item["key"], "registeredOn": registered_on, "file": f"app/v3/judge/{PATH.name}"}
     if item.get("origin"):
         meta["origin"] = item["origin"]  # 옮겨 온 값이면 그 원래 자리
+    if item.get("internalNote"):
+        meta["internalNote"] = item["internalNote"]  # 팀 기록(화면 글인 excerpt에는 두지 않는다)
     return meta
 
 

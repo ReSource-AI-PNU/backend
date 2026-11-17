@@ -68,8 +68,8 @@ def _thresholds_text(data: dict[str, Any]) -> str:
     rows = [row(name, table) for name, table in sorted(data["materials"].items())]
     rows.append(row("그 밖의 재질", data["default"]))
     return (
-        "등급별 상한(오염도·수분). 둘 다 상한 이하인 가장 높은 등급을 주고, "
-        f"C등급 상한을 넘으면 등외다. {' / '.join(rows)}"
+        "등급별 상한(오염도·수분)입니다. 둘 다 상한 이하인 가장 높은 등급을 주고, "
+        f"C등급 상한을 넘으면 등외입니다. {' / '.join(rows)}"
     )
 
 
