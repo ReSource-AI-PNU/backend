@@ -188,3 +188,116 @@ def test_current_cost_answer_replaces_the_assumption_and_stays_with_the_emitter(
     # 업체는 현행 처리비를 물을 수 없다
     assert "currentCost" not in questions.ASK_FIELDS
     assert questions.clean_asks([{"streamId": "st_film", "field": "currentCost"}]) == []
+
+
+# ── 공정 재투입 (설계안 v3 8.2의 경로 후보) ──────────────────────────────
+REUSE = {
+    "virginPriceKrwPerKg": 1500,
+    "reusableKgPerMonth": 400,
+    "regrindCostKrwPerKg": 120,
+    "evidence": [],
+}
+
+
+def test_reuse_is_a_candidate_only_for_clean_measured_process_scrap():
+    reg = registry()
+    clean = run(reg, "judge_reuse", stream=stream())
+    assert clean["output"]["eligible"] is True and clean["status"] == "needs_information"
+    assert any(c["key"] == "reuse_inputs" for c in clean["checks"])  # 금액은 입력이 있어야 낸다
+    assert all(c["id"] != "monthlyAfter" for c in clean["claims"])
+    for bad, key in (
+        (stream(origin="PCR"), "reuse_origin"),
+        (stream(material="PP+ABS"), "reuse_material"),
+        (stream(contaminants=[{"name": "종이 라벨", "ratio": 0.04}]), "reuse_material"),
+        (
+            stream(measure={"contaminationPct": 6.0, "moisturePct": 0.3, "evidence": []}),
+            "reuse_quality",
+        ),
+    ):
+        result = run(reg, "judge_reuse", stream=bad)
+        assert result["output"]["eligible"] is False and result["status"] == "calculated"
+        assert next(c for c in result["checks"] if c["key"] == key)["status"] == "unmet"
+    # 측정값이 없으면 후보이되 조건부다(사진 추정만으로는 넣어도 된다고 하지 않는다)
+    photo = stream(measure=None, photo={"contaminationPct": 1.0, "evidence": []})
+    assert run(reg, "judge_reuse", stream=photo)["status"] == "needs_information"
+
+
+def test_reuse_saving_counts_only_what_can_go_back_in():
+    reg = registry()
+    result = run(reg, "judge_reuse", stream=stream(reuse=REUSE))
+    assert result["status"] == "calculated"
+    # 600kg 가운데 400kg만 다시 넣는다. 남는 200kg은 현행(혼합 소각 가정값 250원)대로 처리한다
+    assert claim(result, "reuseKg")["value"] == 400
+    assert claim(result, "monthlyRevenue")["value"] == 400 * (1500 - 120)
+    assert claim(result, "monthlyAfter")["value"] == 400 * (1500 - 120) - 200 * 250
+    assert claim(result, "difference")["value"] == 400 * (1500 - 120) - 200 * 250 + 600 * 250
+
+
+def test_optimizer_picks_reuse_when_it_beats_selling_and_only_when_eligible():
+    reg = registry()
+    done = run(reg, "optimize_assignment", streams=[stream(reuse=REUSE)], vendors=[vendor()])
+    item = done["output"]["assignments"][0]
+    assert item["route"] == "reuse" and item["vendorOrgId"] is None
+    assert claim(done, item["monthlyAfter"])["value"] == 400 * (1500 - 120) - 200 * 250
+    assert claim(done, item["revenue"])["value"] == 400 * (1500 - 120)
+    # 재투입 절감이 작으면 파는 쪽을 고른다
+    weak = dict(REUSE, virginPriceKrwPerKg=300, reusableKgPerMonth=100)
+    done = run(reg, "optimize_assignment", streams=[stream(reuse=weak)], vendors=[vendor()])
+    assert done["output"]["assignments"][0]["route"] == "sell"
+    # 혼입물이 있으면 값이 있어도 재투입을 고르지 않는다
+    dirty = stream(reuse=REUSE, contaminants=[{"name": "금속 인서트", "ratio": 0.02}])
+    done = run(reg, "optimize_assignment", streams=[dirty], vendors=[])
+    assert done["output"]["assignments"][0]["route"] == "keep"
+
+
+def test_demo_result_lists_reuse_candidates_and_hides_them_from_vendors():
+    from app.v3 import service
+    from tests.v3.runtime_fixtures import HANBIT, SAEGIL, make_app, to_approval
+
+    app = make_app()
+    view = to_approval(app)
+    by_stream = {a["streamId"]: a for a in view["result"]["assignments"]}
+    sprue = by_stream["st_sprue"]["reuse"]
+    assert sprue["eligible"] is True and sprue["status"] == "needs_information"
+    assert sprue["monthlyAfter"] is None and "신재 구입 단가" in sprue["reason"]
+    assert by_stream["st_purge"]["reuse"]["eligible"] is False  # 재질이 섞였다
+    assert by_stream["st_film"]["reuse"]["eligible"] is False  # 쓰고 난 뒤 나온 것
+    vendor_view = service.get_view(app, view["session"]["id"], SAEGIL)
+    assert all(a["reuse"] is None for a in vendor_view["result"]["assignments"])
+    # 값을 넣으면 재투입이 계산되고, 다시 찾으면 스프루는 재투입으로 간다
+    saved = service.update_stream(app, HANBIT, "st_sprue", {"reuse": REUSE}, HANBIT)
+    assert saved["reuse"]["virginPriceKrwPerKg"] == 1500 and len(saved["reuse"]["evidence"]) == 3
+    fresh = to_approval(app)
+    again = {a["streamId"]: a for a in fresh["result"]["assignments"]}
+    assert again["st_sprue"]["route"] == "reuse" and again["st_sprue"]["vendorOrgId"] is None
+    assert again["st_sprue"]["reuse"]["status"] == "calculated"
+    assert again["st_film"]["vendorOrgId"] == SAEGIL  # 필름은 그대로 새길자원으로 간다
+
+
+def test_cost_inputs_are_validated_and_never_reach_a_vendor():
+    import json
+
+    from app.v3 import service
+    from tests.v3.runtime_fixtures import HANBIT, MISO, make_app, to_approval
+
+    app = make_app()
+    with pytest.raises(service.ServiceError):
+        service.update_stream(app, HANBIT, "st_defect", {"pretreatHoursPerMonth": -1}, HANBIT)
+    with pytest.raises(service.ServiceError):
+        service.update_stream(
+            app, HANBIT, "st_sprue", {"reuse": {"virginPriceKrwPerKg": 0}}, HANBIT
+        )
+    service.update_stream(
+        app, HANBIT, "st_defect", {"pretreatHoursPerMonth": 4, "laborCostKrwPerHour": 12000}, HANBIT
+    )
+    view = to_approval(app)
+    defect = next(a for a in view["result"]["assignments"] if a["streamId"] == "st_defect")
+    assert defect["vendorOrgId"] == MISO and defect["labor"]["value"] == 48000
+    assert defect["monthlyAfter"]["value"] == 200 * 400 - 48000
+    mine = next(s for s in view["streams"] if s["id"] == "st_defect")
+    assert mine["costInputs"]["pretreatHoursPerMonth"] == 4
+    seen = json.dumps(service.get_view(app, view["session"]["id"], MISO), ensure_ascii=False)
+    # 문의 글의 "전처리 조건" 같은 낱말은 있어도 되지만, 작업 시간과 인건비는 없어야 한다
+    assert "costInputs" not in seen and "인건비" not in seen and "전처리 작업" not in seen
+    assert "48000" not in seen and "12000" not in seen
+    assert all("pretreatHoursPerMonth" not in s for s in service.list_streams(app, HANBIT, MISO))

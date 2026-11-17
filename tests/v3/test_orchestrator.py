@@ -283,6 +283,7 @@ def test_execution_record_shows_what_really_happened(demo):
     assert {e["detail"]["tool"] for e in tools} == {
         "identify_stream",
         "judge_route",
+        "judge_reuse",
         "check_loading",
         "check_requirements",
         "match_permit",

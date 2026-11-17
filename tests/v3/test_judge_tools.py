@@ -49,8 +49,8 @@ def test_basis_prefers_ref_when_present():
     assert basis.resolve(reg, EMITTER, "current.cost.폐플라스틱").kind == "assumption"
 
 
-def test_toolbox_has_ten_tools_and_validates_input():
-    assert len(TOOLS) == 10 and {t["function"]["name"] for t in tool_schemas()} == set(TOOLS)
+def test_toolbox_has_eleven_tools_and_validates_input():
+    assert len(TOOLS) == 11 and {t["function"]["name"] for t in tool_schemas()} == set(TOOLS)
     assert sorted({s.stage for s in TOOLS.values()}) == [1, 2, 3, 4, 5, 6]
     reg = registry()
     for bad in ({}, {"stream": "x"}, {"stream": {}, "nope": 1}):
@@ -415,7 +415,7 @@ def test_grade_thresholds_have_one_source():
 
 
 def test_every_tool_output_passes_the_validator():
-    """도구 10개의 claims와 ask 문장이 근거 검증기를 그대로 통과한다."""
+    """도구 11개의 claims와 ask 문장이 근거 검증기를 그대로 통과한다."""
     from app.v3.evidence.seeds import load_seed_dir
 
     reg = registry()
@@ -435,6 +435,21 @@ def test_every_tool_output_passes_the_validator():
         (EMITTER, "judge_route", {"stream": stream()}),
         (EMITTER, "judge_route", {"stream": mixed, "vendor": vendor()}),
         (EMITTER, "judge_route", {"stream": stream(), "vendor": film_vendor()}),
+        (EMITTER, "judge_reuse", {"stream": stream()}),
+        (
+            EMITTER,
+            "judge_reuse",
+            {
+                "stream": stream(
+                    reuse={
+                        "virginPriceKrwPerKg": 1500,
+                        "reusableKgPerMonth": 400,
+                        "regrindCostKrwPerKg": 120,
+                        "evidence": [],
+                    }
+                )
+            },
+        ),
         (EMITTER, "check_loading", {"streams": [stream(), mixed], "vendor": vendor()}),
         (EMITTER, "search_clauses", {"query": "폐기물 위탁 재활용"}),
         (EMITTER, "check_requirements", {"stream": stream(), "route": "sell"}),

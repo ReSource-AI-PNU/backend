@@ -52,7 +52,7 @@ from app.v3.evidence.validator import (
 )
 from app.v3.intake.grade_model import GradeModelError, grade_stream
 from app.v3.judge import basis
-from app.v3.judge.common import best_criterion, permit_match, quality
+from app.v3.judge.common import best_criterion, permit_match, quality, without_emitter_only
 from app.v3.judge.toolbox import TOOLS, call_tool
 from app.v3.textutil import josa
 
@@ -97,6 +97,7 @@ def new_work() -> dict[str, Any]:
         "permits": [],
         "requirements": {},
         "baseline": {},
+        "reuse": {},
         "excluded": [],
         "threadTools": {},
         "threadState": {},
@@ -135,6 +136,25 @@ def claim_in(result: dict[str, Any] | None, key: str | None, new_id: str) -> dic
             # 사람이 읽는 이름과 구실은 도구의 claim 키에서 정한다
             return naming.annotate({**claim, "id": new_id}, key)
     return None
+
+
+def reuse_view(result: dict[str, Any] | None, tag: str) -> dict[str, Any] | None:
+    """결과 한 장에 싣는 공정 재투입 후보. judge_reuse를 부르지 않았으면 None."""
+    if not result:
+        return None
+    output = result.get("output") or {}
+    return {
+        "eligible": output.get("eligible"),
+        "status": result.get("status"),
+        "reason": output.get("reason") or "",
+        "monthlyAfter": claim_in(result, "monthlyAfter", f"{tag}_reuse_monthlyAfter"),
+        "difference": claim_in(result, "difference", f"{tag}_reuse_difference"),
+        "checks": [
+            {k: check.get(k) for k in ("key", "status", "text", "evidence")}
+            for check in result.get("checks") or []
+            if check["key"].startswith("reuse_")
+        ],
+    }
 
 
 def permit_digest(stream: dict[str, Any], vendor: dict[str, Any]) -> str:
@@ -782,6 +802,10 @@ class Orchestrator:
                 work["baseline"][sid] = self._tool(
                     session, "judge_route", {"stream": stream}, summary_ids={"streamId": sid}
                 )
+            # ② 경로 후보 가운데 공정 재투입(업체가 끼지 않는다)
+            work.setdefault("reuse", {})[sid] = self._tool(
+                session, "judge_reuse", {"stream": stream}, summary_ids={"streamId": sid}
+            )
             route = next((r for r in ("sell", "treat") if r in routes[sid]), "keep")
             required = self._tool(
                 session,
@@ -1309,9 +1333,8 @@ class Orchestrator:
         emitter = self.store.get_org(thread.emitter_org)
         streams = []
         for sid in thread.stream_ids:
-            stream = self.store.get_stream(sid)
-            stream.pop("currentTreatment", None)  # 현행 계약 단가는 업체에 열지 않는다
-            streams.append(stream)
+            # 현행 계약 단가, 재투입 입력, 전처리 인건비는 업체에 열지 않는다
+            streams.append(without_emitter_only(self.store.get_stream(sid)))
         return {
             "sessionId": session["id"],
             "today": self.today,
@@ -1808,8 +1831,7 @@ class Orchestrator:
         for sid in sorted(work["assigned"].get(thread.id) or []):
             stream = (inputs or {}).get(sid)
             if stream is None:
-                stream = dict(self.store.get_stream(sid))
-                stream.pop("currentTreatment", None)
+                stream = without_emitter_only(self.store.get_stream(sid))
             used[sid] = stream
             criterion, checks = best_criterion(stream, public, quality(stream))
             offer = offers.get(sid) or {}
@@ -1944,9 +1966,7 @@ class Orchestrator:
         offers = work["offers"].get(thread.id) or {}
         streams = []
         for sid in assigned:
-            stream = dict(self.store.get_stream(sid))
-            stream.pop("currentTreatment", None)
-            streams.append(stream)
+            streams.append(without_emitter_only(self.store.get_stream(sid)))
         return ids.digest(
             {
                 "streams": streams,
@@ -2161,6 +2181,7 @@ class Orchestrator:
                 "transport": claim_in(optimized, item.get("transport"), f"{tag}_transport"),
                 "labor": claim_in(optimized, item.get("labor"), f"{tag}_labor"),
                 "transportPaidBy": item.get("transportPaidBy"),
+                "reuse": reuse_view((work.get("reuse") or {}).get(sid), tag),
                 "carbon": claim_in(optimized, item.get("carbon"), f"{tag}_carbon"),
                 "carbonValue": claim_in(
                     cost, (cost or {}).get("output", {}).get("kau"), f"{tag}_carbonValue"
@@ -2200,6 +2221,10 @@ class Orchestrator:
                     "transport": None,
                     "labor": None,
                     "transportPaidBy": None,
+                    "reuse": reuse_view(
+                        (work.get("reuse") or {}).get(item["streamId"]),
+                        safe_id(item["streamId"]),
+                    ),
                     "carbon": None,
                     "carbonValue": None,
                     "currentAssumed": False,

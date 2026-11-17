@@ -38,6 +38,7 @@ from app.v3.agents.llm import LLM
 from app.v3.agents.pool import ClaimPool
 from app.v3.evidence.units import UnitError, convert
 from app.v3.evidence.validator import validate_message
+from app.v3.judge.common import EMITTER_ONLY_KEYS
 
 ACTOR = "vendor_agent"
 TYPES = ("question", "answer", "offer", "counter", "conditional", "decline", "handoff")
@@ -538,7 +539,8 @@ class VendorAgent:
         emitter = dict(context.get("emitter") or {"id": thread.emitter_org})
         streams = [dict(s) for s in context.get("streams") or [] if s["id"] in thread.stream_ids]
         for stream in streams:
-            stream.pop("currentTreatment", None)
+            for key in EMITTER_ONLY_KEYS:  # 배출 기업만의 값은 업체 쪽에서 쓰지 않는다
+                stream.pop(key, None)
         by_id = {s["id"]: s for s in streams}
         guard = profile.get("guardrails") or {}
         trace = Trace()

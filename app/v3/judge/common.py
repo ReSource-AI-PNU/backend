@@ -485,3 +485,19 @@ def carbon_per_kg(rec: Recorder, stream: dict, vendor: dict, unit_price, method)
     if now_ef is None or after_ef is None:
         return None, [], "배출계수가 없어 탄소를 계산하지 않았습니다. 확인 필요."
     return (float(after_ef.value) - float(now_ef.value)) / 1000, [now_ef.id, after_ef.id], None
+
+
+# ── 배출 기업만의 흐름 항목 ─────────────────────────────────────────────
+# 현행 처리(계약 단가), 재투입 입력(신재 단가), 전처리 작업 시간과 인건비는 업체에 넘기지 않는다.
+EMITTER_ONLY_KEYS = (
+    "currentTreatment",
+    "reuse",
+    "pretreatHoursPerMonth",
+    "laborCostKrwPerHour",
+    "pretreatEvidence",
+)
+
+
+def without_emitter_only(stream: dict) -> dict:
+    """업체에 넘길 흐름. 배출 기업만의 항목을 뺀 새 dict."""
+    return {k: v for k, v in stream.items() if k not in EMITTER_ONLY_KEYS}

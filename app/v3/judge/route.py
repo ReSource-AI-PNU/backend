@@ -9,6 +9,7 @@ from app.v3.judge.common import (
     Recorder,
     ambiguous_forms,
     best_criterion,
+    grade_of,
     num,
     permit_match,
     quality,
@@ -193,6 +194,145 @@ def judge_route(registry, *, org_id, today, stream, vendor=None):
         "확인할 것이 남아 조건부입니다. 업체 답변을 받으면 확정합니다."
         if conditional
         else "매입 기준을 모두 충족합니다."
+    )
+    return rec.result("conditional" if conditional else "calculated", output)
+
+
+def reuse_checks(stream: dict, grade: str | None) -> list[tuple]:
+    """공정 재투입을 볼 수 있는 흐름인가. (key, status, text) 목록. 불충족이 하나라도 있으면 대상이 아니다.
+
+    공정에서 나온 단일 재질이고(PIR), 혼입물이 없고, 측정값이 A등급 기준 안일 때만 후보로 본다.
+    회사마다 품질 기준이 다르므로 후보라는 뜻이지 넣어도 된다는 판정이 아니다.
+    """
+    out = []
+    origin = stream.get("origin")
+    if origin == "PIR":
+        out.append(("reuse_origin", "met", "공정에서 나온 것(PIR)입니다."))
+    elif origin:
+        out.append(
+            ("reuse_origin", "unmet", "쓰고 난 뒤 나온 것(PCR)은 공정에 다시 넣는 대상이 아닙니다.")
+        )
+    else:
+        out.append(("reuse_origin", "conditional", "출처(PIR·PCR)가 확인되지 않았습니다."))
+    mixed = [
+        c.get("label") or c.get("name")
+        for c in stream.get("contaminants") or []
+        if not c.get("removed")
+    ]
+    if "+" in str(stream.get("material") or "") or stream.get("singleMaterial") is False:
+        out.append(("reuse_material", "unmet", "재질이 섞여 있어 공정에 다시 넣기 어렵습니다."))
+    elif mixed:
+        names = ", ".join(str(m) for m in mixed if m)
+        out.append(("reuse_material", "unmet", f"혼입물이 있습니다: {names}."))
+    elif not stream.get("material"):
+        out.append(("reuse_material", "conditional", "재질이 확인되지 않았습니다."))
+    else:
+        out.append(("reuse_material", "met", "단일 재질이고 혼입물이 없습니다."))
+    q = quality(stream)
+    measured = q["contaminationBasis"] == "measured" and q["moistureBasis"] == "measured"
+    if not measured:
+        out.append(
+            (
+                "reuse_quality",
+                "conditional",
+                "오염도와 수분의 측정값이 없어 품질을 확인하지 못했습니다.",
+            )
+        )
+    elif grade == "A":
+        out.append(("reuse_quality", "met", "측정값이 A등급 기준 안입니다."))
+    else:
+        out.append(("reuse_quality", "unmet", "측정 등급이 A가 아니어서 재투입 후보에서 뺐습니다."))
+    return out
+
+
+def reuse_numbers(stream: dict, kg: float, cost: float):
+    """재투입 입력이 다 있으면 (다시 넣는 양, 절감액, 남는 양의 현행 처리비, 변경 뒤 월 손익), 없으면 None.
+
+    절감액 = 다시 넣는 양 × (신재 구입 단가 − 분쇄 비용). 다시 넣지 못하는 양은 현행대로 처리한다.
+    """
+    reuse = stream.get("reuse") or {}
+    virgin, limit = num(reuse.get("virginPriceKrwPerKg")), num(reuse.get("reusableKgPerMonth"))
+    if virgin is None or limit is None or limit <= 0:
+        return None
+    regrind = num(reuse.get("regrindCostKrwPerKg")) or 0.0
+    used = min(kg, limit)
+    saving = used * (virgin - regrind)
+    rest_cost = (kg - used) * cost
+    return used, saving, rest_cost, saving - rest_cost
+
+
+def judge_reuse(registry, *, org_id, today, stream):
+    """② 경로 후보 가운데 공정 재투입. 업체가 끼지 않는 경로라 배출 기업만 본다."""
+    rec = Recorder("judge_reuse", registry, org_id, today, {"stream": stream})
+    output = {
+        "streamId": stream.get("id"),
+        "route": "reuse",
+        "eligible": None,
+        "reason": "",
+        "current": None,
+    }
+    q = quality(stream)
+    grade = None
+    if q["contaminationPct"] is not None and q["moisturePct"] is not None:
+        grade, _ = grade_of(rec, stream.get("material"), q["contaminationPct"], q["moisturePct"])
+    for key, status, text in reuse_checks(stream, grade):
+        rec.check(key, status, text, None, q["evidence"] if key == "reuse_quality" else ())
+    failed = [c for c in rec.checks if c["status"] == "unmet"]
+    if failed:
+        output.update(eligible=False, reason=failed[0]["text"])
+        return rec.result("calculated", output)
+    output["eligible"] = True
+    kg = num(stream.get("monthlyKg"))
+    if kg is None or kg <= 0:
+        rec.check("monthly_kg", "conditional", "월 발생량을 몰라 금액을 계산하지 않았습니다.")
+        output["reason"] = "재투입 후보입니다. 발생량을 확인하면 계산합니다."
+        return rec.result("needs_information", output)
+    cost, cost_ev, _, _ = current_cost(rec, stream)
+    numbers = None if cost is None else reuse_numbers(stream, kg, cost)
+    if numbers is None:
+        rec.check(
+            "reuse_inputs",
+            "conditional",
+            "신재 구입 단가와 한 달에 다시 넣을 수 있는 양이 없어 금액을 계산하지 않았습니다.",
+        )
+        output["reason"] = (
+            "재투입 후보입니다. 신재 구입 단가와 다시 넣을 수 있는 양을 넣으면 계산합니다."
+        )
+        return rec.result("needs_information", output)
+    used, saving, _, after = numbers
+    reuse = stream.get("reuse") or {}
+    reuse_ev = list(reuse.get("evidence") or [])
+    rec.number("reuseKg", used, "kg/월", "한 달에 공정에 다시 넣는 양", reuse_ev, private=True)
+    rec.number(
+        "virginPrice",
+        float(reuse["virginPriceKrwPerKg"]),
+        "원/kg",
+        "신재 구입 단가",
+        reuse_ev,
+        private=True,
+    )
+    rec.number(
+        "monthlyRevenue",
+        saving,
+        "원/월",
+        "다시 넣는 양 × (신재 구입 단가 − 분쇄 비용)",
+        reuse_ev,
+        private=True,
+    )
+    rec.number(
+        "monthlyAfter",
+        after,
+        "원/월",
+        "신재 절감액 − 다시 넣지 못하는 양의 현행 처리비",
+        [*reuse_ev, *cost_ev],
+        private=True,
+    )
+    output["current"], _ = baseline(rec, stream, kg, after)
+    conditional = any(c["status"] == "conditional" for c in rec.checks)
+    output["reason"] = (
+        "재투입 후보입니다. 확인할 것이 남아 조건부입니다."
+        if conditional
+        else "재투입 조건을 모두 충족합니다."
     )
     return rec.result("conditional" if conditional else "calculated", output)
 

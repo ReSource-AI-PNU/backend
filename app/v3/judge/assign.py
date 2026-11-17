@@ -12,13 +12,14 @@ from app.v3.judge.common import (
     Recorder,
     best_criterion,
     carbon_per_kg,
+    grade_of,
     labor_cost,
     num,
     permit_match,
     quality,
     transport_charge,
 )
-from app.v3.judge.route import current_cost
+from app.v3.judge.route import current_cost, reuse_checks, reuse_numbers
 
 try:  # 없으면 순수 파이썬 완전 탐색으로만 돈다
     from ortools.sat.python import cp_model  # noqa: F401
@@ -35,7 +36,10 @@ _AUTO = object()
 
 
 def _name(choice) -> str:
-    return str(choice["vendor"].get("orgId")) if choice["vendor"] else ""
+    """동점일 때의 순서: 현행 유지, 재투입, 업체 ID."""
+    if choice["vendor"]:
+        return str(choice["vendor"].get("orgId"))
+    return "!reuse" if choice.get("reuse") else ""
 
 
 def cp_sat_pick(usable, options, weight):
@@ -230,6 +234,24 @@ def optimize_assignment(
             "carbon_known": True,
         }
         choices = [keep]
+        # 공정 재투입: 후보 조건을 모두 채우고 신재 단가와 다시 넣을 양이 있을 때만 선택지가 된다
+        grade = None
+        if q["contaminationPct"] is not None and q["moisturePct"] is not None:
+            grade, _ = grade_of(
+                rec, stream.get("material"), q["contaminationPct"], q["moisturePct"]
+            )
+        reuse_ok = all(c[1] == "met" for c in reuse_checks(stream, grade))
+        numbers = reuse_numbers(stream, kg, cost) if reuse_ok else None
+        if numbers is not None:
+            choices.append(
+                {
+                    **keep,
+                    "reuse": True,
+                    "value": numbers[3],
+                    "revenue": numbers[1],
+                    "ev": [*list((stream.get("reuse") or {}).get("evidence") or []), *cost_ev],
+                }
+            )
         for vendor in vendors:
             if (str(stream.get("id")), str(vendor.get("orgId"))) in excluded:
                 continue
@@ -315,7 +337,7 @@ def optimize_assignment(
             )
             carbon = math.fsum(c["carbon"] for c in combo)
             objective = money - weight * carbon
-            names = tuple(str(c["vendor"].get("orgId")) if c["vendor"] else "" for c in combo)
+            names = tuple(_name(c) for c in combo)
             key = (-round(objective, 6), names)  # 동점이면 업체 ID 순서가 앞선 배정
             if best_key is None or key < best_key:
                 best, best_key = combo, key
@@ -378,6 +400,18 @@ def optimize_assignment(
         parts["now"].append(made["evidence"][0])
         breakdown = {"revenue": None, "transport": None, "labor": None}
         after, after_ev, after_formula = choice["value"], list(choice["ev"]), "현행 유지의 월 손익"
+        if choice.get("reuse"):
+            made = rec.number(
+                f"{tag}Revenue",
+                choice["revenue"],
+                "원/월",
+                "다시 넣는 양 × (신재 구입 단가 − 분쇄 비용)",
+                choice["ev"],
+                label=names.calc_label("revenue", who),
+            )
+            breakdown["revenue"] = made["id"]
+            after_ev = [made["evidence"][0], *choice["ev"]]
+            after_formula = "신재 절감액 − 다시 넣지 못하는 양의 현행 처리비"
         charge = charges.get(i)
         if choice["vendor"] is not None:
             made = rec.number(
@@ -448,7 +482,9 @@ def optimize_assignment(
         entry = {
             "streamId": stream.get("id"),
             "vendorOrgId": choice["vendor"].get("orgId") if choice["vendor"] else None,
-            "route": "keep"
+            "route": "reuse"
+            if choice.get("reuse")
+            else "keep"
             if choice["vendor"] is None
             else ("sell" if choice["price"] >= 0 else "treat"),
             "criterionId": choice["criterion"].get("id") if choice["criterion"] else None,

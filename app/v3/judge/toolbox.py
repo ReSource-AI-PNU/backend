@@ -11,7 +11,7 @@ from app.v3.judge.assign import optimize_assignment
 from app.v3.judge.economics import cost_carbon, route_extra_cost
 from app.v3.judge.identify import identify_stream
 from app.v3.judge.regulation import check_requirements, match_permit, search_clauses
-from app.v3.judge.route import check_loading, judge_route
+from app.v3.judge.route import check_loading, judge_reuse, judge_route
 from app.v3.judge.vendors import find_vendors
 from app.v3.textutil import josa
 
@@ -52,6 +52,13 @@ _SPECS = [
         "흐름의 경로를 확정·조건부·확인 필요로 판정하고 업체 매입 기준과 대조한다.",
         _schema({"stream": OBJ}, {"vendor": OBJ}),
         judge_route,
+    ),
+    ToolSpec(
+        "judge_reuse",
+        2,
+        "공정 재투입 후보인지 보고, 신재 단가와 다시 넣을 수 있는 양이 있으면 절감액을 계산한다.",
+        _schema({"stream": OBJ}),
+        judge_reuse,
     ),
     ToolSpec(
         "check_loading",

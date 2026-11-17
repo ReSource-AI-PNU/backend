@@ -37,6 +37,7 @@ from app.v3.evidence.validator import validate_message, validate_text
 from app.v3.intake import csv_measure, documents, shields
 from app.v3.intake import detector as media
 from app.v3.judge import basis
+from app.v3.judge.common import without_emitter_only
 from app.v3.judge.defaults import register_defaults
 from app.v3.store import InMemoryStore, NotFound
 
@@ -305,9 +306,7 @@ def list_orgs(app: App, viewer: str | None = None, scoped: bool = False) -> list
 
 
 def _vendor_stream(stream: dict[str, Any]) -> dict[str, Any]:
-    stream = dict(stream)
-    stream.pop("currentTreatment", None)
-    return stream
+    return without_emitter_only(stream)
 
 
 def list_streams(app: App, org_id: str, viewer: str) -> list[dict[str, Any]]:
@@ -376,9 +375,101 @@ def update_stream(
                 "unitCostKrwPerKg": cost,
                 "evidence": [evidence],
             }
+    _update_costs(app, org_id, stream_id, stream, patch)
     saved = app.store.put_stream(stream)
     _recheck(app, org_id)
     return saved
+
+
+def _amount(value: Any, message: str, *, positive: bool = False) -> float:
+    bad = isinstance(value, bool) or not isinstance(value, (int, float))
+    if bad or value < 0 or (positive and value <= 0):
+        raise ServiceError("INVALID_VALUE", message, 422)
+    return float(value)
+
+
+def _update_costs(app: App, org_id: str, stream_id: str, stream: dict, patch: dict) -> None:
+    """순비용 계산에 쓰는 배출 기업만의 입력: 전처리 작업 시간·인건비와 공정 재투입 값."""
+    if "pretreatHoursPerMonth" in patch or "laborCostKrwPerHour" in patch:
+        hours = patch.get("pretreatHoursPerMonth", stream.get("pretreatHoursPerMonth"))
+        rate = patch.get("laborCostKrwPerHour", stream.get("laborCostKrwPerHour"))
+        old = list(stream.get("pretreatEvidence") or [])
+        if hours is None:
+            stream.update(pretreatHoursPerMonth=None, laborCostKrwPerHour=None, pretreatEvidence=[])
+        else:
+            hours = _amount(hours, "전처리 작업 시간은 0 이상의 숫자(시간/월)여야 합니다.")
+            evidence = [
+                _grounded(
+                    app,
+                    org_id,
+                    f"{stream_id}-전처리시간",
+                    "월 전처리 작업 시간",
+                    hours,
+                    "시간/월",
+                    old,
+                )
+            ]
+            if rate is not None:
+                rate = _amount(
+                    rate, "시간당 인건비는 0보다 큰 숫자(원/시간)여야 합니다.", positive=True
+                )
+                evidence.append(
+                    _grounded(
+                        app,
+                        org_id,
+                        f"{stream_id}-시간당인건비",
+                        "시간당 인건비",
+                        rate,
+                        "원/시간",
+                        old,
+                    )
+                )
+            stream.update(
+                pretreatHoursPerMonth=hours,
+                laborCostKrwPerHour=rate,
+                pretreatEvidence=[e for e in evidence if e],
+            )
+    if "reuse" in patch:
+        reuse = patch["reuse"]
+        if reuse is None:
+            stream["reuse"] = None
+            return
+        if not isinstance(reuse, dict):
+            raise ServiceError("INVALID_VALUE", "재투입 값은 객체로 보내 주세요.", 422)
+        old = list((stream.get("reuse") or {}).get("evidence") or [])
+        virgin = _amount(
+            reuse.get("virginPriceKrwPerKg"),
+            "신재 구입 단가는 0보다 큰 숫자(원/kg)여야 합니다.",
+            positive=True,
+        )
+        limit = _amount(
+            reuse.get("reusableKgPerMonth"),
+            "다시 넣을 수 있는 양은 0보다 큰 숫자(kg/월)여야 합니다.",
+            positive=True,
+        )
+        regrind = reuse.get("regrindCostKrwPerKg")
+        regrind = (
+            0.0 if regrind is None else _amount(regrind, "분쇄 비용은 0 이상의 숫자여야 합니다.")
+        )
+        evidence = [
+            _grounded(app, org_id, f"{stream_id}-신재단가", "신재 구입 단가", virgin, "원/kg", old),
+            _grounded(
+                app,
+                org_id,
+                f"{stream_id}-재투입가능량",
+                "다시 넣을 수 있는 양",
+                limit,
+                "kg/월",
+                old,
+            ),
+            _grounded(app, org_id, f"{stream_id}-분쇄비용", "분쇄 비용", regrind, "원/kg", old),
+        ]
+        stream["reuse"] = {
+            "virginPriceKrwPerKg": virgin,
+            "reusableKgPerMonth": limit,
+            "regrindCostKrwPerKg": regrind,
+            "evidence": [e for e in evidence if e],
+        }
 
 
 def get_vendor(app: App, org_id: str, viewer: str) -> dict[str, Any]:
@@ -618,6 +709,18 @@ def _stream_view(
             "method": "혼합 소각" if assumed else current.get("method"),
             "unitCost": cost,
             "assumed": assumed,
+        }
+        # 순비용에 쓰는 배출 기업만의 입력(자료 화면에서 고친다). 업체 뷰에는 없다
+        reuse = stream.get("reuse") or None
+        view["costInputs"] = {
+            "pretreatHoursPerMonth": stream.get("pretreatHoursPerMonth"),
+            "laborCostKrwPerHour": stream.get("laborCostKrwPerHour"),
+            "reuse": {
+                k: reuse.get(k)
+                for k in ("virginPriceKrwPerKg", "reusableKgPerMonth", "regrindCostKrwPerKg")
+            }
+            if reuse
+            else None,
         }
     return view
 
@@ -918,6 +1021,7 @@ def _result_view(session: dict[str, Any], viewer: str, owner: bool) -> dict[str,
                 "revenue": None,
                 "transport": None,
                 "labor": None,
+                "reuse": None,
                 "carbon": None,
                 "carbonValue": None,
                 # 업체가 내건 조건과 최소 물량·적재 검사만 남긴다(나머지는 배출 기업의 판단이다)
