@@ -766,7 +766,14 @@ def _invariants(session: _Session, seen: dict[str, Any]) -> list[dict[str, Any]]
 # ── 사례 하나, 여러 건 ───────────────────────────────────────────────
 
 
-def run_case(case: dict[str, Any], options: dict[str, Any] | None = None) -> dict[str, Any]:
+def run_case(
+    case: dict[str, Any],
+    options: dict[str, Any] | None = None,
+    *,
+    on_session: Any = None,
+) -> dict[str, Any]:
+    """사례 하나를 돌린다. on_session(session)을 주면 실행이 끝난 세션을 넘긴다(반복 실행기가
+    실행 기록에서 초안 단위 기록을 읽을 때 쓴다). 결과에는 영향이 없다."""
     options = options or {}
     base = {
         "id": case["id"],
@@ -788,6 +795,8 @@ def run_case(case: dict[str, Any], options: dict[str, Any] | None = None) -> dic
             seen = _observe(session)
     except Exception as failure:  # noqa: BLE001 - 사례 하나가 죽어도 나머지는 돌린다
         error = f"{type(failure).__name__}: {failure}"
+    if on_session is not None and session is not None:
+        on_session(session)
     mismatches = [] if error else _compare(case, seen, tools)
     violations = [] if error else _forbidden(case, session, seen, tools)
     if session is not None and not error:
