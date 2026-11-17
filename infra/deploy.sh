@@ -25,7 +25,9 @@
 #   IMAGE_TAG         이미 올린 태그로 배포한다(되돌릴 때). 주면 빌드와 작업 폴더 검사를 건너뛴다
 #   MIGRATE_MODE      acr(기본. ACR 작업으로 Azure 안에서 돌린다) | local(이 PC에서 uv run alembic)
 #   BACKEND_EXTRAS    이미지에 넣을 extra (기본 ml. 비우면 추론 extra를 뺀다)
-#   V3_LLM            foundry(기본) | rule
+#   V3_LLM            foundry(기본) | rule | anthropic. anthropic이면 Key Vault 비밀 anthropic-api-key가 먼저 있어야 한다
+#   ANTHROPIC_MODEL   V3_LLM=anthropic일 때의 모델 이름 (비우면 앱의 기본값)
+#   V3_LLM_ALL_VENDORS true면 ollama를 고른 업체도(주소가 없을 때) anthropic 모델이 답한다 (기본 false)
 #   FOUNDRY_ENDPOINT  비우면 리소스 그룹의 Foundry(AI Services) 주소를 찾는다
 #   FOUNDRY_DEPLOYMENT 기본 gpt-5-mini
 #   VENDOR_ORG_ID     업체 측 에이전트 서비스가 대변하는 업체 (기본 org_saegil)
@@ -33,10 +35,28 @@
 #   V3_AUTH           header(기본, 시연 전용: X-Org-Id를 믿는다) | token(조직별 서비스 토큰). 공개 주소에는 token을
 #                     쓴다. token이면 Key Vault 비밀 v3-org-tokens(JSON {"조직 ID": "토큰"})가 먼저 있어야 한다
 #   V3_DEMO_OPEN      true면 시연 되돌리기를 누구나 부른다 (기본 false: 관리자 조직만)
+#   V3_CORS_ORIGINS   API가 프런트 주소 말고 더 허용할 브라우저 출처 (쉼표로 나눔. 기본은 비움)
+#   V3_DISTANCE       도로 거리 제공자: 비움(기본, 없음) | none | kakao | azure
+#                     kakao면 Key Vault 비밀 kakao-rest-api-key, azure면 maps-key가 먼저 있어야 한다
+#   V3_VENDOR_AGENTS  따로 띄운 업체 측 에이전트 주소 JSON {"업체 조직 ID": "https://..."} (기본 {})
+#   AZURE_SEARCH_ENDPOINT  AI Search 주소. 주면 Key Vault 비밀 search-admin-key를 함께 넣는다 (기본은 비움)
+#   AZURE_SEARCH_INDEX     기본 rsai-evidence
+#   APP_INSIGHTS      true면 Key Vault 비밀 appinsights-connection-string을 API에 넣는다 (기본 false)
+#   V3_DETECTOR_ENDPOINT, V3_DETECTOR_DEPLOYMENT  탐지 모델 엔드포인트. 주면 Key Vault 비밀 detector-api-key가 있어야 한다
+#   프런트 (frontend 대상일 때만 읽는다)
+#   WEB_API           direct | proxy. direct는 브라우저가 API 주소를 바로 부른다(NEXT_PUBLIC_API_BASE=https://<API>/api/v3).
+#                     proxy는 브라우저가 프런트의 /api/v3 를 부르고 프런트 서버가 V3_BACKEND_URL로 넘긴다
+#                     (NEXT_PUBLIC_API_BASE=/api/v3). 기본은 V3_AUTH=token이면 proxy, 아니면 direct.
+#                     token 모드에서 direct는 쓸 수 없다(브라우저는 조직 토큰을 갖지 않는다)
+#   AUTH_DEV_LOGIN    true면 시연용 로그인을 켠다 (기본 false)
+#   AUTH_URL          프런트의 공개 주소 (비우면 프런트 앱 주소)
+#   AUTH_ENTRA_ID, AUTH_ENTRA_ISSUER  Entra External ID 로그인. ID를 주면 Key Vault 비밀 auth-entra-secret이 있어야 한다
+#   AUTH_SECRET은 Key Vault 비밀 auth-secret이다. 없으면 새로 만들어 Key Vault에만 둔다
 #   ALLOW_DIRTY=1     커밋하지 않은 변경이 있어도 진행한다 (태그와 내용이 달라질 수 있다)
 #
 # 비밀: Key Vault에서 읽어 앱 비밀로만 넣고 화면에 찍지 않는다. vendor-service-key 와 mcp-service-key 가
-#       Key Vault에 없으면 새로 만들어 Key Vault에만 둔다.
+#       Key Vault에 없으면 새로 만들어 Key Vault에만 둔다. 사람이 정해 넣는 비밀(anthropic-api-key,
+#       kakao-rest-api-key, v3-org-tokens 등)은 여기서 만들지 않고, 없으면 배포 전에 멈춘다.
 set -euo pipefail
 
 RG="${RG:-team_AIBIC2026_03_RG_EUS2}"
@@ -50,6 +70,21 @@ VENDOR_ORG_ID="${VENDOR_ORG_ID:-org_saegil}"
 OLLAMA_BASE_URL="${OLLAMA_BASE_URL:-}"
 V3_AUTH="${V3_AUTH:-header}"
 V3_DEMO_OPEN="${V3_DEMO_OPEN:-false}"
+ANTHROPIC_MODEL="${ANTHROPIC_MODEL:-}"
+V3_LLM_ALL_VENDORS="${V3_LLM_ALL_VENDORS:-false}"
+V3_CORS_ORIGINS="${V3_CORS_ORIGINS:-}"
+V3_DISTANCE="${V3_DISTANCE:-}"
+V3_VENDOR_AGENTS="${V3_VENDOR_AGENTS:-}"; [ -n "$V3_VENDOR_AGENTS" ] || V3_VENDOR_AGENTS='{}'
+AZURE_SEARCH_ENDPOINT="${AZURE_SEARCH_ENDPOINT:-}"
+AZURE_SEARCH_INDEX="${AZURE_SEARCH_INDEX:-rsai-evidence}"
+APP_INSIGHTS="${APP_INSIGHTS:-false}"
+V3_DETECTOR_ENDPOINT="${V3_DETECTOR_ENDPOINT:-}"
+V3_DETECTOR_DEPLOYMENT="${V3_DETECTOR_DEPLOYMENT:-}"
+AUTH_DEV_LOGIN="${AUTH_DEV_LOGIN:-false}"
+AUTH_URL="${AUTH_URL:-}"
+AUTH_ENTRA_ID="${AUTH_ENTRA_ID:-}"
+AUTH_ENTRA_ISSUER="${AUTH_ENTRA_ISSUER:-}"
+WEB_API="${WEB_API:-}"
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT="$(cd "$HERE/.." && pwd)"
 FRONTEND_DIR="${FRONTEND_DIR:-$ROOT/../frontend}"
@@ -64,6 +99,16 @@ case "$PLATFORM" in auto|containerapps|appservice) ;; *) die "PLATFORM은 auto|c
 case "$MIGRATE_MODE" in acr|local) ;; *) die "MIGRATE_MODE는 acr|local 중 하나" ;; esac
 case "$V3_AUTH" in header|token) ;; *) die "V3_AUTH는 header|token 중 하나" ;; esac
 case "$V3_DEMO_OPEN" in true|false) ;; *) die "V3_DEMO_OPEN은 true|false 중 하나" ;; esac
+case "$V3_LLM" in rule|foundry|anthropic) ;; *) die "V3_LLM은 rule|foundry|anthropic 중 하나" ;; esac
+case "$V3_LLM_ALL_VENDORS" in true|false) ;; *) die "V3_LLM_ALL_VENDORS는 true|false 중 하나" ;; esac
+case "$V3_DISTANCE" in ""|none|kakao|azure) ;; *) die "V3_DISTANCE는 비움|none|kakao|azure 중 하나" ;; esac
+case "$APP_INSIGHTS" in true|false) ;; *) die "APP_INSIGHTS는 true|false 중 하나" ;; esac
+case "$AUTH_DEV_LOGIN" in true|false) ;; *) die "AUTH_DEV_LOGIN은 true|false 중 하나" ;; esac
+if [ -z "$WEB_API" ]; then if [ "$V3_AUTH" = token ]; then WEB_API=proxy; else WEB_API=direct; fi; fi
+case "$WEB_API" in direct|proxy) ;; *) die "WEB_API는 direct|proxy 중 하나" ;; esac
+if [ "$V3_AUTH" = token ] && [ "$WEB_API" = direct ]; then
+  die "V3_AUTH=token에서는 WEB_API=proxy만 된다 (브라우저는 조직 토큰을 갖지 않는다)"
+fi
 
 selected() { [ "$WHAT" = all ] || [ "$WHAT" = "$1" ]; }
 uses_backend_image() { selected backend || selected vendor-agent || selected mcp; }
@@ -96,11 +141,30 @@ ensure_key() {
   fi
 }
 
-# token 모드의 조직별 토큰은 사람이 정해 Key Vault에 넣는다(여기서 만들지 않는다). 없으면 앱이 모든 요청에
-# 500으로 답하므로 배포 전에 멈춘다.
-if [ "$V3_AUTH" = token ] && { [ "$WHAT" = all ] || [ "$WHAT" = backend ]; }; then
-  az keyvault secret show --vault-name "$KV" -n v3-org-tokens --query id -o tsv >/dev/null 2>&1 \
-    || die "V3_AUTH=token인데 Key Vault 비밀 v3-org-tokens가 없다"
+# 사람이 정해 Key Vault에 넣는 비밀(여기서 만들지 않는다). 없으면 Key Vault 참조가 풀리지 않아 앱 설정에
+# 참조 글이 그대로 남으므로(앱이 그것을 키로 읽는다) 배포 전에 멈춘다. 값은 읽지 않고 있는지만 본다.
+need_secret() {
+  az keyvault secret show --vault-name "$KV" -n "$1" --query id -o tsv >/dev/null 2>&1 \
+    || die "$2인데 Key Vault 비밀 $1 이 없다. 먼저 넣는다: az keyvault secret set --vault-name $KV -n $1 --file <값을 담은 파일>"
+}
+# token 모드의 조직별 토큰: 없으면 API가 모든 요청에 500으로 답한다. 프런트 서버도 같은 비밀을 읽는다.
+if [ "$V3_AUTH" = token ] && { selected backend || selected frontend; }; then
+  need_secret v3-org-tokens "V3_AUTH=token"
+fi
+if [ "$V3_LLM" = anthropic ] && { selected backend || selected vendor-agent; }; then
+  need_secret anthropic-api-key "V3_LLM=anthropic"
+fi
+if selected backend; then
+  if [ "$V3_DISTANCE" = kakao ]; then need_secret kakao-rest-api-key "V3_DISTANCE=kakao"; fi
+  if [ "$V3_DISTANCE" = azure ]; then need_secret maps-key "V3_DISTANCE=azure"; fi
+  if [ "$V3_VENDOR_AGENTS" != '{}' ]; then need_secret vendor-service-key "V3_VENDOR_AGENTS를 준 배포"; fi
+  if [ -n "$AZURE_SEARCH_ENDPOINT" ]; then need_secret search-admin-key "AZURE_SEARCH_ENDPOINT를 준 배포"; fi
+  if [ "$APP_INSIGHTS" = true ]; then need_secret appinsights-connection-string "APP_INSIGHTS=true"; fi
+  if [ -n "$V3_DETECTOR_ENDPOINT" ]; then need_secret detector-api-key "V3_DETECTOR_ENDPOINT를 준 배포"; fi
+fi
+if selected frontend && [ -n "$AUTH_ENTRA_ID" ]; then
+  [ -n "$AUTH_ENTRA_ISSUER" ] || die "AUTH_ENTRA_ID를 주면 AUTH_ENTRA_ISSUER도 줘야 한다"
+  need_secret auth-entra-secret "AUTH_ENTRA_ID를 준 배포"
 fi
 
 # ── 태그 정하기 ──────────────────────────────────────────────
@@ -115,6 +179,8 @@ if uses_backend_image; then BACKEND_TAG="${IMAGE_TAG:-$(commit_of "$ROOT")}"; fi
 if selected frontend; then
   [ -f "$FRONTEND_DIR/Dockerfile" ] || die "$FRONTEND_DIR/Dockerfile 이 없다 (FRONTEND_DIR로 프런트 저장소를 가리킨다)"
   FRONTEND_TAG="${IMAGE_TAG:-$(commit_of "$FRONTEND_DIR")}"
+  # 부르는 방식이 번들에 박히므로 같은 커밋이라도 태그를 따로 둔다
+  if [ -z "${IMAGE_TAG:-}" ] && [ "$WEB_API" = proxy ]; then FRONTEND_TAG="$FRONTEND_TAG-proxy"; fi
 fi
 
 # ── 주소 (프런트 빌드 인자와 CORS에 쓴다) ────────────────────
@@ -136,6 +202,9 @@ fi
 if [ "$V3_LLM" = foundry ] && [ -z "$FOUNDRY_ENDPOINT" ] && uses_backend_image; then
   die "Foundry 주소를 찾지 못했다. FOUNDRY_ENDPOINT를 주거나 V3_LLM=rule 로 배포한다"
 fi
+# 프런트 번들에 박히는 v3 API 주소와, 프런트 서버가 요청을 넘길 백엔드 주소
+if [ "$WEB_API" = proxy ]; then WEB_API_BASE="/api/v3"; else WEB_API_BASE="https://$HOST_API/api/v3"; fi
+V3_BACKEND_URL="https://$HOST_API/api/v3"
 
 # ── 1) 이미지 ────────────────────────────────────────────────
 image_exists() { az acr repository show -n "$ACR" --image "$1" -o none 2>/dev/null; }
@@ -152,10 +221,10 @@ if selected frontend; then
   if image_exists "rsai-frontend:$FRONTEND_TAG"; then say "이미지 rsai-frontend:$FRONTEND_TAG 가 이미 있다. 다시 만들지 않는다 (백엔드 주소가 바뀌었으면 새 커밋으로 다시 만든다)"
   elif [ -n "${IMAGE_TAG:-}" ]; then die "IMAGE_TAG=$IMAGE_TAG 이미지가 레지스트리에 없다"
   else
-    say "이미지 rsai-frontend:$FRONTEND_TAG 빌드 (백엔드 주소 https://$HOST_API)"
+    say "이미지 rsai-frontend:$FRONTEND_TAG 빌드 (백엔드 주소 https://$HOST_API, v3 API는 $WEB_API_BASE)"
     az acr build -r "$ACR" -t "rsai-frontend:$FRONTEND_TAG" \
       --build-arg "NEXT_PUBLIC_API_BASE_URL=https://$HOST_API/api/v1" \
-      --build-arg "NEXT_PUBLIC_API_BASE=https://$HOST_API/api/v3" "$FRONTEND_DIR"
+      --build-arg "NEXT_PUBLIC_API_BASE=$WEB_API_BASE" "$FRONTEND_DIR"
   fi
 fi
 
@@ -189,18 +258,42 @@ if uses_backend_image; then migrate; fi
 deploy_appservice() {
   local params=("acrName=$ACR" "keyVaultName=$KV" "v3Llm=$V3_LLM" "foundryEndpoint=$FOUNDRY_ENDPOINT"
     "foundryDeployment=$FOUNDRY_DEPLOYMENT" "vendorOrgId=$VENDOR_ORG_ID" "ollamaBaseUrl=$OLLAMA_BASE_URL"
-    "v3Auth=$V3_AUTH" "v3DemoOpen=$V3_DEMO_OPEN")
+    "v3Auth=$V3_AUTH" "v3DemoOpen=$V3_DEMO_OPEN"
+    "anthropicModel=$ANTHROPIC_MODEL" "v3LlmAllVendors=$V3_LLM_ALL_VENDORS" "v3CorsOrigins=$V3_CORS_ORIGINS"
+    "v3Distance=$V3_DISTANCE" "v3VendorAgents=$V3_VENDOR_AGENTS" "searchEndpoint=$AZURE_SEARCH_ENDPOINT"
+    "searchIndex=$AZURE_SEARCH_INDEX" "enableAppInsights=$APP_INSIGHTS" "detectorEndpoint=$V3_DETECTOR_ENDPOINT"
+    "detectorDeployment=$V3_DETECTOR_DEPLOYMENT" "authUrl=$AUTH_URL" "authDevLogin=$AUTH_DEV_LOGIN"
+    "authEntraId=$AUTH_ENTRA_ID" "authEntraIssuer=$AUTH_ENTRA_ISSUER" "v3BackendUrl=$V3_BACKEND_URL")
   local apps=()
   if uses_backend_image; then params+=("backendImage=rsai-backend:$BACKEND_TAG"); fi
   if selected backend; then params+=("deployBackend=true"); apps+=("$APP_API"); fi
   if selected vendor-agent; then ensure_key vendor-service-key; params+=("deployVendorAgent=true"); apps+=("$APP_VENDOR"); fi
   if selected mcp; then ensure_key mcp-service-key; params+=("deployMcp=true"); apps+=("$APP_MCP"); fi
-  if selected frontend; then params+=("deployFrontend=true" "frontendImage=rsai-frontend:$FRONTEND_TAG"); apps+=("$APP_WEB"); fi
+  if selected frontend; then
+    ensure_key auth-secret
+    params+=("deployFrontend=true" "frontendImage=rsai-frontend:$FRONTEND_TAG"); apps+=("$APP_WEB")
+  fi
   az deployment group create -g "$RG" -n "rsai-apps-$(date +%Y%m%d%H%M%S)" -f "$HERE/appservice.bicep" \
     -p "${params[@]}" --query "{state:properties.provisioningState}" -o json
   # Key Vault 참조는 접근 정책이 생긴 뒤에 풀린다. 한 번 다시 시작해 새 이미지와 비밀을 함께 읽게 한다.
   local app
   for app in "${apps[@]}"; do say "$app 다시 시작"; az webapp restart -g "$RG" -n "$app" -o none; done
+  # 풀리지 않은 Key Vault 참조가 있으면 앱은 참조 글을 값으로 읽는다(AUTH_SECRET이면 누구나 아는 글이 된다).
+  # 상태만 보고 값은 찍지 않는다. 이 확인 자체가 실패하면 배포를 막지 않고 손으로 확인하라고 알린다.
+  local sub bad
+  sub="$(az account show --query id -o tsv)"
+  for app in "${apps[@]}"; do
+    sleep 20
+    if bad="$(az rest --method get --url "https://management.azure.com/subscriptions/$sub/resourceGroups/$RG/providers/Microsoft.Web/sites/$app/config/configreferences/appsettings?api-version=2023-12-01" \
+        --query "value[?properties.status!='Resolved' && properties.status!='Initialized'].name" -o tsv 2>/dev/null)"; then
+      if [ -n "$bad" ]; then
+        die "$app 의 Key Vault 참조가 풀리지 않았다(또는 상태를 읽지 못했다): $(echo "$bad" | tr '\n' ' '). 포털의 환경 변수 화면에서 확인하고, 비밀 이름과 접근 정책을 고친 뒤 az webapp restart 한다. 그 전에는 주소를 알리지 않는다"
+      fi
+      say "$app 의 Key Vault 참조에 실패로 나온 것이 없다"
+    else
+      say "경고: $app 의 Key Vault 참조 상태를 읽지 못했다. 포털의 환경 변수 화면에서 참조가 초록색인지 확인한다"
+    fi
+  done
 }
 
 # Container App 하나를 만들거나 새 이미지로 바꾼다.
@@ -230,9 +323,16 @@ ca_app() {
 
 deploy_containerapps() {
   local model_env=("V3_LLM=$V3_LLM" "FOUNDRY_ENDPOINT=$FOUNDRY_ENDPOINT" "FOUNDRY_DEPLOYMENT=$FOUNDRY_DEPLOYMENT"
-    "OLLAMA_BASE_URL=$OLLAMA_BASE_URL" "DATABASE_URL=secretref:database-url" "FOUNDRY_API_KEY=secretref:foundry-api-key")
+    "OLLAMA_BASE_URL=$OLLAMA_BASE_URL" "DATABASE_URL=secretref:database-url" "FOUNDRY_API_KEY=secretref:foundry-api-key"
+    "ANTHROPIC_MODEL=$ANTHROPIC_MODEL" "V3_LLM_ALL_VENDORS=$V3_LLM_ALL_VENDORS")
+  local model_secret=()
   local db foundry
   if uses_backend_image; then db="$(kv_secret database-url)"; foundry="$(kv_secret foundry-api-key)"; fi
+  # anthropic을 골랐을 때만 키를 비밀로 넣는다. API와 업체 측 에이전트가 같이 쓴다.
+  if [ "$V3_LLM" = anthropic ] && uses_backend_image; then
+    model_env+=("ANTHROPIC_API_KEY=secretref:anthropic-api-key")
+    model_secret=("anthropic-api-key=$(kv_secret anthropic-api-key)")
+  fi
   if selected backend; then
     # token 모드일 때만 조직별 토큰을 비밀로 넣는다. header 모드에서는 앱이 V3_ORG_TOKENS를 읽지 않는다.
     local auth_env=("V3_AUTH=$V3_AUTH" "V3_DEMO_OPEN=$V3_DEMO_OPEN") auth_secret=()
@@ -240,18 +340,42 @@ deploy_containerapps() {
       auth_env+=("V3_ORG_TOKENS=secretref:v3-org-tokens")
       auth_secret=("v3-org-tokens=$(kv_secret v3-org-tokens)")
     fi
+    # 고른 연결만 넣는다. 비밀은 그 연결을 켰을 때만 읽는다.
+    local opt_env=("V3_CORS_ORIGINS=$V3_CORS_ORIGINS" "V3_DISTANCE=$V3_DISTANCE" "V3_VENDOR_AGENTS=$V3_VENDOR_AGENTS"
+      "AZURE_SEARCH_ENDPOINT=$AZURE_SEARCH_ENDPOINT" "AZURE_SEARCH_INDEX=$AZURE_SEARCH_INDEX"
+      "V3_DETECTOR_ENDPOINT=$V3_DETECTOR_ENDPOINT" "V3_DETECTOR_DEPLOYMENT=$V3_DETECTOR_DEPLOYMENT") opt_secret=()
+    if [ "$V3_DISTANCE" = kakao ]; then
+      opt_env+=("KAKAO_REST_API_KEY=secretref:kakao-rest-api-key"); opt_secret+=("kakao-rest-api-key=$(kv_secret kakao-rest-api-key)")
+    fi
+    if [ "$V3_DISTANCE" = azure ]; then
+      opt_env+=("AZURE_MAPS_KEY=secretref:maps-key"); opt_secret+=("maps-key=$(kv_secret maps-key)")
+    fi
+    if [ "$V3_VENDOR_AGENTS" != '{}' ]; then
+      opt_env+=("VENDOR_SERVICE_KEY=secretref:vendor-service-key"); opt_secret+=("vendor-service-key=$(kv_secret vendor-service-key)")
+    fi
+    if [ -n "$AZURE_SEARCH_ENDPOINT" ]; then
+      opt_env+=("AZURE_SEARCH_API_KEY=secretref:search-admin-key"); opt_secret+=("search-admin-key=$(kv_secret search-admin-key)")
+    fi
+    if [ "$APP_INSIGHTS" = true ]; then
+      opt_env+=("APPLICATIONINSIGHTS_CONNECTION_STRING=secretref:appinsights-connection-string")
+      opt_secret+=("appinsights-connection-string=$(kv_secret appinsights-connection-string)")
+    fi
+    if [ -n "$V3_DETECTOR_ENDPOINT" ]; then
+      opt_env+=("V3_DETECTOR_API_KEY=secretref:detector-api-key"); opt_secret+=("detector-api-key=$(kv_secret detector-api-key)")
+    fi
     ca_app "$APP_API" "rsai-backend:$BACKEND_TAG" 8000 external -- \
-      APP_ROLE=api APP_ENV=demo "CORS_ORIGINS=[\"https://$HOST_WEB\"]" "${model_env[@]}" "${auth_env[@]}" \
+      APP_ROLE=api APP_ENV=demo "CORS_ORIGINS=[\"https://$HOST_WEB\"]" "${model_env[@]}" "${auth_env[@]}" "${opt_env[@]}" \
       AZURE_STORAGE_CONNECTION_STRING=secretref:storage-connection-string -- \
       "database-url=$db" "foundry-api-key=$foundry" "storage-connection-string=$(kv_secret storage-connection-string)" \
-      ${auth_secret[@]+"${auth_secret[@]}"}
+      ${auth_secret[@]+"${auth_secret[@]}"} ${model_secret[@]+"${model_secret[@]}"} ${opt_secret[@]+"${opt_secret[@]}"}
   fi
   if selected vendor-agent; then
     ensure_key vendor-service-key
     ca_app "$APP_VENDOR" "rsai-backend:$BACKEND_TAG" 8000 internal -- \
       APP_ROLE=vendor-agent APP_ENV=demo "VENDOR_ORG_ID=$VENDOR_ORG_ID" "${model_env[@]}" \
       VENDOR_SERVICE_KEY=secretref:vendor-service-key -- \
-      "database-url=$db" "foundry-api-key=$foundry" "vendor-service-key=$(kv_secret vendor-service-key)"
+      "database-url=$db" "foundry-api-key=$foundry" "vendor-service-key=$(kv_secret vendor-service-key)" \
+      ${model_secret[@]+"${model_secret[@]}"}
   fi
   if selected mcp; then
     ensure_key mcp-service-key
@@ -260,7 +384,19 @@ deploy_containerapps() {
       "database-url=$db" "mcp-service-key=$(kv_secret mcp-service-key)"
   fi
   if selected frontend; then
-    ca_app "$APP_WEB" "rsai-frontend:$FRONTEND_TAG" 3000 external -- PORT=3000 HOSTNAME=0.0.0.0 --
+    ensure_key auth-secret
+    local web_env=(PORT=3000 HOSTNAME=0.0.0.0 "AUTH_URL=${AUTH_URL:-https://$HOST_WEB}" AUTH_TRUST_HOST=true
+      "AUTH_DEV_LOGIN=$AUTH_DEV_LOGIN" "V3_BACKEND_URL=$V3_BACKEND_URL" AUTH_SECRET=secretref:auth-secret)
+    local web_secret=("auth-secret=$(kv_secret auth-secret)")
+    if [ "$V3_AUTH" = token ]; then
+      web_env+=("V3_ORG_TOKENS=secretref:v3-org-tokens"); web_secret+=("v3-org-tokens=$(kv_secret v3-org-tokens)")
+    fi
+    if [ -n "$AUTH_ENTRA_ID" ]; then
+      web_env+=("AUTH_MICROSOFT_ENTRA_ID_ID=$AUTH_ENTRA_ID" "AUTH_MICROSOFT_ENTRA_ID_ISSUER=$AUTH_ENTRA_ISSUER"
+        AUTH_MICROSOFT_ENTRA_ID_SECRET=secretref:auth-entra-secret)
+      web_secret+=("auth-entra-secret=$(kv_secret auth-entra-secret)")
+    fi
+    ca_app "$APP_WEB" "rsai-frontend:$FRONTEND_TAG" 3000 external -- "${web_env[@]}" -- "${web_secret[@]}"
   fi
 }
 

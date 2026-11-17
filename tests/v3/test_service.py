@@ -59,10 +59,10 @@ def test_reset_seeds_everything():
         raises("FORBIDDEN", 403, service.admin_status, app, viewer)
         raises("FORBIDDEN", 403, service.run_eval, app, viewer)
     status = service.admin_status(app, ADMIN)
-    assert status["laws"]["count"] == 26 and status["evidence"]["byKind"]["ref"] == 7
+    assert status["laws"]["count"] == 26 and status["evidence"]["byKind"]["ref"] == 11
     assert status["models"]["company"] == {"provider": "rule", "name": "규칙 정책(모델 미연결)"}
     assert status["promptShields"] == {"configured": False}
-    assert "emission.transport.perKm" in status["missingBasis"]
+    assert "emission.pyrolysis.폐플라스틱" in status["missingBasis"]
     assert status["vendorGateway"] == "LocalVendorGateway"
 
 
@@ -461,3 +461,36 @@ def test_run_eval_reports_the_real_implementation():
     assert app.store.list_sessions() == []  # 따로 만든 저장소에서 돌린다
     statuses = {t["vendorOrgId"]: t["status"] for t in report["threads"] if t["types"]}
     assert set(statuses.values()) == {"confirmed"}
+
+
+def test_session_list_shows_only_what_the_viewer_takes_part_in():
+    from tests.v3.runtime_fixtures import ADMIN, DAON, HANBIT, MISO, SAEGIL, make_app, to_approval
+
+    app = make_app()
+    assert service.list_sessions(app, HANBIT) == []
+    view = to_approval(app)
+    sid = view["session"]["id"]
+    mine = service.list_sessions(app, HANBIT)
+    assert [(s["id"], s["as"], s["status"]) for s in mine] == [
+        (sid, "emitter", "awaiting_approval")
+    ]
+    assert set(mine[0]) == {
+        "id",
+        "emitterOrgId",
+        "emitterName",
+        "status",
+        "createdAt",
+        "updatedAt",
+        "as",
+    }
+    # 업체는 자기에게 열린 대화가 있는 진단만, 다른 배출 기업은 아무것도 보지 못한다
+    assert [(s["id"], s["as"]) for s in service.list_sessions(app, SAEGIL)] == [(sid, "vendor")]
+    assert [(s["id"], s["as"]) for s in service.list_sessions(app, MISO)] == [(sid, "vendor")]
+    assert service.list_sessions(app, DAON) == []
+    assert [(s["id"], s["as"]) for s in service.list_sessions(app, ADMIN)] == [(sid, "admin")]
+    # 새로 만든 진단도 내 목록에 온다
+    newer = service.create_session(app, HANBIT, HANBIT)["session"]["id"]
+    assert {s["id"] for s in service.list_sessions(app, HANBIT)} == {sid, newer}
+    assert [s["id"] for s in service.list_sessions(app, SAEGIL)] == [
+        sid
+    ]  # 열리지 않은 진단은 업체에 없다

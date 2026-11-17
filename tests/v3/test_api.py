@@ -12,7 +12,7 @@ from fastapi.testclient import TestClient
 from app.core.config import Settings, settings
 from app.main import app
 from app.v3 import api
-from app.v3.agents.llm import FoundryChat, OllamaChat
+from app.v3.agents.llm import AnthropicChat, FoundryChat, OllamaChat
 
 EMITTER, OTHER_EMITTER = "org_hanbit", "org_daon"
 VENDORS = ("org_saegil", "org_namhae", "org_miso")
@@ -323,6 +323,65 @@ def test_llm_factory_never_swaps_models():
     chosen = with_ollama("vendor", "org_namhae", ollama)
     assert isinstance(chosen, OllamaChat) and chosen.model == "open-model"
     assert isinstance(with_ollama("vendor", "org_saegil", {"provider": "foundry"}), FoundryChat)
+
+
+def test_llm_factory_anthropic_option_matches_the_dev_server(tmp_path):
+    """배포 경로에서도 V3_LLM=anthropic을 고를 수 있다. 키가 없으면 규칙 정책으로 돈다."""
+    unset = api.make_llm_factory("anthropic")
+    assert unset("company", EMITTER, None) is None
+    key_file = tmp_path / "key"
+    key_file.write_text("not-a-real-key\n", encoding="utf-8")
+    from_file = api.make_llm_factory("anthropic", anthropic_api_key_file=str(key_file))
+    company = from_file("company", EMITTER, None)
+    assert isinstance(company, AnthropicChat) and company.model == "claude-sonnet-5-5"
+    assert "not-a-real-key" not in repr(company)
+    ollama = {"provider": "ollama", "name": "open-model"}
+    assert from_file("vendor", "org_namhae", ollama) is None  # 다른 모델로 바꾸지 않는다
+    everyone = api.make_llm_factory(
+        "anthropic",
+        anthropic_api_key="not-a-real-key",
+        anthropic_model="m-1",
+        all_vendors=True,
+    )
+    swapped = everyone("vendor", "org_namhae", ollama)
+    assert isinstance(swapped, AnthropicChat) and swapped.model == "m-1"
+
+
+def test_build_app_reads_the_anthropic_settings(monkeypatch):
+    """설정 V3_LLM=anthropic, ANTHROPIC_API_KEY로 만든 앱은 관리자 화면에 그 모델을 보여 준다."""
+    monkeypatch.setattr(settings, "database_url", "")
+    monkeypatch.setattr(settings, "v3_llm", "anthropic")
+    monkeypatch.setattr(settings, "anthropic_api_key", "not-a-real-key")
+    monkeypatch.setattr(settings, "anthropic_api_key_file", "")
+    monkeypatch.setattr(settings, "anthropic_model", "")
+    monkeypatch.setattr(settings, "v3_llm_all_vendors", False)
+    built = api.build_app()
+    company = built.llm_for("company", EMITTER, None)
+    assert (company.provider, company.model) == ("anthropic", "claude-sonnet-5-5")
+    assert built.llm_for("vendor", "org_namhae", {"provider": "ollama", "name": "x"}).provider == (
+        "rule"
+    )
+    fields = Settings(v3_llm="anthropic", anthropic_api_key_file="/run/secrets/key")
+    assert fields.anthropic_api_key_file == "/run/secrets/key" and not fields.v3_llm_all_vendors
+
+
+def test_build_app_picks_the_distance_provider_from_settings(monkeypatch):
+    """V3_DISTANCE=kakao와 KAKAO_REST_API_KEY로 카카오 길찾기를, 비어 있으면 이전처럼 Azure Maps를 쓴다."""
+    from app.v3.judge.distance import AzureMapsDistance, KakaoDistance
+
+    monkeypatch.setattr(settings, "database_url", "")
+    monkeypatch.setattr(settings, "v3_llm", "rule")
+    monkeypatch.setattr(settings, "azure_maps_key", "")
+    monkeypatch.setattr(settings, "kakao_rest_api_key", "kakao-test")
+    monkeypatch.setattr(settings, "v3_distance", "")
+    assert api.build_app().distance_provider is None
+    monkeypatch.setattr(settings, "v3_distance", "kakao")
+    assert isinstance(api.build_app().distance_provider, KakaoDistance)
+    monkeypatch.setattr(settings, "kakao_rest_api_key", "")
+    assert api.build_app().distance_provider is None  # 키가 없으면 가정값 경로(서버는 뜬다)
+    monkeypatch.setattr(settings, "v3_distance", "")
+    monkeypatch.setattr(settings, "azure_maps_key", "maps-test")
+    assert isinstance(api.build_app().distance_provider, AzureMapsDistance)
 
 
 def test_database_url_uses_installed_driver():

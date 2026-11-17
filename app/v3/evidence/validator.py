@@ -236,7 +236,7 @@ def validate_message(
 
 _NOTE_LABELS = {
     "reason": "이유(reason)",
-    "excluded": "받지 않는 흐름의 이유(excluded)",
+    "excluded": "받지 않는 폐기물의 이유(excluded)",
     "terms.conditions": "조건 문장(terms.conditions)",
     "terms.days": "수거 요일(terms.days)",
 }

@@ -1,4 +1,4 @@
-"""판단 도구 MCP 서버. toolbox의 도구 10개를 그대로 노출한다(streamable HTTP).
+"""판단 도구 MCP 서버. toolbox의 도구 11개를 그대로 노출한다(streamable HTTP).
 
 주의: 이 파일의 서버 부분은 작성한 환경에서 실행해 보지 못했다(mcp를 불러올 수 없었다).
 tests/v3/test_mcp_server.py가 CI에서 확인한다.

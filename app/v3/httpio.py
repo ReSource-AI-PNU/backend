@@ -11,6 +11,9 @@
 | TOKEN_REQUIRED | 401 | token 모드인데 Authorization: Bearer 헤더가 없거나 모양이 틀렸다 |
 | INVALID_TOKEN | 401 | token 모드인데 토큰이 어느 조직의 것도 아니다 |
 
+업체 측 에이전트 서비스(vendor_service.py, vendor_devserver.py)의 서비스 키와 본문 확인도 여기에 둔다:
+SERVICE_KEY_NOT_SET 503, UNAUTHORIZED 401, VENDOR_NOT_SET 503, WRONG_RECIPIENT 403.
+
 요청한 조직을 정하는 일(Auth)도 여기에 둔다. 두 가지 모드가 있다.
 
 - header(기본, 시연 전용): X-Org-Id 헤더를 그대로 믿는다. 헤더만 바꾸면 다른 조직이 되므로 공개
@@ -24,8 +27,10 @@ from __future__ import annotations
 
 import hmac
 import json
+import re
 from collections.abc import Mapping
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Any
 
 from app.v3.service import ServiceError
@@ -163,6 +168,76 @@ def make_auth(mode: str | None, raw_tokens: Any = None) -> Auth:
     if mode not in AUTH_MODES:
         raise ValueError(f"V3_AUTH는 {' | '.join(AUTH_MODES)} 가운데 하나여야 한다: {mode!r}")
     return Auth(mode, org_tokens(raw_tokens) if mode == AUTH_TOKEN else ())
+
+
+def tokens_text(raw: Any = None, path: str | None = None) -> Any:
+    """token 모드의 토큰 설정을 어디서 읽을지 정한다: V3_ORG_TOKENS_FILE(파일 경로)이 있으면 그 파일의
+    내용, 없으면 V3_ORG_TOKENS 값 그대로. 로컬 서버와 FastAPI 경로가 같은 순서로 읽는다.
+
+    파일을 읽지 못하면 ValueError다. 문구에는 변수 이름만 싣고 경로와 내용은 싣지 않는다.
+    """
+    path = (path or "").strip()
+    if not path:
+        return raw
+    try:
+        return Path(path).expanduser().read_text(encoding="utf-8")
+    except OSError:
+        raise ValueError("V3_ORG_TOKENS_FILE이 가리키는 파일을 읽을 수 없습니다.") from None
+
+
+def extra_origins(raw: str | None) -> list[str]:
+    """V3_CORS_ORIGINS(쉼표로 나눈 출처)를 목록으로. http(s)://호스트[:포트] 꼴만 받고 아니면 ValueError.
+
+    끝의 빗금은 떼고 같은 출처는 한 번만 남긴다. 비어 있으면 빈 목록이다.
+    """
+    found: list[str] = []
+    for origin in (raw or "").split(","):
+        origin = origin.strip().rstrip("/")
+        if not origin:
+            continue
+        if not re.fullmatch(r"https?://[A-Za-z0-9.\-]+(:\d+)?", origin):
+            raise ValueError(f"허용 출처는 http(s)://호스트[:포트] 꼴이어야 합니다: {origin}")
+        if origin not in found:
+            found.append(origin)
+    return found
+
+
+# ── 업체 측 에이전트 서비스(POST /a2a/messages) ───────────────────────
+# 오류 코드는 글자 그대로 적는다(계약 8장의 오류 코드 표를 확인하는 테스트가 코드에서 글자로 찾는다)
+def check_service_key(headers: Mapping[str, str] | None, expected: str | None) -> None:
+    """Authorization: Bearer <서비스 키>를 확인한다. 키가 설정되지 않았으면 모든 요청을 거절한다(503)."""
+    if not expected:
+        raise ServiceError("SERVICE_KEY_NOT_SET", "서비스 키가 설정되지 않았습니다.", 503)
+    scheme, _, token = header(headers, "Authorization").partition(" ")
+    given = token.strip()
+    if scheme.lower() != "bearer" or not hmac.compare_digest(
+        given.encode("utf-8"), str(expected).encode("utf-8")
+    ):
+        raise ServiceError("UNAUTHORIZED", "서비스 키가 맞지 않습니다.", 401)
+
+
+def vendor_org_required(vendor_org_id: str | None) -> str:
+    """이 서비스가 대변하는 업체. 설정되지 않았으면 503."""
+    if not vendor_org_id:
+        raise ServiceError("VENDOR_NOT_SET", "VENDOR_ORG_ID가 설정되지 않았습니다.", 503)
+    return str(vendor_org_id)
+
+
+def vendor_request(
+    body: dict[str, Any], vendor_org_id: str
+) -> tuple[dict[str, Any], dict[str, Any]]:
+    """(message, context). 모양이 틀리면 422, 다른 업체에게 온 메시지면 403."""
+    message = body.get("message")
+    context = body.get("context")
+    if context is None:
+        context = {}
+    if not isinstance(message, dict) or not isinstance(context, dict):
+        raise invalid_body("message와 context는 JSON 객체여야 합니다.")
+    if message.get("to") != vendor_org_id:
+        raise ServiceError(
+            "WRONG_RECIPIENT", "이 서비스가 대변하는 업체에게 온 메시지가 아닙니다.", 403
+        )
+    return message, context
 
 
 def invalid_json() -> ServiceError:

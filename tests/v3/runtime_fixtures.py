@@ -69,7 +69,8 @@ def answer_all(app, view, emitter=HANBIT):
     for question in view["questions"]:
         if question["answered"]:
             continue
-        value = FILM_MOISTURE if question["streamId"] == "st_film" else "unknown"
+        film_moisture = question["streamId"] == "st_film" and question["field"] == "moisturePct"
+        value = FILM_MOISTURE if film_moisture else "unknown"
         service.answer_question(app, sid, question["id"], value, emitter)
     return service.run_session(app, sid, emitter)
 

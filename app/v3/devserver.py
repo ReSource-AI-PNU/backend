@@ -1,6 +1,7 @@
 """표준 라이브러리 HTTP 서버. 계약 8장의 API를 service 함수에 그대로 잇는다(로컬 시연, 개발용).
 
-    python3 -m app.v3.devserver --port 8000 [--store 경로.json] [--reset] [--llm rule|foundry]
+    python3 -m app.v3.devserver --port 8000 [--store 경로.json] [--reset]
+                                [--llm rule|foundry|anthropic]   (없으면 환경 변수 V3_LLM)
                                 [--auth header|token --org-tokens 토큰.json]
 
 - 시작할 때 가정값, 근거 시드(법령·기준값), 시연 데이터를 올린다.
@@ -10,12 +11,28 @@
 - 기본은 --llm rule(규칙 정책, 모델 미연결)이다. --llm foundry일 때만 환경 변수
   FOUNDRY_ENDPOINT, FOUNDRY_DEPLOYMENT, FOUNDRY_API_KEY를 읽는다. 업체가 ollama를 골랐으면
   OLLAMA_BASE_URL이 있을 때만 그 모델을 쓰고, 없으면 그 업체는 규칙 정책으로 돈다(화면에 그렇게 나온다).
+- --llm anthropic은 실제 모델로 돌려 보는 로컬 전용 선택지다(설계의 기본 모델은 Foundry gpt-5-mini).
+  키는 ANTHROPIC_API_KEY, 없으면 ANTHROPIC_API_KEY_FILE이 가리키는 파일에서 읽는다. 모델은
+  ANTHROPIC_MODEL(기본 claude-sonnet-5-5). 화면에는 실제로 답한 모델 이름이 그대로 나온다.
+  업체가 ollama를 골랐고 OLLAMA_BASE_URL이 없으면 그 업체는 규칙 정책으로 돈다. V3_LLM_ALL_VENDORS=1을
+  주면 그 업체도 이 모델이 답한다(설정한 모델과 답한 모델이 다르다는 것은 화면에 따로 나온다).
+- 도로 거리는 환경 변수 V3_DISTANCE로 고른다: kakao(KAKAO_REST_API_KEY, 카카오모빌리티 길찾기) |
+  azure(AZURE_MAPS_KEY) | none. 비어 있으면 AZURE_MAPS_KEY가 있을 때만 Azure Maps를 쓴다. 제공자가
+  없거나 호출이 실패하면 직선 거리 × 우회 계수(가정값)로 계산하고 결과에 가정값이라고 남긴다.
 - 사진·영상 업로드(POST /intake/media)는 V3_DETECTOR_ENDPOINT(와 V3_DETECTOR_API_KEY)가 있을 때만
   탐지 모델을 부른다. 없으면 {"detectorUnavailable": true}로 답한다(탐지 결과를 지어내지 않는다).
 - 요청하는 조직은 X-Org-Id 헤더로 밝힌다(--auth header, 기본). 이 모드는 시연 전용이며 공개 주소에
   그대로 두면 조직 경계가 지켜지지 않는다. --auth token --org-tokens <파일>을 주면 조직별 서비스 토큰
   (Authorization: Bearer <토큰>)으로 조직을 정하고 X-Org-Id는 무시한다. 파일은
   {"조직 ID": "토큰"} 꼴의 JSON이고, GET /orgs는 자기 조직과 대화 상대만 준다.
+  옵션 대신 환경 변수로도 켠다(FastAPI 경로와 같은 이름): V3_AUTH=token과 V3_ORG_TOKENS(JSON 글)
+  또는 V3_ORG_TOKENS_FILE(그 JSON을 담은 파일 경로).
+- 브라우저가 부를 수 있는 출처는 http://localhost:3000, http://127.0.0.1:3000이다. 더하려면
+  --cors-origins나 환경 변수 V3_CORS_ORIGINS에 쉼표로 나눠 적는다.
+- 업체 측 에이전트를 따로 띄운 프로세스가 답하게 하려면 환경 변수 V3_VENDOR_AGENTS
+  ({"업체 조직 ID": "http://127.0.0.1:8032"})와 VENDOR_SERVICE_KEY를 주고 --store로 저장 파일을 정한다.
+  그 업체의 프로세스는 `python3 -m app.v3.vendor_devserver --vendor <조직 ID> --store <같은 파일>`로
+  띄운다. 주소가 없는 업체는 이 프로세스 안에서 답한다.
 - /admin/* 은 관리자 조직(org_admin)만 부른다. 시연 되돌리기(POST /demo/reset)는 로컬 시연에서는
   누구나 부를 수 있다(App(demo_open=True)). --demo-closed를 주면 관리자만 부른다.
 """
@@ -35,17 +52,23 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import parse_qs, unquote, urlsplit
 
-from app.v3 import httpio, service
-from app.v3.agents.llm import FoundryChat, OllamaChat
+from app.v3 import httpio, localshare, service
+from app.v3.agents.factory import (
+    LLM_MODES,
+    MODE_LABELS,
+    LlmConfigError,
+    build_llm_factory,
+    normalize_mode,
+)
 from app.v3.evidence.registry import InMemoryRegistry, JsonFileRegistry
 from app.v3.intake import detector
+from app.v3.judge.distance import distance_provider_from_env
 from app.v3.store import InMemoryStore, JsonFileStore
 
 PREFIX = "/api/v3"
 ALLOWED_ORIGINS = ("http://localhost:3000", "http://127.0.0.1:3000")
 ALLOWED_HEADERS = "X-Org-Id, Authorization, Content-Type"
 ALLOWED_METHODS = "GET, POST, PUT, OPTIONS"
-FOUNDRY_ENV = ("FOUNDRY_ENDPOINT", "FOUNDRY_DEPLOYMENT", "FOUNDRY_API_KEY")
 
 
 class Request:
@@ -201,6 +224,8 @@ def route(app: service.App, request: Request) -> Any:
         case ("POST", ["sessions"]):
             body = request.json()
             return service.create_session(app, str(body.get("emitterOrgId") or viewer), viewer)
+        case ("GET", ["sessions"]):
+            return service.list_sessions(app, viewer)
         case ("GET", ["sessions", session_id]):
             return service.get_view(app, session_id, viewer)
         case ("POST", ["sessions", session_id, "run"]):
@@ -270,9 +295,12 @@ def make_handler(
     lock: threading.Lock | None = None,
     quiet: bool = True,
     auth: httpio.Auth | None = None,
+    router: Callable[[service.App, Request], Any] | None = None,
 ):
+    """router는 (앱, 요청) -> 답. 주지 않으면 이 파일의 route다(업체 측 에이전트 서버가 자기 것을 준다)."""
     guard = lock or threading.Lock()
     auth = auth or httpio.Auth()
+    handle = router or route
 
     class Handler(BaseHTTPRequestHandler):
         server_version = "ReSourceDev/3"
@@ -323,7 +351,7 @@ def make_handler(
                     self.command, url.path, parse_qs(url.query), self.headers, body, auth
                 )
                 with guard:  # 저장소가 동시 쓰기를 막지 않으므로 한 번에 한 요청만 처리한다
-                    result = route(app, request)
+                    result = handle(app, request)
             except service.ServiceError as error:
                 self._json(error.status, error.to_dict())
             except Exception:  # noqa: BLE001 - 서버는 죽지 않고 500으로 답한다
@@ -353,29 +381,34 @@ def make_server(
     port: int = 8000,
     quiet: bool = True,
     auth: httpio.Auth | None = None,
+    router: Callable[[service.App, Request], Any] | None = None,
 ):
     auth = auth or httpio.Auth()
     app.auth_mode = auth.mode  # 관리자 화면에 지금 모드를 보여 준다
-    server = ThreadingHTTPServer((host, port), make_handler(app, quiet=quiet, auth=auth))
+    server = ThreadingHTTPServer(
+        (host, port), make_handler(app, quiet=quiet, auth=auth, router=router)
+    )
     server.daemon_threads = True
     return server
 
 
+def llm_factory_from_env(mode: str | None, env: Mapping[str, str]) -> Callable[..., Any] | None:
+    """llm_factory(role, org_id, model) 또는 None(rule). api.py와 같은 함수로 만든다.
+
+    로컬 서버는 설정이 빠져 있으면 어떤 값이 없는지만 밝히고 멈춘다(키는 출력하지 않는다).
+    """
+    try:
+        return build_llm_factory(mode, env, strict=True)
+    except LlmConfigError as error:
+        raise SystemExit(str(error)) from None
+
+
 def foundry_factory(env: Mapping[str, str]) -> Callable[..., Any]:
-    """llm_factory(role, org_id, model). 값이 빠져 있으면 어떤 값이 없는지만 밝히고 멈춘다."""
-    missing = [name for name in FOUNDRY_ENV if not env.get(name)]
-    if missing:
-        raise SystemExit(f"--llm foundry에는 환경 변수가 필요합니다: {', '.join(missing)}")
-    endpoint, deployment, key = (env[name] for name in FOUNDRY_ENV)
-    ollama = (env.get("OLLAMA_BASE_URL") or "").strip()
+    return llm_factory_from_env("foundry", env)  # type: ignore[return-value]
 
-    def factory(role: str, _org_id: str, model: dict[str, Any] | None):
-        if role == "vendor" and (model or {}).get("provider") == "ollama":
-            # 주소가 없으면 None을 돌려줘 규칙 정책으로 돌게 한다(화면에 모델 미연결로 나온다)
-            return OllamaChat(ollama, str(model["name"])) if ollama else None
-        return FoundryChat(endpoint, deployment, key)
 
-    return factory
+def anthropic_factory(env: Mapping[str, str]) -> Callable[..., Any]:
+    return llm_factory_from_env("anthropic", env)  # type: ignore[return-value]
 
 
 def build_app(
@@ -389,27 +422,46 @@ def build_app(
 ) -> service.App:
     """앱을 만든다. store_path의 두 파일이 있고 reset이 아니면 시드로 덮어쓰지 않고 이어 간다."""
     resumed = False
+    settings = os.environ if env is None else env
+    try:
+        remote_vendors = localshare.vendor_agents(settings.get("V3_VENDOR_AGENTS"))
+    except ValueError as error:
+        raise SystemExit(str(error)) from None
     if store_path:
         evidence_path = evidence_file(store_path)
         # 저장소와 근거가 함께 있어야 이전 진단의 메시지가 인용한 근거를 다시 확인할 수 있다
         both = Path(store_path).exists() and evidence_path.exists()
-        store: Any = JsonFileStore(store_path)
-        registry: Any = JsonFileRegistry(evidence_path)
+        # 따로 띄운 업체 측 에이전트가 있으면 그 프로세스가 쓴 근거를 다시 읽을 수 있는 저장을 쓴다
+        store: Any = (localshare.ReloadingStore if remote_vendors else JsonFileStore)(store_path)
+        registry: Any = (localshare.ReloadingRegistry if remote_vendors else JsonFileRegistry)(
+            evidence_path
+        )
         resumed = both and not reset and bool(store.list_orgs())
     else:
         store, registry = InMemoryStore(), InMemoryRegistry()
-    settings = os.environ if env is None else env
-    factory = foundry_factory(settings) if llm == "foundry" else None
+    factory = llm_factory_from_env(llm, settings)
+    try:
+        # V3_DISTANCE=kakao|azure|none과 키. 고른 제공자의 키가 없으면 로컬 서버는 멈춘다
+        distance_provider = distance_provider_from_env(settings, strict=True)
+    except ValueError as error:
+        raise SystemExit(str(error)) from None
     app = service.App(
         store,
         registry,
         llm_factory=factory,
         today=today,
         demo_open=demo_open,
+        distance_provider=distance_provider,
         # V3_DETECTOR_ENDPOINT가 없으면 None이고, 사진·영상 업로드는 "미연결"이라고 답한다
         detector=detector.client_from_env(settings),
     )
     app.resumed = resumed  # 이어 간 것인지(서버가 뜰 때 알려 준다)
+    if remote_vendors:
+        # V3_VENDOR_AGENTS에 주소가 있는 업체는 따로 띄운 프로세스(vendor_devserver.py)가 답한다
+        try:
+            app.vendor_gateway = localshare.split_gateway(app, settings)
+        except ValueError as error:
+            raise SystemExit(str(error)) from None
     if not resumed:
         if hasattr(registry, "clear"):
             registry.clear()  # 이전 실행의 근거가 남아 있으면 처음 상태가 아니다
@@ -417,20 +469,52 @@ def build_app(
     return app
 
 
-def load_auth(mode: str, tokens_path: str | None) -> httpio.Auth:
-    """--auth와 --org-tokens로 Auth를 만든다. 설정이 틀리면 무엇이 틀렸는지만 밝히고 멈춘다."""
+def load_auth(
+    mode: str | None, tokens_path: str | None, env: Mapping[str, str] | None = None
+) -> httpio.Auth:
+    """--auth와 --org-tokens(없으면 환경 변수)로 Auth를 만든다. 틀리면 무엇이 틀렸는지만 밝히고 멈춘다.
+
+    옵션을 주지 않았을 때 읽는 환경 변수는 FastAPI 경로와 같다: V3_AUTH(header | token),
+    V3_ORG_TOKENS(JSON 글 {"조직 ID": "토큰"}). 로컬 서버는 V3_ORG_TOKENS_FILE(그 JSON을 담은 파일
+    경로)도 받는다. 순서는 --org-tokens 파일, V3_ORG_TOKENS_FILE, V3_ORG_TOKENS다.
+    """
+    env = {} if env is None else env
+    mode = (mode or env.get("V3_AUTH") or httpio.AUTH_HEADER).strip().lower()
     raw = None
     if mode == httpio.AUTH_TOKEN:
-        if not tokens_path:
-            raise SystemExit("--auth token에는 --org-tokens 파일이 필요합니다.")
-        try:
-            raw = Path(tokens_path).read_text(encoding="utf-8")
-        except OSError:
-            raise SystemExit(f"--org-tokens 파일을 읽을 수 없습니다: {tokens_path}") from None
+        option = "--org-tokens"
+        if not tokens_path and (env.get("V3_ORG_TOKENS_FILE") or "").strip():
+            tokens_path, option = env["V3_ORG_TOKENS_FILE"].strip(), "V3_ORG_TOKENS_FILE"
+        if tokens_path:
+            try:
+                raw = Path(tokens_path).expanduser().read_text(encoding="utf-8")
+            except OSError:
+                raise SystemExit(f"{option} 파일을 읽을 수 없습니다: {tokens_path}") from None
+        else:
+            raw = env.get("V3_ORG_TOKENS") or None
+        if not raw:
+            raise SystemExit(
+                "--auth token에는 --org-tokens 파일이나 환경 변수 V3_ORG_TOKENS, "
+                "V3_ORG_TOKENS_FILE이 필요합니다."
+            )
     try:
         return httpio.make_auth(mode, raw)
     except ValueError as error:
         raise SystemExit(f"조직 토큰 설정이 틀렸습니다: {error}") from None
+
+
+def cors_origins(extra: str | None) -> tuple[str, ...]:
+    """기본 허용 출처에 쉼표로 나눈 출처를 더한다(V3_CORS_ORIGINS, --cors-origins). http(s) 주소만 받는다."""
+    found = list(ALLOWED_ORIGINS)
+    for origin in (extra or "").split(","):
+        origin = origin.strip().rstrip("/")
+        if not origin:
+            continue
+        if not re.fullmatch(r"https?://[A-Za-z0-9.\-]+(:\d+)?", origin):
+            raise SystemExit(f"허용 출처는 http(s)://호스트[:포트] 꼴이어야 합니다: {origin}")
+        if origin not in found:
+            found.append(origin)
+    return tuple(found)
 
 
 def evidence_file(store_path: str) -> Path:
@@ -447,7 +531,12 @@ def main(argv: list[str] | None = None) -> None:
     parser.add_argument(
         "--reset", action="store_true", help="--store 파일이 있어도 시연 시작 상태로 되돌린다"
     )
-    parser.add_argument("--llm", choices=("rule", "foundry"), default="rule")
+    parser.add_argument(
+        "--llm",
+        choices=LLM_MODES,
+        default=None,
+        help="모델. 주지 않으면 환경 변수 V3_LLM, 그것도 없으면 rule(규칙 정책, 모델 미연결)",
+    )
     parser.add_argument("--today", default=None, help="기준일 YYYY-MM-DD(없으면 오늘)")
     parser.add_argument(
         "--demo-closed", action="store_true", help="시연 되돌리기를 관리자 조직만 부르게 한다"
@@ -455,35 +544,50 @@ def main(argv: list[str] | None = None) -> None:
     parser.add_argument(
         "--auth",
         choices=httpio.AUTH_MODES,
-        default=httpio.AUTH_HEADER,
+        default=None,
         help="요청한 조직을 정하는 방법. header(기본, 시연 전용: X-Org-Id를 믿는다) | "
-        "token(조직별 서비스 토큰: Authorization: Bearer)",
+        "token(조직별 서비스 토큰: Authorization: Bearer). 주지 않으면 환경 변수 V3_AUTH",
     )
     parser.add_argument(
         "--org-tokens",
         default=None,
-        help='--auth token일 때 조직별 토큰 JSON 파일 경로({"조직 ID": "토큰"})',
+        help='--auth token일 때 조직별 토큰 JSON 파일 경로({"조직 ID": "토큰"}). 주지 않으면 '
+        "환경 변수 V3_ORG_TOKENS_FILE(파일 경로)이나 V3_ORG_TOKENS(JSON 글)",
+    )
+    parser.add_argument(
+        "--cors-origins",
+        default=None,
+        help="브라우저에서 부를 수 있게 더 허용할 출처(쉼표로 나눔). 주지 않으면 환경 변수 "
+        "V3_CORS_ORIGINS. 기본 허용은 http://localhost:3000, http://127.0.0.1:3000",
     )
     args = parser.parse_args(argv)
-    auth = load_auth(args.auth, args.org_tokens)
+    global ALLOWED_ORIGINS
+    ALLOWED_ORIGINS = cors_origins(args.cors_origins or os.environ.get("V3_CORS_ORIGINS"))
+    auth = load_auth(args.auth, args.org_tokens, os.environ)
+    try:
+        llm = normalize_mode(args.llm or os.environ.get("V3_LLM"))
+    except LlmConfigError as error:
+        raise SystemExit(str(error)) from None
     app = build_app(
         store_path=args.store,
-        llm=args.llm,
+        llm=llm,
         today=args.today,
         demo_open=not args.demo_closed,
         reset=args.reset,
     )
     server = make_server(app, args.host, args.port, quiet=False, auth=auth)
-    mode = "규칙 정책(모델 미연결)" if args.llm == "rule" else "Foundry"
+    mode = MODE_LABELS[llm]
     state = "이전 진단을 이어 갑니다" if app.resumed else "시연 시작 상태"
     who = (
         "조직 식별: token(조직별 서비스 토큰)"
         if auth.mode == httpio.AUTH_TOKEN
         else f"조직 식별: header(X-Org-Id). {httpio.HEADER_MODE_WARNING}"
     )
+    remote = getattr(app.vendor_gateway, "_urls", None)
+    where = f" · 따로 띄운 업체 측 에이전트: {', '.join(sorted(remote))}" if remote else ""
     sys.stderr.write(
         f"Re:Source AI v3 로컬 서버: http://{args.host}:{server.server_address[1]}{PREFIX} · "
-        f"모델: {mode} · {state} · {who}\n"
+        f"모델: {mode} · {state} · {who}{where}\n"
     )
     try:
         server.serve_forever()

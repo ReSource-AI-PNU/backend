@@ -85,6 +85,18 @@ def test_full_flow_over_http(base):
             base, "POST", f"/sessions/{sid}/answers", {"questionId": question["id"], "value": value}
         )
     view = api(base, "POST", f"/sessions/{sid}/run")
+    # 두 번째 묶음: 현행 처리비를 모르는 흐름에 묻는다. 모름으로 답하면 가정값으로 견준다
+    assert view["session"]["status"] == "awaiting_answers"
+    second = [q for q in view["questions"] if not q["answered"]]
+    assert {q["field"] for q in second} == {"currentCost"}
+    for question in second:
+        api(
+            base,
+            "POST",
+            f"/sessions/{sid}/answers",
+            {"questionId": question["id"], "value": "unknown"},
+        )
+    view = api(base, "POST", f"/sessions/{sid}/run")
     assert view["session"]["status"] == "awaiting_approval"
     assert api(base, "GET", f"/sessions/{sid}") == view
     assert {t["vendorModel"]["name"] for t in view["threads"]} == {"규칙 정책(모델 미연결)"}

@@ -25,7 +25,7 @@ def find_vendors(
         matched, evidence = permit_match(stream, vendor)
         if matched is not True:
             reason = (
-                "허가 품목에 이 흐름의 품목·재질이 없습니다."
+                "허가 품목에 이 폐기물의 품목·재질이 없습니다."
                 if matched is False
                 else "허가 품목이 올라와 있지 않습니다. 확인 필요."
             )

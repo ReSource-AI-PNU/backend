@@ -52,7 +52,7 @@ from app.v3.evidence.validator import (
 )
 from app.v3.intake.grade_model import GradeModelError, grade_stream
 from app.v3.judge import basis
-from app.v3.judge.common import best_criterion, permit_match, quality
+from app.v3.judge.common import best_criterion, permit_match, quality, without_emitter_only
 from app.v3.judge.toolbox import TOOLS, call_tool
 from app.v3.textutil import josa
 
@@ -62,7 +62,7 @@ MAX_STEPS = 400  # 대화 고리의 안전 상한. 스레드마다 12턴 상한�
 STAGE_KEYS = ("1", "2", "3", "4", "5", "6")
 WORST = {"calculated": 0, "conditional": 1, "needs_information": 2}
 # 배출 기업의 현행 처리에 관한 검사(judge_route). 업체와 함께 보는 문서와 업체 뷰에는 싣지 않는다
-CURRENT_CHECKS = ("current_cost", "current_assumed")
+CURRENT_CHECKS = ("current_cost", "current_assumed", "current_method")
 # check_loading의 검사 키 → 함께 보여 줄 값(claim 키)
 LOADING_CLAIMS = {
     "min_volume": ("totalKg", "minMonthlyKg"),
@@ -97,6 +97,7 @@ def new_work() -> dict[str, Any]:
         "permits": [],
         "requirements": {},
         "baseline": {},
+        "reuse": {},
         "excluded": [],
         "threadTools": {},
         "threadState": {},
@@ -135,6 +136,25 @@ def claim_in(result: dict[str, Any] | None, key: str | None, new_id: str) -> dic
             # 사람이 읽는 이름과 구실은 도구의 claim 키에서 정한다
             return naming.annotate({**claim, "id": new_id}, key)
     return None
+
+
+def reuse_view(result: dict[str, Any] | None, tag: str) -> dict[str, Any] | None:
+    """결과 한 장에 싣는 공정 재투입 후보. judge_reuse를 부르지 않았으면 None."""
+    if not result:
+        return None
+    output = result.get("output") or {}
+    return {
+        "eligible": output.get("eligible"),
+        "status": result.get("status"),
+        "reason": output.get("reason") or "",
+        "monthlyAfter": claim_in(result, "monthlyAfter", f"{tag}_reuse_monthlyAfter"),
+        "difference": claim_in(result, "difference", f"{tag}_reuse_difference"),
+        "checks": [
+            {k: check.get(k) for k in ("key", "status", "text", "evidence")}
+            for check in result.get("checks") or []
+            if check["key"].startswith("reuse_")
+        ],
+    }
 
 
 def permit_digest(stream: dict[str, Any], vendor: dict[str, Any]) -> str:
@@ -497,7 +517,7 @@ class Orchestrator:
             "thread",
             "합의한 뒤에 업체의 조건이 바뀌어 대화를 다시 열었습니다. 새 조건으로 이어 갑니다."
             if was_agreed
-            else "업체의 조건이 바뀌어 남은 흐름의 조건을 다시 묻습니다.",
+            else "업체의 조건이 바뀌어 남은 폐기물의 조건을 다시 묻습니다.",
             thread.id,
             status=thread.status,
             vendorOrgId=thread.vendor_org,
@@ -561,6 +581,8 @@ class Orchestrator:
         work["unresolved"] = [
             {"streamId": q["streamId"], "field": q["field"]}
             for q in self.policy.unresolved(pending, history)
+            # 현행 처리비는 몰라도 혼합 소각 가정값으로 견준다. 업체 배정을 막는 값이 아니다
+            if q["field"] not in questions.PRIVATE_FIELDS
         ]
         work["stages"]["1"] = "needs_check" if missing or work["unresolved"] else "done"
         return False
@@ -780,6 +802,10 @@ class Orchestrator:
                 work["baseline"][sid] = self._tool(
                     session, "judge_route", {"stream": stream}, summary_ids={"streamId": sid}
                 )
+            # ② 경로 후보 가운데 공정 재투입(업체가 끼지 않는다)
+            work.setdefault("reuse", {})[sid] = self._tool(
+                session, "judge_reuse", {"stream": stream}, summary_ids={"streamId": sid}
+            )
             route = next((r for r in ("sell", "treat") if r in routes[sid]), "keep")
             required = self._tool(
                 session,
@@ -880,7 +906,7 @@ class Orchestrator:
             for reason, names in groups.items()
         )
         head = "" if base in groups else f"{base.rstrip('.')}. "
-        return f"{head}받지 않는 흐름: {listed}."
+        return f"{head}받지 않는 폐기물: {listed}."
 
     def _handoff(
         self,
@@ -997,7 +1023,7 @@ class Orchestrator:
         """허가 품목이 맞지 않음을 연 뒤에 알았다. 회사 측이 근거와 함께 decline으로 닫는다."""
         if thread.closed or thread.blocked:
             return False
-        reason = "업체의 허가 품목이 이 대화의 흐름과 맞지 않아 근거와 함께 대화를 닫습니다."
+        reason = "업체의 허가 품목이 이 대화의 폐기물과 맞지 않아 근거와 함께 대화를 닫습니다."
         message = make_decline(
             thread_id=thread.id,
             sender=thread.emitter_org,
@@ -1081,7 +1107,7 @@ class Orchestrator:
             session["id"],
             "system",
             "thread",
-            f"허가 품목이 맞지 않는 흐름({names})만 이 대화에서 뺐습니다. 나머지 흐름은 그대로 둡니다.",
+            f"허가 품목이 맞지 않는 폐기물({names})만 이 대화에서 뺐습니다. 나머지 폐기물은 그대로 둡니다.",
             thread.id,
             vendorOrgId=thread.vendor_org,
             status=thread.status,
@@ -1135,8 +1161,8 @@ class Orchestrator:
                 thread_id=thread.id,
                 sender=thread.emitter_org,
                 recipient=thread.vendor_org,
-                text=f"허가 품목이 맞지 않는 흐름({names})은 이 대화에서 뺍니다. "
-                "나머지 흐름을 받을 수 있는지와 조건을 다시 알려 주세요.",
+                text=f"허가 품목이 맞지 않는 폐기물({names})은 이 대화에서 뺍니다. "
+                "나머지 폐기물을 받을 수 있는지와 조건을 다시 알려 주세요.",
                 stage=4,
                 stream_ids=tuple(left),
                 evidence=evidence,
@@ -1241,7 +1267,7 @@ class Orchestrator:
                     session["id"],
                     "system",
                     "thread",
-                    "최적안을 다시 계산해 이 대화에 배정된 흐름이 바뀌었습니다. 승인을 다시 받습니다.",
+                    "최적안을 다시 계산해 이 대화에 배정된 폐기물이 바뀌었습니다. 승인을 다시 받습니다.",
                     thread.id,
                     status="agreed",
                     streamIds=new,
@@ -1272,7 +1298,7 @@ class Orchestrator:
             {
                 "permit": "합의한 대화가 허가 품목 불일치로 닫혀 그 업체를 빼고 "
                 "최적안을 다시 계산했습니다.",
-                "permit_stream": "허가 품목이 맞지 않게 된 흐름을 그 업체의 배정에서 빼고 "
+                "permit_stream": "허가 품목이 맞지 않게 된 폐기물을 그 업체의 배정에서 빼고 "
                 "최적안을 다시 계산했습니다.",
                 "terms": "업체의 조건이 바뀐 대화를 새 조건으로 이어 간 뒤 최적안을 다시 계산했습니다.",
             }.get(
@@ -1307,9 +1333,8 @@ class Orchestrator:
         emitter = self.store.get_org(thread.emitter_org)
         streams = []
         for sid in thread.stream_ids:
-            stream = self.store.get_stream(sid)
-            stream.pop("currentTreatment", None)  # 현행 계약 단가는 업체에 열지 않는다
-            streams.append(stream)
+            # 현행 계약 단가, 재투입 입력, 전처리 인건비는 업체에 열지 않는다
+            streams.append(without_emitter_only(self.store.get_stream(sid)))
         return {
             "sessionId": session["id"],
             "today": self.today,
@@ -1806,8 +1831,7 @@ class Orchestrator:
         for sid in sorted(work["assigned"].get(thread.id) or []):
             stream = (inputs or {}).get(sid)
             if stream is None:
-                stream = dict(self.store.get_stream(sid))
-                stream.pop("currentTreatment", None)
+                stream = without_emitter_only(self.store.get_stream(sid))
             used[sid] = stream
             criterion, checks = best_criterion(stream, public, quality(stream))
             offer = offers.get(sid) or {}
@@ -1874,7 +1898,7 @@ class Orchestrator:
         reason = "근거 확인에 실패한 항목이 있어 승인할 수 없습니다: " + ", ".join(failed)
         codes = block_codes(reason)
         if "STREAM_CHANGED" in codes:
-            reason += ". 합의한 뒤에 흐름 자료가 바뀌었습니다. 진단을 새로 진행해 주세요."
+            reason += ". 합의한 뒤에 폐기물 자료가 바뀌었습니다. 진단을 새로 진행해 주세요."
         if "VENDOR_TERMS_CHANGED" in codes:
             reason += (
                 ". 합의한 뒤에 업체의 조건(매입 기준표·허가 품목·가드레일)이 바뀌었습니다. "
@@ -1942,9 +1966,7 @@ class Orchestrator:
         offers = work["offers"].get(thread.id) or {}
         streams = []
         for sid in assigned:
-            stream = dict(self.store.get_stream(sid))
-            stream.pop("currentTreatment", None)
-            streams.append(stream)
+            streams.append(without_emitter_only(self.store.get_stream(sid)))
         return ids.digest(
             {
                 "streams": streams,
@@ -1992,13 +2014,24 @@ class Orchestrator:
                 for check in (source or {}).get("checks") or []:
                     if any(c["key"] == check["key"] for c in checks):
                         continue
-                    if check["status"] != "met" or check["key"] == "current_assumed":
+                    if check["status"] != "met" or check["key"] in (
+                        "current_assumed",
+                        "current_method",
+                    ):
                         checks.append(
                             {k: check.get(k) for k in ("key", "status", "text", "evidence")}
                         )
             if offer:
                 if offer["type"] == "conditional":
-                    status = "conditional"
+                    # 조건이 "흐름 이름: 조건" 꼴로 나뉘어 있으면 조건이 걸린 흐름만 조건부다.
+                    # 어느 흐름의 것인지 알 수 없는 조건이 하나라도 있으면 모두 조건부로 둔다
+                    heads = [f"{s.get('name')}:" for s in by_id.values() if s.get("name")]
+                    loose = [t for t in offer["conditions"] if not t.startswith(tuple(heads))]
+                    mine = any(
+                        t.startswith(f"{by_id[sid].get('name')}:") for t in offer["conditions"]
+                    )
+                    if mine or loose or not offer["conditions"]:
+                        status = "conditional"
                 known = {c["id"]: c for c in self._thread_claims(threads[vendor_id])}
                 for text in offer["conditions"]:
                     if text.startswith(f"{by_id[sid].get('name')}:"):
@@ -2070,13 +2103,13 @@ class Orchestrator:
                         "status": "needs_information",
                         "text": (
                             f"{names.get(handed[sid]['vendorOrgId']) or '업체'}의 허가 품목이 맞지 "
-                            "않게 되어 합의한 대화를 닫고 이 흐름의 배정을 뺐습니다. 확인 필요."
+                            "않게 되어 합의한 대화를 닫고 이 폐기물의 배정을 뺐습니다. 확인 필요."
                             if handed[sid].get("cause") == "permit"
                             else f"{names.get(handed[sid]['vendorOrgId']) or '업체'}의 허가 품목이 "
-                            "이 흐름과 맞지 않게 되어 배정을 뺐습니다. 확인 필요."
+                            "이 폐기물과 맞지 않게 되어 배정을 뺐습니다. 확인 필요."
                             if handed[sid].get("cause") == "permit_stream"
                             else f"{josa(names.get(handed[sid]['vendorOrgId']) or '업체', '와과')} 합의한 대화가 "
-                            "담당자에게 넘어가 이 흐름의 배정을 뺐습니다. 확인 필요."
+                            "담당자에게 넘어가 이 폐기물의 배정을 뺐습니다. 확인 필요."
                         ),
                         "evidence": [],
                     }
@@ -2099,6 +2132,20 @@ class Orchestrator:
                 if other_id == vendor_id or not other:
                     continue
                 other_route = tool_of(other_id, "judge_route", streamId=sid)
+                # 운반비와 전처리 인건비까지 뺀 값(cost_carbon)이 있으면 그것으로 견준다
+                other_cost = tool_of(other_id, "cost_carbon", streamId=sid)
+                other_after = claim_in(
+                    other_cost, "monthlyAfter", f"{tag}_alt_{safe_id(other_id)}_monthlyAfter"
+                ) or claim_in(
+                    other_route, "monthlyAfter", f"{tag}_alt_{safe_id(other_id)}_monthlyAfter"
+                )
+                now_claim = claim_in(optimized, item.get("monthlyNow"), "x")
+                worse = bool(
+                    vendor_id is None
+                    and other_after
+                    and now_claim
+                    and float(other_after["value"]) <= float(now_claim["value"])
+                )
                 alternatives.append(
                     {
                         "vendorOrgId": other_id,
@@ -2108,12 +2155,10 @@ class Orchestrator:
                             **other["claim"],
                             "id": f"{tag}_alt_{safe_id(other_id)}_unitPrice",
                         },
-                        "monthlyAfter": claim_in(
-                            other_route,
-                            "monthlyAfter",
-                            f"{tag}_alt_{safe_id(other_id)}_monthlyAfter",
-                        ),
-                        "note": "조건부 제안"
+                        "monthlyAfter": other_after,
+                        "note": "운반비와 인건비를 넣으면 지금보다 이득이 없어 고르지 않았습니다"
+                        if worse
+                        else "조건부 제안"
                         if other["type"] == "conditional"
                         else "선택되지 않은 제안",
                     }
@@ -2131,6 +2176,12 @@ class Orchestrator:
                 ),
                 "monthlyNow": claim_in(optimized, item.get("monthlyNow"), f"{tag}_monthlyNow"),
                 "difference": claim_in(optimized, item.get("difference"), f"{tag}_difference"),
+                # 순비용의 내역: 매각 수익(처리비면 음수), 배출 기업이 따로 내는 운반비, 전처리 인건비
+                "revenue": claim_in(optimized, item.get("revenue"), f"{tag}_revenue"),
+                "transport": claim_in(optimized, item.get("transport"), f"{tag}_transport"),
+                "labor": claim_in(optimized, item.get("labor"), f"{tag}_labor"),
+                "transportPaidBy": item.get("transportPaidBy"),
+                "reuse": reuse_view((work.get("reuse") or {}).get(sid), tag),
                 "carbon": claim_in(optimized, item.get("carbon"), f"{tag}_carbon"),
                 "carbonValue": claim_in(
                     cost, (cost or {}).get("output", {}).get("kau"), f"{tag}_carbonValue"
@@ -2166,6 +2217,14 @@ class Orchestrator:
                     "monthlyAfter": None,
                     "monthlyNow": None,
                     "difference": None,
+                    "revenue": None,
+                    "transport": None,
+                    "labor": None,
+                    "transportPaidBy": None,
+                    "reuse": reuse_view(
+                        (work.get("reuse") or {}).get(item["streamId"]),
+                        safe_id(item["streamId"]),
+                    ),
                     "carbon": None,
                     "carbonValue": None,
                     "currentAssumed": False,
@@ -2276,9 +2335,9 @@ class Orchestrator:
             self._save(session)
             raise OrchestratorError(
                 "PERMIT_MISMATCH",
-                "업체의 허가 품목이 흐름과 맞지 않게 되어 승인하지 않고 대화를 닫았습니다."
+                "업체의 허가 품목이 폐기물과 맞지 않게 되어 승인하지 않고 대화를 닫았습니다."
                 if done == "closed"
-                else "업체의 허가 품목이 일부 흐름과 맞지 않게 되어 그 흐름만 뺐습니다. "
+                else "업체의 허가 품목이 일부 폐기물과 맞지 않게 되어 그 폐기물만 뺐습니다. "
                 "남은 조건을 확인하고 다시 승인해 주세요.",
             )
         blocked = self._verify(session, thread)
@@ -2422,10 +2481,10 @@ class Orchestrator:
 
             lines = [
                 title,
-                f"보내는 곳: {emitter.get('name')} ({emitter['id']})",
-                f"받는 곳: {vendor.get('name')} ({vendor['id']})",
+                # 조직 ID와 대화 ID는 본문에 적지 않는다(문서의 threadId 항목에 있다). 사람이 읽는 글이다
+                f"보내는 곳: {emitter.get('name')}",
+                f"받는 곳: {vendor.get('name')}",
                 f"작성일: {self.today}",
-                f"대화: {thread.id}",
                 "",
                 *lines_for(use),
                 "",
@@ -2458,7 +2517,7 @@ class Orchestrator:
             return {"stream": stream, "kg": kg, "offer": offers.get(sid)}
 
         def request_lines(use) -> list[str]:
-            lines = ["아래 흐름의 수거와 처리를 요청합니다."]
+            lines = ["아래 폐기물의 수거와 처리를 요청합니다."]
             for number, sid in enumerate(assigned, 1):
                 facts, tag = stream_facts(sid), safe_id(sid)
                 stream, offer = facts["stream"], facts["offer"]
@@ -2495,7 +2554,7 @@ class Orchestrator:
             per_kg = use(claim_in(loading, "perPickupKg", "x"), "perPickupKg")
             lines.append(f"수거 횟수: {pickups}" if pickups else "수거 횟수: 확인 필요")
             if per_kg:
-                lines.append(f"한 번 수거량(확정한 흐름을 합친 값): {per_kg}")
+                lines.append(f"한 번 수거량(확정한 폐기물을 합친 값): {per_kg}")
             for number, sid in enumerate(assigned, 1):
                 facts, tag = stream_facts(sid), safe_id(sid)
                 stream = facts["stream"]

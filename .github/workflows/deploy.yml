@@ -12,6 +12,12 @@
 #   3) 저장소 비밀(Settings > Secrets and variables > Actions)에 이름만 맞춰 넣는다
 #      AZURE_CLIENT_ID, AZURE_TENANT_ID, AZURE_SUBSCRIPTION_ID   (세 값 모두 비밀값은 아니고 식별자다)
 #   4) 선택: 저장소 변수 AZURE_RESOURCE_GROUP (없으면 deploy.sh 의 기본값), DEPLOY_PLATFORM (auto)
+#      선택: 저장소 변수로 앱 설정을 고른다. 없으면 deploy.sh 의 기본값이다(이름은 infra/deploy.sh 머리말과 같다).
+#        DEPLOY_V3_LLM (foundry | rule | anthropic), DEPLOY_BACKEND_EXTRAS_NONE (true면 추론 extra를 뺀 가벼운 이미지),
+#        DEPLOY_ANTHROPIC_MODEL, DEPLOY_V3_AUTH (header | token), DEPLOY_V3_CORS_ORIGINS, DEPLOY_V3_DISTANCE (kakao | azure | none)
+#      비밀 값(Anthropic 키, 카카오 키, 조직별 토큰)은 저장소에 넣지 않는다. Key Vault에 먼저 넣어 두면
+#      deploy.sh 가 있는지만 확인하고 앱에는 Key Vault 참조로 들어간다
+#        anthropic-api-key (DEPLOY_V3_LLM=anthropic), v3-org-tokens (DEPLOY_V3_AUTH=token), kakao-rest-api-key (DEPLOY_V3_DISTANCE=kakao)
 #   5) 저장소 변수 DEPLOY_ENABLED 를 true 로 둔다. 이 값이 없으면 main 병합 후 자동 배포를 건너뛴다
 #      (1~3이 끝나기 전에 main push마다 azure/login 에서 실패하지 않게 한다). 손으로 돌리는 workflow_dispatch 는 막지 않는다.
 name: Deploy
@@ -53,6 +59,12 @@ jobs:
       RG: ${{ vars.AZURE_RESOURCE_GROUP || 'team_AIBIC2026_03_RG_EUS2' }}
       PLATFORM: ${{ vars.DEPLOY_PLATFORM || 'auto' }}
       MIGRATE_MODE: acr
+      # 아래 값이 비어 있으면 deploy.sh 가 자기 기본값을 쓴다(${VAR:-기본값}). 비밀 값은 여기에 두지 않는다
+      V3_LLM: ${{ vars.DEPLOY_V3_LLM }}
+      ANTHROPIC_MODEL: ${{ vars.DEPLOY_ANTHROPIC_MODEL }}
+      V3_AUTH: ${{ vars.DEPLOY_V3_AUTH }}
+      V3_CORS_ORIGINS: ${{ vars.DEPLOY_V3_CORS_ORIGINS }}
+      V3_DISTANCE: ${{ vars.DEPLOY_V3_DISTANCE }}
     steps:
       - uses: actions/checkout@v7
         with:
@@ -67,6 +79,11 @@ jobs:
 
       # containerapp 같은 az 확장이 필요하면 묻지 않고 설치한다(러너는 한 번 쓰고 버린다).
       - run: az config set extension.use_dynamic_install=yes_without_prompt
+
+      # BACKEND_EXTRAS는 빈 값과 "없음"을 가려 읽는다(빈 값이면 추론 extra를 뺀다). 그래서 변수로 골랐을 때만 넣는다.
+      - name: 가벼운 이미지 고르기
+        if: vars.DEPLOY_BACKEND_EXTRAS_NONE == 'true'
+        run: echo "BACKEND_EXTRAS=" >> "$GITHUB_ENV"
 
       # deploy.sh 가 빌드 → 마이그레이션 → 앱 바꾸기 → 상태 확인 순서로 하고, 마이그레이션이 실패하면 앱을 바꾸지 않는다.
       - name: API 배포

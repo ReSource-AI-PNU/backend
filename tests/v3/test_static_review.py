@@ -275,11 +275,57 @@ def test_app_service_settings_are_names_the_app_reads():
         "PORT",  # 프런트(Next.js)
         "HOSTNAME",
     }
-    assert names - platform <= settings_fields(), sorted(names - platform - settings_fields())
+    # 설정 모듈을 거치지 않고 프로세스 환경 변수에서 바로 읽는 이름(읽는 파일에 그 이름이 있어야 한다)
+    direct = {
+        "APPLICATIONINSIGHTS_CONNECTION_STRING": "app/v3/api.py",
+        "AZURE_SEARCH_INDEX": "app/v3/evidence/search_azure.py",
+    }
+    assert all(f'"{name}"' in read(path) for name, path in direct.items())
+    # 프런트 앱(Next.js, Auth.js)이 읽는 이름. 이 저장소에는 읽는 코드가 없다
+    frontend = {
+        "AUTH_SECRET",
+        "AUTH_URL",
+        "AUTH_TRUST_HOST",
+        "AUTH_DEV_LOGIN",
+        "AUTH_MICROSOFT_ENTRA_ID_ID",
+        "AUTH_MICROSOFT_ENTRA_ID_ISSUER",
+        "AUTH_MICROSOFT_ENTRA_ID_SECRET",
+        "V3_BACKEND_URL",
+    }
+    known = platform | set(direct) | frontend
+    assert names - known <= settings_fields(), sorted(names - known - settings_fields())
+    assert frontend <= names
     assert {"V3_AUTH", "V3_DEMO_OPEN", "V3_ORG_TOKENS"} <= names
     assert "SecretName=v3-org-tokens" in bicep and "param v3Auth string = 'header'" in bicep
     script = read("infra/deploy.sh")
     assert '"v3Auth=$V3_AUTH"' in script and '"v3DemoOpen=$V3_DEMO_OPEN"' in script
+    # 새 설정: 모델·거리 제공자·허용 출처. 기본값은 지금 동작 그대로다(인증 header, 거리 제공자 없음)
+    assert {"ANTHROPIC_API_KEY", "ANTHROPIC_MODEL", "V3_CORS_ORIGINS", "V3_DISTANCE"} <= names
+    assert {
+        "KAKAO_REST_API_KEY",
+        "AZURE_MAPS_KEY",
+        "V3_VENDOR_AGENTS",
+        "VENDOR_SERVICE_KEY",
+    } <= names
+    allowed = re.search(r"@allowed\(\[([^\]]+)\]\)\s*param v3Llm string", bicep).group(1)
+    assert set(re.findall(r"'(\w+)'", allowed)) == {"rule", "foundry", "anthropic"}
+    assert "param v3Distance string = ''" in bicep and "param v3CorsOrigins string = ''" in bicep
+    # 비밀은 값이 아니라 Key Vault 참조로만 들어가고, 그 기능을 골랐을 때만 참조를 넣는다
+    # (비밀이 없는데 참조를 넣으면 풀리지 않은 참조 글을 앱이 키로 읽는다)
+    assert "@secure()" not in bicep
+    for name, condition in (
+        ("ANTHROPIC_API_KEY", "v3Llm == 'anthropic' ? secretRef.anthropicApiKey : ''"),
+        ("KAKAO_REST_API_KEY", "v3Distance == 'kakao' ? secretRef.kakaoRestApiKey : ''"),
+        ("AZURE_MAPS_KEY", "v3Distance == 'azure' ? secretRef.mapsKey : ''"),
+        ("VENDOR_SERVICE_KEY", "empty(v3VendorAgents) ? '' : secretRef.vendorServiceKey"),
+    ):
+        assert re.search(rf"name: '{name}'\s+value: {re.escape(condition)}", bicep), name
+    assert "SecretName=anthropic-api-key" in bicep and "SecretName=kakao-rest-api-key" in bicep
+    # deploy.sh는 고른 기능의 비밀이 Key Vault에 있는지 먼저 본다(값은 읽지 않는다)
+    for secret in ("anthropic-api-key", "kakao-rest-api-key", "v3-org-tokens"):
+        assert f"need_secret {secret} " in script, secret
+    for param in ("v3Distance=$V3_DISTANCE", "v3CorsOrigins=$V3_CORS_ORIGINS", "anthropicModel="):
+        assert param in script, param
     # 사전·목록 설정은 빈 문자열을 주면 pydantic-settings가 JSON으로 읽다 실패한다
     complex_fields = {"CORS_ORIGINS", "V3_VENDOR_AGENTS", "PLATFORM_STAGE_ENDPOINTS"}
     for name in complex_fields & names:

@@ -218,5 +218,5 @@ def test_search_failure_is_reported_without_the_key(registry, capsys):
 def test_default_registry_is_the_seed_set():
     seeds = index_evidence.build_registry({})
     summary = index_evidence.run(seeds, search_azure.client_from_env(SEARCH_ENV), dry_run=True)
-    assert summary["byKind"]["law"] == 26 and summary["byKind"]["ref"] == 7
+    assert summary["byKind"]["law"] == 26 and summary["byKind"]["ref"] == 11
     assert summary["private"] == 0 and summary["uploaded"] == 0

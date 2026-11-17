@@ -38,9 +38,9 @@ def test_status_reason_lists_every_refused_stream_with_its_reason():
         "st_sprue",
     ]
     reason = thread["statusReason"]
-    assert reason.startswith("받지 않는 흐름: ")
+    assert reason.startswith("받지 않는 폐기물: ")
     assert reason == (
-        "받지 않는 흐름: 불량 사출품은 업체의 자동 거절 조건(불량)에 해당합니다 / "
+        "받지 않는 폐기물: 불량 사출품은 업체의 자동 거절 조건(불량)에 해당합니다 / "
         "스프루·런너는 업체의 자동 거절 조건(스프루)에 해당합니다."
     )
     # 메시지에 실린 이유(meta.reason)는 그대로다. 닫는 이유만 모두 적는다
@@ -82,7 +82,7 @@ def test_same_reason_is_written_once_for_all_its_streams():
     )
     reason = Orchestrator(app)._decline_reason(thread, message)
     assert reason == (
-        "받을 수 있는 흐름이 없습니다. 받지 않는 흐름: 스프루·런너, 포장 필름: 창고가 찼습니다 / "
+        "받을 수 있는 흐름이 없습니다. 받지 않는 폐기물: 스프루·런너, 포장 필름: 창고가 찼습니다 / "
         "불량 사출품: 매입 기준에 맞지 않습니다."
     )
 

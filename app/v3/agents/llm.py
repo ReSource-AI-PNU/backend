@@ -315,6 +315,171 @@ class OllamaChat:
         }
 
 
+class AnthropicChat:
+    """Anthropic Messages API(Claude). 설계의 기본 모델은 아니고, 실제 모델로 돌려 보는 용도다.
+
+    - system 역할의 글은 system 인자로 모아 보낸다.
+    - 도구 결과는 바로 앞 assistant의 tool_use 다음 user 메시지에 tool_result 블록으로 넣는다.
+      이어지는 user 글은 같은 메시지에 붙인다(같은 역할이 연달아 나가지 않게 한다).
+    - response_schema가 있으면 그 스키마를 입력으로 받는 도구(FINAL_TOOL)를 함께 준다. 모델이 그
+      도구를 부르면 입력을 JSON 글로 바꿔 content로 돌려준다. 다른 도구를 함께 불렀으면 그 도구들이
+      먼저다(최종 답은 다음 차례에 다시 낸다). 도구 사용을 강제하지는 않는다(tool_choice any/tool을
+      받지 않는 모델이 있다). 모델이 글로 답하면 그 글이 content로 가고, JSON인지는 부른 쪽이 본다.
+    """
+
+    provider = "anthropic"
+    FINAL_TOOL = "final_response"
+    API_VERSION = "2023-06-01"
+
+    def __init__(
+        self,
+        api_key: str,
+        model: str = "claude-sonnet-5-5",
+        transport: Transport | None = None,
+        *,
+        base_url: str = "https://api.anthropic.com",
+        max_tokens: int = 4000,
+        timeout: float = 120,
+    ) -> None:
+        self.base_url = base_url.rstrip("/")
+        self.model = model
+        self._api_key = api_key
+        self._transport = transport or urllib_transport
+        self.max_tokens = max_tokens
+        self.timeout = timeout
+
+    def __repr__(self) -> str:
+        return f"AnthropicChat(model={self.model!r})"
+
+    @staticmethod
+    def _wire(messages: list[dict[str, Any]]) -> tuple[str, list[dict[str, Any]]]:
+        system: list[str] = []
+        wired: list[dict[str, Any]] = []
+
+        def add(role: str, blocks: list[dict[str, Any]]) -> None:
+            if not blocks:
+                return
+            if wired and wired[-1]["role"] == role:
+                wired[-1]["content"].extend(blocks)
+            else:
+                wired.append({"role": role, "content": list(blocks)})
+
+        for message in messages:
+            role = message.get("role")
+            text = message.get("content")
+            if role == "system":
+                if text:
+                    system.append(str(text))
+            elif role == "assistant":
+                blocks: list[dict[str, Any]] = []
+                if text:
+                    blocks.append({"type": "text", "text": str(text)})
+                for call in message.get("tool_calls") or []:
+                    blocks.append(
+                        {
+                            "type": "tool_use",
+                            "id": call["id"],
+                            "name": call["name"],
+                            "input": call.get("arguments") or {},
+                        }
+                    )
+                add("assistant", blocks)
+            elif role == "tool":
+                add(
+                    "user",
+                    [
+                        {
+                            "type": "tool_result",
+                            "tool_use_id": message["tool_call_id"],
+                            "content": str(message.get("content", "")),
+                        }
+                    ],
+                )
+            else:
+                add("user", [{"type": "text", "text": str(text or "")}])
+        return "\n\n".join(system), wired
+
+    def complete(
+        self,
+        messages: list[dict[str, Any]],
+        *,
+        tools: list[dict[str, Any]] | None = None,
+        response_schema: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        system, wired = self._wire(messages)
+        specs = [
+            {
+                "name": tool["name"],
+                "description": tool.get("description", ""),
+                "input_schema": tool.get("input_schema")
+                or tool.get("parameters")
+                or {"type": "object", "properties": {}},
+            }
+            for tool in tools or []
+        ]
+        payload: dict[str, Any] = {
+            "model": self.model,
+            "max_tokens": self.max_tokens,
+            "messages": wired,
+        }
+        if response_schema is not None:
+            specs.append(
+                {
+                    "name": self.FINAL_TOOL,
+                    "description": "최종 답을 낸다. 다른 도구를 더 부를 일이 없을 때 이 도구로만 답한다.",
+                    "input_schema": response_schema,
+                }
+            )
+            system = (
+                f"{system}\n\n최종 답은 글로 쓰지 말고 {self.FINAL_TOOL} 도구의 입력으로 내라."
+            ).strip()
+        if system:
+            payload["system"] = system
+        if specs:
+            payload["tools"] = specs
+        data = _post_json(
+            self._transport,
+            f"{self.base_url}/v1/messages",
+            {"x-api-key": self._api_key, "anthropic-version": self.API_VERSION},
+            payload,
+            self.timeout,
+        )
+        blocks = data.get("content")
+        if not isinstance(blocks, list):
+            raise LLMError("모델 응답에 content가 없다")
+        text = "".join(str(b.get("text", "")) for b in blocks if b.get("type") == "text")
+        final: dict[str, Any] | None = None
+        calls: list[dict[str, Any]] = []
+        for index, block in enumerate(blocks, 1):
+            if block.get("type") != "tool_use":
+                continue
+            arguments = _arguments(block.get("input"))
+            if block.get("name") == self.FINAL_TOOL:
+                final = arguments
+            else:
+                calls.append(
+                    {
+                        "id": block.get("id") or f"call_{index}",
+                        "name": str(block.get("name")),
+                        "arguments": arguments,
+                    }
+                )
+        if data.get("stop_reason") == "max_tokens" and final is None and not calls:
+            raise LLMError("모델 응답이 길이 제한에서 잘렸다")
+        content: str | None = text or None
+        if final is not None and not calls:
+            content = json.dumps(final, ensure_ascii=False)
+        usage = data.get("usage") or {}
+        return {
+            "content": content,
+            "tool_calls": calls,
+            "usage": {
+                "prompt_tokens": usage.get("input_tokens"),
+                "completion_tokens": usage.get("output_tokens"),
+            },
+        }
+
+
 class ScriptedLLM:
     """테스트용. 미리 정한 응답을 차례로 돌려주고 호출을 기록한다.
 

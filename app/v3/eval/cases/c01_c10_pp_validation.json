@@ -215,7 +215,7 @@
           }
         },
         "questions": {
-          "count": 0
+          "count": 1
         }
       },
       "forbidden": [
@@ -428,7 +428,7 @@
           }
         },
         "questions": {
-          "count": 0
+          "count": 1
         }
       },
       "forbidden": [
@@ -631,7 +631,7 @@
           }
         ],
         "questions": {
-          "count": 1,
+          "count": 2,
           "asked": [
             [
               "st_a",
@@ -924,7 +924,7 @@
           }
         ],
         "questions": {
-          "count": 1,
+          "count": 2,
           "asked": [
             [
               "st_a",

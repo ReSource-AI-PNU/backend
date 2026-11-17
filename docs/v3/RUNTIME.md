@@ -133,6 +133,25 @@ class VendorGateway(Protocol):
 - `LocalVendorGateway`: 같은 프로세스에서 업체 측 에이전트를 부른다(로컬 시연, 테스트).
 - `HttpVendorGateway`: `POST {base}/a2a/messages`로 보낸다. 본문은 `{"message": {...}, "context": {...}}`, 답은 `{"message": {...}}`. 서비스 키는 `Authorization: Bearer` 헤더로 보낸다.
 
+**로컬에서 따로 띄우기 (실행 확인: 2026-11-18).** FastAPI 앱 `vendor_service.py`는 배포용이고 로컬에서 띄워 보지 못했다. 같은 일을 하는 표준 라이브러리 서버가 `app/v3/vendor_devserver.py`에 있다. 두 서버는 같은 서비스 함수(`handle_vendor_message`)를 부르고, 서비스 키와 본문 확인도 `httpio`의 같은 함수(`check_service_key`, `vendor_org_required`, `vendor_request`)로 한다.
+
+```bash
+export VENDOR_SERVICE_KEY=<임의의 긴 글>            # 두 프로세스에 같은 값
+# 1) 업체 측 에이전트(남해열분해)
+python3 -m app.v3.vendor_devserver --vendor org_namhae --port 8032 --store /tmp/rsai/demo.json
+# 2) 회사 측 서버. 주소가 있는 업체만 HTTP로 가고, 나머지 업체는 이 프로세스 안에서 답한다
+V3_VENDOR_AGENTS='{"org_namhae": "http://127.0.0.1:8032"}' \
+  python3 -m app.v3.devserver --port 8000 --store /tmp/rsai/demo.json --reset
+```
+
+- 두 프로세스는 같은 저장 파일 둘(`demo.json`, `demo.evidence.json`)을 본다. 배포에서 두 서비스가 같은 PostgreSQL을 보는 것을 로컬에서 흉내 낸 것이다(`app/v3/localshare.py`). 업체 측은 메시지를 받을 때마다 두 파일을 다시 읽고, 회사 측은 HTTP로 다녀온 뒤 근거 파일을 다시 읽는다. 회사 측이 답을 기다리는 동안에만 업체 측이 쓰므로 동시에 쓰지 않는다. 파일 잠금은 없다(로컬 전용).
+- `--store` 없이 `V3_VENDOR_AGENTS`를 주면 서버를 띄우지 않고 멈춘다(메모리 저장은 두 프로세스가 나눠 볼 수 없다). `VENDOR_SERVICE_KEY`가 없어도 멈춘다.
+- 업체 측 서버의 주소: `POST /a2a/messages`, `GET /healthz`(`{"status", "vendorOrgId", "handled"}`. `handled`는 지금까지 답한 메시지 수). 오류: 서비스 키가 설정되지 않음 503 `SERVICE_KEY_NOT_SET`, 키가 틀림 401 `UNAUTHORIZED`, 다른 업체에게 온 메시지 403 `WRONG_RECIPIENT`, 저장 파일이 아직 없음 503 `STORE_NOT_READY`.
+- 업체 측 서버는 시드를 올리거나 되돌리지 않는다. 대화의 첫 메시지를 받으면 그 대화의 도구 결과 메모를 버린다(회사 측이 시연을 되돌리면 대화 번호가 다시 시작하기 때문이다).
+- 회사 측 관리자 상태의 `vendorGateway`는 `SplitVendorGateway`로 나온다. 업체별 호출 수는 `app.vendor_gateway.calls`에 남는다.
+- **`V3_VENDOR_AGENTS`의 뜻이 두 서버에서 조금 다르다.** FastAPI 경로(`HttpVendorGateway`)는 값을 주면 모든 업체 메시지를 HTTP로 보내고 주소가 없는 업체는 닿지 못해 담당자에게 넘어간다(`"*"`로 나머지를 한 주소에 모을 수 있다). 로컬 서버는 주소가 없는 업체를 같은 프로세스에서 답하게 한다.
+- 실행 결과(규칙 정책, 기준일 2026-11-18, 회사 측 8033, 남해열분해 8032): 질문 3개에 답한 뒤 승인 대기까지 갔고, 남해열분해 대화의 업체 측 메시지 2개가 따로 띄운 프로세스에서 나왔다(`/healthz`의 `handled` 0 → 2, 그 프로세스 기록에 `POST /a2a/messages` 200이 두 번). 네 메시지 모두 회사 측 근거 검증을 통과했고, 배정과 월 손익 합계는 한 프로세스로 돌린 것과 같았다. 실제 모델(Foundry, Anthropic, Ollama)로는 이 경로를 돌리지 않았다.
+
 받은 답 메시지는 회사 측에서 다시 검증기를 통과시킨다. 보내는 쪽이 검증했다는 말을 믿지 않는다. `meta`는 정해 둔 항목(`validation`의 시도 횟수와 코드, `model`, `reason`, `reasonEvidence`, `asks`, `excluded`, `terms`)만 정해 둔 모양으로 남기고(`_clean_meta`), `terms.items`의 단가는 업체가 적어 보낸 숫자가 아니라 검증된 claim에서 다시 읽어 적는다. `trace`도 정해 둔 모양만 옮긴다(`reported_trace`): 요약은 코드가 다시 쓰고, 실행됐다는 도구 호출은 그 도구의 calc 근거가 근거 저장소에 있을 때만 남기며 `detail.reportedBy: "vendor"`를 붙인다.
 
 `context`는 `{"sessionId", "today", "thread": 스레드(메시지 포함), "streams": 그 스레드의 흐름(현행 처리 단가 제외), "emitter": {"id", "name", "location"}}`다. 답 메시지의 `meta`에는 `validation`(시도 횟수와 줄인 거부 사유), `model`(실제로 쓴 구현), `terms`, `excluded`, `trace`(업체 측 도구 호출과 검증 기록)가 붙고, 진행기가 `trace`를 실행 기록으로 옮긴다. `HttpVendorGateway`의 본문에는 `vendorOrgId`도 함께 간다.
@@ -225,17 +244,50 @@ def register_model_run(app, run, viewer) -> dict                    # 재학습 
 
 ## 8. 로컬 서버
 
-`python3 -m app.v3.devserver --port 8000 [--store 경로.json] [--reset] [--llm rule|foundry] [--demo-closed] [--auth header|token --org-tokens 토큰.json]`
+`python3 -m app.v3.devserver --port 8000 [--store 경로.json] [--reset] [--llm rule|foundry|anthropic] [--demo-closed] [--auth header|token --org-tokens 토큰.json]`
 
 - 표준 라이브러리 `http.server`로 계약 8장의 API를 모두 제공한다. 더한 주소는 `GET /health`와 `POST /intake/documents/confirm`이다.
 - 시작할 때 가정값, 근거 시드, 시연 데이터를 올린다.
 - `--store 경로.json`을 주면 저장소는 그 파일(`JsonFileStore`)에, 근거 레지스트리는 옆 파일 `<이름>.evidence.json`(`JsonFileRegistry`)에 쓴다. 두 파일이 이미 있으면 시드로 덮어쓰지 않고 이전 진단을 이어 간다(메시지와 문서가 인용한 근거가 그대로 남아 승인과 검증이 이어진다). `--reset`을 주면 처음 상태로 되돌린다. 저장소 파일만 있고 근거 파일이 없으면 이어 갈 수 없어 처음 상태로 시작한다. `POST /demo/reset`은 두 파일을 모두 처음 상태로 되돌린다.
 - 이어 갈 때는 근거 시드(법령·기준값)를 다시 올리지 않는다. 시드 파일을 바꿨으면 `--reset`으로 다시 시작한다.
 - `/admin/*`은 운영 조직(`org_admin`)으로 부른다. 시연 되돌리기는 누구나 부를 수 있고(`demo_open`), `--demo-closed`를 주면 관리자만 부른다.
-- 기본은 `--llm rule`이다. `--llm foundry`일 때만 `FOUNDRY_ENDPOINT`, `FOUNDRY_DEPLOYMENT`, `FOUNDRY_API_KEY`를 읽는다. 업체가 ollama를 골랐으면 `OLLAMA_BASE_URL`이 있을 때만 그 모델을 쓰고, 없으면 그 업체는 규칙 정책으로 돈다.
-- CORS는 `http://localhost:3000`과 `http://127.0.0.1:3000`만 허용한다(`X-Org-Id`, `Authorization`, `Content-Type` 헤더, `OPTIONS` 처리).
+- **모델 고르기는 두 서버가 같은 함수로 한다**(`app/v3/agents/factory.py`의 `build_llm_factory`). FastAPI 경로(`api.py`)는 설정 `V3_LLM`을, 로컬 서버는 `--llm`(주지 않으면 환경 변수 `V3_LLM`)을 읽는다. 값은 `rule`(기본) | `foundry` | `anthropic`이다.
+  - `foundry`: `FOUNDRY_ENDPOINT`, `FOUNDRY_DEPLOYMENT`, `FOUNDRY_API_KEY`가 모두 있어야 한다.
+  - `anthropic`: 키는 `ANTHROPIC_API_KEY`, 비어 있으면 `ANTHROPIC_API_KEY_FILE`이 가리키는 파일(키만 담은 글)에서 읽는다. 모델 이름은 `ANTHROPIC_MODEL`(기본 `claude-sonnet-5-5`)이다. 설계의 기본 모델은 Foundry gpt-5-mini이고, 이 선택지는 Foundry를 쓸 수 없을 때 실제 모델로 돌리려고 둔 것이다.
+  - 업체가 ollama를 골랐으면 `OLLAMA_BASE_URL`이 있을 때만 그 모델을 쓰고, 없으면 그 업체는 규칙 정책으로 돈다. `anthropic`에서 `V3_LLM_ALL_VENDORS=1`(설정에서는 `true`)을 주면 그 업체도 anthropic 모델이 답한다. 화면에는 설정한 모델과 실제로 답한 모델이 따로 나온다.
+  - 설정이 빠졌을 때 로컬 서버는 어떤 값이 없는지만 밝히고 멈춘다. FastAPI 경로는 경고를 남기고 규칙 정책으로 돈다(서버는 뜨고, 관리자 화면과 대화에 "규칙 정책(모델 미연결)"로 나온다). 키 값은 어느 쪽도 출력하거나 기록하지 않는다.
+  - `rule`이면 위 환경 변수를 읽지 않는다.
+- CORS는 기본으로 `http://localhost:3000`과 `http://127.0.0.1:3000`만 허용한다(`X-Org-Id`, `Authorization`, `Content-Type` 헤더, `OPTIONS` 처리). 다른 출처를 더하려면 `--cors-origins`나 환경 변수 `V3_CORS_ORIGINS`에 쉼표로 나눠 적는다(예: `http://localhost:3100`). `*`는 받지 않는다.
 - 요청한 조직은 기본으로 `X-Org-Id` 헤더에서 읽는다(`--auth header`). header 모드는 시연 전용이며 공개 주소에 그대로 두면 조직 경계가 지켜지지 않는다. `--auth token --org-tokens <JSON 파일>`을 주면 조직별 서비스 토큰(`Authorization: Bearer`)으로 정하고 `X-Org-Id`는 무시한다(계약 8장 "요청한 조직").
+- **토큰 모드를 환경 변수로 켜기(두 서버가 같은 이름을 읽는다).**
+
+  | 환경 변수 | 값 | 읽는 곳 |
+  |---|---|---|
+  | `V3_AUTH` | `header`(기본, 시연 전용) \| `token` | FastAPI, 로컬 서버(`--auth`를 주지 않았을 때) |
+  | `V3_ORG_TOKENS` | JSON 글 한 줄. `{"org_hanbit": "토큰", "org_saegil": ["새 토큰", "옛 토큰"]}` | FastAPI, 로컬 서버 |
+  | `V3_ORG_TOKENS_FILE` | 위 JSON을 담은 파일의 경로 | 로컬 서버만(`--org-tokens`와 같다) |
+
+  - 토큰은 16자 이상이고 조직마다 달라야 한다. 값이 목록이면 그 조직의 토큰 여럿을 함께 받는다(교체 기간).
+  - 요청은 `Authorization: Bearer <토큰>` 헤더로 보낸다. 토큰에 묶인 조직이 요청한 조직이고 `X-Org-Id`는 보지 않는다.
+  - 토큰이 없으면 401 `TOKEN_REQUIRED`, 어느 조직의 것도 아니면 401 `INVALID_TOKEN`이다. 맞는 토큰으로 다른 조직의 자료를 부르면 서비스 함수가 403(`FORBIDDEN`)이나 404로 답한다. `GET /health`만 토큰 없이 답한다.
+  - 로컬 서버에서 읽는 순서는 `--org-tokens` 파일, `V3_ORG_TOKENS_FILE`, `V3_ORG_TOKENS`다. token 모드인데 셋 다 없거나 모양이 틀리면 서버를 띄우지 않고 멈춘다(문구에 토큰 값은 싣지 않는다).
+  - 실행 확인(2026-11-18, 로컬 서버 8031, `V3_AUTH=token` + `V3_ORG_TOKENS_FILE`): 토큰 없음과 `X-Org-Id`만 보낸 요청은 401 `TOKEN_REQUIRED`, 틀린 토큰은 401 `INVALID_TOKEN`, 다른 배출 기업의 토큰으로 흐름을 부르면 403, 그 토큰으로 남의 진단을 부르면 404, 자기 토큰은 200이었다. FastAPI 경로는 로컬에서 띄우지 못해 CI의 테스트(`tests/v3/test_api.py`)로만 확인한다.
+  - 화면(브라우저)이 토큰을 직접 들고 있으면 안 된다. 프런트 서버가 로그인한 사용자의 조직에 맞는 토큰을 붙여 대신 부르는 구조(BFF)가 필요하다.
 - 업로드는 `multipart/form-data`(`file`, `orgId`, 문서는 `kind`)로 받는다.
+- **도로 거리 제공자는 환경 변수 `V3_DISTANCE`로 고른다**(`app/v3/judge/distance.py`의 `distance_provider_from_env`. FastAPI 경로, 로컬 서버, 업체 측 에이전트 서버가 같이 쓴다).
+
+  | `V3_DISTANCE` | 쓰는 것 | 필요한 값 |
+  |---|---|---|
+  | (비움) | `AZURE_MAPS_KEY`가 있으면 Azure Maps, 없으면 제공자 없음 | |
+  | `kakao` | 카카오모빌리티 자동차 길찾기(`GET https://apis-navi.kakaomobility.com/v1/directions`) | `KAKAO_REST_API_KEY` |
+  | `azure` | Azure Maps Route Matrix | `AZURE_MAPS_KEY` |
+  | `none` | 제공자 없음 | |
+
+  - 제공자가 없거나 호출이 실패하면(키 오류, 한도 초과, 닿지 못하는 지점, 고유 지점 8개 초과) 판단 도구는 직선 거리 × 우회 계수(가정값)로 계산하고 결과에 "가정값"이라고 남긴다. 일부만 도로 거리인 행렬은 만들지 않는다.
+  - 카카오 길찾기는 읽기 전용 조회다. 좌표 두 개(경도,위도)만 보내고 거리를 받는다. 조직 이름과 물량은 보내지 않는다. 한 쌍씩 묻는 API라서 n개 지점에 n×(n-1)번 부르고, 같은 쌍은 프로세스 안에서 한 번만 묻는다(무료 한도는 카카오 콘솔에서 확인한다).
+  - 실제 호출 확인(2026-11-18, 한 번): 시연 좌표 [128.826, 35.0871] → [128.8721, 35.1493]에 HTTP 200, `routes[0].result_code` 0, `summary.distance` 10,793 m였다. 같은 쌍의 직선 거리 × 1.3 가정값은 약 10.5 km다. Azure Maps 쪽은 실제 호출을 하지 못했다.
+  - `KakaoDistance.evidence(points, as_of, access)`가 받은 쌍마다 근거 레코드(`ref:도로거리:카카오길찾기-<쌍 해시>@<조회일>`, km, 출처, 좌표)를 만든다. 판단 도구의 `distance_matrix`(`judge/common.py`)가 이 레코드를 근거 저장소에 올리고 그 ID를 거리 계산 근거(`roundTripKm` 등)에 잇는다. 같은 구간을 다른 조직의 도구가 다시 물으면 접근 조직을 합쳐 앞서 연 조직도 계속 본다. 운영 상태(`GET /admin/status`)의 `distance`에 제공자 종류(`kind`)와 마지막 실패 이유(`lastError`)가 나온다.
+  - 로컬 서버는 고른 제공자의 키가 없으면 멈추고, FastAPI 경로는 경고를 남기고 가정값 경로로 돈다.
 
 ## 9. 평가 (8단계)
 

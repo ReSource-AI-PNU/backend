@@ -111,9 +111,13 @@ def match_permit(registry, *, org_id, today, stream, vendor):
         output["reason"] = "허가증이 확인되기 전에는 대화를 열지 않습니다."
         return rec.result("needs_information", output)
     if matched:
-        rec.check("permit", "met", "허가 품목에 이 흐름의 품목과 재질이 있습니다.", None, evidence)
+        rec.check(
+            "permit", "met", "허가 품목에 이 폐기물의 품목과 재질이 있습니다.", None, evidence
+        )
         output["reason"] = "허가 품목이 맞습니다."
     else:
-        rec.check("permit", "unmet", "허가 품목에 이 흐름의 품목·재질이 없습니다.", None, evidence)
+        rec.check(
+            "permit", "unmet", "허가 품목에 이 폐기물의 품목·재질이 없습니다.", None, evidence
+        )
         output["reason"] = "허가 품목이 맞지 않아 대화를 열지 않습니다."
     return rec.result("calculated", output)

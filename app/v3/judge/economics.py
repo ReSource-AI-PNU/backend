@@ -6,8 +6,18 @@ import itertools
 import logging
 import math
 
-from app.v3.judge.common import Recorder, best_criterion, distance_matrix, num, quality
-from app.v3.judge.route import baseline
+from app.v3.judge.common import (
+    CARBON_FORMULA,
+    Recorder,
+    best_criterion,
+    carbon_per_kg,
+    distance_matrix,
+    labor_cost,
+    num,
+    quality,
+    transport_charge,
+)
+from app.v3.judge.route import baseline, current_cost
 
 try:  # 없으면 순수 파이썬 풀이로만 돈다
     from ortools.constraint_solver import pywrapcp  # noqa: F401
@@ -70,9 +80,86 @@ def cost_carbon(
     rec.number("monthlyRevenue", revenue, "원/월", "단가 × 월 발생량", crit_ev)
 
     transport = None
+    paid_by = transportPaidBy
+    charge = transport_charge(vendor, pickupsPerMonth)
+    if charge["known"]:
+        # 업체가 운반 조건을 밝혔다: 단가에 포함이거나, 1회 운반비를 따로 받는다
+        paid_by, terms_ev = charge["paidBy"], charge["evidence"]
+        if paid_by == "vendor":
+            transport = 0.0
+            rec.check(
+                "transport", "met", "운반비는 업체 단가에 들어 있습니다(수거 포함).", None, terms_ev
+            )
+        elif charge["monthly"] is not None:
+            transport = charge["monthly"]
+            rec.number(
+                "transportPerPickup",
+                charge["perPickup"],
+                "원/회",
+                "업체가 밝힌 1회 운반비",
+                terms_ev,
+            )
+            rec.number(
+                "monthlyTransport",
+                transport,
+                "원/월",
+                "1회 운반비 × 월 수거 횟수 (이 폐기물만 보낼 때)",
+                terms_ev,
+            )
+            output["transportAssumed"] = False
+        else:
+            rec.check(
+                "transport",
+                "conditional",
+                "운반비를 따로 내야 하는데 금액이 없습니다. 확인 필요.",
+                "1회 운반비와 월 수거 횟수를 알려 주세요.",
+                terms_ev,
+            )
+    else:
+        transport = _estimated_transport(
+            rec, output, vendor, origin, pickupsPerMonth, distance_provider
+        )
+    borne = transport if (transport is not None and paid_by == "emitter") else 0.0
+    labor, labor_ev, hours, rate = labor_cost(rec, stream)
+    if labor is not None:
+        rec.number("pretreatHours", hours, "시간/월", "담당자가 넣은 월 전처리 작업 시간", labor_ev)
+        rec.number("laborRate", rate, "원/시간", "전처리 작업의 시간당 인건비", labor_ev)
+        rec.number("monthlyLabor", labor, "원/월", "월 작업 시간 × 시간당 인건비", labor_ev)
+    after = revenue - borne - (labor or 0.0)
+    rec.number(
+        "monthlyAfter",
+        after,
+        "원/월",
+        "월 매입액 − 배출 기업이 내는 운반비 − 전처리 인건비",
+        [*crit_ev, *labor_ev],
+    )
+    output["current"], _ = baseline(rec, stream, kg, after)
+
+    method = current_cost(rec, stream)[3]
+    per_kg, carbon_ev, why = carbon_per_kg(rec, stream, vendor, price, method)
+    if per_kg is None:
+        rec.check("carbon", "conditional", why)
+    else:
+        delta = per_kg * kg
+        claim = rec.number("carbonDifference", delta, "tCO2e/월", CARBON_FORMULA, carbon_ev)
+        output["carbon"] = claim["id"]
+        kau = rec.basis("kau.price")
+        if kau is None:
+            rec.check("kau", "conditional", "KAU 시세 근거가 없어 환산하지 않았습니다. 확인 필요.")
+        else:
+            output["kau"] = rec.number(
+                "kauValue", -delta * float(kau.value), "원/월", "감축량 × KAU 단가", [kau.id]
+            )["id"]
+    conditional = any(c["status"] == "conditional" for c in rec.checks)
+    return rec.result("conditional" if conditional else "calculated", output)
+
+
+def _estimated_transport(rec, output, vendor, origin, pickups_per_month, distance_provider):
+    """업체가 운반 조건을 밝히지 않았을 때: 거리 × 운행 단가 × 월 횟수로 어림한다(가정값)."""
+    transport = None
     fleet = vendor.get("fleet") or {}
     depot = fleet.get("depot")
-    pickups = num(pickupsPerMonth) or num(
+    pickups = num(pickups_per_month) or num(
         (vendor.get("guardrails") or {}).get("minPickupsPerMonth")
     )
     per_km, per_km_ev = num(fleet.get("costPerKm")), list(fleet.get("evidence") or [])
@@ -111,37 +198,7 @@ def cost_carbon(
             "거리나 운행 단가가 없어 운송비를 계산하지 않았습니다. 확인 필요.",
             "차량, 회차, 상하차와 포함 항목을 밝힌 운송 견적을 알려 주세요.",
         )
-    borne = transport if (transport is not None and transportPaidBy == "emitter") else 0.0
-    after = revenue - borne
-    rec.number("monthlyAfter", after, "원/월", "월 매입액 − 배출 기업이 내는 운송비", crit_ev)
-    output["current"], _ = baseline(rec, stream, kg, after)
-
-    item = stream.get("wasteItem")
-    now_ef, after_ef = (
-        rec.basis(f"emission.incinerate.{item}"),
-        rec.basis(f"emission.recycle.{item}"),
-    )
-    if now_ef is None or after_ef is None:
-        rec.check("carbon", "conditional", "배출계수가 없어 탄소를 계산하지 않았습니다. 확인 필요.")
-    else:
-        delta = (float(after_ef.value) - float(now_ef.value)) * kg / 1000
-        claim = rec.number(
-            "carbonDifference",
-            delta,
-            "tCO2e/월",
-            "(재활용 계수 − 소각 계수) × 월 발생량",
-            [now_ef.id, after_ef.id],
-        )
-        output["carbon"] = claim["id"]
-        kau = rec.basis("kau.price")
-        if kau is None:
-            rec.check("kau", "conditional", "KAU 시세 근거가 없어 환산하지 않았습니다. 확인 필요.")
-        else:
-            output["kau"] = rec.number(
-                "kauValue", -delta * float(kau.value), "원/월", "감축량 × KAU 단가", [kau.id]
-            )["id"]
-    conditional = any(c["status"] == "conditional" for c in rec.checks)
-    return rec.result("conditional" if conditional else "calculated", output)
+    return transport
 
 
 def _tour(matrix, nodes) -> float:

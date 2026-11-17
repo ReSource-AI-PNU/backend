@@ -63,7 +63,7 @@ def identify_stream(registry, *, org_id, today, stream, moisturePct=None):
             "moisture",
             "conditional",
             "수분 값이 없어 사진만으로는 등급을 내지 못했습니다.",
-            "이 흐름의 수분 상태를 알려 주세요. 모르면 모른다고 답해도 됩니다.",
+            "이 폐기물의 수분 상태를 알려 주세요. 모르면 모른다고 답해도 됩니다.",
             photo.get("evidence"),
         )
     output["gradeEvidence"] = limits

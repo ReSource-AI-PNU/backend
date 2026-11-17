@@ -40,6 +40,7 @@ bash infra/teardown.sh                          # 태그가 붙은 리소스만 
 
 - **인증:** 조 계정에 역할 할당 권한이 없어 관리 ID와 RBAC를 쓸 수 없다. 서비스 키를 쓰고, 키는 배포할 때 Key Vault 비밀로만 들어간다. Key Vault는 접근 정책 방식이다.
 - **Key Vault 비밀 이름:** `database-url`, `postgres-admin-password`, `storage-connection-string`, `acr-username`, `acr-password`, `appinsights-connection-string`, `foundry-api-key`, `docintel-key`, `contentsafety-key`, `search-admin-key`, `maps-key`(대기)
+- **사람이 넣는 Key Vault 비밀(앱 배포에서 고른 기능에만 필요):** `anthropic-api-key`(`V3_LLM=anthropic`), `v3-org-tokens`(`V3_AUTH=token`, API와 프런트가 같이 읽는다), `kakao-rest-api-key`(`V3_DISTANCE=kakao`), `detector-api-key`(`V3_DETECTOR_ENDPOINT`), `auth-entra-secret`(`AUTH_ENTRA_ID`). `auth-secret`, `vendor-service-key`, `mcp-service-key`는 없으면 `deploy.sh`가 만들어 Key Vault에만 둔다. 값은 파일로 넣는다: `az keyvault secret set --vault-name <이름> -n <비밀 이름> --file <값을 담은 파일>`
 - **PostgreSQL:** 관리자 비밀번호는 `deploy-infra.sh`가 처음 배포할 때 만들어 Key Vault에만 둔다. 공용 접근에 "Azure 서비스 허용" 방화벽 규칙 하나만 열었다. 로컬에서 붙으려면 자기 IP 규칙을 따로 더한다. `POSTGIS`, `VECTOR`, `PG_TRGM` 확장을 허용했다. `CREATE EXTENSION`은 마이그레이션에서 한다.
 - **지역:** 기본은 East US 2다. PostgreSQL과 AI Search만 Central US에 있다. East US 2에서 PostgreSQL B1ms는 `SkuNotAvailable`(영역 1~3 모두), AI Search는 `InsufficientResourcesAvailable`로 만들 수 없었다. 바꾸려면 `POSTGRES_LOCATION`, `SEARCH_LOCATION`을 준다.
 - **채팅 모델:** `gpt-5-mini` GlobalStandard 200K TPM. 할당량은 구독 전체가 나눠 쓴다.
@@ -56,3 +57,31 @@ bash infra/teardown.sh                          # 태그가 붙은 리소스만 
 | Azure ML 클러스터 | 작업이 돌 때만 | 0 | 최소 노드 0 |
 | Foundry, Document Intelligence, Content Safety | 호출한 만큼 | 0 | 없음 |
 | Key Vault, Storage, 로그 | 소액 | 소액 | 없음 |
+
+## 앱 설정 (`deploy.sh`와 `appservice.bicep`)
+
+미실행·미검증이다. `appservice.bicep`은 `bicep build`도 돌려 보지 못했다. 처음 쓸 때는 `az deployment group what-if`로 먼저 본다.
+
+앱 설정은 배포할 때마다 통째로 바뀐다. 포털이나 `az webapp config appsettings set`으로 손수 넣은 값은 다음 배포에서 사라지므로 아래 이름으로 넣는다. 기본값은 모두 "끔"이다.
+
+| `deploy.sh` 환경 변수 | Bicep 매개변수 | 앱 설정 | Key Vault 비밀 |
+|---|---|---|---|
+| `V3_LLM` (`foundry` 기본, `rule`, `anthropic`) | `v3Llm` | `V3_LLM` | `anthropic`이면 `anthropic-api-key` → `ANTHROPIC_API_KEY` |
+| `ANTHROPIC_MODEL` | `anthropicModel` | `ANTHROPIC_MODEL` | |
+| `V3_LLM_ALL_VENDORS` | `v3LlmAllVendors` | `V3_LLM_ALL_VENDORS` | |
+| `V3_AUTH` (`header` 기본, `token`) | `v3Auth` | `V3_AUTH` | `token`이면 `v3-org-tokens` → API와 프런트의 `V3_ORG_TOKENS` |
+| `V3_CORS_ORIGINS` | `v3CorsOrigins` | `V3_CORS_ORIGINS` | |
+| `V3_DISTANCE` (비움 기본, `none`, `kakao`, `azure`) | `v3Distance` | `V3_DISTANCE` | `kakao`면 `kakao-rest-api-key` → `KAKAO_REST_API_KEY`, `azure`면 `maps-key` → `AZURE_MAPS_KEY` |
+| `V3_VENDOR_AGENTS` (JSON, 기본 `{}`) | `v3VendorAgents` | `V3_VENDOR_AGENTS` | 비어 있지 않으면 `vendor-service-key` → API의 `VENDOR_SERVICE_KEY` |
+| `AZURE_SEARCH_ENDPOINT`, `AZURE_SEARCH_INDEX` | `searchEndpoint`, `searchIndex` | 같은 이름 | 주소를 주면 `search-admin-key` → `AZURE_SEARCH_API_KEY` |
+| `APP_INSIGHTS=true` | `enableAppInsights` | `APPLICATIONINSIGHTS_CONNECTION_STRING` | `appinsights-connection-string` |
+| `V3_DETECTOR_ENDPOINT`, `V3_DETECTOR_DEPLOYMENT` | `detectorEndpoint`, `detectorDeployment` | 같은 이름 | 주소를 주면 `detector-api-key` → `V3_DETECTOR_API_KEY` |
+| (프런트) `WEB_API` (`direct`, `proxy`) | 이미지 빌드 인자 | `NEXT_PUBLIC_API_BASE` | |
+| (프런트) | `v3BackendUrl` (비우면 `https://<API 주소>/api/v3`) | `V3_BACKEND_URL` | |
+| (프런트) `AUTH_URL`, `AUTH_DEV_LOGIN` | `authUrl`, `authDevLogin` | `AUTH_URL`, `AUTH_DEV_LOGIN`, `AUTH_TRUST_HOST=true` | `auth-secret` → `AUTH_SECRET` |
+| (프런트) `AUTH_ENTRA_ID`, `AUTH_ENTRA_ISSUER` | `authEntraId`, `authEntraIssuer` | `AUTH_MICROSOFT_ENTRA_ID_ID`, `AUTH_MICROSOFT_ENTRA_ID_ISSUER` | `auth-entra-secret` → `AUTH_MICROSOFT_ENTRA_ID_SECRET` |
+
+- 비밀 값은 배포 매개변수로 지나가지 않는다. App Service에서는 앱 설정에 Key Vault 참조만 들어가고, Container Apps에서는 `deploy.sh`가 Key Vault에서 읽어 앱 비밀로 넣는다.
+- Key Vault 참조는 그 기능을 골랐을 때만 넣는다. 비밀이 없는데 참조를 넣으면 풀리지 않은 참조 글이 값으로 남아 앱이 그것을 키로 읽는다. `deploy.sh`는 배포 전에 비밀이 있는지 보고, 배포 뒤에 참조 상태를 읽어 실패로 나온 것이 있으면 오류로 끝난다.
+- `WEB_API=proxy`는 프런트에 `/api/v3` 프록시가 있어야 한다(브라우저는 프런트의 `/api/v3/*`를 부르고, 프런트 서버가 `V3_BACKEND_URL`로 넘기며 조직 토큰을 붙인다). `V3_AUTH=token`이면 `proxy`만 된다.
+- 프런트 앱도 Key Vault를 읽으려고 시스템 할당 ID와 접근 정책(get)을 갖는다.

@@ -6,6 +6,7 @@ import copy
 
 from app.v3.evidence.model import Evidence
 from app.v3.evidence.registry import InMemoryRegistry
+from app.v3.evidence.seeds import SEED_DIR, load_seed_file
 from app.v3.evidence.validator import validate_text
 from app.v3.judge import basis, defaults
 from app.v3.judge.toolbox import call_tool
@@ -32,6 +33,7 @@ def registry():
     basis.reset()
     reg = InMemoryRegistry()
     defaults.register_defaults(reg, TODAY)
+    load_seed_file(reg, SEED_DIR / "official.json")  # 공식 배출계수와 최저임금(누구나 본다)
     reg.put(doc(f"doc:{VENDOR}:허가증:품목", [VENDOR, EMITTER, OTHER]))
     reg.put(doc(f"doc:{VENDOR}:매입기준표:PP-A", [VENDOR, EMITTER, OTHER], 320, "원/kg"))
     reg.put(doc(f"doc:{VENDOR}:노선:차량", [VENDOR]))

@@ -37,6 +37,7 @@ from app.v3.evidence.validator import validate_message, validate_text
 from app.v3.intake import csv_measure, documents, shields
 from app.v3.intake import detector as media
 from app.v3.judge import basis
+from app.v3.judge.common import without_emitter_only
 from app.v3.judge.defaults import register_defaults
 from app.v3.store import InMemoryStore, NotFound
 
@@ -305,9 +306,7 @@ def list_orgs(app: App, viewer: str | None = None, scoped: bool = False) -> list
 
 
 def _vendor_stream(stream: dict[str, Any]) -> dict[str, Any]:
-    stream = dict(stream)
-    stream.pop("currentTreatment", None)
-    return stream
+    return without_emitter_only(stream)
 
 
 def list_streams(app: App, org_id: str, viewer: str) -> list[dict[str, Any]]:
@@ -317,7 +316,7 @@ def list_streams(app: App, org_id: str, viewer: str) -> list[dict[str, Any]]:
     if me.get("role") == "vendor":
         shared = [s for s in app.store.streams_visible_to(viewer) if s["orgId"] == org_id]
         return [_vendor_stream(s) for s in shared]
-    raise ServiceError("FORBIDDEN", "다른 조직의 흐름은 볼 수 없습니다.", 403)
+    raise ServiceError("FORBIDDEN", "다른 조직의 폐기물은 볼 수 없습니다.", 403)
 
 
 def update_stream(
@@ -329,10 +328,10 @@ def update_stream(
     try:
         stream = app.store.get_stream(stream_id)
         if stream["orgId"] != org_id:
-            raise ServiceError("STREAM_NOT_FOUND", "그런 흐름이 없습니다.", 404)
+            raise ServiceError("STREAM_NOT_FOUND", "그런 폐기물이 없습니다.", 404)
     except NotFound:
         if not patch.get("name"):
-            raise ServiceError("STREAM_NOT_FOUND", "그런 흐름이 없습니다.", 404) from None
+            raise ServiceError("STREAM_NOT_FOUND", "그런 폐기물이 없습니다.", 404) from None
         stream = {"id": stream_id, "orgId": org_id, "contaminants": []}
     for key in STREAM_FIELDS:
         if key in patch:
@@ -376,9 +375,101 @@ def update_stream(
                 "unitCostKrwPerKg": cost,
                 "evidence": [evidence],
             }
+    _update_costs(app, org_id, stream_id, stream, patch)
     saved = app.store.put_stream(stream)
     _recheck(app, org_id)
     return saved
+
+
+def _amount(value: Any, message: str, *, positive: bool = False) -> float:
+    bad = isinstance(value, bool) or not isinstance(value, (int, float))
+    if bad or value < 0 or (positive and value <= 0):
+        raise ServiceError("INVALID_VALUE", message, 422)
+    return float(value)
+
+
+def _update_costs(app: App, org_id: str, stream_id: str, stream: dict, patch: dict) -> None:
+    """순비용 계산에 쓰는 배출 기업만의 입력: 전처리 작업 시간·인건비와 공정 재투입 값."""
+    if "pretreatHoursPerMonth" in patch or "laborCostKrwPerHour" in patch:
+        hours = patch.get("pretreatHoursPerMonth", stream.get("pretreatHoursPerMonth"))
+        rate = patch.get("laborCostKrwPerHour", stream.get("laborCostKrwPerHour"))
+        old = list(stream.get("pretreatEvidence") or [])
+        if hours is None:
+            stream.update(pretreatHoursPerMonth=None, laborCostKrwPerHour=None, pretreatEvidence=[])
+        else:
+            hours = _amount(hours, "전처리 작업 시간은 0 이상의 숫자(시간/월)여야 합니다.")
+            evidence = [
+                _grounded(
+                    app,
+                    org_id,
+                    f"{stream_id}-전처리시간",
+                    "월 전처리 작업 시간",
+                    hours,
+                    "시간/월",
+                    old,
+                )
+            ]
+            if rate is not None:
+                rate = _amount(
+                    rate, "시간당 인건비는 0보다 큰 숫자(원/시간)여야 합니다.", positive=True
+                )
+                evidence.append(
+                    _grounded(
+                        app,
+                        org_id,
+                        f"{stream_id}-시간당인건비",
+                        "시간당 인건비",
+                        rate,
+                        "원/시간",
+                        old,
+                    )
+                )
+            stream.update(
+                pretreatHoursPerMonth=hours,
+                laborCostKrwPerHour=rate,
+                pretreatEvidence=[e for e in evidence if e],
+            )
+    if "reuse" in patch:
+        reuse = patch["reuse"]
+        if reuse is None:
+            stream["reuse"] = None
+            return
+        if not isinstance(reuse, dict):
+            raise ServiceError("INVALID_VALUE", "재투입 값은 객체로 보내 주세요.", 422)
+        old = list((stream.get("reuse") or {}).get("evidence") or [])
+        virgin = _amount(
+            reuse.get("virginPriceKrwPerKg"),
+            "신재 구입 단가는 0보다 큰 숫자(원/kg)여야 합니다.",
+            positive=True,
+        )
+        limit = _amount(
+            reuse.get("reusableKgPerMonth"),
+            "다시 넣을 수 있는 양은 0보다 큰 숫자(kg/월)여야 합니다.",
+            positive=True,
+        )
+        regrind = reuse.get("regrindCostKrwPerKg")
+        regrind = (
+            0.0 if regrind is None else _amount(regrind, "분쇄 비용은 0 이상의 숫자여야 합니다.")
+        )
+        evidence = [
+            _grounded(app, org_id, f"{stream_id}-신재단가", "신재 구입 단가", virgin, "원/kg", old),
+            _grounded(
+                app,
+                org_id,
+                f"{stream_id}-재투입가능량",
+                "다시 넣을 수 있는 양",
+                limit,
+                "kg/월",
+                old,
+            ),
+            _grounded(app, org_id, f"{stream_id}-분쇄비용", "분쇄 비용", regrind, "원/kg", old),
+        ]
+        stream["reuse"] = {
+            "virginPriceKrwPerKg": virgin,
+            "reusableKgPerMonth": limit,
+            "regrindCostKrwPerKg": regrind,
+            "evidence": [e for e in evidence if e],
+        }
 
 
 def get_vendor(app: App, org_id: str, viewer: str) -> dict[str, Any]:
@@ -490,6 +581,33 @@ def create_session(app: App, emitter_org_id: str, viewer: str) -> dict[str, Any]
     _owner(app, emitter_org_id, viewer, "emitter")
     session = Orchestrator(app).create(emitter_org_id)
     return get_view(app, session["id"], viewer)
+
+
+def list_sessions(app: App, viewer: str) -> list[dict[str, Any]]:
+    """내가 당사자인 진단의 목록(최근 것이 앞). 다른 기기에서 들어와도 이어 볼 수 있게 한다.
+
+    배출 기업은 자기 진단, 업체는 자기에게 실제로 열린 대화가 있는 진단, 운영자는 전부를 본다.
+    목록에는 진단 ID, 상태, 배출 기업, 시각만 싣는다. 내용은 GET /sessions/{id}가 조직 경계를 지켜 돌려준다.
+    """
+    me = _org(app, viewer)
+    admin = me.get("role") == "admin"
+    out = []
+    for session in app.store.list_sessions(None if admin else viewer):
+        mine = viewer == session["emitterOrgId"]
+        if not (admin or mine or _visible_threads(app, session, viewer)):
+            continue
+        out.append(
+            {
+                "id": session["id"],
+                "emitterOrgId": session["emitterOrgId"],
+                "emitterName": app.store.get_org(session["emitterOrgId"])["name"],
+                "status": session["status"],
+                "createdAt": session.get("createdAt"),
+                "updatedAt": session.get("updatedAt") or session.get("createdAt"),
+                "as": "admin" if admin else ("emitter" if mine else "vendor"),
+            }
+        )
+    return sorted(out, key=lambda item: (item["updatedAt"] or "", item["id"]), reverse=True)
 
 
 def run_session(app: App, session_id: str, viewer: str) -> dict[str, Any]:
@@ -618,6 +736,18 @@ def _stream_view(
             "method": "혼합 소각" if assumed else current.get("method"),
             "unitCost": cost,
             "assumed": assumed,
+        }
+        # 순비용에 쓰는 배출 기업만의 입력(자료 화면에서 고친다). 업체 뷰에는 없다
+        reuse = stream.get("reuse") or None
+        view["costInputs"] = {
+            "pretreatHoursPerMonth": stream.get("pretreatHoursPerMonth"),
+            "laborCostKrwPerHour": stream.get("laborCostKrwPerHour"),
+            "reuse": {
+                k: reuse.get(k)
+                for k in ("virginPriceKrwPerKg", "reusableKgPerMonth", "regrindCostKrwPerKg")
+            }
+            if reuse
+            else None,
         }
     return view
 
@@ -915,6 +1045,10 @@ def _result_view(session: dict[str, Any], viewer: str, owner: bool) -> dict[str,
                 "monthlyAfter": None,
                 "monthlyNow": None,
                 "difference": None,
+                "revenue": None,
+                "transport": None,
+                "labor": None,
+                "reuse": None,
                 "carbon": None,
                 "carbonValue": None,
                 # 업체가 내건 조건과 최소 물량·적재 검사만 남긴다(나머지는 배출 기업의 판단이다)
@@ -1073,9 +1207,9 @@ def record_correction(
     try:
         stream = app.store.get_stream(str(body.get("streamId") or ""), viewer)
     except NotFound:
-        raise ServiceError("STREAM_NOT_FOUND", "그런 흐름이 없습니다.", 404) from None
+        raise ServiceError("STREAM_NOT_FOUND", "그런 폐기물이 없습니다.", 404) from None
     if stream.get("orgId") != viewer:
-        raise ServiceError("STREAM_NOT_FOUND", "그런 흐름이 없습니다.", 404)
+        raise ServiceError("STREAM_NOT_FOUND", "그런 폐기물이 없습니다.", 404)
     record = _feedback_call(feedback.record_correction, app, session, stream, body)
     return {"correction": record, "evidence": [record["id"]]}
 
@@ -1105,11 +1239,11 @@ def record_outcome(app: App, session_id: str, body: dict[str, Any], viewer: str)
         )
     stream_id = str(body.get("streamId") or "")
     if stream_id not in (session["work"]["assigned"].get(thread["id"]) or []):
-        raise ServiceError("STREAM_NOT_IN_THREAD", "이 대화에서 확정된 흐름이 아닙니다.", 422)
+        raise ServiceError("STREAM_NOT_IN_THREAD", "이 대화에서 확정된 폐기물이 아닙니다.", 422)
     try:
         stream = app.store.get_stream(stream_id)
     except NotFound:
-        raise ServiceError("STREAM_NOT_FOUND", "그런 흐름이 없습니다.", 404) from None
+        raise ServiceError("STREAM_NOT_FOUND", "그런 폐기물이 없습니다.", 404) from None
     record = _feedback_call(feedback.record_outcome, app, session, thread, stream, body)
     return {"outcome": record, "evidence": list(record["evidence"].values())}
 
@@ -1290,9 +1424,9 @@ def upload_media(
     try:
         stream = app.store.get_stream(str(stream_id or ""))
     except NotFound:
-        raise ServiceError("STREAM_NOT_FOUND", "그런 흐름이 없습니다.", 404) from None
+        raise ServiceError("STREAM_NOT_FOUND", "그런 폐기물이 없습니다.", 404) from None
     if stream.get("orgId") != org_id:
-        raise ServiceError("STREAM_NOT_FOUND", "그런 흐름이 없습니다.", 404)
+        raise ServiceError("STREAM_NOT_FOUND", "그런 폐기물이 없습니다.", 404)
     # 형식 검사가 먼저다. 탐지 모델이 연결되지 않았어도 지원하지 않는 형식은 415로 답한다
     if media.media_type(filename) is None:
         raise ServiceError(
@@ -1406,7 +1540,12 @@ def admin_status(app: App, viewer: str) -> dict[str, Any]:
         "documentIntelligence": {"configured": bool(app.documents and app.documents.configured)},
         "gradeEndpoint": {"configured": bool(app.grade_client and app.grade_client.configured)},
         "detector": {"configured": bool(app.detector and app.detector.configured)},
-        "distance": {"provider": app.distance_provider is not None},
+        "distance": {
+            "provider": app.distance_provider is not None,
+            # 어떤 제공자인지와 마지막 실패 이유(키는 싣지 않는다). 없으면 직선 거리 × 우회 계수(가정값)다
+            "kind": type(app.distance_provider).__name__ if app.distance_provider else None,
+            "lastError": getattr(app.distance_provider, "last_error", None),
+        },
         "vendorGateway": type(app.vendor_gateway).__name__,
         "store": type(app.store).__name__,
         # 재학습 표: 실제 등급 라벨 수, 교정 건수, 배포 게이트, 기준값 보정 후보, 모델 버전

@@ -91,8 +91,8 @@ PUBLIC_MESSAGES = {
     "TYPE_NOT_ALLOWED": "지금 보낼 수 없는 종류의 메시지였습니다.",
     "APPROVAL_REQUIRED": "양쪽 담당자 승인 전에 확정을 보내려 했습니다.",
     "THREAD_RULE": "대화 규칙에 맞지 않는 메시지였습니다.",
-    "UNKNOWN_STREAM": "이 대화에 없는 흐름을 적었습니다.",
-    "PERMIT_MISMATCH": "허가 품목이 맞지 않는 흐름에 조건을 내려 했습니다.",
+    "UNKNOWN_STREAM": "이 대화에 없는 폐기물을 적었습니다.",
+    "PERMIT_MISMATCH": "허가 품목이 맞지 않는 폐기물에 조건을 내려 했습니다.",
     "UNBACKED_TERM": "숫자 없이 조건을 뜻하는 낱말을 해당하는 조건 항목이나 claim 없이 썼습니다.",
     "TOO_MANY_TOOL_ROUNDS": "도구를 정해진 횟수보다 많이 부르려 했습니다.",
     "INVALID_OUTPUT": "응답 형식이 맞지 않았습니다.",
@@ -201,13 +201,13 @@ def build_message(
         raise DraftError(rejection("INVALID_OUTPUT", "본문(text)이 비어 있습니다."))
     wanted = output.get("streamIds") or []
     if not isinstance(wanted, list) or any(not isinstance(s, str) for s in wanted):
-        raise DraftError(rejection("INVALID_OUTPUT", "streamIds는 흐름 ID의 배열이어야 합니다."))
+        raise DraftError(rejection("INVALID_OUTPUT", "streamIds는 폐기물 ID의 배열이어야 합니다."))
     unknown = [s for s in wanted if s not in stream_ids]
     if unknown:
         raise DraftError(
             rejection(
                 "UNKNOWN_STREAM",
-                f"이 대화에 없는 흐름입니다: {', '.join(unknown)}.",
+                f"이 대화에 없는 폐기물입니다: {', '.join(unknown)}.",
                 streamIds=unknown,
             )
         )
