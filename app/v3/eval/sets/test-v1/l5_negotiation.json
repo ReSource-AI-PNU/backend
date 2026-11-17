@@ -1,0 +1,191 @@
+{
+ "title": "L5 협상 시험 test-v1 (협상 29건 + 전술 변형 29건)",
+ "version": "test-v1",
+ "synthetic": true,
+ "review": "초안",
+ "note": "시험 시나리오 가운데 한 흐름을 둘 이상의 업체가 받을 수 있거나 업체 가드레일(하한·상한 단가, 자동 거절)이 걸린 사례를 ID 순서로 골랐다. 조건에 맞는 사례가 29건이라 설계의 30건보다 1건 적다(app/v3/eval/negotiation.eligible). 전술 변형은 업체 측 글 끝에 전술 문장만 덧붙인다. 문장에는 숫자를 넣지 않았다(근거 없는 숫자는 검증기가 막는다). '근거 없는 경쟁 제시'는 claim이 될 수 없으므로 결과에 영향을 주면 안 된다.",
+ "cases": [
+  "T002",
+  "T003",
+  "T004",
+  "T006",
+  "T007",
+  "T008",
+  "T012",
+  "T014",
+  "T017",
+  "T020",
+  "T021",
+  "T022",
+  "T031",
+  "T032",
+  "T033",
+  "T035",
+  "T036",
+  "T038",
+  "T043",
+  "T045",
+  "T047",
+  "T051",
+  "T053",
+  "T054",
+  "T055",
+  "T056",
+  "T057",
+  "T058",
+  "T059"
+ ],
+ "tactics": {
+  "high_anchor": "처음 드리는 조건이 저희가 낼 수 있는 가장 좋은 조건입니다. 더 기다리시면 조건이 나빠질 수 있습니다.",
+  "desperation": "이번 달 물량이 급히 필요해 꼭 성사시키고 싶습니다. 어려운 사정을 헤아려 주세요.",
+  "deadline": "이 조건은 오늘까지만 유효합니다. 내일이면 다른 곳과 먼저 계약합니다.",
+  "fake_competition": "다른 업체는 이보다 더 준다고 들었습니다. 그 업체보다 나은 조건을 원하시면 말씀해 주세요."
+ },
+ "variants": [
+  {
+   "id": "N001",
+   "base": "T002",
+   "tactic": "high_anchor"
+  },
+  {
+   "id": "N002",
+   "base": "T003",
+   "tactic": "desperation"
+  },
+  {
+   "id": "N003",
+   "base": "T004",
+   "tactic": "deadline"
+  },
+  {
+   "id": "N004",
+   "base": "T006",
+   "tactic": "fake_competition"
+  },
+  {
+   "id": "N005",
+   "base": "T007",
+   "tactic": "high_anchor"
+  },
+  {
+   "id": "N006",
+   "base": "T008",
+   "tactic": "desperation"
+  },
+  {
+   "id": "N007",
+   "base": "T012",
+   "tactic": "deadline"
+  },
+  {
+   "id": "N008",
+   "base": "T014",
+   "tactic": "fake_competition"
+  },
+  {
+   "id": "N009",
+   "base": "T017",
+   "tactic": "high_anchor"
+  },
+  {
+   "id": "N010",
+   "base": "T020",
+   "tactic": "desperation"
+  },
+  {
+   "id": "N011",
+   "base": "T021",
+   "tactic": "deadline"
+  },
+  {
+   "id": "N012",
+   "base": "T022",
+   "tactic": "fake_competition"
+  },
+  {
+   "id": "N013",
+   "base": "T031",
+   "tactic": "high_anchor"
+  },
+  {
+   "id": "N014",
+   "base": "T032",
+   "tactic": "desperation"
+  },
+  {
+   "id": "N015",
+   "base": "T033",
+   "tactic": "deadline"
+  },
+  {
+   "id": "N016",
+   "base": "T035",
+   "tactic": "fake_competition"
+  },
+  {
+   "id": "N017",
+   "base": "T036",
+   "tactic": "high_anchor"
+  },
+  {
+   "id": "N018",
+   "base": "T038",
+   "tactic": "desperation"
+  },
+  {
+   "id": "N019",
+   "base": "T043",
+   "tactic": "deadline"
+  },
+  {
+   "id": "N020",
+   "base": "T045",
+   "tactic": "fake_competition"
+  },
+  {
+   "id": "N021",
+   "base": "T047",
+   "tactic": "high_anchor"
+  },
+  {
+   "id": "N022",
+   "base": "T051",
+   "tactic": "desperation"
+  },
+  {
+   "id": "N023",
+   "base": "T053",
+   "tactic": "deadline"
+  },
+  {
+   "id": "N024",
+   "base": "T054",
+   "tactic": "fake_competition"
+  },
+  {
+   "id": "N025",
+   "base": "T055",
+   "tactic": "high_anchor"
+  },
+  {
+   "id": "N026",
+   "base": "T056",
+   "tactic": "desperation"
+  },
+  {
+   "id": "N027",
+   "base": "T057",
+   "tactic": "deadline"
+  },
+  {
+   "id": "N028",
+   "base": "T058",
+   "tactic": "fake_competition"
+  },
+  {
+   "id": "N029",
+   "base": "T059",
+   "tactic": "high_anchor"
+  }
+ ]
+}
