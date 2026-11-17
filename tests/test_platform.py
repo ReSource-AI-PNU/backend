@@ -150,20 +150,76 @@ def test_unconfirmed_volume_blocks_and_answers_persist(setup):
 
 
 def test_matching_consent_capacity_and_private_volumes(setup):
-    client, _ = setup
+    client, engine = setup
     state = match(client)
     b = state["bundles"][0]
-    assert b["candidateKg"] == 1230 and b["confirmedKg"] == 300
+    # 후보 합계에는 다른 기업 물량이 섞여 있어 배출 기업에게 주지 않는다. 확정 물량은 아직 자기 것뿐이다.
+    assert b["candidateKg"] is None and b["confirmedKg"] == 300
     assert not b["ready"] and not b["trips"]
     assert all(m["kg"] is None for m in b["members"] if m["state"] != "self")
     state = consent(client, state)
     b = state["bundles"][0]
-    assert b["ready"] and b["confirmedKg"] == 1230
-    assert len(b["trips"]) == 2
-    assert sum(t["kg"] for t in b["trips"]) == 1230
-    assert all(t["kg"] <= b["truckKg"] for t in b["trips"])
+    assert b["ready"] and b["confirmedKg"] is None
+    with Session(engine) as db:
+        raw = db.get(SessionRow, state["session"]["id"]).payload["bundles"][0]
+    assert raw["candidateKg"] == raw["confirmedKg"] == 1230
+    assert len(raw["trips"]) == len(b["trips"]) == 2
     inbox = client.get("/api/v1/inbox", headers=headers(b["collectorId"])).json()
-    assert all(m["kg"] is not None for m in inbox[0]["bundle"]["members"])
+    seen = inbox[0]["bundle"]
+    assert all(m["kg"] is not None for m in seen["members"])
+    assert seen["confirmedKg"] == 1230
+    assert sum(t["kg"] for t in seen["trips"]) == 1230
+    assert all(t["kg"] <= seen["truckKg"] for t in seen["trips"])
+
+
+def kg_values(data, key=""):
+    """응답 JSON에서 물량·비율 필드의 숫자를 모두 꺼낸다."""
+    if isinstance(data, dict):
+        return [v for k, item in data.items() for v in kg_values(item, k)]
+    if isinstance(data, list):
+        return [v for item in data for v in kg_values(item, key)]
+    volume = key.lower().endswith("kg") or key in {"sharePct", "fillRate"}
+    return [data] if volume and isinstance(data, int | float) else []
+
+
+def test_private_volumes_cannot_be_derived_from_totals_shares_or_trips(setup):
+    """PR #50 결함 1: 타사 kg를 숨겨도 합계·분담률·차량 적재량으로 복원되면 안 된다."""
+    client, engine = setup
+    state = consent(client, match(client))
+    with Session(engine) as db:
+        raw = db.get(SessionRow, state["session"]["id"]).payload
+    others = {m["companyId"]: m["kg"] for m in raw["bundles"][0]["members"] if m["state"] != "self"}
+    assert len(others) == 2
+    hidden = {*others.values(), sum(others.values()), 300 + sum(others.values())}
+    # 원본에는 분담률이 있다(외부 서비스 전달용). 화면 응답에서만 숨긴다.
+    assert all(c["sharePct"] for c in raw["session"]["matching"]["bundles"][0]["costShare"])
+
+    for view in (
+        state,
+        client.get("/api/v1/sessions", headers=headers()).json()[0],
+        post(client, state, "advance", {"step": "matching"}).json()["state"],
+    ):
+        assert not hidden & set(kg_values(view)), view
+        g = view["session"]["matching"]["bundles"][0]
+        assert g["totalKg"] is None and g["fillRate"] is None
+        assert all(c["sharePct"] is None for c in g["costShare"])
+        assert g["soloFillRate"] == pytest.approx(300 / g["truckKg"])
+        b = view["bundles"][0]
+        assert b["candidateKg"] is None and b["confirmedKg"] is None
+        assert all(t["kg"] is None for t in b["trips"])
+
+    # 참여 제안을 받은 기업도 자기 물량만 본다
+    for company_id, kg in others.items():
+        item = client.get("/api/v1/inbox", headers=headers(company_id)).json()[0]
+        b = item["bundle"]
+        assert b["candidateKg"] is None and b["confirmedKg"] is None
+        assert [m["kg"] for m in b["members"] if m["kg"] is not None] == [kg]
+        assert all(
+            t["kg"] is None
+            for t in b["trips"]
+            if any(v["companyId"] != company_id for v in t["visits"])
+        )
+        assert not (hidden - {kg}) & set(kg_values(item))
 
 
 def test_decline_removes_weight_and_blocks_negotiation(setup):

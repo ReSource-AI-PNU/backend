@@ -173,7 +173,8 @@ class Visit(Contract):
 
 class Trip(Contract):
     visits: list[Visit]
-    kg: float
+    kg: float | None
+    """차량 적재량. 수거 업체가 아닌 조회자에게는 다른 기업이 함께 실린 차량이면 숨긴다."""
     distance_m: int
 
 
@@ -188,8 +189,9 @@ class Bundle(Contract):
     min_kg: float
     truck_kg: float
     members: list[BundleMember]
-    candidate_kg: float
-    confirmed_kg: float
+    candidate_kg: float | None
+    confirmed_kg: float | None
+    """후보·확정 물량 합계. 수거 업체가 아닌 조회자에게는 다른 기업 물량이 섞이면 숨긴다."""
     ready: bool
     trips: list[Trip]
     excluded: list[str]

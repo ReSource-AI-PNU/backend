@@ -86,6 +86,16 @@ def event(state, title, agent="matching", actor="human", kind="result"):
     ]
 
 
+# 공개 정책: 수거 업체는 동의한 기업의 물량을 본다(수거에 필요하다).
+# 그 밖의 조회자(진단한 배출 기업, 참여 제안을 받은 기업)는 자기 물량만 본다. 다른 기업 물량이
+# 섞인 합계·비율(후보·확정 물량, 차량 적재량, 묶음 합계, 적재율, 비용 분담률)은 주지 않는다.
+# 합계에서 자기 물량을 빼거나, 분담률에 자기 물량을 곱하거나, 회신 전후 합계를 비교하면
+# 다른 기업 물량이 그대로 나오기 때문이다. 묶음이 최소 물량을 채웠는지는 ready로만 알린다.
+# 외부 서비스(A/B/C·업체 A2A)에 보내는 원본은 저장된 상태를 그대로 쓴다.
+def mixes_others(company_ids, who):
+    return any(cid != who.company_id for cid in company_ids)
+
+
 def safe_bundle(bundle, who):
     b = bundle.model_copy(deep=True)
     collector = b.collector_id == who.company_id
@@ -99,6 +109,13 @@ def safe_bundle(bundle, who):
         for visit in trip.visits:
             if visit.company_id != who.company_id and not collector:
                 visit.kg = None
+        if not collector and mixes_others((v.company_id for v in trip.visits), who):
+            trip.kg = None
+    if not collector:
+        if mixes_others((m.company_id for m in b.members if m.state != "declined"), who):
+            b.candidate_kg = None
+        if mixes_others((m.company_id for m in b.members if m.state in {"self", "accepted"}), who):
+            b.confirmed_kg = None
     return b
 
 
@@ -110,6 +127,10 @@ def safe_state(state, who):
             for m in b.group:
                 if m.company_id != who.company_id:
                     m.kg = None
+            if mixes_others((m.company_id for m in b.group), who):
+                b.total_kg = b.fill_rate = None
+                for share in b.cost_share:
+                    share.share_pct = None
     return s
 
 

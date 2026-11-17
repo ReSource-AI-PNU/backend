@@ -4215,12 +4215,27 @@
             "title": "Members"
           },
           "candidateKg": {
-            "type": "number",
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
             "title": "Candidatekg"
           },
           "confirmedKg": {
-            "type": "number",
-            "title": "Confirmedkg"
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Confirmedkg",
+            "description": "후보·확정 물량 합계. 수거 업체가 아닌 조회자에게는 다른 기업 물량이 섞이면 숨긴다."
           },
           "ready": {
             "type": "boolean",
@@ -4359,10 +4374,17 @@
             "title": "Truckkg"
           },
           "fillRate": {
-            "type": "number",
-            "minimum": 0.0,
+            "anyOf": [
+              {
+                "type": "number",
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
             "title": "Fillrate",
-            "description": "묶음 합계 / 트럭 적재량. 1을 넘으면 트럭 여러 대 분량"
+            "description": "묶음 합계 / 트럭 적재량. 1을 넘으면 트럭 여러 대 분량. 합계라서 배출 기업 화면에서는 숨긴다"
           },
           "soloFillRate": {
             "type": "number",
@@ -4377,9 +4399,17 @@
             "title": "Group"
           },
           "totalKg": {
-            "type": "number",
-            "minimum": 0.0,
-            "title": "Totalkg"
+            "anyOf": [
+              {
+                "type": "number",
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Totalkg",
+            "description": "묶음 합계. 자기 물량을 빼면 다른 회사 물량이 나와서 배출 기업 화면에서는 숨긴다"
           },
           "collector": {
             "$ref": "#/components/schemas/Collector"
@@ -5372,10 +5402,18 @@
             "title": "Name"
           },
           "sharePct": {
-            "type": "number",
-            "maximum": 100.0,
-            "minimum": 0.0,
-            "title": "Sharepct"
+            "anyOf": [
+              {
+                "type": "number",
+                "maximum": 100.0,
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sharepct",
+            "description": "분담률 × 자기 물량 = 다른 회사 물량이라, 다른 회사가 섞인 묶음은 배출 기업 화면에서 모두 숨긴다"
           }
         },
         "additionalProperties": false,
@@ -6652,7 +6690,7 @@
               }
             ],
             "title": "Kg",
-            "description": "다른 회사의 물량은 배출 기업 화면에서 숨긴다(분담 비율만 공개)."
+            "description": "다른 회사의 물량은 배출 기업 화면에서 숨긴다."
           },
           "distanceM": {
             "type": "number",
@@ -9713,8 +9751,16 @@
             "title": "Visits"
           },
           "kg": {
-            "type": "number",
-            "title": "Kg"
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Kg",
+            "description": "차량 적재량. 수거 업체가 아닌 조회자에게는 다른 기업이 함께 실린 차량이면 숨긴다."
           },
           "distanceM": {
             "type": "integer",

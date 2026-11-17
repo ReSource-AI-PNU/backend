@@ -398,7 +398,7 @@ class MatchingMember(Contract):
     company_id: str
     name: str
     kg: float | None = Field(ge=0)
-    """다른 회사의 물량은 배출 기업 화면에서 숨긴다(분담 비율만 공개)."""
+    """다른 회사의 물량은 배출 기업 화면에서 숨긴다."""
     distance_m: float = Field(ge=0)
     is_self: bool | None = None
 
@@ -419,7 +419,8 @@ class ExcludedCompany(Contract):
 class CostShare(Contract):
     company_id: str
     name: str
-    share_pct: float = Field(ge=0, le=100)
+    share_pct: float | None = Field(ge=0, le=100)
+    """분담률 × 자기 물량 = 다른 회사 물량이라, 다른 회사가 섞인 묶음은 배출 기업 화면에서 모두 숨긴다"""
 
 
 class BundleGroup(Contract):
@@ -475,11 +476,12 @@ class BundleGroup(Contract):
     min_kg: float = Field(ge=0)
     """업체가 한 번 출장할 만한 물량(품목별 가정값)"""
     truck_kg: float = Field(gt=0)
-    fill_rate: float = Field(ge=0)
-    """묶음 합계 / 트럭 적재량. 1을 넘으면 트럭 여러 대 분량"""
+    fill_rate: float | None = Field(ge=0)
+    """묶음 합계 / 트럭 적재량. 1을 넘으면 트럭 여러 대 분량. 합계라서 배출 기업 화면에서는 숨긴다"""
     solo_fill_rate: float = Field(ge=0)
     group: list[MatchingMember]
-    total_kg: float = Field(ge=0)
+    total_kg: float | None = Field(ge=0)
+    """묶음 합계. 자기 물량을 빼면 다른 회사 물량이 나와서 배출 기업 화면에서는 숨긴다"""
     collector: Collector
     excluded: list[ExcludedCompany]
     schedule: str
