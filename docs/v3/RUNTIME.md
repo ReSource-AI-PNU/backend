@@ -263,7 +263,8 @@ def register_model_run(app, run, viewer) -> dict                    # 재학습 
 
   | 환경 변수 | 값 | 읽는 곳 |
   |---|---|---|
-  | `V3_AUTH` | `header`(기본, 시연 전용) \| `token` | FastAPI, 로컬 서버(`--auth`를 주지 않았을 때) |
+  | `V3_AUTH` | `header`(기본, 시연 전용) \| `token` \| `bff`(FastAPI만. 실제 계정·조직, CONTRACT 9장) | FastAPI, 로컬 서버(`--auth`를 주지 않았을 때. `bff`면 로컬 서버는 뜨지 않는다) |
+  | `V3_BFF_KEY` | 프런트 서버가 `Authorization: Bearer`로 보내는 키 | FastAPI(`V3_AUTH=bff`) |
   | `V3_ORG_TOKENS` | JSON 글 한 줄. `{"org_hanbit": "토큰", "org_saegil": ["새 토큰", "옛 토큰"]}` | FastAPI, 로컬 서버 |
   | `V3_ORG_TOKENS_FILE` | 위 JSON을 담은 파일의 경로 | 로컬 서버만(`--org-tokens`와 같다) |
 

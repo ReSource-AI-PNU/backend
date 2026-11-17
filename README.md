@@ -304,6 +304,7 @@ curl -X POST http://localhost:8000/api/v3/sessions/ses_1/run -H 'X-Org-Id: org_h
 
 - `V3_AUTH=header`(기본): `X-Org-Id` 헤더를 그대로 믿는다. **header 모드는 시연 전용이며 공개 주소에 그대로 두면 조직 경계가 지켜지지 않는다.** 헤더만 바꾸면 다른 조직의 진단을 보고 승인할 수 있고, `GET /api/v3/orgs`는 누구에게나 모든 조직을 준다.
 - `V3_AUTH=token`: 조직별 서비스 토큰. `Authorization: Bearer <토큰>`으로 조직을 정하고 `X-Org-Id`는 무시한다. 토큰과 조직의 짝은 `V3_ORG_TOKENS`(JSON `{"조직 ID": "토큰"}`, 값은 목록도 된다. 16자 이상, 조직마다 다른 값)로 받고 Key Vault에서 주입한다. 비교는 `hmac.compare_digest`로 한다. `GET /api/v3/orgs`는 자기 조직과 대화 상대만 준다. 토큰이 없으면 401 `TOKEN_REQUIRED`, 틀리면 401 `INVALID_TOKEN`이다.
+- `V3_AUTH=bff`: 실제 계정과 조직. 프런트 서버(BFF)만 `Authorization: Bearer <V3_BFF_KEY>`로 부르고 `X-User-Id`(사용자), `X-Org-Id`(조직)를 붙인다. 백엔드가 사용자가 그 조직의 구성원인지 확인한다(아니면 403 `NOT_A_MEMBER`). 가입·로그인·조직 만들기·초대와 체험하기(`X-Demo-View: 1`, 시연 조직 읽기 전용)는 `docs/v3/CONTRACT.md` 9장. FastAPI에서만 쓰고 로컬 서버는 받지 않는다.
 - Entra 로그인과는 아직 연결하지 않았다. token 모드는 조직 단위 식별이고 담당자 개인은 가리지 않는다.
 
 로컬 서버도 같은 옵션을 받는다: `python3 -m app.v3.devserver --auth token --org-tokens 토큰.json`(파일은 `{"조직 ID": "토큰"}` 꼴이고 저장소에 넣지 않는다).
@@ -337,7 +338,8 @@ MCP 도구의 입력은 `{"org_id", "today", "arguments"}`이고 `arguments`가 
 | `OLLAMA_BASE_URL` | 업체가 오픈 모델을 고른 경우의 Ollama 주소(VNet 안). 비어 있으면 그 업체는 규칙 정책으로 돌고, 다른 모델로 바꿔 부르지 않는다 |
 | `VENDOR_ORG_ID`, `VENDOR_SERVICE_KEY` | 업체 측 에이전트 서비스가 대변하는 업체와 Bearer 서비스 키. 키가 없으면 모든 메시지를 거절한다 |
 | `V3_VENDOR_AGENTS` | 따로 띄운 업체 측 에이전트의 주소 `{"업체 조직 ID": "https://..."}`. 비어 있으면(기본) API 프로세스 안에서 부른다. 값을 주면 모든 업체 메시지가 HTTP로 가므로 업체마다 서비스가 있거나 `"*"` 주소가 있어야 하고, `VENDOR_SERVICE_KEY`가 같아야 한다 |
-| `V3_AUTH` | 요청한 조직을 정하는 방법. `header`(기본, 시연 전용: `X-Org-Id`를 믿는다) 또는 `token`(조직별 서비스 토큰). header 모드는 시연 전용이며 공개 주소에 그대로 두면 조직 경계가 지켜지지 않는다 |
+| `V3_AUTH` | 요청한 조직을 정하는 방법. `header`(기본, 시연 전용: `X-Org-Id`를 믿는다), `token`(조직별 서비스 토큰), `bff`(실제 계정·조직. 프런트 서버만 부른다). header 모드는 시연 전용이며 공개 주소에 그대로 두면 조직 경계가 지켜지지 않는다 |
+| `V3_BFF_KEY` | `V3_AUTH=bff`일 때 프런트 서버가 보내는 키(Key Vault `v3-bff-key`). 비어 있으면 모든 요청을 503 `BFF_KEY_NOT_SET`으로 거절한다 |
 | `V3_ORG_TOKENS` | `V3_AUTH=token`일 때의 조직별 토큰 JSON `{"조직 ID": "토큰"}`. Key Vault에서 주입한다. token 모드인데 비어 있거나 모양이 틀리면 요청을 처리하지 않는다(500) |
 | `V3_ORG_TOKENS_FILE` | 위 JSON을 담은 파일의 경로. 있으면 `V3_ORG_TOKENS`보다 먼저 읽는다 |
 | `CORS_ORIGINS`, `V3_CORS_ORIGINS` | 브라우저에서 부를 수 있는 출처. `CORS_ORIGINS`는 JSON 목록이고, `V3_CORS_ORIGINS`는 거기에 더할 출처를 쉼표로 나눠 적는다(`http(s)://호스트[:포트]`). 로컬 서버는 `V3_CORS_ORIGINS`만 읽는다 |
