@@ -1954,14 +1954,119 @@ def upload_media(
 def confirm_document(
     app: App, org_id: str, document_name: str, fields: list[dict[str, Any]], viewer: str
 ) -> dict[str, Any]:
-    """담당자가 확인한 추출값(confirmed=True)만 doc 근거로 등록한다."""
-    _owner(app, org_id, viewer)
-    registered = documents.confirm_fields(
+    """담당자가 확인한 추출값(confirmed=True)만 doc 근거로 등록한다.
+
+    업체가 확인한 허가증·매입 기준표 값은 업체 프로필의 허가 품목과 매입 기준에도 들어간다(근거는 방금
+    등록한 doc 근거). 같은 문서를 다시 확인해도 품목과 기준이 겹쳐 생기지 않는다. 허가 품목이나 매입
+    기준이 생기면 그때부터 업체 탐색에 나온다(orchestrator.discoverable_profiles).
+    """
+    org = _owner(app, org_id, viewer)
+    registered = documents.confirm_field_map(
         app.registry, org_id, document_name, fields or [], viewer, today=app.today
     )
+    profile = None
+    if registered and org.get("role") == "vendor":
+        profile = _profile_from_document(
+            app, org_id, documents.profile_from_fields(fields or [], registered)
+        )
     if registered:
         _recheck(app, org_id)
-    return {"evidence": registered}
+    return {"evidence": list(registered.values()), "profile": profile}
+
+
+def _same(a: Any, b: Any) -> bool:
+    return (a or None) == (b or None)
+
+
+def _doc_criterion_id(material: str, grade: Any, form: Any) -> str:
+    letters = "".join(c for c in material.lower() if c.isascii() and c.isalnum()) or "x"
+    return f"pc_doc_{letters}_{ids.digest([material, grade or None, form or None])[:6]}"
+
+
+def _profile_from_document(app: App, org_id: str, found: dict[str, Any]) -> dict[str, Any]:
+    """문서에서 확인한 허가 품목·매입 기준을 업체 프로필에 더한다. 있는 것은 고치고 지우지는 않는다.
+
+    - 허가 품목: 폐기물 종류가 같으면 재질을 합치고 근거를 붙인다(재질이 비어 있으면 모든 재질).
+    - 매입 기준: 재질·등급·형태가 같으면 문서 값으로 고치고 근거를 붙인다. 없으면 새로 만든다.
+    바뀐 것이 없으면 저장하지 않는다. 화면에 돌려줄 요약을 준다.
+    """
+    try:
+        profile = copy.deepcopy(app.store.get_vendor_profile(org_id))
+    except NotFound:
+        profile = {"orgId": org_id, "permits": [], "criteria": [], "fleet": {}, "guardrails": {}}
+    permits = list(profile.get("permits") or [])
+    criteria = list(profile.get("criteria") or [])
+    added = {"permits": 0, "criteria": 0}
+    updated = {"permits": 0, "criteria": 0}
+    for item in found["permits"]:
+        same = next((p for p in permits if p.get("wasteItem") == item["wasteItem"]), None)
+        if same is None:
+            permits.append(
+                {
+                    "wasteItem": item["wasteItem"],
+                    "materials": list(item["materials"]),
+                    "evidence": list(dict.fromkeys(item["evidence"])),
+                }
+            )
+            added["permits"] += 1
+            continue
+        before = (list(same.get("materials") or []), list(same.get("evidence") or []))
+        materials = before[0]
+        # 재질이 비어 있는 허가 품목은 그 폐기물의 모든 재질이다. 한쪽이라도 비어 있으면 비운다
+        same["materials"] = (
+            [] if not materials or not item["materials"]
+            else list(dict.fromkeys([*materials, *item["materials"]]))
+        )  # fmt: skip
+        same["evidence"] = list(dict.fromkeys([*before[1], *item["evidence"]]))
+        if (same["materials"], same["evidence"]) != before:
+            updated["permits"] += 1
+    for item in found["criteria"]:
+        same = next(
+            (
+                c
+                for c in criteria
+                if c.get("material") == item["material"]
+                and _same(c.get("grade"), item["grade"])
+                and _same(c.get("form"), item["form"])
+            ),
+            None,
+        )
+        values = {k: item[k] for k in documents.CRITERION_KEYS if item.get(k) is not None}
+        if same is None:
+            if values.get("unitPriceKrwPerKg") is None:
+                found["skipped"].append(
+                    f"{naming.criterion_label(item)}: 단가를 확인하지 않아 매입 기준을 만들지 않았습니다"
+                )
+                continue
+            criteria.append(
+                {
+                    "id": _doc_criterion_id(item["material"], item["grade"], item["form"]),
+                    "material": item["material"],
+                    "grade": item["grade"],
+                    "form": item["form"],
+                    **values,
+                    "evidence": list(dict.fromkeys(item["evidence"])),
+                }
+            )
+            added["criteria"] += 1
+            continue
+        before = copy.deepcopy(same)
+        same.update(values)
+        same["evidence"] = list(dict.fromkeys([*item["evidence"], *(same.get("evidence") or [])]))
+        if same != before:
+            updated["criteria"] += 1
+    if any(added.values()) or any(updated.values()):
+        profile.update(permits=permits, criteria=criteria)
+        app.store.put_vendor_profile(profile)
+    return {
+        "permitsAdded": added["permits"],
+        "permitsUpdated": updated["permits"],
+        "criteriaAdded": added["criteria"],
+        "criteriaUpdated": updated["criteria"],
+        "permits": permits,
+        "criteria": criteria,
+        "skipped": list(found["skipped"]),
+    }
 
 
 # ── 관리자 ───────────────────────────────────────────────────────────

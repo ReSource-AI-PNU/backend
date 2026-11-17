@@ -509,7 +509,7 @@ VendorProfile {"orgId": "org_saegil",
 | `GET /intake/csv/template`, `POST /intake/csv` | 측정값 CSV 양식과 업로드 |
 | `POST /intake/media` | 사진·영상 업로드(multipart: `file`, `orgId`, `streamId`). 탐지 모델을 불러 재질 추정과 이물 비율을 model 근거로 등록한다. 아래 "사진·영상" |
 | `POST /intake/documents` | 문서 업로드와 추출 |
-| `POST /intake/documents/confirm` | `{orgId, documentName, fields}`. 담당자가 확인한 추출값(`confirmed: true`)만 doc 근거로 등록한다. 응답은 `{"evidence": [근거 ID]}` |
+| `POST /intake/documents/confirm` | `{orgId, documentName, fields}`. 담당자가 확인한 추출값(`confirmed: true`)만 doc 근거로 등록한다. 응답은 `{"evidence": [근거 ID], "profile": 요약 \| null}`. 업체가 확인한 허가증·매입 기준표 값은 업체 프로필의 허가 품목·매입 기준에도 들어간다(추출 항목의 `target`으로 어느 품목·기준의 값인지 안다. 화면은 받은 `fields`를 그대로 돌려보낸다). 폐기물 종류가 같은 허가 품목, 재질·등급·형태가 같은 매입 기준은 고치고 근거를 붙이며 새로 만들지 않는다(다시 확인해도 겹치지 않는다). 단가를 확인하지 않은 새 기준은 만들지 않는다. `profile`은 `{permitsAdded, permitsUpdated, criteriaAdded, criteriaUpdated, permits, criteria, skipped}`이고 업체가 아니면 `null`이다 |
 | `GET /admin/status`, `POST /admin/eval` | 색인·기준값 상태와 재학습 표, 사례 시험 실행(관리자만) |
 | `POST /sessions/{id}/corrections` | `{streamId, field, before, after, note}`. 배출 기업 담당자가 고친 값을 기록한다 |
 | `POST /sessions/{id}/outcomes` | `{threadId, streamId, actualGrade, actualUnitPriceKrwPerKg, actualKg, inspectedOn, note, documentName?}`. 업체가 확정 뒤 실제 결과를 기록한다 |

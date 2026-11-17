@@ -34,6 +34,9 @@ WASTE_ITEMS = {
 METHODS = ("위탁 재활용", "혼합 소각", "열분해", "재활용", "소각", "매립")
 GRADES = ("A", "B", "C", "등외")
 _NUMBER = re.compile(r"[-−–]?\s*\d[\d,]*(?:\.\d+)?")
+_MIN_QUANTITY = re.compile(
+    r"최소\s*(?:수거\s*)?물량[^0-9\n]{0,12}(\d[\d,]*(?:\.\d+)?)\s*(kg|킬로그램|톤|t|T)(?![A-Za-z])"
+)
 _MATERIAL = re.compile(r"(?<![A-Za-z])(" + "|".join(MATERIALS) + r")(?![A-Za-z])", re.IGNORECASE)
 
 
@@ -239,16 +242,39 @@ def _first_value(pairs: list[dict[str, Any]], pattern: str) -> dict[str, Any] | 
 # ── 업체 문서 ─────────────────────────────────────────────────
 
 
+# 허가증의 다른 항목 이름. 키-값 값이 다음 줄까지 이어 읽혔을 때("폐포장재 처리 방법: 재활용") 자른다
+_NEXT_KEY = re.compile(
+    r"\s*(?:처리\s*방법|처리\s*능력|허가\s*일(?:자)?|허가\s*번호|유효\s*기간|상\s*호|대\s*표\s*자"
+    r"|소\s*재\s*지|주\s*소|사업장)\s*[:：].*$",
+    re.DOTALL,
+)
+
+
+def _cut_next_key(text: str) -> str:
+    """값 뒤에 붙어 읽힌 다음 항목("… 처리 방법: …")을 걷어 낸다."""
+    return _NEXT_KEY.sub("", text).strip()
+
+
 def extract_permit(layout: dict[str, Any]) -> dict[str, Any]:
-    """허가증에서 허가 품목을 읽는다. 표(폐기물 종류/품목 열)와 "허가 품목: ..." 키-값을 본다."""
+    """허가증에서 허가 품목을 읽는다. 표(폐기물 종류/품목 열)와 "허가 품목: ..." 키-값을 본다.
+
+    같은 품목이 표와 키-값, 또는 Document Intelligence의 키-값과 본문 줄에서 두 번 읽히면 한 번만 낸다
+    (폐기물 종류와 재질이 같으면 같은 품목이다).
+    """
     pairs = key_values(layout)
     entries: list[dict[str, Any]] = []
+    seen: set[tuple[str | None, tuple[str, ...]]] = set()
 
     def add(raw: str, confidence: Any, extra: str = "") -> None:
+        raw = _cut_next_key(raw)
         item = _waste_item(raw)
         materials = _materials(f"{raw} {extra}")
         if not raw.strip() or (item is None and not materials):
             return
+        key = (item, tuple(sorted(materials)))
+        if key in seen:
+            return
+        seen.add(key)
         reasons = []
         if item is None:
             reasons.append("폐기물 종류를 알아보지 못했습니다")
@@ -281,16 +307,21 @@ def extract_permit(layout: dict[str, Any]) -> dict[str, Any]:
     for index, entry in enumerate(entries):
         label = entry["wasteItem"] or "미확인 품목"
         value = f"{label} ({', '.join(entry['materials'])})" if entry["materials"] else label
-        fields.append(
-            _field(
-                f"permit-{index + 1}",
-                "허가 품목",
-                value,
-                None,
-                entry["raw"],
-                entry["reviewReasons"],
-            )
+        field = _field(
+            f"permit-{index + 1}",
+            "허가 품목",
+            value,
+            None,
+            entry["raw"],
+            entry["reviewReasons"],
         )
+        # 확인하면 업체 프로필의 허가 품목이 된다(confirm_document → profile_from_fields)
+        field["target"] = {
+            "section": "permit",
+            "wasteItem": entry["wasteItem"],
+            "materials": list(entry["materials"]),
+        }
+        fields.append(field)
     info = {}
     for key, pattern in (("businessName", r"상호|업체명"), ("permitNumber", r"허가번호")):
         pair = _first_value(pairs, pattern)
@@ -369,9 +400,19 @@ def extract_purchase_criteria(layout: dict[str, Any]) -> dict[str, Any]:
             criteria.append(entry)
             name = " ".join(x for x in (material, grade, entry["form"]) if x)
             kind = "처리비" if use_fee else "매입 단가"
-            fields.append(
-                _field(f"{entry['id']}-단가", f"{name} {kind}", price, "원/kg", raw_price, reasons)
+            # 확인하면 업체 프로필의 매입 기준이 된다(confirm_document → profile_from_fields).
+            # 재질·등급·형태가 같은 행은 같은 기준으로 본다
+            target = {
+                "section": "criterion",
+                "material": material if found else None,
+                "grade": grade,
+                "form": entry["form"],
+            }
+            price_field = _field(
+                f"{entry['id']}-단가", f"{name} {kind}", price, "원/kg", raw_price, reasons
             )
+            price_field["target"] = {**target, "key": "unitPriceKrwPerKg"}
+            fields.append(price_field)
             for key, label, unit in (
                 ("maxContaminationPct", "오염도 상한", "%"),
                 ("maxMoisturePct", "수분 상한", "%"),
@@ -382,16 +423,38 @@ def extract_purchase_criteria(layout: dict[str, Any]) -> dict[str, Any]:
                     cell_reasons = (
                         ["인식 확신이 낮습니다"] if _low(row[cols[key]]["confidence"]) else []
                     )
-                    fields.append(
-                        _field(
-                            f"{entry['id']}-{key}",
-                            f"{name} {label}",
-                            entry[key],
-                            unit,
-                            raw,
-                            cell_reasons,
-                        )
+                    limit_field = _field(
+                        f"{entry['id']}-{key}",
+                        f"{name} {label}",
+                        entry[key],
+                        unit,
+                        raw,
+                        cell_reasons,
                     )
+                    limit_field["target"] = {**target, "key": key}
+                    fields.append(limit_field)
+    # 표에 최소 물량 열이 없으면 표 밖의 글("1회 계약 최소 물량 월 300kg")에서 읽어 모든 행에 쓴다
+    if criteria and all(c.get("minMonthlyKg") is None for c in criteria):
+        found_min = _MIN_QUANTITY.search(layout_text(layout))
+        if found_min:
+            amount = _number(found_min.group(1))
+            reasons = []
+            if amount is not None and found_min.group(2) in ("톤", "t", "T"):
+                amount *= 1000
+                reasons.append("단위를 t에서 kg으로 바꿨습니다")
+            if amount is not None:
+                for entry in criteria:
+                    entry["minMonthlyKg"] = amount
+                field = _field(
+                    "criteria-minMonthlyKg",
+                    "최소 물량(표 아래 글, 모든 행)",
+                    amount,
+                    "kg/월",
+                    found_min.group(0).strip(),
+                    [*reasons, "표 밖의 글에서 읽었습니다"],
+                )
+                field["target"] = {"section": "criteria", "key": "minMonthlyKg"}
+                fields.append(field)
     return {"criteria": criteria, "fields": fields}
 
 
@@ -591,7 +654,24 @@ def confirm_fields(
     today: str,
 ) -> list[str]:
     """사람이 확인한 값(confirmed=True)만 doc 근거로 등록한다. 값이 없는 항목은 등록하지 않는다."""
-    registered = []
+    return list(
+        confirm_field_map(
+            registry, org_id, document_name, fields, confirmed_by, today=today
+        ).values()
+    )
+
+
+def confirm_field_map(
+    registry: Any,
+    org_id: str,
+    document_name: str,
+    fields: list[dict[str, Any]],
+    confirmed_by: str,
+    *,
+    today: str,
+) -> dict[str, str]:
+    """confirm_fields와 같고 {항목(field): 등록한 근거 ID}를 돌려준다."""
+    registered: dict[str, str] = {}
     for item in fields:
         if item.get("confirmed") is not True or item.get("value") is None:
             continue
@@ -620,5 +700,93 @@ def confirm_fields(
                 },
             )
         )
-        registered.append(evidence.id)
+        registered[str(item["field"])] = evidence.id
     return registered
+
+
+# ── 확인한 값 → 업체 프로필 ────────────────────────────────────
+
+CRITERION_KEYS = ("unitPriceKrwPerKg", "maxContaminationPct", "maxMoisturePct", "minMonthlyKg")
+
+
+def _known_material(value: Any) -> str | None:
+    found = _materials(str(value or ""))
+    return "+".join(found) if found else None
+
+
+def _permit_target(item: dict[str, Any]) -> dict[str, Any] | None:
+    """확인한 허가 품목 항목의 {wasteItem, materials}. 알아볼 수 없으면 None.
+
+    target(추출이 붙인 값)을 먼저 보고, 없으면 값 글("폐플라스틱 (PP, PE)")에서 다시 읽는다.
+    폐기물 종류와 재질은 정해 둔 낱말만 받는다(올린 글이 프로필로 그대로 들어가지 않게 한다).
+    """
+    target = item.get("target") if isinstance(item.get("target"), dict) else {}
+    waste = target.get("wasteItem") if target.get("section") == "permit" else None
+    if waste not in WASTE_ITEMS:
+        waste = _waste_item(str(item.get("value") or ""))
+    if waste is None:
+        return None
+    given = target.get("materials") if isinstance(target.get("materials"), list) else None
+    materials = _materials(" ".join(str(m) for m in given) if given is not None else "")
+    if given is None:
+        materials = _materials(str(item.get("value") or ""))
+    return {"wasteItem": waste, "materials": materials}
+
+
+def profile_from_fields(fields: list[dict[str, Any]], evidence: dict[str, str]) -> dict[str, Any]:
+    """확인해 근거로 등록한 항목에서 업체 프로필에 넣을 허가 품목과 매입 기준을 만든다.
+
+    {"permits": [{wasteItem, materials, evidence}], "criteria": [{material, grade, form, 값..., evidence}],
+     "skipped": [이유]}. 근거로 등록되지 않은 항목(확인하지 않았거나 값이 없음)은 쓰지 않는다.
+    매입 기준은 재질·등급·형태가 같은 행끼리 모은다. 단가가 없는 새 기준은 만들지 않는다(skipped).
+    """
+    permits: dict[tuple[str, tuple[str, ...]], dict[str, Any]] = {}
+    rows: dict[tuple[str, str | None, str | None], dict[str, Any]] = {}
+    shared: list[tuple[str, Any, str]] = []  # 모든 행에 쓰는 값(표 밖 최소 물량)
+    skipped: list[str] = []
+    for item in fields:
+        evidence_id = evidence.get(str(item.get("field")))
+        if evidence_id is None:
+            continue
+        target = item.get("target") if isinstance(item.get("target"), dict) else {}
+        section = target.get("section")
+        if section == "permit" or (not section and str(item.get("field")).startswith("permit-")):
+            found = _permit_target(item)
+            if found is None:
+                skipped.append(
+                    f"{item.get('label') or item.get('field')}: 폐기물 종류를 알 수 없음"
+                )
+                continue
+            key = (found["wasteItem"], tuple(found["materials"]))
+            entry = permits.setdefault(key, {**found, "evidence": []})
+            entry["evidence"].append(evidence_id)
+            continue
+        value = item.get("value")
+        if section not in ("criterion", "criteria") or target.get("key") not in CRITERION_KEYS:
+            continue
+        if isinstance(value, bool) or not isinstance(value, (int, float)):
+            skipped.append(f"{item.get('label') or item.get('field')}: 숫자가 아님")
+            continue
+        if section == "criteria":
+            shared.append((target["key"], float(value), evidence_id))
+            continue
+        material = _known_material(target.get("material"))
+        if material is None:
+            skipped.append(f"{item.get('label') or item.get('field')}: 재질을 알 수 없음")
+            continue
+        grade = target.get("grade") if target.get("grade") in GRADES else None
+        form = str(target.get("form")).strip() if target.get("form") else None
+        row = rows.setdefault(
+            (material, grade, form),
+            {"material": material, "grade": grade, "form": form, "evidence": []},
+        )
+        row[target["key"]] = float(value)
+        row["evidence"].append(evidence_id)
+    criteria = []
+    for row in rows.values():
+        for key, value, evidence_id in shared:
+            if row.get(key) is None:
+                row[key] = value
+                row["evidence"].append(evidence_id)
+        criteria.append(row)
+    return {"permits": list(permits.values()), "criteria": criteria, "skipped": skipped}

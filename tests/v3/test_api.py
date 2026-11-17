@@ -81,7 +81,7 @@ def test_health_and_document_confirm(client):
         json={"orgId": EMITTER, "documentName": "성적서.txt", "fields": []},
     )
     assert confirmed.status_code == 200, confirmed.text
-    assert confirmed.json() == {"evidence": []}
+    assert confirmed.json() == {"evidence": [], "profile": None}
     wrong = client.post(
         "/api/v3/intake/documents/confirm", headers=org(EMITTER), json={"fields": "x"}
     )
