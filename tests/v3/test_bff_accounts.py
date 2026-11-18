@@ -489,6 +489,8 @@ def test_demo_reset_keeps_real_data_and_leaves_a_demo_diagnosis(world):
     report = client.get(f"/api/v3/orgs/{HANBIT}/report", headers=demo(HANBIT)).json()
     assert "records" in report, report
     assert report["records"] and report["totals"]["kg"]["value"] > 0
+    # 지난 거래의 검수 등급은 합의한 매입 기준의 등급이다
+    assert all(record["grade"] for record in report["records"]), report["records"]
     view = client.get(f"/api/v3/sessions/{hanbit[0]['id']}", headers=demo(HANBIT)).json()
     assert view["approvals"] and view["threads"]
     # 실제 조직의 조직·흐름·진단은 그대로다

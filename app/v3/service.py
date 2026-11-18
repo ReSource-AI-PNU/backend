@@ -424,10 +424,9 @@ def _demo_history(app: App) -> str | None:
             approve(app, session_id, item["threadId"], vendors[item["threadId"]])
         session = _session(app, session_id)
         streams = {s["id"]: s for s in app.store.list_streams(EMITTER)}
-        prices = {
-            a["streamId"]: (a.get("unitPrice") or {}).get("value")
-            for a in (session["work"].get("result") or {}).get("assignments") or []
-        }
+        assignments = (session["work"].get("result") or {}).get("assignments") or []
+        prices = {a["streamId"]: (a.get("unitPrice") or {}).get("value") for a in assignments}
+        grades = {a["streamId"]: _agreed_grade(app, a) for a in assignments}
         today = datetime.strptime(app.today, "%Y-%m-%d").date()
         for thread in app.store.list_threads(session_id):
             if thread.get("status") != "confirmed":
@@ -446,6 +445,8 @@ def _demo_history(app: App) -> str | None:
                             "inspectedOn": (today - timedelta(days=days)).isoformat(),
                             "actualUnitPriceKrwPerKg": float(price),
                             "actualKg": round(float(kg) * (0.94 if n == 0 else 0.98)),
+                            # 검수 등급은 합의한 매입 기준의 등급 그대로(가상)
+                            **({"actualGrade": grades[stream_id]} if grades.get(stream_id) else {}),
                             "note": "시연용 가상 검수 기록",
                         },
                         thread["vendorOrgId"],
@@ -456,6 +457,22 @@ def _demo_history(app: App) -> str | None:
     except Exception:  # 지난 거래 때문에 시연 되돌리기가 멈추면 안 된다
         logger.warning("시연 지난 거래를 만들지 못했다", exc_info=True)
         return None
+
+
+def _agreed_grade(app: App, assignment: dict[str, Any]) -> str | None:
+    """배정 단가의 근거가 가리키는 매입 기준의 등급(예: doc:org_miso:매입기준표:pc_miso_pp_b-단가 → B)."""
+    vendor_id = assignment.get("vendorOrgId")
+    if not vendor_id:
+        return None
+    try:
+        profile = app.store.get_vendor_profile(vendor_id)
+    except NotFound:
+        return None
+    cited = " ".join((assignment.get("unitPrice") or {}).get("evidence") or [])
+    for criterion in profile.get("criteria") or []:
+        if criterion.get("id") and f":{criterion['id']}-" in cited:
+            return criterion.get("grade")
+    return None
 
 
 def _reseed_demo(app: App) -> dict[str, Any]:
