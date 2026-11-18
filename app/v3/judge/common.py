@@ -13,7 +13,7 @@ from app.v3.evidence.registry import EvidenceForbidden, EvidenceNotFound
 from app.v3.intake import grade_model
 from app.v3.judge import basis
 from app.v3.textutil import josa
-from app.v3.untrusted import contaminant_labels, counterparty_stream, stream_label
+from app.v3.untrusted import contaminant_labels, counterparty_stream, form_key, stream_label
 
 WORST = {"calculated": 0, "conditional": 1, "needs_information": 2}
 
@@ -366,7 +366,8 @@ def criterion_checks(stream: dict, criterion: dict, q: dict) -> list[tuple]:
                     f"형태를 모르는 상태입니다. {want} 형태가 아니어도 받을 수 있는지 알려 주세요.",
                 )
             )
-        elif have == want:
+        elif form_key(have) == form_key(want):
+            # "분쇄"와 "분쇄품"처럼 같은 형태를 다르게 적은 것도 충족이다(조건으로 올리지 않는다)
             out.append(("form", "met", "형태가 매입 기준과 같습니다.", None))
         else:
             out.append(
@@ -409,7 +410,7 @@ def ambiguous_forms(stream: dict, vendor: dict, q: dict) -> list[dict]:
         return []
     top = ranked[0][0][:2]
     tied = [r[1] for r in ranked if r[0][:2] == top and r[1].get("form")]
-    return tied if len({c.get("form") for c in tied}) > 1 else []
+    return tied if len({form_key(c.get("form")) for c in tied}) > 1 else []
 
 
 def best_criterion(stream: dict, vendor: dict, q: dict):

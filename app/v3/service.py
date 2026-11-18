@@ -52,7 +52,13 @@ from app.v3.judge import basis
 from app.v3.judge.common import quality, without_emitter_only
 from app.v3.judge.defaults import register_defaults
 from app.v3.store import InMemoryStore, NotFound
-from app.v3.untrusted import contaminant_labels, counterparty_stream, org_label, stream_label
+from app.v3.untrusted import (
+    contaminant_labels,
+    counterparty_stream,
+    form_key,
+    org_label,
+    stream_label,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -2095,7 +2101,7 @@ def _profile_from_document(app: App, org_id: str, found: dict[str, Any]) -> dict
                 for c in criteria
                 if c.get("material") == item["material"]
                 and _same(c.get("grade"), item["grade"])
-                and _same(c.get("form"), item["form"])
+                and _same(form_key(c.get("form")), form_key(item["form"]))
             ),
             None,
         )
