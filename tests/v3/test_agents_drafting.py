@@ -67,7 +67,8 @@ def test_number_outside_placeholder_is_rejected_then_rewrite_passes():
 def test_two_rejections_hand_the_thread_to_people():
     _app, llm, view = run_with_vendor(NUMBER_OUTSIDE, NUMBER_OUTSIDE)
     thread = thread_of(view, SAEGIL)
-    assert thread["status"] == "handoff" and "두 번 거부" in thread["statusReason"]
+    assert thread["status"] == "handoff" and "담당자 확인이 필요합니다" in thread["statusReason"]
+    assert not any(w in thread["statusReason"] for w in ("에이전트", "초안", "거부", "_"))
     last = thread["messages"][-1]
     assert last["type"] == "handoff" and last["from"] == SAEGIL
     assert last["validation"]["attempts"] == 2
@@ -254,7 +255,7 @@ def test_twelve_turns_then_handoff():
     app = make_app(only_for("vendor", SAEGIL, llm))
     view = to_approval(app)
     thread = thread_of(view, SAEGIL)
-    assert thread["status"] == "handoff" and "턴 상한" in thread["statusReason"]
+    assert thread["status"] == "handoff" and "횟수를 다 써서" in thread["statusReason"]
     assert thread["turns"] == thread["maxTurns"] == 12
     assert [m["type"] for m in thread["messages"]] == [
         "inquiry",
@@ -291,7 +292,7 @@ def test_company_revalidates_what_the_vendor_sends(forged):
     app.vendor_gateway = ForgingGateway(app)
     view = to_approval(app)
     thread = thread_of(view, SAEGIL)
-    assert thread["status"] == "handoff" and "회사 측 근거 검증" in thread["statusReason"]
+    assert thread["status"] == "handoff" and "회사 측 근거 확인" in thread["statusReason"]
     assert [m["type"] for m in thread["messages"]] == ["inquiry", "handoff"]
     assert thread["messages"][-1]["from"] == HANBIT
     recheck_events = [e for e in view["events"] if e["detail"].get("recheckedBy") == HANBIT]

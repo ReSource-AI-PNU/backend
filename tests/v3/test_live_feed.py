@@ -43,7 +43,8 @@ def test_turn_maps_draft_steps_to_activity():
     assert all(e["orgId"] == SAEGIL and e["threadId"] == "th_1" for e in entries)
     assert entries[2]["reasons"] == ["업체 기준 밖의 조건", "근거와 다른 값"]
     assert entries[2]["codes"] == ["GUARDRAIL_PRICE_BELOW_FLOOR", "VALUE_MISMATCH"]
-    assert entries[3]["attempt"] == 2 and "2번째" in entries[3]["text"]
+    assert entries[3]["attempt"] == 2 and "고쳐 쓰고 있습니다" in entries[3]["text"]
+    assert not any(w in entries[3]["text"] for w in ("거부", "초안", "에이전트"))
     assert entries[4]["tool"] == "cost_carbon" and entries[4]["stage"] == 5
     assert turn.steps == 6  # 알림 수(작성 쪽에서 온 것)
 

@@ -562,7 +562,7 @@ class Turn:
         else:
             self._activity(
                 "rewriting",
-                f"{josa(label, '이가')} 거부 사유를 고쳐 다시 쓰고 있습니다({attempt}번째 초안).",
+                f"{josa(label, '이가')} 근거를 다시 확인해 고쳐 쓰고 있습니다.",
                 attempt=attempt,
             )
 

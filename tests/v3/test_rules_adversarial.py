@@ -518,9 +518,9 @@ def test_rule1_sentences_written_by_code_carry_no_loose_numbers(confirmed_demo):
         labels = {e.label for e in app.registry.list(org_id=viewer) if e.label}
         for path, text in found:
             if path == "events.summary":
-                # 순번만 있다: "검증 통과(1번째 초안)", "담당자 질문(2번째 묶음): …"
-                assert re.search(r"\d번째 (초안|묶음)", text), (viewer, text)
-                rest = re.sub(r"\d번째 (초안|묶음)", "", text)
+                # 순번만 있다: "근거 확인 통과(1번째 작성)", "담당자 질문(2번째 묶음): …"
+                assert re.search(r"\d번째 (작성|묶음)", text), (viewer, text)
+                rest = re.sub(r"\d번째 (작성|묶음)", "", text)
                 assert not re.search(r"\d", rest) or "%인가요" in rest, (viewer, text)
             else:
                 # 근거의 이름(법령 조문 번호 등)이다
@@ -1152,7 +1152,7 @@ def test_rule6_and_1_company_side_does_not_trust_a_remote_vendor(forged):
     if forged == "junk":  # 정해 둔 항목만 남기므로 대화는 이어진다
         assert thread["status"] == "confirmed"
     else:
-        assert thread["status"] == "handoff" and "회사 측 근거 검증" in thread["statusReason"]
+        assert thread["status"] == "handoff" and "회사 측 근거 확인" in thread["statusReason"]
 
 
 # ── 규칙 7. 허가 품목이 맞지 않는 업체 ───────────────────────────────
@@ -1736,7 +1736,9 @@ def test_rule9_twelve_turns_then_handoff_whoever_keeps_talking(talker):
         assert thread["turns"] <= thread["maxTurns"] == 12
     thread = thread_of(view, SAEGIL)
     assert thread["status"] == "handoff" and thread["turns"] == 12
-    assert "턴 상한" in thread["statusReason"] and thread["messages"][-1]["type"] == "handoff"
+    assert (
+        "횟수를 다 써서" in thread["statusReason"] and thread["messages"][-1]["type"] == "handoff"
+    )
     assert len(thread["messages"]) == 13  # 12턴과 handoff. 13번째 말은 나가지 않았다
     assert_clean(app, session_id)
 

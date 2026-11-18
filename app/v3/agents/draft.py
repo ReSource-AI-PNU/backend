@@ -281,7 +281,7 @@ def public_rejections(items: list[dict[str, Any]] | None) -> list[dict[str, Any]
         elif code.startswith("OTHER_EMITTER"):
             message = "다른 배출 기업의 정보를 드러내는 내용이었습니다."
         else:
-            message = PUBLIC_MESSAGES.get(code, "초안이 검사를 통과하지 못했습니다.")
+            message = PUBLIC_MESSAGES.get(code, "보내기 전 근거 확인을 통과하지 못했습니다.")
             if code not in PUBLIC_MESSAGES:
                 code = "REJECTED"  # 모르는 코드는 글자 그대로 옮기지 않는다
         entry: dict[str, Any] = {"code": code, "message": message, "claimId": None, "detail": {}}
@@ -719,7 +719,7 @@ def run_draft(
             trace.add(
                 "validator",
                 "validation",
-                f"검증 통과({attempts}번째 초안)",
+                f"근거 확인 통과({attempts}번째 작성)",
                 ok=True,
                 attempt=attempts,
                 type=message.type,
@@ -735,13 +735,13 @@ def run_draft(
             )
         shown = public_rejections([{**item, "attempt": attempts} for item in found])
         rejected = [*rejected, *shown]
-        codes = ", ".join(dict.fromkeys(item["code"] for item in found))
         trace.add(
             "validator",
             "validation",
-            f"검증 거부({attempts}번째 초안): {codes}",
+            f"근거 확인에서 돌려보냄({attempts}번째 작성)",
             ok=False,
             attempt=attempts,
+            codes=list(dict.fromkeys(item["code"] for item in found)),
             rejections=shown,
             model=label,
             draftType=(output or {}).get("type")
@@ -754,7 +754,7 @@ def run_draft(
                 draft=output or {},
                 attempts=attempts,
                 rejections=rejected,
-                reason=f"초안이 두 번 거부되어 담당자에게 넘깁니다({codes}).",
+                reason="AI가 근거를 갖춘 글을 만들지 못해 담당자 확인이 필요합니다.",
             )
         messages.append({"role": "assistant", "content": response.get("content") or ""})
         last = found

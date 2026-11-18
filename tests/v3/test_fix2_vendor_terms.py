@@ -268,7 +268,7 @@ def test_renegotiation_stays_inside_the_turn_limit():
         assert again["turns"] <= again["maxTurns"]
         if again["status"] != "agreed":
             break
-    assert again["status"] == "handoff" and "턴 상한" in again["statusReason"]
+    assert again["status"] == "handoff" and "횟수를 다 써서" in again["statusReason"]
     assert again["id"] not in {a["threadId"] for a in view["approvals"]}
     assert all(a["vendorOrgId"] != SAEGIL for a in view["result"]["assignments"])
     assert all(t["status"] != "confirmed" for t in view["threads"])

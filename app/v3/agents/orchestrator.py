@@ -296,15 +296,15 @@ def reported_trace(trace: Any, registry: Any = None) -> list[dict[str, Any]]:
             if detail["ok"]:
                 if detail.get("type") in MESSAGE_TYPES:
                     kept["type"] = detail["type"]
-                summary = f"검증 통과({attempt}번째 초안)"
+                summary = f"근거 확인 통과({attempt}번째 작성)"
             else:
                 kept["rejections"] = public_rejections(
                     detail.get("rejections") if isinstance(detail.get("rejections"), list) else []
                 )
                 if detail.get("draftType") in MESSAGE_TYPES:
                     kept["draftType"] = detail["draftType"]
-                codes = ", ".join(dict.fromkeys(r["code"] for r in kept["rejections"]))
-                summary = f"검증 거부({attempt}번째 초안): {codes}"
+                kept["codes"] = list(dict.fromkeys(r["code"] for r in kept["rejections"]))
+                summary = f"근거 확인에서 돌려보냄({attempt}번째 작성)"
             out.append(
                 {"actor": "validator", "kind": "validation", "summary": summary, "detail": kept}
             )
@@ -600,7 +600,7 @@ class Orchestrator:
                 session,
                 thread,
                 thread.emitter_org,
-                "업체의 조건이 바뀌었지만 대화가 턴 상한에 닿아 담당자에게 넘깁니다.",
+                "업체의 조건이 바뀌었지만 주고받을 수 있는 횟수를 다 써서 담당자 확인이 필요합니다.",
                 stage=5,
             )
             return False
@@ -1295,7 +1295,7 @@ class Orchestrator:
                     session,
                     thread,
                     thread.emitter_org,
-                    "대화가 턴 상한에 닿아 담당자에게 넘깁니다.",
+                    "주고받을 수 있는 횟수를 다 써서 담당자 확인이 필요합니다.",
                     reassign=reassign,
                 )
                 return "closed"
@@ -1445,7 +1445,8 @@ class Orchestrator:
         if outcome.kind == "message" and outcome.message is not None:
             self._append(session, thread, outcome.message, "company_agent")
             return
-        reason = outcome.reason or "회사 측 에이전트가 메시지를 쓰지 못해 담당자에게 넘깁니다."
+        # 거부 코드는 문장에 넣지 않는다(handoff 메시지의 meta.validation과 실행 기록 detail에 있다)
+        reason = "회사 측 AI가 근거를 갖춘 메시지를 만들지 못해 담당자 확인이 필요합니다."
         self._handoff(session, thread, thread.emitter_org, reason, stage=stage, outcome=outcome)
 
     def _vendor_context(self, session, thread: Thread) -> dict[str, Any]:
@@ -1518,8 +1519,7 @@ class Orchestrator:
             session["id"],
             "validator",
             "validation",
-            "받은 답을 회사 측에서 다시 검증: "
-            + ("통과" if not problems else "거부(" + ", ".join(p["code"] for p in problems) + ")"),
+            "받은 답을 회사 측에서 근거와 다시 대조: " + ("통과" if not problems else "돌려보냄"),
             thread.id,
             ok=not problems,
             recheckedBy=thread.emitter_org,
@@ -1531,7 +1531,7 @@ class Orchestrator:
                 session,
                 thread,
                 thread.emitter_org,
-                "업체 측 답이 회사 측 근거 검증을 통과하지 못해 담당자에게 넘깁니다.",
+                "업체 측 답이 회사 측 근거 확인을 통과하지 못해 담당자 확인이 필요합니다.",
                 stage=5,
             )
             return
@@ -1683,7 +1683,7 @@ class Orchestrator:
                         session,
                         thread,
                         thread.emitter_org,
-                        "대화가 턴 상한에 닿아 담당자에게 넘깁니다.",
+                        "주고받을 수 있는 횟수를 다 써서 담당자 확인이 필요합니다.",
                         stage=5,
                     )
                     moved = True
@@ -1718,7 +1718,7 @@ class Orchestrator:
                 session["id"],
                 "system",
                 "handoff",
-                "업체 측 에이전트를 부르지 못했습니다.",
+                "업체 측 AI와 연결하지 못했습니다.",
                 thread.id,
                 error=type(error).__name__,
             )
@@ -1726,7 +1726,7 @@ class Orchestrator:
                 session,
                 thread,
                 thread.emitter_org,
-                "업체 측 에이전트에 닿지 못해 담당자에게 넘깁니다.",
+                "업체 측 AI와 연결이 원활하지 않아 담당자 확인이 필요합니다.",
                 stage=4,
             )
             return
@@ -2601,7 +2601,7 @@ class Orchestrator:
                 session["id"],
                 "validator",
                 "validation",
-                f"{document['title']} 검증 " + ("통과" if result.ok else "거부"),
+                f"{document['title']} 근거 확인 " + ("통과" if result.ok else "돌려보냄"),
                 thread.id,
                 ok=result.ok,
                 codes=list(result.codes),

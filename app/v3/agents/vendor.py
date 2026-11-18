@@ -105,6 +105,10 @@ RESPONSE_SCHEMA = response_schema(
     },
 )
 
+# 업체 측 AI가 근거 검사를 두 번 통과하지 못했을 때 담당자에게 넘기는 문장(두 조직이 함께 본다).
+# 거부 코드는 문장에 넣지 않고 meta.validation.rejections와 실행 기록의 detail에만 둔다(DESIGN.md 제품 문구 원칙)
+VENDOR_HANDOFF = "업체 측 AI가 근거를 갖춘 답을 만들지 못해 담당자 확인이 필요합니다."
+
 EXAMPLES = (
     # 규칙 정책이 실제로 낸 메시지를 줄인 것(형식 예시. 이름과 ID는 입력의 것으로 바꿔 쓴다)
     {
@@ -1080,7 +1084,7 @@ class VendorAgent:
                 thread_id=thread.id,
                 sender=vendor_org,
                 recipient=thread.emitter_org,
-                reason="업체 측 에이전트의 초안이 두 번 거부되어 담당자에게 넘깁니다.",
+                reason=VENDOR_HANDOFF,
                 stage=int(message.get("stage") or 4),
                 rejections=public_rejections(outcome.rejections),
                 attempts=outcome.attempts,
