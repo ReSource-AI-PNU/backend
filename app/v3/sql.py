@@ -19,13 +19,13 @@ from contextlib import contextmanager
 from dataclasses import replace
 from typing import Any
 
-from sqlalchemy import JSON, Integer, String, delete, func, select
+from sqlalchemy import JSON, Integer, String, delete, func, or_, select
 from sqlalchemy.engine import Engine
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Mapped, Session, mapped_column
 
 from app.platform.db import Base
-from app.v3.account_store import EmailTaken, iso, parse_iso, utc_now
+from app.v3.account_store import EmailTaken, iso, like_pattern, parse_iso, utc_now
 from app.v3.evidence.model import Evidence
 from app.v3.evidence.registry import EvidenceForbidden, EvidenceNotFound
 from app.v3.store import SHARED_THREAD_STATUSES, NotFound, VersionConflict, system_clock
@@ -697,6 +697,35 @@ class SqlAccounts:
             row = db.scalar(select(UserRow).where(UserRow.email == email))
             return _user(row) if row is not None else None
 
+    def list_users(self, like: str | None = None) -> list[dict[str, Any]]:
+        query = select(UserRow)
+        if like:
+            pattern = like_pattern(like)
+            query = query.where(
+                or_(
+                    func.lower(UserRow.email).like(pattern, escape="\\"),
+                    func.lower(UserRow.name).like(pattern, escape="\\"),
+                )
+            )
+        with _transaction(self._engine) as db:
+            found = [_user(row) for row in db.scalars(query).all()]
+        return sorted(found, key=lambda u: (u.get("createdAt") or "", u["id"]))
+
+    def set_password(self, user_id: str, password_hash: str) -> bool:
+        with _transaction(self._engine) as db:
+            row = db.get(UserRow, user_id, with_for_update=True)
+            if row is None:
+                return False
+            row.password_hash = password_hash
+            return True
+
+    def delete_user(self, user_id: str) -> bool:
+        """사용자 행(이메일, 이름, 비밀번호 값)과 그 사람의 소속 행을 한 트랜잭션에서 지운다."""
+        with _transaction(self._engine) as db:
+            db.execute(delete(MembershipRow).where(MembershipRow.user_id == user_id))
+            result = db.execute(delete(UserRow).where(UserRow.id == user_id))
+            return bool(result.rowcount)
+
     # ── 소속 ──────────────────────────────────────────────────────────
     def add_membership(self, membership: dict[str, Any]) -> dict[str, Any]:
         """이미 소속이면 있던 것을 그대로 돌려준다(역할을 바꾸지 않는다)."""
@@ -737,6 +766,25 @@ class SqlAccounts:
             found = [_membership(row) for row in db.scalars(query).all()]
         return sorted(found, key=lambda m: (m.get("createdAt") or "", m["orgId"], m["userId"]))
 
+    def set_member_role(self, user_id: str, org_id: str, role: str) -> dict[str, Any] | None:
+        with _transaction(self._engine) as db:
+            row = db.get(
+                MembershipRow, {"user_id": user_id, "org_id": org_id}, with_for_update=True
+            )
+            if row is None:
+                return None
+            row.member_role = role
+            return _membership(row)
+
+    def remove_membership(self, user_id: str, org_id: str) -> bool:
+        with _transaction(self._engine) as db:
+            result = db.execute(
+                delete(MembershipRow).where(
+                    MembershipRow.user_id == user_id, MembershipRow.org_id == org_id
+                )
+            )
+            return bool(result.rowcount)
+
     # ── 초대 ──────────────────────────────────────────────────────────
     def add_invite(self, invite: dict[str, Any]) -> dict[str, Any]:
         with _transaction(self._engine) as db:
@@ -767,3 +815,16 @@ class SqlAccounts:
                 return None
             row.used_at, row.used_by = iso(now), user_id
             return _invite(row)
+
+    def delete_invites(
+        self, *, org_id: str | None = None, user_id: str | None = None, unused_only: bool = False
+    ) -> int:
+        query = delete(InviteRow)
+        if org_id is not None:
+            query = query.where(InviteRow.org_id == org_id)
+        if user_id is not None:
+            query = query.where(or_(InviteRow.created_by == user_id, InviteRow.used_by == user_id))
+        if unused_only:
+            query = query.where(InviteRow.used_at.is_(None))
+        with _transaction(self._engine) as db:
+            return int(db.execute(query).rowcount or 0)

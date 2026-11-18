@@ -9,11 +9,14 @@ V3_AUTH=bff에서만 쓴다. 조직 레코드는 여기가 아니라 기존 저�
   토큰 원문은 저장하지 않는다(sha256 16진 값만). 시각은 UTC ISO 글이다.
 
 읽을 때는 항상 복사본을 돌려준다.
+
+지우기(V3_AUTH=bff의 탈퇴·구성원 빼기·운영자 명령)는 accounts.py가 규칙을 정하고 여기서는 레코드만 지운다.
 """
 
 from __future__ import annotations
 
 import copy
+import re
 import threading
 import time
 from collections import deque
@@ -39,22 +42,54 @@ def parse_iso(text: str) -> datetime:
     return moment if moment.tzinfo else moment.replace(tzinfo=UTC)
 
 
+def like_pattern(text: str) -> str:
+    """운영자가 준 찾기 글을 SQL LIKE 꼴(역빗금으로 escape)로 바꾼다. 대소문자는 가리지 않는다.
+
+    *와 %는 아무 글자열이고 그 밖의 글자(_ 포함)는 글자 그대로다. 와일드카드가 없으면 포함 검색이다.
+    """
+    raw = str(text or "").strip().lower()
+    escaped = raw.replace("\\", "\\\\").replace("_", "\\_").replace("*", "%")
+    return escaped if "%" in escaped else f"%{escaped}%"
+
+
+def like_matches(value: str, pattern: str) -> bool:
+    """like_pattern이 만든 꼴이 value(소문자로 맞춘다)에 맞는가. 메모리 저장소가 SQL과 같게 찾으려고 쓴다."""
+    parts, index = [], 0
+    while index < len(pattern):
+        char = pattern[index]
+        if char == "\\" and index + 1 < len(pattern):
+            parts.append(re.escape(pattern[index + 1]))
+            index += 2
+            continue
+        parts.append(".*" if char == "%" else "." if char == "_" else re.escape(char))
+        index += 1
+    return re.fullmatch("".join(parts), str(value or "").lower(), flags=re.DOTALL) is not None
+
+
 class AccountStore(Protocol):
     def now(self) -> datetime: ...
 
     def add_user(self, user: dict[str, Any]) -> dict[str, Any]: ...
     def get_user(self, user_id: str) -> dict[str, Any] | None: ...
     def find_user(self, email: str) -> dict[str, Any] | None: ...
+    def list_users(self, like: str | None = None) -> list[dict[str, Any]]: ...
+    def set_password(self, user_id: str, password_hash: str) -> bool: ...
+    def delete_user(self, user_id: str) -> bool: ...
 
     def add_membership(self, membership: dict[str, Any]) -> dict[str, Any]: ...
     def get_membership(self, user_id: str, org_id: str) -> dict[str, Any] | None: ...
     def list_memberships(
         self, *, user_id: str | None = None, org_id: str | None = None
     ) -> list[dict[str, Any]]: ...
+    def set_member_role(self, user_id: str, org_id: str, role: str) -> dict[str, Any] | None: ...
+    def remove_membership(self, user_id: str, org_id: str) -> bool: ...
 
     def add_invite(self, invite: dict[str, Any]) -> dict[str, Any]: ...
     def get_invite(self, token_hash: str) -> dict[str, Any] | None: ...
     def use_invite(self, token_hash: str, user_id: str, now: datetime) -> dict[str, Any] | None: ...
+    def delete_invites(
+        self, *, org_id: str | None = None, user_id: str | None = None, unused_only: bool = False
+    ) -> int: ...
 
 
 class InMemoryAccounts:
@@ -90,6 +125,38 @@ class InMemoryAccounts:
             user_id = self._emails.get(email)
             return copy.deepcopy(self._users[user_id]) if user_id else None
 
+    def list_users(self, like: str | None = None) -> list[dict[str, Any]]:
+        """사용자 목록(가입한 때 순). like를 주면 이메일이나 이름이 like_pattern에 맞는 사용자만."""
+        pattern = like_pattern(like) if like else None
+        with self._lock:
+            found = [
+                copy.deepcopy(user)
+                for user in self._users.values()
+                if pattern is None
+                or like_matches(user["email"], pattern)
+                or like_matches(user["name"], pattern)
+            ]
+        return sorted(found, key=lambda u: (u.get("createdAt") or "", u["id"]))
+
+    def set_password(self, user_id: str, password_hash: str) -> bool:
+        with self._lock:
+            user = self._users.get(user_id)
+            if user is None:
+                return False
+            user["passwordHash"] = password_hash
+            return True
+
+    def delete_user(self, user_id: str) -> bool:
+        """사용자 레코드(이메일, 이름, 비밀번호 값)와 그 사람의 소속을 지운다. 없었으면 False."""
+        with self._lock:
+            user = self._users.pop(user_id, None)
+            if user is None:
+                return False
+            self._emails.pop(user["email"], None)
+            for key in [k for k in self._memberships if k[0] == user_id]:
+                del self._memberships[key]
+            return True
+
     # ── 소속 ──────────────────────────────────────────────────────────
     def add_membership(self, membership: dict[str, Any]) -> dict[str, Any]:
         """이미 소속이면 있던 것을 그대로 돌려준다(역할을 바꾸지 않는다)."""
@@ -114,6 +181,19 @@ class InMemoryAccounts:
             ]
         return sorted(found, key=lambda m: (m.get("createdAt") or "", m["orgId"], m["userId"]))
 
+    def set_member_role(self, user_id: str, org_id: str, role: str) -> dict[str, Any] | None:
+        """소속의 역할을 바꾼다. 소속이 없으면 None."""
+        with self._lock:
+            found = self._memberships.get((user_id, org_id))
+            if found is None:
+                return None
+            found["memberRole"] = role
+            return copy.deepcopy(found)
+
+    def remove_membership(self, user_id: str, org_id: str) -> bool:
+        with self._lock:
+            return self._memberships.pop((user_id, org_id), None) is not None
+
     # ── 초대 ──────────────────────────────────────────────────────────
     def add_invite(self, invite: dict[str, Any]) -> dict[str, Any]:
         with self._lock:
@@ -134,6 +214,33 @@ class InMemoryAccounts:
                 return None
             invite.update(usedAt=iso(now), usedBy=user_id)
             return copy.deepcopy(invite)
+
+    def delete_invites(
+        self, *, org_id: str | None = None, user_id: str | None = None, unused_only: bool = False
+    ) -> int:
+        """초대를 지운다. org_id는 그 조직의 초대, user_id는 그 사람이 만들었거나 쓴 초대로 좁힌다.
+
+        unused_only면 아직 쓰지 않은 초대만 지운다. 지운 수를 준다.
+        """
+        with self._lock:
+            doomed = [
+                key
+                for key, invite in self._invites.items()
+                if invite_matches(invite, org_id=org_id, user_id=user_id, unused_only=unused_only)
+            ]
+            for key in doomed:
+                del self._invites[key]
+            return len(doomed)
+
+
+def invite_matches(
+    invite: dict[str, Any], *, org_id: str | None, user_id: str | None, unused_only: bool
+) -> bool:
+    if org_id is not None and invite.get("orgId") != org_id:
+        return False
+    if user_id is not None and user_id not in (invite.get("createdBy"), invite.get("usedBy")):
+        return False
+    return not (unused_only and invite.get("usedAt"))
 
 
 class LoginLimiter:

@@ -148,3 +148,51 @@ def test_registry_delete_removes_only_the_given_ids(kind, engine):
         )
     assert registry.delete(["human:org_d:a", "human:org_d:b", "없음"]) == 2
     assert [e.id for e in registry.list()] == ["human:org_r:a"]
+
+
+def test_management_methods(accounts):
+    """비밀번호 바꾸기, 역할 바꾸기, 소속·초대·사용자 지우기, 사용자 찾기(메모리와 SQL이 같다)."""
+    for uid, email, name in (
+        ("usr_a", "kim_lee@example.com", "김가상"),
+        ("usr_b", "kimxlee@example.com", "이가상"),
+    ):
+        accounts.add_user({**user(uid, email), "name": name})
+        accounts.add_membership(
+            {"userId": uid, "orgId": "org_a", "memberRole": "member", "createdAt": iso(NOW)}
+        )
+    # _는 글자 그대로, *는 아무 글자열, 와일드카드가 없으면 포함 검색(대소문자 무시)
+    assert [u["id"] for u in accounts.list_users("KIM_LEE")] == ["usr_a"]
+    assert [u["id"] for u in accounts.list_users("김*")] == ["usr_a"]
+    assert [u["id"] for u in accounts.list_users("*@EXAMPLE.com")] == ["usr_a", "usr_b"]
+    assert len(accounts.list_users()) == 2 and accounts.list_users("없음") == []
+    assert accounts.set_password("usr_a", "scrypt$new")
+    assert accounts.get_user("usr_a")["passwordHash"] == "scrypt$new"
+    assert not accounts.set_password("usr_z", "scrypt$new")
+    assert accounts.set_member_role("usr_a", "org_a", "owner")["memberRole"] == "owner"
+    assert accounts.get_membership("usr_a", "org_a")["memberRole"] == "owner"
+    assert accounts.set_member_role("usr_a", "org_z", "owner") is None
+    for token, by, used in (
+        ("h1", "usr_a", None),
+        ("h2", "usr_a", iso(NOW)),
+        ("h3", "usr_b", None),
+    ):
+        accounts.add_invite(
+            {
+                "tokenHash": token,
+                "orgId": "org_a",
+                "createdBy": by,
+                "createdAt": iso(NOW),
+                "expiresAt": iso(NOW + timedelta(days=7)),
+                "usedAt": used,
+                "usedBy": "usr_b" if used else None,
+            }
+        )
+    assert accounts.delete_invites(org_id="org_a", user_id="usr_a", unused_only=True) == 1
+    assert accounts.get_invite("h1") is None and accounts.get_invite("h2") is not None
+    assert accounts.delete_invites(user_id="usr_b") == 2  # 그 사람이 만든 것과 쓴 것
+    assert accounts.remove_membership("usr_b", "org_a")
+    assert not accounts.remove_membership("usr_b", "org_a")
+    assert accounts.delete_user("usr_a") and not accounts.delete_user("usr_a")
+    assert accounts.find_user("kim_lee@example.com") is None
+    assert accounts.list_memberships(org_id="org_a") == []
+    accounts.add_user(user("usr_c", "kim_lee@example.com"))  # 같은 이메일로 다시 가입할 수 있다
