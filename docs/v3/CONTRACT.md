@@ -246,7 +246,11 @@ VendorProfile {"orgId": "org_saegil",
                                         "monthlyAfter": {"claim"}, "difference": {"claim"}, "checks": []},
                               "carbon": {"claim"}, "checks": [], "alternatives": [{"vendorOrgId": "...", "route": "...", "monthlyAfter": {"claim"}, "note": "..."}]}],
              "totals": {"monthlyNow": {"claim"}, "monthlyAfter": {"claim"}, "difference": {"claim"}, "carbon": {"claim"}},
-             "assumptions": [{"id": "assumption:...", "label": "현행 혼합 소각 처리비 (폐플라스틱)", "value": 250, "unit": "원/kg"}], "sensitivity": [{"label": "현행이 위탁 재활용일 때", "difference": {"claim"}}]},
+             "assumptions": [{"id": "assumption:...", "label": "현행 혼합 소각 처리비 (폐플라스틱)", "value": 250, "unit": "원/kg"}], "sensitivity": [{"label": "현행이 위탁 재활용일 때", "difference": {"claim"}}],
+             "outsideVendors": {"source": {"name", "url", "asOfRange", "note", "radiusKm"},
+                                "streams": [{"streamId", "codes": [{"code": "51-03-01", "name": "폐합성수지류(…)"}], "total", "confirmedTotal", "reason",
+                                             "candidates": [{"id": "pv_…", "name", "address", "business", "match": "confirmed | check", "distance": {"claim"},
+                                                             "matchedCodes": [], "codes": [], "permitDate", "phone", "agency", "asOf", "evidence": ["ref:허가업체명부:…"], "note"}]}]} | null},
   "questions": [{"id": "q_1", "batch": 1, "streamId": "st_film", "field": "moisturePct", "text": "...", "answered": false}],
   "approvals": [{"threadId": "th_1", "emitter": false, "vendor": false, "blocked": false, "blockedReason": null}],
   "documents": [{"id": "doc_1", "kind": "request | plan", "title": "...", "text": "... {{c1}} ...", "claims": [{"claim"}], "validation": {"ok": true}}],
@@ -504,6 +508,7 @@ VendorProfile {"orgId": "org_saegil",
 | `POST /sessions` | `{emitterOrgId}`로 진단을 만든다. `emitterOrgId`가 없으면 요청한 조직이다 |
 | `GET /sessions` | 내가 당사자인 진단의 목록(최근 것이 앞). `[{id, emitterOrgId, emitterName, status, createdAt, updatedAt, as}]`. 배출 기업은 자기 진단, 업체는 자기에게 열린 대화가 있는 진단, 운영자는 전부. `as`는 `emitter`·`vendor`·`admin` |
 | `GET /sessions/{id}` | 진단 뷰 |
+| `GET /sessions/{id}/quote-request?streamId=&vendorId=` | 가입하지 않은 업체(결과 한 장 `outsideVendors`의 후보)에 보낼 견적 요청서 초안 `{kind: "quote_request", title, streamId, recipient: {id, name, business, address, phone, agency, asOf, evidence}, text, claims, rendered, validation}`. 배출 기업만(업체 403 `FORBIDDEN`), 후보가 아니면 404 `NOT_FOUND`. 저장하지 않고 그때 만들며, 읽기라서 체험하기에서도 열린다. 본문의 숫자는 흐름의 claim이고 근거 검증기를 거친다. 주소·전화는 본문이 아니라 `recipient`에 있다 |
 | `POST /sessions/{id}/run` | 에이전트를 다음 멈춤 지점까지 돌린다. 진단 뷰를 돌려준다. `?mode=async`면 뒤에서 돌리고 202 `{sessionId, status: "running", runId, after}`를 곧바로 준다(아래 "실시간 진행") |
 | `GET /sessions/{id}/stream` | 진행 기록을 SSE(`text/event-stream`)로 보낸다. 두 에이전트의 작성 중·근거 확인·거부·다시 쓰기·보냄, 진단 상태, 담당자 질문(아래 "실시간 진행") |
 | `POST /sessions/{id}/answers` | `{questionId, value | "unknown"}`. 수치 항목은 숫자나 글("2 퍼센트", "2프로 정도", "650 킬로", "0.65톤", "약 2%", "kg당 250원", "톤당 25만원")로 받아 항목의 단위로 바꾼다(톤→kg, 1년→한 달, 원/톤→원/kg). 숫자가 둘 이상("1~2%"), 범위를 뜻하는 말("이하", "넘게"), 다른 단위(% 자리에 kg), 한 달로 바꿀 수 없는 기간(주, 하루)은 `INVALID_ANSWER`이고 메시지가 고쳐 쓸 꼴을 알려 준다. "모름", "몰라요", "모르겠어요"는 `unknown`이다(`agents/amounts.py`) |

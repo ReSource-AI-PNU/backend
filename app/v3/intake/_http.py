@@ -23,7 +23,9 @@ def internal_hosts(env: dict[str, str] | None = None) -> frozenset[str]:
     """
     raw = (env if env is not None else os.environ).get("V3_INTERNAL_HTTP_HOSTS", "")
     return frozenset(
-        name for name in (part.strip().lower() for part in raw.split(",")) if name and "." not in name
+        name
+        for name in (part.strip().lower() for part in raw.split(","))
+        if name and "." not in name
     )
 
 

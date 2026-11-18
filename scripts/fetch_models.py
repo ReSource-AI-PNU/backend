@@ -3,6 +3,7 @@
 tar 안 구조: material/ (config.json, model.safetensors, threshold.json), condition/ (… + field_ok.json), domain_clf/ (clf.pkl)
 URL 이 없거나 이미 models/material/config.json 이 있으면 아무것도 하지 않는다(제로샷 대체 또는 기존 가중치 사용).
 """
+
 import os
 import sys
 import tarfile
@@ -15,7 +16,9 @@ if (dst / "material" / "config.json").exists():
     print(f"models already present at {dst}")
     sys.exit(0)
 if not url:
-    print("MODEL_BLOB_URL 없음 -> 학습 모델 없이 시작 (CLASSIFIER_BACKEND=auto 면 Azure OpenAI 제로샷)")
+    print(
+        "MODEL_BLOB_URL 없음 -> 학습 모델 없이 시작 (CLASSIFIER_BACKEND=auto 면 Azure OpenAI 제로샷)"
+    )
     sys.exit(0)
 import httpx
 

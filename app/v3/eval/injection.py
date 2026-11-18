@@ -978,9 +978,7 @@ def run_layer(
         )
     if reached:
         notes.append(
-            "발견: 목표에 닿은 공격 "
-            + ", ".join(f"{r['id']}({r['goal']})" for r in reached)
-            + "."
+            "발견: 목표에 닿은 공격 " + ", ".join(f"{r['id']}({r['goal']})" for r in reached) + "."
         )
     other = [i for i in items if i["otherOrgHits"]]
     if other:

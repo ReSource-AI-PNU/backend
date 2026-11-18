@@ -250,6 +250,10 @@ def route(app: service.App, request: Request) -> Any:
             return service.list_sessions(app, viewer)
         case ("GET", ["sessions", session_id]):
             return service.get_view(app, session_id, viewer)
+        case ("GET", ["sessions", session_id, "quote-request"]):
+            stream_id = (request.query.get("streamId") or [""])[0]
+            vendor_id = (request.query.get("vendorId") or [""])[0]
+            return service.quote_request(app, session_id, viewer, stream_id, vendor_id)
         case ("POST", ["sessions", session_id, "run"]):
             mode = (request.query.get("mode") or [""])[0]
             if mode == "async":

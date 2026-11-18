@@ -42,6 +42,8 @@ def test_vendors_answer_when_the_emitter_has_no_location():
     assert view["session"]["status"] == "awaiting_approval"
     assert view["threads"] and all(t["status"] != "handoff" for t in view["threads"])
     codes = [
-        code for entry in app.store.list_activity(session_id, 0) for code in entry.get("codes") or []
+        code
+        for entry in app.store.list_activity(session_id, 0)
+        for code in entry.get("codes") or []
     ]
     assert "TOO_MANY_TOOL_ROUNDS" not in codes

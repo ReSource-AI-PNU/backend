@@ -129,7 +129,8 @@ def test_helpers_that_used_both_forms_now_pick_one():
     reason = rails.auto_decline_reason({"autoDecline": ["PVC"]}, {"name": "PVC 시트", "id": "st_x"})
     assert reason.startswith("폐기물은 ")
     reason = rails.auto_decline_reason(
-        {"autoDecline": ["PVC"]}, {"name": "PVC 시트", "id": "st_x", "material": "PP", "form": "압축"}
+        {"autoDecline": ["PVC"]},
+        {"name": "PVC 시트", "id": "st_x", "material": "PP", "form": "압축"},
     )
     assert reason.startswith("PP 압축품은 ")
     shown = {"name": "PVC 시트", "id": "st_y", "material": "PP", "label": "PP 공정 스크랩 2"}

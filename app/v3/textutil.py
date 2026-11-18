@@ -155,7 +155,9 @@ def josa(word: str, pair: str) -> str:
 
 
 # 같은 낱말(한글이 들어간 두 글자 이상)이 빈칸을 두고 잇따라 나온 것. "처리비는 처리비는 {{x}}"
-_REPEATED = re.compile(r"(?<![가-힣A-Za-z0-9])([가-힣][가-힣A-Za-z0-9]+)(?:[ \t]+\1)+(?=[\s.,!?)]|$)")
+_REPEATED = re.compile(
+    r"(?<![가-힣A-Za-z0-9])([가-힣][가-힣A-Za-z0-9]+)(?:[ \t]+\1)+(?=[\s.,!?)]|$)"
+)
 
 
 def drop_repeats(text: str) -> str:

@@ -493,6 +493,10 @@ TEXT_KEYS_SKIPPED = {
 }  # fmt: skip
 
 
+# 가입하지 않은 업체 후보(결과 한 장의 outsideVendors)에서 공공데이터 원문을 옮긴 칸
+PUBLIC_RECORD_KEYS = {"url", "asOfRange", "address", "phone", "permitDate", "code"}
+
+
 def _loose_numbers(node, path, out):
     from app.v3.evidence.validator import find_numbers
 
@@ -517,6 +521,11 @@ def test_rule1_sentences_written_by_code_carry_no_loose_numbers(confirmed_demo):
         _loose_numbers(view, [], found)
         labels = {e.label for e in app.registry.list(org_id=viewer) if e.label}
         for path, text in found:
+            if (
+                path.startswith("result.outsideVendors.")
+                and path.rsplit(".", 1)[-1] in PUBLIC_RECORD_KEYS
+            ):
+                continue  # 공공데이터 명부를 원문 그대로 옮긴 식별 정보(ref 근거로 열린다). 수치가 아니다
             if path == "events.summary":
                 # 순번만 있다: "근거 확인 통과(1번째 작성)", "담당자 질문(2번째 묶음): …"
                 assert re.search(r"\d번째 (작성|묶음)", text), (viewer, text)

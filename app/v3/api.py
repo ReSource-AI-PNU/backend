@@ -488,7 +488,9 @@ async def trust(request: Request):
     try:
         return json.loads(TRUST_FILE.read_text(encoding="utf-8"))
     except (OSError, ValueError) as error:
-        raise service.ServiceError("TRUST_UNAVAILABLE", "평가 결과를 불러오지 못했습니다.", 503) from error
+        raise service.ServiceError(
+            "TRUST_UNAVAILABLE", "평가 결과를 불러오지 못했습니다.", 503
+        ) from error
 
 
 @router.post("/demo/reset")
@@ -555,6 +557,19 @@ async def session_list(request: Request):
 @guarded
 async def session_view(session_id: str, request: Request):
     return await call(service.get_view, session_id, await viewer_of(request))
+
+
+@router.get("/sessions/{session_id}/quote-request")
+@guarded
+async def quote_request(session_id: str, request: Request):
+    params = request.query_params
+    return await call(
+        service.quote_request,
+        session_id,
+        await viewer_of(request),
+        params.get("streamId", ""),
+        params.get("vendorId", ""),
+    )
 
 
 @router.post("/sessions/{session_id}/run")

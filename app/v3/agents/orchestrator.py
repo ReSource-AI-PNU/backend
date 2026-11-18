@@ -8,10 +8,11 @@ phase와 work에 남기고, 모든 메시지·도구 호출·검증 결과·hand
 
 from __future__ import annotations
 
+import logging
 import re
 from typing import Any
 
-from app.v3 import ids
+from app.v3 import ids, outreach
 from app.v3 import names as naming
 from app.v3.a2a import guardrails as rails
 from app.v3.a2a.guardrails import WEEKDAYS
@@ -58,6 +59,8 @@ from app.v3.judge.toolbox import TOOLS, call_tool
 from app.v3.live import STATUS_NOTES, Recorder
 from app.v3.textutil import josa
 from app.v3.untrusted import org_label, stream_label
+
+logger = logging.getLogger(__name__)
 
 PHASES = ("identify", "discover", "converse", "propose", "approval", "done")
 TERMS_TYPES = ("offer", "counter", "conditional")
@@ -163,6 +166,7 @@ def new_work() -> dict[str, Any]:
         "renegotiating": {},
         "unresolved": [],
         "optimize": None,
+        "outside": None,
         "result": None,
         "stages": dict.fromkeys(STAGE_KEYS, "waiting"),
     }
@@ -761,6 +765,31 @@ class Orchestrator:
         return self.store.get_session(session_id)
 
     # ── ②③④ 가능성, 규정, 업체 탐색과 문의 ────────────────────────────
+    def _find_outside(
+        self, session, emitter: dict[str, Any], streams: list[dict[str, Any]]
+    ) -> None:
+        """가입하지 않은 업체 후보(공공데이터 허가 명부). 대화는 열지 않고 결과 한 장에만 싣는다."""
+        try:
+            session["work"]["outside"] = outreach.find_outside(
+                self.registry, self.store, emitter, streams, self.today
+            )
+        except Exception:  # 명부 문제로 진단이 멈추면 안 된다(후보 없이 진행)
+            logger.warning("가입하지 않은 업체 후보를 찾지 못했다", exc_info=True)
+            session["work"]["outside"] = None
+            return
+        found = sum(len(s["candidates"]) for s in session["work"]["outside"]["streams"])
+        self.feed.activity(
+            session["id"],
+            "tool",
+            "판단 도구 · 가입하지 않은 업체 찾기: "
+            + ("허가 명부에서 후보를 찾았습니다" if found else "허가 명부에 맞는 곳이 없습니다"),
+            stage=4,
+            actor="tool",
+            org_id=session["emitterOrgId"],
+            tool=outreach.TOOL,
+            toolStatus="calculated",
+        )
+
     def _discover(self, session: dict[str, Any]) -> bool:
         work, org_id = session["work"], session["emitterOrgId"]
         emitter = self.store.get_org(org_id)
@@ -772,6 +801,7 @@ class Orchestrator:
                     share_evidence(self.registry, evidence_id, org_id)
         publics = {v: public_profile(p, fleet_cost=False) for v, p in profiles.items()}
         work["stages"].update({"3": "running", "4": "running"})
+        self._find_outside(session, emitter, streams)
 
         matched: dict[str, list[dict]] = {v: [] for v in publics}
         refused: dict[str, list[dict]] = {v: [] for v in publics}
@@ -2441,6 +2471,8 @@ class Orchestrator:
             "referencePrices": reference,
             "carbonInObjective": bool(optimized["output"].get("carbonInObjective")),
             "evidence": list(optimized.get("evidence") or []),
+            # 가입하지 않은 업체 후보(배출 기업만 본다: 업체 뷰는 최상위 키를 싣지 않는다)
+            "outsideVendors": work.get("outside"),
         }
 
     def _assumptions(self, evidence_ids: list[str], org_id: str) -> list[dict[str, Any]]:

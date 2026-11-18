@@ -39,8 +39,11 @@ EconomicAmount = Annotated[float, Field(allow_inf_nan=False)]
 """경제 효과 계산값. 원 또는 원/kg, 소수를 보존하고 비유한 값은 허용하지 않는다."""
 CalculationStatus = Literal["calculated", "conditional", "needs_information"]
 ReasonCode = Literal[
-    "missing_information", "unconfirmed_quantity", "zero_quantity",
-    "unsupported_combination", "invalid_input",
+    "missing_information",
+    "unconfirmed_quantity",
+    "zero_quantity",
+    "unsupported_combination",
+    "invalid_input",
 ]
 
 Ratio = Annotated[float, Field(ge=0, le=1)]
@@ -48,7 +51,9 @@ Box = tuple[Ratio, Ratio, Ratio, Ratio]
 """사진 크기에 대한 비율(0~1): [x, y, w, h]"""
 
 FlowStep = Literal["classify", "feasibility", "regulation", "matching", "cost-carbon", "proposal"]
-SessionStatus = Literal["analyzing", "in-progress", "awaiting-approval", "approved", "sent", "completed"]
+SessionStatus = Literal[
+    "analyzing", "in-progress", "awaiting-approval", "approved", "sent", "completed"
+]
 Mark = Literal["ai", "human"]
 """형광펜(ai) / 먹(human). AI 원래 값은 지우지 않는다."""
 

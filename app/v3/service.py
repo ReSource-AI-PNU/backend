@@ -19,7 +19,7 @@ from dataclasses import replace
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
-from app.v3 import feedback, ids, live
+from app.v3 import feedback, ids, live, outreach
 from app.v3 import fleet as fleet_input
 from app.v3 import names as naming
 from app.v3.a2a.message import STAGES
@@ -1431,6 +1431,36 @@ def _recheck(app: App, org_id: str) -> None:
     for session in app.store.list_sessions(org_id):
         if session.get("status") == "awaiting_approval":
             Orchestrator(app).recheck(session["id"])
+
+
+def quote_request(
+    app: App, session_id: str, viewer: str, stream_id: str, vendor_id: str
+) -> dict[str, Any]:
+    """가입하지 않은 업체(결과 한 장의 outsideVendors 후보)에 보낼 견적 요청서 초안. 배출 기업만 만든다.
+
+    저장하지 않고 그때그때 만든다(읽기만 하므로 체험하기에서도 열린다). 후보 목록에 없는 업체·흐름은 404다.
+    """
+    session, owner = _session_for(app, session_id, viewer)
+    if not owner:
+        raise ServiceError("FORBIDDEN", "배출 기업만 견적 요청서를 만들 수 있습니다.", 403)
+    outside = (
+        ((session["work"].get("result") or {}).get("outsideVendors"))
+        or session["work"].get("outside")
+        or {}
+    )
+    listed = {
+        (s["streamId"], c["id"])
+        for s in outside.get("streams") or []
+        for c in s.get("candidates") or []
+    }
+    if (stream_id, vendor_id) not in listed:
+        raise ServiceError("NOT_FOUND", "그 업체는 이 폐기물의 후보가 아닙니다.", 404)
+    emitter = app.store.get_org(session["emitterOrgId"])
+    stream = app.store.get_stream(stream_id, session["emitterOrgId"])
+    letter = outreach.quote_request(app.registry, emitter, stream, vendor_id, app.today)
+    if letter is None:
+        raise ServiceError("NOT_FOUND", "그 업체는 허가 명부에 없습니다.", 404)
+    return letter
 
 
 def get_view(app: App, session_id: str, viewer: str) -> dict[str, Any]:
