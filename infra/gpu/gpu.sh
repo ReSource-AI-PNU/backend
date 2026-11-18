@@ -4,16 +4,21 @@
 #   bash infra/gpu/gpu.sh up       # 켜고 Ollama가 답할 때까지 기다린다(꺼져 있을 때 약 2~3분)
 #   bash infra/gpu/gpu.sh down     # 할당 해제(디스크·공용 IP 비용만 남는다)
 #   bash infra/gpu/gpu.sh status   # 전원 상태와 Ollama를 마지막으로 쓴 뒤 지난 분
-#   bash infra/gpu/gpu.sh idle-stop [분]   # 켜져 있고 그만큼(기본 60분) 쓰지 않았으면 끈다. 맥의 launchd가 15분마다 부른다
+#   bash infra/gpu/gpu.sh auto [분]   # 쓸 때만 켠다: 꺼져 있는데 앱이 Ollama를 찾았으면 켜고, 켜져 있는데 그만큼(기본 5분)
+#                                    # 쓰지 않았으면 끈다. 맥의 launchd가 1분마다 부른다(install-gpu-auto.sh)
+#   bash infra/gpu/gpu.sh idle-stop [분]   # 켜져 있고 그만큼 쓰지 않았으면 끄기만 한다
 #
 # 꺼져 있어도 서비스는 멈추지 않는다: 배포가 OLLAMA_FALLBACK=1을 넣어, Ollama에 닿지 않으면 그 차례는 Foundry가 답한다
-# (운영 화면에는 설정한 모델과 실제로 답한 모델이 따로 나온다).
+# (운영 화면에는 설정한 모델과 실제로 답한 모델이 따로 나온다). 그때 백엔드가 남기는 경고("Ollama에 닿지 않아")가
+# 켜 달라는 신호다. 켜지는 데 2~3분이 걸리므로 꺼진 뒤 첫 호출은 Foundry가 답하고, 켜진 뒤의 차례부터 Ollama가 답한다.
 # 구독 권한(리소스 그룹 Contributor)으로는 VM이 스스로 끄는 역할 할당도, Azure 예약 종료(DevTestLab)·Automation도
 # 쓸 수 없어서 끄기는 맥에서 한다(infra/gpu/install-idle-watch.sh).
 set -euo pipefail
 RG="${RG:-team_AIBIC2026_03_RG_EUS2}"
 GPU_VM="${GPU_VM:-vm-rsai-gpu}"
 SSH_KEY="${SSH_KEY:-$HOME/.ssh/rsai_demo_vm}"
+APP_HOST="${APP_HOST:-rsai-o7xpbty4q5vgs.centralus.cloudapp.azure.com}"
+DEMAND_TEXT="Ollama에 닿지 않아"
 KEEP_ALIVE_MIN=1440  # setup-ollama.sh의 OLLAMA_KEEP_ALIVE=24h
 say() { echo "[gpu $(date '+%m-%d %H:%M')] $*"; }
 
@@ -29,6 +34,18 @@ ssh_ready() {
     az network nsg rule update -g "$RG" --nsg-name nsg-rsai-gpu -n AllowSshFromAdmin --source-address-prefixes "$mine/32" -o none
   fi
   SSH=(ssh -i "$SSH_KEY" -o StrictHostKeyChecking=accept-new -o ConnectTimeout=15 -o BatchMode=yes "rsai@$ip")
+}
+
+# 지난 n분 동안 앱이 꺼진 Ollama를 찾은 횟수(백엔드 경고). 앱 VM SSH 허용 주소도 지금 IP로 맞춘다
+app_demand() {
+  local mine rule
+  mine="$(curl -fsS -m 10 https://api.ipify.org)"
+  rule="$(az network nsg rule show -g "$RG" --nsg-name nsg-rsai-demo-app -n AllowSshFromAdmin --query sourceAddressPrefix -o tsv)"
+  if [ "$rule" != "$mine/32" ]; then
+    az network nsg rule update -g "$RG" --nsg-name nsg-rsai-demo-app -n AllowSshFromAdmin --source-address-prefixes "$mine/32" -o none
+  fi
+  ssh -i "$SSH_KEY" -o StrictHostKeyChecking=accept-new -o ConnectTimeout=15 -o BatchMode=yes "rsai@$APP_HOST" \
+    "sudo docker logs --since ${1}m rsai-backend-1 2>&1 | grep -c '$DEMAND_TEXT' || true"
 }
 
 # Ollama를 마지막으로 쓴 뒤 지난 분. 모델이 올라가 있으면 (지금 - (만료 - 24시간)), 없으면 켠 뒤 지난 분
@@ -92,5 +109,21 @@ case "${1:-status}" in
       say "켜 둠: 마지막 사용 뒤 ${idle}분(기준 ${limit}분)"
     fi
     ;;
-  *) echo "쓰는 법: $0 up | down | status | idle-stop [분]"; exit 2 ;;
+  auto)
+    limit="${2:-5}"
+    state="$(power)"
+    demand="$(app_demand "$limit" 2>/dev/null || echo 0)"
+    demand="${demand//[^0-9]/}"; demand="${demand:-0}"
+    if [ "$state" != running ]; then
+      if [ "$demand" -gt 0 ]; then say "앱이 Ollama를 찾았다(${demand}번). 켠다"; exec bash "$0" up; fi
+      exit 0
+    fi
+    ssh_ready
+    idle="$(idle_minutes 2>/dev/null || echo "")"
+    if [ -z "$idle" ]; then say "쓴 시각을 읽지 못해 끄지 않음"; exit 0; fi
+    if [ "$idle" -ge "$limit" ] && [ "$demand" -eq 0 ]; then
+      say "Ollama를 ${idle}분 쓰지 않아 끈다(기준 ${limit}분)"; az vm deallocate -g "$RG" -n "$GPU_VM" -o none; say "꺼짐"
+    fi
+    ;;
+  *) echo "쓰는 법: $0 up | down | status | auto [분] | idle-stop [분]"; exit 2 ;;
 esac

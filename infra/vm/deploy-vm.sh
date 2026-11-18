@@ -23,7 +23,7 @@
 #                    6천 토큰 프롬프트에 qwen2.5:7b 8분 30초·3b 4분 10초가 걸려(2026-11-18 측정) 실시간 대화가 안 되므로,
 #                    Ollama 주소를 비우고 V3_LLM_ALL_VENDORS=1로 주 모델(Foundry)이 답하게 한다(운영 화면에는 설정과 실제가 따로 보인다)
 #                    gpu면 GPU VM(infra/gpu-vm.bicep, East US A10, infra/gpu/setup-ollama.sh로 준비)의 Ollama가 답한다.
-#                    꺼져 있으면 배포가 먼저 켜고(infra/gpu/gpu.sh up), 쓰지 않으면 맥의 자동 끄기가 끈다(install-idle-watch.sh).
+#                    꺼져 있으면 배포가 먼저 켜고(infra/gpu/gpu.sh up), 그 뒤로는 맥의 감시 작업이 쓸 때만 켜고 5분 안 쓰면 끈다(install-gpu-auto.sh).
 #                    꺼진 동안 Ollama 차례는 Foundry가 답한다(OLLAMA_FALLBACK=1).
 #                    주소는 GPU VM의 사설 IP로 자동으로 찾고(앱 VNet과 피어링), 앱 VM의 ollama 컨테이너는 쓰지 않는다.
 #                    임베딩은 근거 색인과 같은 Foundry 임베딩을 그대로 쓴다
