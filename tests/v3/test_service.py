@@ -235,6 +235,7 @@ def test_stream_and_vendor_updates_are_grounded():
             "role": "currentUnitCost",
         },
         "assumed": False,
+        "billing": None,
     }
     back = service.update_stream(app, HANBIT, "st_film", {"currentTreatment": None}, HANBIT)
     assert back["currentTreatment"] is None

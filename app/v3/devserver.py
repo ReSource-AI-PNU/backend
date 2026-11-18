@@ -237,6 +237,10 @@ def route(app: service.App, request: Request) -> Any:
             return service.list_orgs(app, viewer or None, request.auth.scoped)
         case ("GET", ["orgs", org_id, "streams"]):
             return service.list_streams(app, org_id, viewer)
+        case ("GET", ["orgs", org_id, "report"]):
+            date_from = (request.query.get("from") or [""])[0] or None
+            date_to = (request.query.get("to") or [""])[0] or None
+            return service.get_report(app, org_id, viewer, date_from, date_to)
         case ("PUT", ["orgs", org_id, "streams", stream_id]):
             return service.update_stream(app, org_id, stream_id, request.json(), viewer)
         case ("GET", ["vendors", org_id]):

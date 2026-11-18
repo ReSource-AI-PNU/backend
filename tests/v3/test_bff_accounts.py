@@ -299,7 +299,8 @@ def test_demo_view_reads_demo_orgs_only_and_only_with_get(world):
     streams = client.get(f"/api/v3/orgs/{HANBIT}/streams", headers=demo(HANBIT))
     assert streams.status_code == 200 and len(streams.json()) == 4
     sessions = client.get("/api/v3/sessions", headers=demo(HANBIT)).json()
-    assert len(sessions) == 1
+    # 맨 앞은 승인 대기의 시연 진단, 그 뒤는 확정하고 검수까지 마친 지난 거래(실적 리포트용)
+    assert [s["status"] for s in sessions] == ["awaiting_approval", "confirmed"]
     view = client.get(f"/api/v3/sessions/{sessions[0]['id']}", headers=demo(HANBIT))
     assert view.status_code == 200 and view.json()["session"]["status"] == "awaiting_approval"
     assert client.get("/api/v3/sessions", headers=demo(SAEGIL)).status_code == 200
@@ -483,8 +484,11 @@ def test_demo_reset_keeps_real_data_and_leaves_a_demo_diagnosis(world):
     assert reset.json()["demoSessionStatus"] == "awaiting_approval"
 
     hanbit = client.get("/api/v3/sessions", headers=demo(HANBIT)).json()
-    assert [s["id"] for s in hanbit] == [reset.json()["demoSessionId"]]
-    assert hanbit[0]["status"] == "awaiting_approval"
+    assert hanbit[0]["id"] == reset.json()["demoSessionId"]
+    assert [s["status"] for s in hanbit] == ["awaiting_approval", "confirmed"]
+    report = client.get(f"/api/v3/orgs/{HANBIT}/report", headers=demo(HANBIT)).json()
+    assert "records" in report, report
+    assert report["records"] and report["totals"]["kg"]["value"] > 0
     view = client.get(f"/api/v3/sessions/{hanbit[0]['id']}", headers=demo(HANBIT)).json()
     assert view["approvals"] and view["threads"]
     # 실제 조직의 조직·흐름·진단은 그대로다
@@ -494,10 +498,10 @@ def test_demo_reset_keeps_real_data_and_leaves_a_demo_diagnosis(world):
     assert len(client.get(f"/api/v3/orgs/{org}/streams", headers=headers).json()) == 1
     me = client.get("/api/v3/accounts/me", headers=bff(user)).json()
     assert [m["orgId"] for m in me["memberships"]] == [org]
-    # 한 번 더 되돌려도 시연 진단은 하나다
+    # 한 번 더 되돌려도 시연 진단과 지난 거래 하나씩이다
     again = client.post("/api/v3/demo/reset", headers=bff(admin, ADMIN))
     assert again.status_code == 200
-    assert len(client.get("/api/v3/sessions", headers=demo(HANBIT)).json()) == 1
+    assert len(client.get("/api/v3/sessions", headers=demo(HANBIT)).json()) == 2
 
 
 def test_accounts_routes_do_not_exist_outside_bff_mode(world, monkeypatch):
@@ -575,7 +579,8 @@ def test_sql_storage_runs_the_same_bff_flow(tmp_path):
     second = service.reset_demo(state, ADMIN)
     assert second["demoSessionStatus"] == "awaiting_approval"
     assert second["demoSessionId"] != first["demoSessionId"]
-    assert [s["id"] for s in state.store.list_sessions()] == [second["demoSessionId"]]
+    listed = state.store.list_sessions()
+    assert second["demoSessionId"] in [s["id"] for s in listed] and len(listed) == 2
     assert state.store.get_org(org["id"])["name"] == "(주)SQL가상"
     assert accounts.me(state, user["user"]["id"])["memberships"][0]["orgId"] == org["id"]
     engine.dispose()
@@ -614,6 +619,7 @@ def test_demo_reset_uses_the_real_models_and_falls_back_to_rules_cleanly(world, 
         reset = service._reset_demo_only(state)
     assert used, "모델 설정이 있으면 먼저 실제 모델로 돌린다"
     assert reset["demoSessionStatus"] == "awaiting_approval"
-    sessions = state.store.list_sessions(HANBIT)
-    assert [s["id"] for s in sessions] == [reset["demoSessionId"]]  # 실패한 진단은 남지 않는다
+    sessions = service.list_sessions(state, HANBIT)
+    # 실패한 진단은 남지 않는다: 시연 진단(맨 앞)과 지난 거래 하나씩
+    assert sessions[0]["id"] == reset["demoSessionId"] and len(sessions) == 2
     assert "규칙 정책으로" in caplog.text

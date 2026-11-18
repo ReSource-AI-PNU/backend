@@ -516,6 +516,19 @@ async def streams(org_id: str, request: Request):
     return await call(service.list_streams, org_id, await viewer_of(request))
 
 
+@router.get("/orgs/{org_id}/report")
+@guarded
+async def org_report(org_id: str, request: Request):
+    params = request.query_params
+    return await call(
+        service.get_report,
+        org_id,
+        await viewer_of(request),
+        params.get("from") or None,
+        params.get("to") or None,
+    )
+
+
 @router.put("/orgs/{org_id}/streams/{stream_id}")
 @guarded
 async def put_stream(org_id: str, stream_id: str, request: Request):

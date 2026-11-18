@@ -19,7 +19,7 @@ from dataclasses import replace
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
-from app.v3 import feedback, ids, live, outreach
+from app.v3 import current_cost, feedback, ids, live, outreach, report
 from app.v3 import fleet as fleet_input
 from app.v3 import names as naming
 from app.v3.a2a.message import STAGES
@@ -373,6 +373,7 @@ def _reset_demo_only(app: App) -> dict[str, Any]:
     대기까지 가지 못하면 시연 자료를 한 번 더 처음 상태로 올리고(실패한 진단이 남지 않게) 규칙 정책으로 돌린다.
     """
     summary = _reseed_demo(app)
+    _demo_history(app)
     if app.llm_factory is not None:
         status = None
         try:
@@ -380,11 +381,81 @@ def _reset_demo_only(app: App) -> dict[str, Any]:
         except Exception:  # 모델 문제로 시연 되돌리기가 멈추면 안 된다
             logger.warning("실제 모델로 시연 진단을 돌리지 못해 규칙 정책으로 돈다", exc_info=True)
         if status == "awaiting_approval":
+            _latest(app, session_id)
             return {**summary, "demoSessionId": session_id, "demoSessionStatus": status}
         logger.warning("실제 모델 시연 진단이 끝나지 않아(%s) 규칙 정책으로 다시 돈다", status)
         summary = _reseed_demo(app)
+        _demo_history(app)
     session_id, status = _demo_run(app, None)
+    _latest(app, session_id)
     return {**summary, "demoSessionId": session_id, "demoSessionStatus": status}
+
+
+def _latest(app: App, session_id: str) -> None:
+    """시연 진단을 가장 최근 것으로 다시 적는다. 체험하기는 목록의 맨 앞 진단을 연다(지난 거래가 아니라)."""
+    app.store.put_session(app.store.get_session(session_id))
+
+
+DEMO_HISTORY_DAYS_AGO = (21, 7)  # 지난 거래의 검수일: 오늘로부터 며칠 전(두 번)
+
+
+def _demo_history(app: App) -> str | None:
+    """지난 거래 한 건: 규칙 정책으로 승인 대기까지 돌리고 양쪽이 승인해 확정한 뒤, 업체가 두 번 검수 결과를 기록한다.
+
+    체험하기에서 승인·서류·실제 결과 기록과 실적 리포트(report.py)가 비지 않게 하는 가상 거래다(시연 회사 사이만).
+    검수 무게와 단가는 합의한 값에서 정해진 비율로 만든 가상 값이다. 실패해도 시연 되돌리기는 계속한다.
+    """
+    # 지난 거래는 모델 설정과 상관없이 규칙 정책으로 만든다(승인 뒤 확인도 같은 앱으로)
+    app = copy.copy(app)
+    app.llm_factory = None
+    app.vendor_gateway = LocalVendorGateway(
+        lambda org, message, context: handle_vendor_message(app, org, message, context)
+    )
+    try:
+        session_id, status = _demo_run(app, None)
+        if status != "awaiting_approval":
+            return None
+        view = get_view(app, session_id, EMITTER)
+        vendors = {t["id"]: t["vendorOrgId"] for t in view["threads"]}
+        for item in view["approvals"]:
+            if item.get("blocked"):
+                continue
+            approve(app, session_id, item["threadId"], EMITTER)
+            approve(app, session_id, item["threadId"], vendors[item["threadId"]])
+        session = _session(app, session_id)
+        streams = {s["id"]: s for s in app.store.list_streams(EMITTER)}
+        prices = {
+            a["streamId"]: (a.get("unitPrice") or {}).get("value")
+            for a in (session["work"].get("result") or {}).get("assignments") or []
+        }
+        today = datetime.strptime(app.today, "%Y-%m-%d").date()
+        for thread in app.store.list_threads(session_id):
+            if thread.get("status") != "confirmed":
+                continue
+            for stream_id in session["work"]["assigned"].get(thread["id"]) or []:
+                kg, price = streams.get(stream_id, {}).get("monthlyKg"), prices.get(stream_id)
+                if kg is None or price is None:
+                    continue
+                for n, days in enumerate(DEMO_HISTORY_DAYS_AGO):
+                    record_outcome(
+                        app,
+                        session_id,
+                        {
+                            "threadId": thread["id"],
+                            "streamId": stream_id,
+                            "inspectedOn": (today - timedelta(days=days)).isoformat(),
+                            "actualUnitPriceKrwPerKg": float(price),
+                            "actualKg": round(float(kg) * (0.94 if n == 0 else 0.98)),
+                            "note": "시연용 가상 검수 기록",
+                        },
+                        thread["vendorOrgId"],
+                    )
+        # 실적 리포트의 계산 근거를 미리 만들어 둔다(체험하기는 읽기 전용이라 새 근거를 쓰지 못한다)
+        report.build(app, EMITTER, None, None)
+        return session_id
+    except Exception:  # 지난 거래 때문에 시연 되돌리기가 멈추면 안 된다
+        logger.warning("시연 지난 거래를 만들지 못했다", exc_info=True)
+        return None
 
 
 def _reseed_demo(app: App) -> dict[str, Any]:
@@ -517,6 +588,19 @@ def update_stream(
             stream["currentTreatment"] = None  # 입력이 없으면 혼합 소각 가정값을 쓴다
         elif not isinstance(current, dict):
             raise ServiceError("INVALID_VALUE", "현행 처리는 객체로 보내 주세요.", 422)
+        elif current.get("billing") is not None:
+            # 차량·횟수 단위나 월 정액 계약: 월 발생량으로 kg당 처리비로 바꾼다(current_cost)
+            try:
+                stream["currentTreatment"] = current_cost.to_treatment(
+                    app.registry,
+                    stream,
+                    current["billing"],
+                    app.today,
+                    method=str(current.get("method") or "현행"),
+                    source="자료 화면 입력",
+                )
+            except ValueError as error:
+                raise ServiceError("INVALID_VALUE", str(error), 422) from error
         else:
             cost = current.get("unitCostKrwPerKg")
             if isinstance(cost, bool) or not isinstance(cost, (int, float)) or cost < 0:
@@ -1066,6 +1150,10 @@ def _stream_view(
             "method": "혼합 소각" if assumed else current.get("method"),
             "unitCost": cost,
             "assumed": assumed,
+            # 차량·횟수 단위나 월 정액으로 받은 계약(kg당으로 바꾼 원래 꼴). 없으면 null
+            "billing": None
+            if assumed or not current.get("billing")
+            else {**current["billing"], "text": current_cost.describe(current["billing"])},
         }
         # 순비용에 쓰는 배출 기업만의 입력(자료 화면에서 고친다). 업체 뷰에는 없다
         reuse = stream.get("reuse") or None
@@ -1450,6 +1538,17 @@ def _recheck(app: App, org_id: str) -> None:
     for session in app.store.list_sessions(org_id):
         if session.get("status") == "awaiting_approval":
             Orchestrator(app).recheck(session["id"])
+
+
+def get_report(
+    app: App, org_id: str, viewer: str, date_from: str | None = None, date_to: str | None = None
+) -> dict[str, Any]:
+    """재활용·탄소 실적 리포트(report.py). 배출 기업 본인과 운영자만 본다. 읽기라서 체험하기에서도 열린다."""
+    _owner(app, org_id, viewer, role="emitter")
+    try:
+        return report.build(app, org_id, date_from or None, date_to or None)
+    except ValueError as error:
+        raise ServiceError("INVALID_VALUE", str(error), 422) from error
 
 
 def quote_request(

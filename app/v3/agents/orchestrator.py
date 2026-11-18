@@ -12,7 +12,7 @@ import logging
 import re
 from typing import Any
 
-from app.v3 import ids, outreach
+from app.v3 import ids, improve, outreach
 from app.v3 import names as naming
 from app.v3.a2a import guardrails as rails
 from app.v3.a2a.guardrails import WEEKDAYS
@@ -736,15 +736,17 @@ class Orchestrator:
             raise OrchestratorError("QUESTION_NOT_FOUND", "그런 질문이 없습니다.", 404)
         if question.get("answered"):
             return session  # 같은 답을 두 번 보내도 한 번만 적는다
+        stream = self.store.get_stream(question["streamId"], session["emitterOrgId"])
         try:
             parsed = questions.parse_answer(question["field"], value)
-            recorded = self.policy.record_answer(question, parsed)
+            # 계약 꼴 답(회당·월 정액)은 질문 기록에 사람이 읽는 글로 남긴다
+            shown = parsed["text"] if isinstance(parsed, dict) else parsed
+            recorded = self.policy.record_answer(question, shown)
+            stream = questions.apply_answer(
+                self.registry, stream, question["field"], parsed, self.today
+            )
         except ValueError as error:
             raise OrchestratorError("INVALID_ANSWER", str(error), 422) from error
-        stream = self.store.get_stream(question["streamId"], session["emitterOrgId"])
-        stream = questions.apply_answer(
-            self.registry, stream, question["field"], parsed, self.today
-        )
         self.store.put_stream(stream)
         self.store.put_question(session_id, recorded)
         self._event(
@@ -2473,7 +2475,19 @@ class Orchestrator:
             "evidence": list(optimized.get("evidence") or []),
             # 가입하지 않은 업체 후보(배출 기업만 본다: 업체 뷰는 최상위 키를 싣지 않는다)
             "outsideVendors": work.get("outside"),
+            # 분리 개선 안내(배출 기업만 본다)
+            "improvements": self._improvements(org_id, streams, assignments, sorted(threads)),
         }
+
+    def _improvements(self, org_id, streams, assignments, vendor_ids) -> list[dict[str, Any]]:
+        """폐기물마다 무엇을 하면 어느 업체가 얼마에 더 받는지(improve.py). 실패해도 결과 한 장은 낸다."""
+        try:
+            return improve.improvements(
+                self.registry, self.store, org_id, streams, assignments, vendor_ids, self.today
+            )
+        except Exception:  # 안내 계산 때문에 결과가 막히면 안 된다
+            logger.warning("분리 개선 안내를 만들지 못했다", exc_info=True)
+            return []
 
     def _assumptions(self, evidence_ids: list[str], org_id: str) -> list[dict[str, Any]]:
         """결과에 쓰인 가정값. 화면이 ID 대신 이름과 값을 보여 주게 {id, label, value, unit}로 준다."""
@@ -2787,7 +2801,62 @@ class Orchestrator:
                     if check["status"] == "conditional" and check["key"] not in CURRENT_CHECKS:
                         lines.append(f"   반입 전 확인: {check['text']}")
             lines.append("반입 검수 결과가 조건과 다르면 앱에서 다시 협의합니다.")
+            lines.extend(contract_lines(use))
             return lines
+
+        def contract_lines(use) -> list[str]:
+            """단가와 계약 조건. 2026-11-19 배출 사업장 설문의 "단가 상호불신으로 장기 계약이 어렵다"에 답한다:
+            단가를 공개 시세에 묶고, 검수 기록을 양쪽이 함께 보고, 바꿀 때는 미리 알린다."""
+            org = thread.emitter_org
+            out = ["", "단가와 계약 조건"]
+            band = basis.resolve(self.registry, org, "contract.priceBandPct")
+            band_claim = (
+                {
+                    "id": "x",
+                    "kind": "number",
+                    "value": band.value,
+                    "unit": band.unit,
+                    "evidence": [band.id],
+                }
+                if band is not None and isinstance(band.value, (int, float))
+                else None
+            )
+            moved = use(band_claim, "contractPriceBand") if band_claim else None
+            materials = sorted({str(streams[sid].get("material") or "") for sid in assigned} - {""})
+            # 재질마다 시세 하나(폐기물에 가까운 형태 순: 압축품, 플레이크, 펠렛)
+            order = {"압축": 0, "플레이크": 1, "펠렛": 2}
+            picked: dict[str, dict[str, Any]] = {}
+            for found in basis.reference_prices(self.registry, org, materials):
+                best = picked.get(found["material"])
+                if best is None or order.get(found["form"], 9) < order.get(best["form"], 9):
+                    picked[found["material"]] = found
+            for found in picked.values():
+                evidence = found["evidence"]
+                if not isinstance(evidence.value, (int, float)):
+                    continue
+                price = use(
+                    {
+                        "id": "x",
+                        "kind": "number",
+                        "value": evidence.value,
+                        "unit": evidence.unit,
+                        "evidence": [evidence.id],
+                    },
+                    f"reference_{safe_id(found['key'])}",
+                )
+                out.append(f"- 합의할 때의 기준 시세({evidence.label}): {price}")
+            if moved:
+                out.append(
+                    f"- 기준 시세가 합의할 때보다 {moved} 넘게 오르거나 내리면 단가를 다시 협의합니다."
+                )
+            out.append(
+                "- 반입 검수에서 오염도나 수분이 합의한 매입 기준의 상한을 넘으면 그 업체 매입 기준표의 다음 등급 단가를 따릅니다."
+            )
+            out.append("- 검수할 때마다 무게·등급·단가를 앱에 기록하고, 양쪽이 같은 기록을 봅니다.")
+            out.append(
+                "- 어느 쪽이든 조건을 바꾸려면 한 달 전에 앱에서 알리고, 그동안은 지금 조건을 지킵니다."
+            )
+            return out
 
         return [
             build("request", "수거·처리 요청서", request_lines),

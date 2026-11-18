@@ -9,7 +9,7 @@ import math
 import re
 from typing import Any
 
-from app.v3 import ids
+from app.v3 import current_cost, ids
 from app.v3.a2a.policy import UNKNOWN
 from app.v3.agents.amounts import read_amount
 from app.v3.evidence.model import Evidence
@@ -23,8 +23,8 @@ FIELDS: dict[str, dict[str, Any]] = {
         "answerType": "number",
         "unit": "원/kg",
         "label": "현행 처리비",
-        "text": "{name_object} 지금 처리하는 데 kg당 얼마를 내고 계신가요? "
-        "모르면 '모름'으로 답해 주세요.",
+        "text": "{name_object} 지금 처리하는 데 얼마를 내고 계신가요? kg당 금액을 모르면 "
+        "'회당 얼마, 한 달 몇 번'이나 '한 달 얼마'처럼 계약한 대로 적어 주세요. 모르면 '모름'으로 답해 주세요.",
     },
     "material": {
         "priority": 1,
@@ -112,7 +112,9 @@ def with_ask_lines(text: str, asks: list[dict[str, str]], names: dict[str, str])
         return text
     lines = []
     for stream_id in dict.fromkeys(a["streamId"] for a in asks):
-        fields = [ASK_LABELS.get(a["field"], "확인할 값") for a in asks if a["streamId"] == stream_id]
+        fields = [
+            ASK_LABELS.get(a["field"], "확인할 값") for a in asks if a["streamId"] == stream_id
+        ]
         lines.append(f"- {names.get(stream_id) or '폐기물'}: {', '.join(dict.fromkeys(fields))}")
     return "\n".join([text.rstrip(), *lines])
 
@@ -198,6 +200,11 @@ def parse_answer(field: str, value: Any) -> Any:
         raise ValueError("답이 비어 있습니다. 모르면 '모름'으로 답해 주세요.")
     if isinstance(value, str) and _UNKNOWN_WORDS.fullmatch(value.strip().lower()):
         return UNKNOWN
+    if field == "currentCost":
+        # 차량·횟수 단위나 월 정액 계약("회당 30만원, 월 2회", "월 60만원")은 월 발생량으로 kg당으로 바꾼다(current_cost)
+        billing = current_cost.parse_billing(value)
+        if billing is not None:
+            return {"billing": billing, "text": current_cost.describe(billing)}
     if spec["answerType"] == "number":
         # "2 퍼센트", "650 킬로", "0.65톤", "약 2%"처럼 적은 답도 항목의 단위로 읽는다(amounts)
         number = read_amount(value, spec.get("unit"), spec["label"])
@@ -223,6 +230,21 @@ def apply_answer(
     spec = FIELDS[field]
     name = stream.get("name") or stream["id"]
     answers = dict(stream.get("answers") or {})
+    if field == "currentCost" and isinstance(value, dict) and "billing" in value:
+        current = dict(stream.get("currentTreatment") or {})
+        treatment = current_cost.to_treatment(
+            registry,
+            stream,
+            value["billing"],
+            today,
+            method=current.get("method") or "혼합 소각",
+            source="담당자 질문 답변",
+        )
+        stream["currentTreatment"] = {**treatment, "methodAssumed": not current.get("method")}
+        answers[field] = treatment["unitCostKrwPerKg"]
+        stream["answers"] = answers
+        stream["unknownFields"] = [f for f in stream.get("unknownFields") or [] if f != field]
+        return stream
     if spec["answerType"] == "number":
         evidence = registry.put(
             Evidence(

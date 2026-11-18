@@ -467,7 +467,7 @@ def test_demo_view_streams_demo_sessions_but_cannot_run(monkeypatch):
         with TestClient(fastapi_app) as client:
             assert client.post("/api/v3/demo/reset", headers=bff()).status_code == 200
             demo = bff(org_id=HANBIT, **{"X-Demo-View": "1"})
-            (listed,) = client.get("/api/v3/sessions", headers=demo).json()
+            listed = client.get("/api/v3/sessions", headers=demo).json()[0]  # 맨 앞이 시연 진단
             items = stream(client, listed["id"], demo)
             assert items[-1]["data"]["status"] == "awaiting_approval"
             assert any(i["event"] == "activity" and i["data"]["kind"] == "sent" for i in items)

@@ -503,7 +503,8 @@ VendorProfile {"orgId": "org_saegil",
 | `GET /trust` | 공개 신뢰 페이지가 읽는 최신 평가 요약(`docs/v3/eval/latest.json`, 평가 설계 17장). 조직 데이터가 없어 `GET /health`처럼 인증 없이 답한다. 파일을 읽지 못하면 503 `TRUST_UNAVAILABLE` |
 | `POST /demo/reset` | 시연 데이터를 처음 상태로 되돌린다. 관리자만(아래 "관리자 조직") |
 | `GET /orgs` | 조직 목록. 조직 레코드의 `order`가 작은 것부터(시연 주인공 `org_hanbit`이 맨 앞, 운영 조직이 맨 뒤). `order`가 없는 조직은 그 뒤에 ID 순. token 모드에서는 자기 조직과 대화 상대만 |
-| `GET /orgs/{orgId}/streams`, `PUT /orgs/{orgId}/streams/{streamId}` | 흐름 조회와 수정(현행 처리, 전처리 작업 시간·시간당 인건비, 공정 재투입 값 포함. 6장) |
+| `GET /orgs/{orgId}/streams`, `PUT /orgs/{orgId}/streams/{streamId}` | 흐름 조회와 수정(현행 처리, 전처리 작업 시간·시간당 인건비, 공정 재투입 값 포함. 6장). 현행 처리는 `{method, unitCostKrwPerKg}` 대신 `{method, billing: {kind: "per_trip", krwPerTrip, tripsPerMonth} | {kind: "monthly", krwPerMonth}}`로도 받는다(차량·횟수 단위나 월 정액 계약). 월 발생량으로 kg당 처리비를 계산해 calc 근거로 남기고, 월 발생량이 없으면 422 `INVALID_VALUE`. 질문 답(`currentCost`)도 "회당 30만원, 월 2회", "월 60만원", "1년에 720만원"을 같은 방식으로 읽는다(`app/v3/current_cost.py`) |
+| `GET /orgs/{orgId}/report?from=&to=` | 재활용·탄소 실적 리포트 `{orgId, period, generatedOn, records, totals, planned}`. 배출 기업 본인과 운영자만(업체 403 `WRONG_ROLE`). `records`는 기간(YYYY-MM-DD, 검수일 기준) 안 실제 결과 기록마다 실제 중량·단가(업체 기록 근거)와 금액·탄소 변화(calc), `totals`는 그 합(반출 무게, 매각 수익, 처리비, 탄소), `planned`는 양쪽이 확정한 합의의 한 달 예상(결과 한 장의 배정). 숫자는 모두 claim이다(`app/v3/report.py`) |
 | `GET /vendors/{orgId}`, `PUT /vendors/{orgId}` | 업체 프로필(허가, 매입 기준, 노선·차량, 가드레일, 모델 선택). 노선·차량(`fleet`)의 모양과 검사는 9장 "노선·차량" |
 | `POST /sessions` | `{emitterOrgId}`로 진단을 만든다. `emitterOrgId`가 없으면 요청한 조직이다 |
 | `GET /sessions` | 내가 당사자인 진단의 목록(최근 것이 앞). `[{id, emitterOrgId, emitterName, status, createdAt, updatedAt, as}]`. 배출 기업은 자기 진단, 업체는 자기에게 열린 대화가 있는 진단, 운영자는 전부. `as`는 `emitter`·`vendor`·`admin` |
