@@ -22,6 +22,11 @@
 #   USE_OLLAMA       1이면 Ollama를 고른 업체(시연의 남해열분해)가 VM의 Ollama로 답한다. 기본은 비움: GPU 없이 CPU로는
 #                    6천 토큰 프롬프트에 qwen2.5:7b 8분 30초·3b 4분 10초가 걸려(2026-11-18 측정) 실시간 대화가 안 되므로,
 #                    Ollama 주소를 비우고 V3_LLM_ALL_VENDORS=1로 주 모델(Foundry)이 답하게 한다(운영 화면에는 설정과 실제가 따로 보인다)
+#                    gpu면 GPU VM(infra/gpu-vm.bicep, East US A10, infra/gpu/setup-ollama.sh로 준비)의 Ollama가 답한다.
+#                    주소는 GPU VM의 사설 IP로 자동으로 찾고(앱 VNet과 피어링), 앱 VM의 ollama 컨테이너는 쓰지 않는다.
+#                    임베딩은 근거 색인과 같은 Foundry 임베딩을 그대로 쓴다
+#   OLLAMA_URL       USE_OLLAMA=gpu에서 자동으로 찾은 주소 대신 쓸 Ollama 주소
+#   GPU_VM           USE_OLLAMA=gpu일 때 찾을 GPU VM 이름 (기본 vm-rsai-gpu)
 #   OLLAMA_MODELS    USE_OLLAMA=1일 때 VM에 받아 둘 Ollama 모델 (기본 "bge-m3 qwen2.5:7b")
 #   SSH_SOURCE       SSH를 허용할 공용 IP (기본: 지금 이 컴퓨터의 공용 IP. NSG 규칙과 다르면 맞춘다)
 #   SEED             1이면 배포 끝에 시연 데이터를 되돌린다. bff는 백엔드 컨테이너에서 scripts.v3.accounts_admin reset-demo,
@@ -49,6 +54,8 @@ V3_LLM="${V3_LLM:-foundry}"
 V3_AUTH="${V3_AUTH:-bff}"
 AUTH_DEV_LOGIN="${AUTH_DEV_LOGIN:-true}"
 USE_OLLAMA="${USE_OLLAMA:-}"
+OLLAMA_URL="${OLLAMA_URL:-}"
+GPU_VM="${GPU_VM:-vm-rsai-gpu}"
 OLLAMA_MODELS="${OLLAMA_MODELS:-bge-m3 qwen2.5:7b}"
 [ "$USE_OLLAMA" = 1 ] || OLLAMA_MODELS=""
 SEED="${SEED:-}"
@@ -130,7 +137,15 @@ put "$B" V3_LLM "$V3_LLM"
 put "$B" FOUNDRY_ENDPOINT "$FOUNDRY_ENDPOINT"
 put "$B" FOUNDRY_DEPLOYMENT "${FOUNDRY_DEPLOYMENT:-gpt-5-mini}"
 put_secret "$B" FOUNDRY_API_KEY foundry-api-key
-if [ "$USE_OLLAMA" = 1 ]; then
+if [ "$USE_OLLAMA" = gpu ]; then
+  if [ -z "$OLLAMA_URL" ]; then
+    gpu_ip="$(az vm list-ip-addresses -g "$RG" -n "$GPU_VM" --query "[0].virtualMachine.network.privateIpAddresses[0]" -o tsv 2>/dev/null || true)"
+    [ -n "$gpu_ip" ] || { say "GPU VM $GPU_VM을 찾지 못했다(infra/gpu-vm.bicep)"; exit 1; }
+    OLLAMA_URL="http://$gpu_ip:11434"
+  fi
+  say "업체 측 오픈 모델: GPU VM의 Ollama ($OLLAMA_URL)"
+  put "$B" OLLAMA_BASE_URL "$OLLAMA_URL"
+elif [ "$USE_OLLAMA" = 1 ]; then
   put "$B" OLLAMA_BASE_URL "http://ollama:11434"
   put "$B" OLLAMA_EMBED_MODEL bge-m3
 else

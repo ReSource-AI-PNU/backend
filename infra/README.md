@@ -35,7 +35,7 @@ INDEX=1 bash infra/vm/deploy-vm.sh         # 끝에 백엔드 컨테이너 안�
 | `infra/vm/deploy-vm.sh` | Key Vault에서 비밀을 읽어 VM의 `/opt/rsai/env/*.env`(권한 600)에만 쓰고, `git archive`한 소스를 올려 VM 안에서 이미지를 빌드한다. 마이그레이션 → 시작 → Ollama 모델 받기 → HTTPS 응답 확인 순서다 |
 
 - **지역:** PostgreSQL·AI Search와 같은 Central US에 둔다. East US 2에 두었을 때 DB 왕복이 평균 39ms라 근거를 하나씩 읽는 진단 실행 한 번이 10분을 넘겼다.
-- **설정:** `V3_LLM=foundry`(기본. Foundry gpt-5-mini. 2026-11-18 출력 형식을 고친 뒤 초안 첫 시도 통과율 99~100%, 시연 업체 세 곳 모두 합의. `rule`은 규칙 정책), `V3_AUTH=bff`(기본. 실제 계정·조직: 프런트 서버만 Key Vault `v3-bff-key`로 백엔드를 부르고 백엔드가 사용자·소속을 확인한다. 키가 없으면 스크립트가 만들어 `backend.env`와 `frontend.env`의 `V3_BFF_KEY`에 넣는다. `V3_AUTH=token`이면 전처럼 `v3-org-tokens`), `AUTH_DEV_LOGIN=true`(시연용 로그인). bff에서 `SEED=1`은 시연 조직만 되돌리고(`scripts.v3.accounts_admin reset-demo`) 시연 진단을 승인 대기까지 돌려 둔다. 관리자는 가입한 뒤 `GRANT_ADMIN=<이메일>`로 배포하거나 백엔드 컨테이너에서 `python -m scripts.v3.accounts_admin grant-admin <이메일>`로 넣는다. Ollama는 기본으로 쓰지 않는다: GPU 할당량이 0이라 CPU로 도는데, 6천 토큰 프롬프트에 qwen2.5:7b가 8분 30초, 3b가 4분 10초 걸려(프롬프트 처리 초당 12.1·24.7토큰, 2026-11-18 측정) 실시간 대화가 되지 않는다. 그래서 Ollama 주소를 비우고 `V3_LLM_ALL_VENDORS=1`로 Ollama를 고른 업체(시연의 남해열분해)도 Foundry가 답한다. 운영 화면에는 설정한 모델과 실제로 답한 모델이 따로 보인다. GPU가 생기면 `USE_OLLAMA=1`로 배포한다.
+- **설정:** `V3_LLM=foundry`(기본. Foundry gpt-5-mini. 2026-11-18 출력 형식을 고친 뒤 초안 첫 시도 통과율 99~100%, 시연 업체 세 곳 모두 합의. `rule`은 규칙 정책), `V3_AUTH=bff`(기본. 실제 계정·조직: 프런트 서버만 Key Vault `v3-bff-key`로 백엔드를 부르고 백엔드가 사용자·소속을 확인한다. 키가 없으면 스크립트가 만들어 `backend.env`와 `frontend.env`의 `V3_BFF_KEY`에 넣는다. `V3_AUTH=token`이면 전처럼 `v3-org-tokens`), `AUTH_DEV_LOGIN=true`(시연용 로그인). bff에서 `SEED=1`은 시연 조직만 되돌리고(`scripts.v3.accounts_admin reset-demo`) 시연 진단을 승인 대기까지 돌려 둔다. 관리자는 가입한 뒤 `GRANT_ADMIN=<이메일>`로 배포하거나 백엔드 컨테이너에서 `python -m scripts.v3.accounts_admin grant-admin <이메일>`로 넣는다. Ollama: 앱 VM은 GPU가 없어 CPU로는 6천 토큰 프롬프트에 qwen2.5:7b가 8분 30초 걸린다(프롬프트 처리 초당 12.1토큰, 2026-11-18 측정). 그래서 업체 측 오픈 모델은 East US의 GPU VM(아래 "GPU VM")에서 돌리고 `USE_OLLAMA=gpu`로 배포한다. GPU VM이 꺼져 있거나 없으면 `USE_OLLAMA`를 비우고 배포한다: Ollama 주소를 비우고 `V3_LLM_ALL_VENDORS=1`로 Ollama를 고른 업체(시연의 남해열분해)도 Foundry가 답한다. 운영 화면에는 설정한 모델과 실제로 답한 모델이 따로 보인다.
 - **Azure AI 연결:** `deploy-vm.sh`가 `backend.env`에 Document Intelligence(`AZURE_DOCUMENT_INTELLIGENCE_ENDPOINT`, 키 `docintel-key`), Content Safety Prompt Shields(`AZURE_CONTENT_SAFETY_ENDPOINT`, 키 `contentsafety-key`), AI Search(`AZURE_SEARCH_ENDPOINT`, `AZURE_SEARCH_INDEX=rsai-evidence`, 키 `search-admin-key`), 임베딩(`V3_EMBEDDINGS=foundry`, `FOUNDRY_EMBEDDING_DEPLOYMENT=text-embedding-3-small`, `AZURE_SEARCH_VECTOR_DIMENSIONS=1536`), `APPLICATIONINSIGHTS_CONNECTION_STRING`을 넣는다. 주소는 태그와 종류로 찾고 키는 Key Vault에서 읽는다. 리소스를 찾지 못하면 그 연결만 빠지고 앱은 로컬 경로로 돈다.
 - **임베딩:** 설계는 Ollama `bge-m3`였지만 Ollama는 VM 안에서만 닿아 맥에서 색인할 수 없다. 색인과 질의가 같은 모델을 쓰도록 둘 다 Foundry `text-embedding-3-small`(배포 이름 같음, GlobalStandard, 용량 50, 1536차원)로 한다. 색인 `rsai-evidence`는 2026-11-18 맥에서 시드 근거 48건(법령 26, 기준값 11, 가정값 11)으로 만들었다. 다시 만들 때는 `INDEX=1`(VM 안, 운영 DB)이나 맥에서 아래처럼 한다(키는 Key Vault에서 환경 변수로만 읽는다).
 
@@ -52,6 +52,26 @@ INDEX=1 bash infra/vm/deploy-vm.sh         # 끝에 백엔드 컨테이너 안�
 - **끄고 켜기:** `stop.sh`가 VM을 할당 해제하고, `start.sh`가 다시 켠다(태그 `project=resource-ai`). 할당 해제 중에는 디스크 비용만 든다. Compose 서비스는 `restart: unless-stopped`라 VM이 켜지면 같이 올라온다.
 - **비용(정가):** VM 시간당 0.172달러(월 약 126), 공용 IP 시간당 약 0.005달러, 디스크 128GB StandardSSD.
 
+## GPU VM (업체 측 오픈 모델, Ollama)
+
+구독의 GPU 할당량은 East US의 A10 계열(`NVADSA10v5`, 한도 200 vCPU를 여러 팀이 나눠 씀)에만 있어서 앱 VM과 지역이 다르다.
+
+| 파일 | 하는 일 |
+|---|---|
+| `infra/gpu-vm.bicep` | `vm-rsai-gpu`(Standard_NV18ads_A10_v5: 18 vCPU, A10의 절반 12GB, 정가 시간당 1.6달러), 전용 VNet `vnet-rsai-gpu`(10.71.0.0/24), 앱 VNet과의 양방향 피어링, NSG(SSH는 관리자 IP 하나, 11434는 앱 VNet 10.70.0.0/16에서만), SSH·아웃바운드용 공용 IP |
+| `infra/gpu/setup-ollama.sh` | GRID 드라이버(Azure 문서의 수동 절차: nouveau 끄기 → `go.microsoft.com/fwlink/?linkid=874272` → gridd.conf, 두 번 다시 켬) → Ollama(사설 IP에만 바인딩, 모델 하루 유지, 동시 4) → `qwen2.5:7b` 받기와 예열 |
+
+```bash
+az deployment group create -g team_AIBIC2026_03_RG_EUS2 -f infra/gpu-vm.bicep \
+  -p sshPublicKey="$(cat ~/.ssh/rsai_demo_vm.pub)" sshSource="$(curl -s https://api.ipify.org)"
+bash infra/gpu/setup-ollama.sh
+FRONTEND_DIR=../frontend USE_OLLAMA=gpu SEED=1 bash infra/vm/deploy-vm.sh
+```
+
+- **Azure GPU 드라이버 확장(NvidiaGpuDriverLinux)은 쓰지 않는다.** 2026-11-18 이 크기에서 확장이 GRID 드라이버와 함께 `ubuntu-desktop` 전체를 깔다가 Firefox 스냅 설정의 대화형 질문에서 멈췄다. VM을 확장 없이 다시 만들고 위 스크립트로 드라이버만 깔았다(드라이버 595.91.07, `A10-12Q`).
+- **측정(2026-11-18, qwen2.5:7b, 약 4천 토큰 프롬프트):** 프롬프트 처리 초당 1,947토큰, 생성 초당 41토큰, 한 번 6.3초. CPU(앱 VM)는 프롬프트 처리 초당 12.1토큰, 생성 초당 3.0토큰이었다.
+- **켜고 끄기:** `project=resource-ai` 꼬리표가 있어 `infra/stop.sh`·`start.sh`가 앱 VM과 함께 할당 해제·시작한다. 꺼 두는 동안에는 디스크와 공용 IP 비용만 든다. GPU VM을 꺼 둔 채 앱을 쓰려면 `USE_OLLAMA`를 비우고 다시 배포한다(남해열분해도 Foundry가 답한다).
+
 ## Bicep 묶음
 
 묶음은 네 개다. `all`을 주면 한 번에 배포한다.
@@ -60,7 +80,7 @@ INDEX=1 bash infra/vm/deploy-vm.sh         # 끝에 백엔드 컨테이너 안�
 |---|---|---|
 | `base` | VNet, Log Analytics, Application Insights, Container Registry, Key Vault, Storage, PostgreSQL | 배포됨. Container Apps 환경은 공급자 등록 대기 |
 | `ai` | Foundry(AI Services) + 프로젝트 + 채팅 모델, Document Intelligence, Content Safety, AI Search | 배포됨. Azure Maps는 공급자 등록 대기 |
-| `ollama` | Ollama VM (공용 IP 없음, 11434는 VNet 안에서만) | 미배포. GPU 할당량 대기 |
+| `ollama` | Ollama VM (공용 IP 없음, 11434는 VNet 안에서만) | 쓰지 않음. 앱 VM과 같은 지역을 가정한 모듈이라 East US GPU는 `infra/gpu-vm.bicep`로 따로 배포했다 |
 | `ml` | 기존 Azure ML 작업 영역 `team-workspace`에 CPU 클러스터 | 배포됨. GPU 클러스터와 Fabric 용량은 대기 |
 
 ## 아직 켤 수 없는 것
@@ -72,7 +92,6 @@ INDEX=1 bash infra/vm/deploy-vm.sh         # 끝에 백엔드 컨테이너 안�
 | Container Apps 환경 | `Microsoft.App` 공급자 미등록 (조 계정에는 등록 권한이 없다) | `ENABLE_CONTAINER_APPS=true bash infra/deploy-infra.sh apply base` |
 | Azure Maps | `Microsoft.Maps` 공급자 미등록 | `ENABLE_MAPS=true bash infra/deploy-infra.sh apply ai` |
 | Fabric 용량 (F2) | `Microsoft.Fabric` 공급자 미등록 | `ENABLE_FABRIC=true FABRIC_ADMINS='["<UPN>"]' bash infra/deploy-infra.sh apply ml` |
-| Ollama GPU VM | T4 계열 할당량 0, A10 계열은 East US에 2 vCPU만 남음 | `bash infra/deploy-infra.sh apply ollama` |
 | Azure ML GPU 클러스터 | H100 계열 할당량만 있다 (시간당 약 6.98달러) | `ENABLE_GPU_CLUSTER=true bash infra/deploy-infra.sh apply ml` |
 
 `containerapps-env`, `maps`, `fabric`, `ollama-vm` 모듈은 `bicep build`만 통과했고 실제 배포로 검증하지 못했다.
