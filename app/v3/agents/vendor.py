@@ -280,11 +280,14 @@ def guide(
     asked: list[dict[str, Any]],
     days: list[str],
     roles: dict[str, str | None] | None = None,
+    facts: dict[str, dict[str, str]] | None = None,
 ) -> list[str]:
     """이번 차례에 할 일(코드가 도구 결과와 대화 상태에서 쓴다). 판단은 도구 결과 그대로다.
 
     roles는 claim ID → role(names.py)이다. 단가가 처리비(treatmentFee, 배출 기업이 내는 돈)인지
     매입 단가인지에 따라 본문의 문장이 다르다(CONTRACT.md "처리비 문장").
+    facts는 흐름 ID → {항목: claim ID}(pool.add_stream)이다. 담당자가 답한 값과 추정값을 조건 차례에
+    짚어 준다(그 값을 숫자로 옮겨 적거나 조건 문장에만 {{id}}를 써서 근거 검사에 걸리지 않게).
     """
     roles = roles or {}
     lines = [f"이번 차례에 쓸 수 있는 type: {', '.join(types)}."]
@@ -323,13 +326,22 @@ def guide(
             + "."
         )
         return lines
-    if any(
-        not _tried(results, tool, streamIds=acceptable)
+    # 앞 차례에 입력을 만들 수 없어 실패한 도구(배출 기업 위치가 없을 때의 노선 비용 등)는 부른 것으로
+    # 본다(draft.AgentTools가 기억한다). 아직 부르지 않은 도구만 부르게 한다
+    pending = [
+        tool
         for tool in ("check_loading", "route_extra_cost")
-    ):
+        if not _tried(results, tool, streamIds=acceptable)
+    ]
+    if pending:
         lines.append(
-            "받을 수 있는 흐름을 모아 check_loading과 route_extra_cost를 한 번에 부른다(text는 비운다). "
-            f'arguments는 {{"streamIds": {json.dumps(acceptable)}}}이다.'
+            "받을 수 있는 흐름을 모아 "
+            + (
+                "check_loading과 route_extra_cost를 한 번에"
+                if len(pending) == 2
+                else pending[0] + "을"
+            )
+            + f' 부른다(text는 비운다). arguments는 {{"streamIds": {json.dumps(acceptable)}}}이다.'
         )
         return lines
     told = {(a.get("streamId"), a.get("field")) for a in asked}
@@ -386,6 +398,13 @@ def guide(
             lines.append(f"- {name(sid)}: 본문에 '매입 단가는 {{{{{price}}}}}입니다'로 쓴다")
         # 조건은 한 줄에 하나씩 준다(본문에는 '  · ' 목록으로, terms.conditions에는 '이름: 조건'으로)
         lines += [f"  · {name(sid)}의 조건: {condition}" for condition in found]
+        soft = _soft_values(streams.get(sid) or {}, (facts or {}).get(sid) or {})
+        if soft:
+            lines.append(
+                f"  · {name(sid)}의 {', '.join(soft)}. 측정값이 아니므로 위 조건으로 반입 검수에서 "
+                "확인한다. 이 값을 본문에 적으려면 그 {{id}}로만 쓰고, terms.conditions에는 위 조건 "
+                "문장만 쓴다"
+            )
     tail = []
     if load_claims.get("pickupsPerMonth"):
         tail.append(
@@ -410,6 +429,10 @@ def guide(
         )
     lines.append(". ".join(tail) + ".")
     lines.append(
+        "terms.conditions에는 위 조건을 '폐기물 이름: 조건' 꼴로 그대로 옮긴다. 거기 쓴 {{id}}는 본문에도 "
+        "같은 글자로 쓰고, 위에 없는 조건이나 숫자를 새로 만들지 않는다."
+    )
+    lines.append(
         "조건이 하나라도 있으니 type은 conditional이다."
         if conditional
         else "붙는 조건이 없으니 type은 offer다."
@@ -417,6 +440,18 @@ def guide(
     if refused and not offered:
         lines.append("받지 않는 흐름은 excluded에 이유와 함께 적는다: " + ", ".join(refused) + ".")
     return lines
+
+
+def _soft_values(stream: dict[str, Any], facts: dict[str, str]) -> list[str]:
+    """측정값이 아닌 흐름 값(담당자 답, 추정값)을 '오염도({{id}})는 담당자가 답한 값' 꼴로."""
+    out = []
+    for field, label in (("contaminationPct", "오염도"), ("moisturePct", "수분")):
+        claim_id = facts.get(field)
+        if claim_id and "answered" in claim_id:
+            out.append(f"{label}({{{{{claim_id}}}}})는 배출 기업 담당자가 답한 값")
+    if facts.get("monthlyKg") and stream.get("monthlyKgBasis") == "estimated":
+        out.append(f"월 발생량({{{{{facts['monthlyKg']}}}}})은 추정값")
+    return out
 
 
 def _is_number(value: Any) -> bool:
@@ -923,6 +958,7 @@ class VendorAgent:
                     asked=asked,
                     days=days,
                     roles={e.claim.id: e.claim.role for e in pool.entries()},
+                    facts=facts,
                 ),
                 "today": self.today,
                 "org": {"id": vendor_org, "name": org_label(org.get("name"))},

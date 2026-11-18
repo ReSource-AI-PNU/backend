@@ -167,6 +167,8 @@ def new_work() -> dict[str, Any]:
 
 def memo_result(memo: list[dict[str, Any]], name: str, **arguments: Any) -> dict[str, Any] | None:
     for entry in memo or []:
+        if entry.get("failed"):
+            continue  # 입력을 만들 수 없어 실패한 호출(draft.AgentTools). 결과가 없다
         if entry["name"] == name and all(
             entry["arguments"].get(k) == v for k, v in arguments.items()
         ):

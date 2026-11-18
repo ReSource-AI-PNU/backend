@@ -449,7 +449,9 @@ class AgentTools:
     """에이전트가 부르는 판단 도구. 입력은 ID로 받고, 결과의 claims는 풀에 들어간다.
 
     memo는 같은 대화에서 이미 한 호출의 기록이다. 입력이 같으면 다시 부르지 않고(실행 기록에도
-    남기지 않고) 앞선 결과를 쓴다. 입력이 달라졌으면 버린다.
+    남기지 않고) 앞선 결과를 쓴다. 입력이 달라졌으면 버린다. 입력을 만들 수 없어 실패한 호출(배출 기업
+    위치가 없어 노선을 계산할 수 없는 경우 등)도 남긴다. 다음 차례에 입력을 다시 만들어 보고 여전히
+    만들 수 없으면 실패한 결과로 둔다(안내가 같은 도구를 차례마다 다시 부르게 하지 않는다).
     """
 
     def __init__(
@@ -483,8 +485,13 @@ class AgentTools:
         for entry in self.memo:
             try:
                 real, prefix, tags, skip = self.resolver(entry["name"], entry["arguments"])
-            except ValueError:
+            except ValueError as error:
+                if entry.get("failed") and str(error) == entry.get("error"):
+                    kept.append(entry)  # 같은 까닭으로 아직 부를 수 없다
+                    self._remember_failure(entry["name"], entry["arguments"], entry["error"])
                 continue
+            if entry.get("failed"):
+                continue  # 이제는 입력을 만들 수 있다. 다시 부르게 둔다
             if ids.digest(real) != entry.get("digest"):
                 continue
             kept.append(entry)
@@ -546,6 +553,20 @@ class AgentTools:
             )
         try:
             real, prefix, tags, skip = self.resolver(name, arguments)
+        except ValueError as error:
+            entry = {
+                "name": name,
+                "arguments": arguments,
+                "failed": True,
+                "error": str(error),
+                "result": None,
+            }
+            if name in TOOLS and entry not in self.memo:
+                self.memo.append(entry)
+            return self._failed(name, arguments, str(error), called_by)
+        except (KeyError, TypeError) as error:
+            return self._failed(name, arguments, str(error), called_by)
+        try:
             result = call_tool(
                 name,
                 real,
@@ -591,12 +612,25 @@ class AgentTools:
         )
         failed = {"tool": name, "arguments": arguments, "status": "error", "error": message}
         if name in TOOLS:
-            # 같은 입력으로 다시 불러도 같은 이유로 실패한다. 결과 목록에 남겨 에이전트가 부른 것을 알게 한다
-            # (규칙 정책과 안내가 같은 도구를 거듭 부르다 도구 횟수 상한에 걸리지 않게 한다)
-            key = self._key(name, arguments)
-            self.results = [r for r in self.results if self._key(r["tool"], r["arguments"]) != key]
-            self.results.append({**failed, "output": None, "checks": [], "claims": {}})
+            self._remember_failure(name, arguments, message)
         return failed
+
+    def _remember_failure(self, name: str, arguments: dict[str, Any], message: str) -> None:
+        # 같은 입력으로 다시 불러도 같은 이유로 실패한다. 결과 목록에 남겨 에이전트가 부른 것을 알게 한다
+        # (규칙 정책과 안내가 같은 도구를 거듭 부르다 도구 횟수 상한에 걸리지 않게 한다)
+        key = self._key(name, arguments)
+        self.results = [r for r in self.results if self._key(r["tool"], r["arguments"]) != key]
+        self.results.append(
+            {
+                "tool": name,
+                "arguments": arguments,
+                "status": "error",
+                "error": message,
+                "output": None,
+                "checks": [],
+                "claims": {},
+            }
+        )
 
 
 def run_draft(
