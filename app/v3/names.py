@@ -27,6 +27,8 @@ TOOL_LABELS: dict[str, str] = {
     "route_extra_cost": "노선 추가 비용 계산",
     "optimize_assignment": "최적 배정 계산",
     "grade_stream": "등급 판정",
+    "negotiate_ask": "단가 협상(요청)",
+    "negotiate_reply": "단가 협상(업체 답)",
     "find_outside_vendors": "가입하지 않은 업체 찾기",
 }
 

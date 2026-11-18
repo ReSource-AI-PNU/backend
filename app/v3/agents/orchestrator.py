@@ -16,7 +16,7 @@ from app.v3 import ids, improve, outreach
 from app.v3 import names as naming
 from app.v3.a2a import guardrails as rails
 from app.v3.a2a.guardrails import WEEKDAYS
-from app.v3.a2a.message import MESSAGE_TYPES, PLACEHOLDER, Message
+from app.v3.a2a.message import MESSAGE_TYPES, PLACEHOLDER, Claim, Message
 from app.v3.a2a.policy import (
     QuestionPolicy,
     can_open_thread,
@@ -53,7 +53,7 @@ from app.v3.evidence.validator import (
     validate_text,
 )
 from app.v3.intake.grade_model import GradeModelError, grade_stream
-from app.v3.judge import basis
+from app.v3.judge import basis, negotiate
 from app.v3.judge.common import best_criterion, permit_match, quality, without_emitter_only
 from app.v3.judge.toolbox import TOOLS, call_tool
 from app.v3.live import STATUS_NOTES, Recorder
@@ -1393,7 +1393,7 @@ class Orchestrator:
                     or (thread.status == "confirmed" and not keeps)  # 확정한 대화에는 더하지 않는다
                 ):
                     exclude.append({"streamId": sid, "vendorOrgId": thread.vendor_org})
-        vendors = [public_profile(profiles[t.vendor_org], fleet_cost=False) for t in live]
+        vendors = [self._public(session, profiles[t.vendor_org]) for t in live]
         arguments: dict[str, Any] = {"streams": streams, "vendors": vendors}
         if exclude:
             arguments["exclude"] = exclude
@@ -1492,7 +1492,7 @@ class Orchestrator:
         _, trace = self._company(session).run_tools(
             [("check_loading", {"streamIds": sorted(assigned)})],
             streams=[by_id[s] for s in thread.stream_ids if s in by_id],
-            vendor=public_profile(profiles[thread.vendor_org], fleet_cost=False),
+            vendor=self._public(session, profiles[thread.vendor_org]),
             memo=session["work"]["threadTools"].setdefault(thread.id, []),
         )
         self._flush(session["id"], trace, thread.id, session["emitterOrgId"])
@@ -1810,7 +1810,7 @@ class Orchestrator:
                 thread,
                 "reply",
                 streams=streams,
-                vendor=public_profile(profiles[thread.vendor_org], fleet_cost=False),
+                vendor=self._public(session, profiles[thread.vendor_org]),
                 vendor_org=self.store.get_org(thread.vendor_org),
                 memo=work["threadTools"].setdefault(thread.id, []),
                 state={
@@ -1865,6 +1865,119 @@ class Orchestrator:
         self._send(session, thread, outcome, trace, stage=5)
 
     # ── ⑤⑥ 비용·탄소 비교와 최적안 ────────────────────────────────────
+    def _public(self, session: dict[str, Any], profile: dict[str, Any]) -> dict[str, Any]:
+        """판단 도구에 넘기는 업체 프로필. 이 진단에서 협상한 단가가 있으면 그 매입 기준의 단가와 근거를 바꾼다.
+
+        협상 단가는 업체 측이 낸 계산 근거(negotiate_reply)이고, 그 기준의 나머지 근거(최소 물량, 상한)는 그대로다.
+        """
+        shown = public_profile(profile, fleet_cost=False)
+        deals = ((session.get("work") or {}).get("negotiated") or {}).get(
+            profile.get("orgId")
+        ) or {}
+        if not deals:
+            return shown
+        criteria = []
+        for criterion in shown.get("criteria") or []:
+            deal = deals.get(str(criterion.get("id")))
+            if deal:
+                # 협상 단가 근거를 맨 앞에 두고 매입 기준표 근거는 그대로 잇는다(협상 단가 계산의 입력이다)
+                criterion = {
+                    **criterion,
+                    "unitPriceKrwPerKg": deal["price"],
+                    "evidence": [deal["evidence"], *(criterion.get("evidence") or [])],
+                }
+            criteria.append(criterion)
+        return {**shown, "criteria": criteria}
+
+    def _negotiate(self, session, live: list[Thread], assigned: dict[str, list[str]]) -> set[str]:
+        """⑥ 합의 전 단가 협상 한 번. 배정된 흐름마다 회사 측이 요청 폭만큼 나은 단가를 요청하고(코드가 쓴 질문,
+        claim은 요청 단가 계산 근거), 업체 측이 자기 범위 안에서 답한다. 단가가 바뀐 대화의 ID를 돌려준다.
+
+        한 대화에 한 번만 한다(다시 실행해도 다시 묻지 않는다). 요청을 보낼 수 없으면(턴 상한, 근거 검사) 건너뛴다.
+        """
+        work = session["work"]
+        if not getattr(self.app, "negotiate", True):
+            return set()
+        done = work.setdefault("negotiation", {})
+        changed: set[str] = set()
+        for thread in live:
+            sids = sorted(assigned.get(thread.id) or [])
+            offers = work["offers"].get(thread.id) or {}
+            if not sids or thread.id in done or thread.status != "open":
+                continue
+            asks, claims, lines = [], [], []
+            for sid in sids:
+                offer = offers.get(sid)
+                if not offer:
+                    continue
+                result = negotiate.ask_price(
+                    self.registry,
+                    org_id=thread.emitter_org,
+                    today=self.today,
+                    stream_id=sid,
+                    offer=offer["claim"],
+                    vendor_org=thread.vendor_org,
+                )
+                found = next((c for c in result["claims"] if c["id"] == "askedPrice"), None)
+                if found is None:
+                    continue
+                key = f"ask_{safe_id(sid)}"
+                role = "treatmentFee" if found["value"] < 0 else "unitPrice"
+                claims.append(naming.annotate({**found, "id": key}, role, "요청 단가"))
+                asks.append({"streamId": sid, "claimId": key})
+                label = stream_label(self.store.get_stream(sid))
+                lines.append(f"{josa(label, '은는')} {{{{{key}}}}}로 맞춰 주실 수 있을까요?")
+            done[thread.id] = {"asks": asks, "result": {}}
+            if not asks:
+                continue
+            message = Message(
+                thread_id=thread.id,
+                sender=thread.emitter_org,
+                recipient=thread.vendor_org,
+                type="question",
+                stage=5,
+                text="합의하기 전에 단가를 한 번 더 여쭙니다. " + " ".join(lines),
+                stream_ids=tuple(sids),
+                claims=tuple(Claim.from_dict(c) for c in claims),
+            )
+            message.meta["priceAsks"] = asks
+            message.meta["model"] = {"provider": "code", "name": "단가 협상(요청 계산)"}
+            checked = validate_message(
+                message, self.registry, today=self.today, names=thread_names(self.store, thread)
+            )
+            message.meta["validation"] = {
+                "ok": checked.ok,
+                "attempts": 1,
+                "rejections": public_rejections([r.to_dict() for r in checked.rejections]),
+            }
+            if not checked.ok:
+                continue
+            try:
+                thread.check(message)
+            except ThreadError:
+                continue  # 턴 상한이면 협상하지 않고 받은 조건으로 합의한다
+            before = {sid: offers[sid]["unitPriceKrwPerKg"] for sid in sids if sid in offers}
+            self._append(session, thread, message, "company_agent")
+            self._ask_vendor(session, thread)
+            after = work["offers"].get(thread.id) or {}
+            memo = work["threadTools"].get(thread.id) or []
+            for sid, price in before.items():
+                new = after.get(sid)
+                done[thread.id]["result"][sid] = {
+                    "before": price,
+                    "after": new["unitPriceKrwPerKg"] if new else None,
+                }
+                if not new or new["unitPriceKrwPerKg"] == price:
+                    continue
+                route = memo_result(memo, "judge_route", streamId=sid) or {}
+                criterion = (route.get("output") or {}).get("criterionId")
+                if criterion:
+                    work.setdefault("negotiated", {}).setdefault(thread.vendor_org, {})[
+                        str(criterion)
+                    ] = {"price": new["unitPriceKrwPerKg"], "evidence": new["claim"]["evidence"][0]}
+                    changed.add(thread.id)
+        return changed
+
     def _propose(self, session: dict[str, Any]) -> bool:
         work, org_id = session["work"], session["emitterOrgId"]
         streams = self.store.list_streams(org_id)
@@ -1886,21 +1999,25 @@ class Orchestrator:
                     live.remove(thread)
         work["stages"]["5"] = "running"
         costs = []
-        for thread in live:
-            offered = sorted(work["offers"][thread.id])
-            # 대화 중에 담당자 답으로 흐름이 바뀌었으면 경로 판단부터 다시 한다(같은 입력이면 다시 부르지
-            # 않는다). 결과 한 장의 확인할 것과 민감도는 이 판단에서 나온다
-            calls = [("judge_route", {"streamId": sid}) for sid in offered]
-            calls += [("cost_carbon", {"streamId": sid}) for sid in offered]
-            calls.append(("check_loading", {"streamIds": offered}))
-            results, trace = agent.run_tools(
-                calls,
-                streams=[by_id[s] for s in thread.stream_ids],
-                vendor=public_profile(profiles[thread.vendor_org], fleet_cost=False),
-                memo=work["threadTools"].setdefault(thread.id, []),
-            )
-            self._flush(session["id"], trace, thread.id, org_id)
-            costs += [r.get("status") for r in results if r.get("tool") != "judge_route"]
+
+        def cost_tools(threads: list[Thread]) -> None:
+            for thread in threads:
+                offered = sorted(work["offers"][thread.id])
+                # 대화 중에 담당자 답으로 흐름이 바뀌었으면 경로 판단부터 다시 한다(같은 입력이면 다시 부르지
+                # 않는다). 결과 한 장의 확인할 것과 민감도는 이 판단에서 나온다. 협상한 단가가 있으면 그 단가로
+                calls = [("judge_route", {"streamId": sid}) for sid in offered]
+                calls += [("cost_carbon", {"streamId": sid}) for sid in offered]
+                calls.append(("check_loading", {"streamIds": offered}))
+                results, trace = agent.run_tools(
+                    calls,
+                    streams=[by_id[s] for s in thread.stream_ids],
+                    vendor=self._public(session, profiles[thread.vendor_org]),
+                    memo=work["threadTools"].setdefault(thread.id, []),
+                )
+                self._flush(session["id"], trace, thread.id, org_id)
+                costs.extend(r.get("status") for r in results if r.get("tool") != "judge_route")
+
+        cost_tools(live)
         work["stages"]["5"] = (
             "needs_check"
             if not live or "needs_information" in costs or "error" in costs
@@ -1915,32 +2032,42 @@ class Orchestrator:
             session["phase"] = "propose" if session["phase"] == "approval" else "approval"
             return False
 
-        vendors = [public_profile(profiles[t.vendor_org], fleet_cost=False) for t in live]
-        exclude = [
-            {"streamId": s["id"], "vendorOrgId": t.vendor_org}
-            for t in live
-            for s in streams
-            if s["id"] not in work["offers"][t.id]
-        ]
-        arguments: dict[str, Any] = {"streams": streams, "vendors": vendors}
-        if exclude:
-            arguments["exclude"] = exclude
-        optimized = self._tool(
-            session,
-            "optimize_assignment",
-            arguments,
-            summary_ids={
-                "streamIds": [s["id"] for s in streams],
-                "vendorOrgIds": [v["orgId"] for v in vendors],
-            },
-        )
+        def optimize(threads: list[Thread]) -> tuple[dict[str, Any], dict[str, list[str]]]:
+            vendors = [self._public(session, profiles[t.vendor_org]) for t in threads]
+            exclude = [
+                {"streamId": s["id"], "vendorOrgId": t.vendor_org}
+                for t in threads
+                for s in streams
+                if s["id"] not in work["offers"][t.id]
+            ]
+            arguments: dict[str, Any] = {"streams": streams, "vendors": vendors}
+            if exclude:
+                arguments["exclude"] = exclude
+            optimized = self._tool(
+                session,
+                "optimize_assignment",
+                arguments,
+                summary_ids={
+                    "streamIds": [s["id"] for s in streams],
+                    "vendorOrgIds": [v["orgId"] for v in vendors],
+                },
+            )
+            thread_of = {t.vendor_org: t for t in threads}
+            assigned: dict[str, list[str]] = {}
+            for item in optimized["output"].get("assignments") or []:
+                thread = thread_of.get(item.get("vendorOrgId"))
+                if thread is not None:
+                    assigned.setdefault(thread.id, []).append(item["streamId"])
+            return optimized, assigned
+
+        optimized, assigned = optimize(live)
+        # ⑥ 합의 전에 단가를 한 번 협상하고, 단가가 바뀌었으면 그 단가로 비용과 최적안을 다시 계산한다
+        changed = self._negotiate(session, live, assigned)
+        live = [t for t in live if t.status == "open" and work["offers"].get(t.id)]
+        if changed:
+            cost_tools([t for t in live if t.id in changed])
+            optimized, assigned = optimize(live)
         work["optimize"] = optimized
-        thread_of = {t.vendor_org: t for t in live}
-        assigned: dict[str, list[str]] = {}
-        for item in optimized["output"].get("assignments") or []:
-            thread = thread_of.get(item.get("vendorOrgId"))
-            if thread is not None:
-                assigned.setdefault(thread.id, []).append(item["streamId"])
         work["assigned"] = assigned
         for thread in live:
             if thread.id not in assigned:
@@ -2460,6 +2587,11 @@ class Orchestrator:
                 assumptions += [e for e in claim["evidence"] if e.startswith("assumption:")]
         for done in work["identify"].values():
             assumptions += done["grade"].get("assumptions") or []
+        if work.get("negotiated"):
+            # 협상 단가는 요청 폭(가정값)으로 요청한 결과다
+            found = basis.resolve(self.registry, org_id, negotiate.ASK_KEY)
+            if found is not None:
+                assumptions.append(found.id)
         materials = {
             part for s in streams for part in str(s.get("material") or "").split("+") if part
         }
@@ -2739,7 +2871,7 @@ class Orchestrator:
                 thread,
                 "confirm",
                 streams=streams,
-                vendor=public_profile(profile, fleet_cost=False),
+                vendor=self._public(session, profile),
                 vendor_org=self.store.get_org(thread.vendor_org),
                 memo=work["threadTools"].setdefault(thread.id, []),
                 state={"offered": sorted(offers), "agreed": agreed},
@@ -2751,7 +2883,7 @@ class Orchestrator:
         _, loading = self._company(session).run_tools(
             [("check_loading", {"streamIds": sorted(assigned)})],
             streams=streams,
-            vendor=public_profile(profile, fleet_cost=False),
+            vendor=self._public(session, profile),
             memo=work["threadTools"][thread.id],
         )
         self._flush(session["id"], loading, thread.id, thread.emitter_org)

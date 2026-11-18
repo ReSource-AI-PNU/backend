@@ -21,6 +21,8 @@ FILM_MOISTURE = 2.0  # 시연에서 담당자가 답하는 가상 값
 
 
 def make_app(llm_factory=None, **options):
+    # 시나리오 시험은 협상 전 흐름(매입 기준표 단가)을 본다. 협상은 test_negotiation.py가 negotiate=True로 본다
+    options.setdefault("negotiate", False)
     app = service.App(
         InMemoryStore(lambda: CLOCK),
         InMemoryRegistry(),

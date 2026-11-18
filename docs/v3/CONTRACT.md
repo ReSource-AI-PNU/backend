@@ -368,6 +368,15 @@ VendorProfile {"orgId": "org_saegil",
 | `question` | 배출 기업 | 받은 조건에 허가 품목이 맞지 않는 흐름이 있어 그 답을 붙이지 않고, 그 흐름만 빼고 남은 흐름의 조건을 다시 물음. `meta.excluded`, `meta.asks`(`field`는 `terms`) |
 | `counter` | 배출 기업 | 합의 뒤에 업체의 조건이 바뀌어 대화를 다시 엶(아래 "합의 뒤 업체 조건 변경"). `meta.asks`(`field`는 `terms`) |
 
+⑥ 단가 협상(2026-11-19, `App(negotiate=True)`가 기본이고 고정 평가셋과 협상 전 흐름 시험은 끈다)은 코드가 쓰는 메시지지만 숫자 claim이 있다:
+
+| `type` | 보내는 쪽 | 언제 |
+|---|---|---|
+| `question` | 배출 기업 | 최적안이 나온 뒤 합의하기 전에 대화마다 한 번. 배정된 폐기물마다 요청 단가(`negotiate_ask` 계산 근거: 제안 단가 + |제안 단가| × 요청 폭 가정값 `negotiation.askPct`)를 claim으로 싣고 `meta.priceAsks`(`[{streamId, claimId}]`)를 단다. `model.name`은 `단가 협상(요청 계산)` |
+| `offer` · `conditional` | 업체 | `meta.priceAsks`를 받으면 모델을 거치지 않고 답한다. 단가는 `negotiate_reply` 계산 근거로 요청 단가와 가드레일 상한 가운데 업체에 덜 불리한 값이고 처음 제안보다 나빠지지 않는다(상한이 없으면 처음 제안 그대로). 상한 값은 계산 근거의 입력에 싣지 않는다. 앞서 낸 조건 문장과 요일은 그대로 싣는다. `model.name`은 `단가 협상(업체 범위 계산)` |
+
+협상으로 단가가 바뀌면 회사 측은 그 매입 기준의 단가와 근거(협상 단가 근거를 맨 앞에)를 바꾼 업체 프로필로 비용 도구와 최적 배정을 다시 계산한다(`orchestrator._public`). 결과 한 장의 `assumptions`에 `negotiation.askPct`가 붙는다.
+
 ### 업체가 보는 뷰의 result
 
 업체(`viewer.role`이 `vendor`)가 보는 `result`는 다음 모양이다. 배출 기업의 현행 대비 손익과 다른 업체의 제안은 나가지 않는다.

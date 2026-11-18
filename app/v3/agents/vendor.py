@@ -10,12 +10,14 @@
 from __future__ import annotations
 
 import json
+import logging
 import re
 from typing import Any
 
 from app.v3 import ids
+from app.v3 import names as naming
 from app.v3.a2a import guardrails as rails
-from app.v3.a2a.message import Message
+from app.v3.a2a.message import Claim, Message
 from app.v3.a2a.policy import check_disclosure
 from app.v3.a2a.thread import Thread, ThreadError
 from app.v3.agents import questions
@@ -42,8 +44,11 @@ from app.v3.agents.pool import ClaimPool
 from app.v3.evidence.units import UnitError, convert
 from app.v3.evidence.validator import validate_message
 from app.v3.fleet import INFO_KEYS
+from app.v3.judge import negotiate
 from app.v3.judge.common import without_emitter_only
-from app.v3.untrusted import counterparty_stream, org_label
+from app.v3.untrusted import counterparty_stream, org_label, stream_label
+
+logger = logging.getLogger(__name__)
 
 ACTOR = "vendor_agent"
 TYPES = ("question", "answer", "offer", "counter", "conditional", "decline", "handoff")
@@ -824,6 +829,139 @@ class VendorAgent:
         return list(found.values())
 
     # ── 답하기 ────────────────────────────────────────────────────────
+    def _price_reply(
+        self,
+        vendor_org: str,
+        profile: dict[str, Any],
+        thread: Thread,
+        message: dict[str, Any],
+        streams: dict[str, dict],
+        names: list[str],
+    ) -> dict[str, Any] | None:
+        """⑥ 회사 측의 단가 조정 요청(meta.priceAsks)에 업체가 정한 범위 안에서 코드로 답한다(모델을 거치지 않는다).
+
+        앞서 낸 조건 메시지를 그대로 두고 요청받은 폐기물의 단가만 협상 단가로 바꿔 같은 종류로 다시 낸다.
+        답할 수 없으면(앞선 조건이 없거나 근거 검사에 걸리면) None을 돌려 평소처럼 답하게 한다.
+        """
+        asks = (message.get("meta") or {}).get("priceAsks") or []
+        # 폐기물마다 업체가 마지막으로 낸 조건(여러 메시지에 나눠 냈을 수 있다)
+        latest: dict[str, tuple[Message, dict[str, Any]]] = {}
+        for m in thread.messages:
+            if m.sender == vendor_org and m.type in rails.ENFORCED_TYPES and m.meta.get("terms"):
+                for item in m.meta["terms"].get("items") or []:
+                    latest[str(item.get("streamId"))] = (m, dict(item))
+        if not asks or not latest:
+            return None
+        asked_claims = {c["id"]: c for c in message.get("claims") or [] if isinstance(c, dict)}
+        claims: dict[str, Any] = {}
+        items: dict[str, dict[str, Any]] = {}
+        conditions: list[str] = []
+        sources: list[Message] = []
+        for sid, (m, item) in latest.items():
+            found = {c.id: c for c in m.claims}.get(item["claimId"])
+            if found is None or sid not in streams:
+                continue
+            claims[item["claimId"]] = found
+            items[sid] = item
+            if m not in sources:
+                sources.append(m)
+        for m in sources:
+            for text in m.meta["terms"].get("conditions") or []:
+                if text in conditions:
+                    continue
+                conditions.append(text)
+                own = {c.id: c for c in m.claims}
+                for cid in re.findall(r"\{\{([^{}]+)\}\}", text):
+                    if cid in own:
+                        claims.setdefault(cid, own[cid])
+        guard = profile.get("guardrails") or {}
+        lines: list[str] = []
+        asked_ids: set[str] = set()
+        for ask in asks:
+            sid, asked = str(ask.get("streamId")), asked_claims.get(str(ask.get("claimId")))
+            item = items.get(sid)
+            offered = claims.get(item["claimId"]) if item else None
+            if asked is None or offered is None:
+                continue
+            result = negotiate.reply_price(
+                self.registry,
+                org_id=vendor_org,
+                today=self.today,
+                stream_id=sid,
+                asked=asked,
+                offered=offered.to_dict(),
+                ceiling=guard.get("ceilingPriceKrwPerKg"),
+                emitter_org=thread.emitter_org,
+            )
+            found = next((c for c in result["claims"] if c["id"] == "replyPrice"), None)
+            if found is None:
+                continue
+            key = (
+                f"nego_{short(sid)}_unitPrice"  # 받는 쪽이 이름(매입 단가·처리비)을 다시 정하는 꼴
+            )
+            role = "treatmentFee" if found["value"] < 0 else "unitPrice"
+            claims[key] = Claim.from_dict(naming.annotate({**found, "id": key}, role, "협상 단가"))
+            item.update(claimId=key, unitPriceKrwPerKg=float(found["value"]))
+            asked_ids.add(sid)
+            label = stream_label(streams[sid])
+            output = result["output"]
+            if output["accepted"]:
+                lines.append(f"{label}: 요청하신 대로 {{{{{key}}}}}에 맞추겠습니다.")
+            elif output["improved"]:
+                lines.append(f"{label}: 정해 둔 범위 안에서 {{{{{key}}}}}까지 맞출 수 있습니다.")
+            else:
+                lines.append(f"{label}: 처음 드린 {{{{{key}}}}}에서 더 조정하기 어렵습니다.")
+        if not lines:
+            return None
+        for sid, item in items.items():
+            if sid not in asked_ids:
+                lines.append(
+                    f"{stream_label(streams[sid])}: 앞서 드린 {{{{{item['claimId']}}}}} 그대로입니다."
+                )
+        used = {item["claimId"] for item in items.values()}
+        cited = set(re.findall(r"\{\{([^{}]+)\}\}", " ".join(conditions)))
+        kept = [c for cid, c in claims.items() if cid in used or cid in cited]
+        last = sources[-1]
+        terms = json.loads(json.dumps(last.meta["terms"]))
+        kind = "conditional" if any(m.type == "conditional" for m in sources) else "offer"
+        body = "단가 조정 요청을 검토했습니다. " + " ".join(lines)
+        if conditions:
+            body += " 조건은 앞서 드린 그대로입니다: " + " ".join(conditions)
+        reply = Message(
+            thread_id=thread.id,
+            sender=vendor_org,
+            recipient=thread.emitter_org,
+            type=kind,
+            stage=5,
+            text=body,
+            stream_ids=tuple(s for s in thread.stream_ids if s in items),
+            claims=tuple(kept),
+        )
+        reply.meta["terms"] = {
+            "days": list(terms.get("days") or []),
+            "pickupsPerMonth": terms.get("pickupsPerMonth"),
+            **terms,
+            "items": list(items.values()),
+            "conditions": conditions,
+        }
+        problems = [
+            r.to_dict()
+            for r in validate_message(
+                reply, self.registry, today=self.today, names=names
+            ).rejections
+        ]
+        problems += self._guard(guard, reply, reply.meta["terms"], streams)
+        if problems:
+            logger.info(
+                "단가 협상 답을 만들지 못해 평소처럼 답한다: %s", [p["code"] for p in problems]
+            )
+            return None
+        reply.meta["validation"] = {"ok": True, "attempts": 1, "rejections": []}
+        reply.meta["model"] = {"provider": "code", "name": "단가 협상(업체 범위 계산)"}
+        data = reply.to_dict()
+        data["meta"]["trace"] = []
+        return data
+
     def handle(self, vendor_org: str, message: dict[str, Any], context: dict[str, Any]) -> dict:
         """받은 메시지 하나에 답 메시지(dict) 하나. meta에 validation, model, trace가 붙는다."""
         profile = self.store.get_vendor_profile(vendor_org)
@@ -843,6 +981,21 @@ class VendorAgent:
         raw = {s["id"]: s for s in streams}
         streams = [counterparty_stream(s) for s in streams]
         by_id = {s["id"]: s for s in streams}
+        if (message.get("meta") or {}).get("priceAsks") and message.get(
+            "from"
+        ) == thread.emitter_org:
+            names = [
+                org_label(org.get("name")),
+                org_label(emitter.get("name")),
+                *[x.get("name") for x in streams],
+            ]
+            try:
+                priced = self._price_reply(vendor_org, profile, thread, message, by_id, names)
+            except (KeyError, TypeError, ValueError):  # 협상 답을 만들 수 없으면 평소처럼 답한다
+                logger.warning("단가 협상 답을 만들지 못했다", exc_info=True)
+                priced = None
+            if priced is not None:
+                return priced
         guard = profile.get("guardrails") or {}
         trace = Trace()
         pool = ClaimPool(self.registry, vendor_org)

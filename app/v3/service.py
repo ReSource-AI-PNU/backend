@@ -131,8 +131,12 @@ class App:
         detector: Any = None,
         auth_mode: str = "header",
         accounts: Any = None,
+        negotiate: bool = True,
     ) -> None:
         self.store = store
+        # ⑥ 합의 전 단가 협상 한 번(orchestrator._negotiate). 고정 평가셋(test-v1)과 협상 전 흐름을 보는
+        # 시험은 끈다(기대값이 매입 기준표 단가다). 협상은 tests/v3/test_negotiation.py가 본다
+        self.negotiate = bool(negotiate)
         # HTTP 층이 요청한 조직을 정하는 방법. header는 시연 전용이다. bff면 실제 계정과 조직이 있고
         # 시연 되돌리기는 시연 조직만 되돌린다(reset_demo)
         self.auth_mode = str(auth_mode)
@@ -426,7 +430,7 @@ def _demo_history(app: App) -> str | None:
         streams = {s["id"]: s for s in app.store.list_streams(EMITTER)}
         assignments = (session["work"].get("result") or {}).get("assignments") or []
         prices = {a["streamId"]: (a.get("unitPrice") or {}).get("value") for a in assignments}
-        grades = {a["streamId"]: _agreed_grade(app, a) for a in assignments}
+        grades = {a["streamId"]: _agreed_grade(app, a, session["work"]) for a in assignments}
         today = datetime.strptime(app.today, "%Y-%m-%d").date()
         for thread in app.store.list_threads(session_id):
             if thread.get("status") != "confirmed":
@@ -459,8 +463,11 @@ def _demo_history(app: App) -> str | None:
         return None
 
 
-def _agreed_grade(app: App, assignment: dict[str, Any]) -> str | None:
-    """배정 단가의 근거가 가리키는 매입 기준의 등급(예: doc:org_miso:매입기준표:pc_miso_pp_b-단가 → B)."""
+def _agreed_grade(
+    app: App, assignment: dict[str, Any], work: dict[str, Any] | None = None
+) -> str | None:
+    """합의한 매입 기준의 등급. 회사 측 경로 판단(judge_route)이 고른 기준을 먼저 보고, 없으면 배정 단가의
+    근거가 가리키는 기준(예: doc:org_miso:매입기준표:pc_miso_pp_b-단가 → B)을 본다(협상 단가면 근거가 계산이다)."""
     vendor_id = assignment.get("vendorOrgId")
     if not vendor_id:
         return None
@@ -468,9 +475,18 @@ def _agreed_grade(app: App, assignment: dict[str, Any]) -> str | None:
         profile = app.store.get_vendor_profile(vendor_id)
     except NotFound:
         return None
+    criteria = {str(c.get("id")): c for c in profile.get("criteria") or [] if c.get("id")}
+    memo = ((work or {}).get("threadTools") or {}).get(assignment.get("threadId")) or []
+    for entry in memo:
+        if entry.get("name") == "judge_route" and not entry.get("failed"):
+            if (entry.get("arguments") or {}).get("streamId") != assignment.get("streamId"):
+                continue
+            chosen = ((entry.get("result") or {}).get("output") or {}).get("criterionId")
+            if str(chosen) in criteria:
+                return criteria[str(chosen)].get("grade")
     cited = " ".join((assignment.get("unitPrice") or {}).get("evidence") or [])
-    for criterion in profile.get("criteria") or []:
-        if criterion.get("id") and f":{criterion['id']}-" in cited:
+    for criterion_id, criterion in criteria.items():
+        if f":{criterion_id}-" in cited:
             return criterion.get("grade")
     return None
 

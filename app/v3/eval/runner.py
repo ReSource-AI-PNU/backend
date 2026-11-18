@@ -56,6 +56,8 @@ def _make_app(case: dict[str, Any], options: dict[str, Any]) -> service.App:
         today=today,
         shields=shield,
         distance_provider=options.get("distance_provider"),
+        # 고정 평가셋(test-v1)의 기대값은 매입 기준표 단가다. ⑥ 단가 협상은 이 평가에서 재지 않는다
+        negotiate=bool(options.get("negotiate", False)),
     )
 
 
