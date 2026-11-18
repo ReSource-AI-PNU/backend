@@ -21,7 +21,7 @@ MODEL_NAME = "resource-ai-grade"
 ENDPOINT_NAME = "rsai-grade"
 FEATURES = ("material", "contamination_pct", "moisture_pct")
 SYNTHETIC_LABEL = "합성 데이터 기준"
-_THRESHOLD_FILE = Path(__file__).with_name("grade_thresholds.v1.json")
+_THRESHOLD_FILE = Path(__file__).with_name("grade_thresholds.v2.json")
 _cache: dict[str, Any] = {}
 
 
@@ -43,12 +43,16 @@ def thresholds_evidence() -> Evidence:
         kind="assumption",
         label="재질별 등급 기준값",
         excerpt=_thresholds_text(data),
-        source=f"Re:Source AI 등급 기준 {data['version']} · {data['note']}",
+        source=f"Re:Source AI 등급 기준 {data['version']} · {data['note']}{_sources_text(data)}",
         as_of=data["asOf"],
         meta={
             "version": data["version"],
             "file": _THRESHOLD_FILE.name,
             "origin": f"app/v3/intake/{_THRESHOLD_FILE.name}",
+            "references": [
+                {"key": key, "label": ref["label"], "detail": ref["detail"], "url": ref["url"]}
+                for key, ref in (data.get("sources") or {}).items()
+            ],
         },
     )
 
@@ -56,10 +60,21 @@ def thresholds_evidence() -> Evidence:
 def _thresholds_text(data: dict[str, Any]) -> str:
     """기준값 표를 사람이 읽는 글로 편다. 근거 패널에 그대로 보인다."""
 
+    sources = data.get("sources") or {}
+
+    def ref(limit: dict[str, Any], key: str) -> str:
+        names = [
+            sources[k].get("short") or sources[k]["label"]
+            for k in limit.get(key) or []
+            if k in sources
+        ]
+        return f"({'·'.join(names)})" if names else ""
+
     def row(name: str, table: dict[str, Any]) -> str:
         cells = [
-            f"{grade} {_fmt(table[grade]['maxContaminationPct'])}%·"
-            f"{_fmt(table[grade]['maxMoisturePct'])}%"
+            f"{grade} {_fmt(table[grade]['maxContaminationPct'])}%"
+            f"{ref(table[grade], 'contaminationRef')}·"
+            f"{_fmt(table[grade]['maxMoisturePct'])}%{ref(table[grade], 'moistureRef')}"
             for grade in data["grades"]
             if grade in table
         ]
@@ -67,10 +82,25 @@ def _thresholds_text(data: dict[str, Any]) -> str:
 
     rows = [row(name, table) for name, table in sorted(data["materials"].items())]
     rows.append(row("그 밖의 재질", data["default"]))
+    meaning = data.get("meaning") or {}
+    intro = ""
+    if meaning:
+        intro = (
+            f"A는 {meaning['A']}, B는 {meaning['B']}, C는 {meaning['C']}입니다. "
+            "값 뒤 괄호는 참고한 공개 규격이고, 괄호가 없는 값은 팀 가정값입니다. "
+        )
     return (
         "등급별 상한(오염도·수분)입니다. 둘 다 상한 이하인 가장 높은 등급을 주고, "
-        f"C등급 상한을 넘으면 등외입니다. {' / '.join(rows)}"
+        f"C등급 상한을 넘으면 등외입니다. {intro}{' / '.join(rows)}"
     )
+
+
+def _sources_text(data: dict[str, Any]) -> str:
+    """참고한 공개 규격 목록. 근거 패널의 출처 줄에 붙는다."""
+    sources = data.get("sources") or {}
+    if not sources:
+        return ""
+    return " 참고: " + "; ".join(f"{s['label']}({s['detail']})" for s in sources.values())
 
 
 def _fmt(value: float) -> str:

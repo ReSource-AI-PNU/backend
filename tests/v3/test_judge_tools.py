@@ -111,8 +111,8 @@ def test_identify_measured_beats_photo_and_flags_disagreement():
         moisturePct=2.0,
     )
     assert r["output"]["grade"] == "C" and r["output"]["basis"] == "photo_estimate"
-    assert r["output"]["gradeEvidence"] == ["assumption:등급기준@v1"]
-    assert reg.get("assumption:등급기준@v1").kind == "assumption"
+    assert r["output"]["gradeEvidence"] == ["assumption:등급기준@v2"]
+    assert reg.get("assumption:등급기준@v2").kind == "assumption"
     r = run(reg, "identify_stream", stream=stream(measure=None, photo={"contaminationPct": 8.0}))
     assert r["status"] == "needs_information" and r["output"]["grade"] is None
     assert any(c["key"] == "moisture" and c["ask"] for c in r["checks"])

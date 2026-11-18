@@ -62,7 +62,7 @@ def test_first_stop_is_a_batch_of_questions(demo):
         "value": "A",
         "basis": "measured",
         "label": "측정 등급",
-        "evidence": ["model:rsai-grade:v1:st_sprue-measured"],
+        "evidence": ["model:rsai-grade:v2:st_sprue-measured"],
     }
     assert value(sprue["monthlyKg"]) == 600 and sprue["monthlyKg"]["evidence"]
     assert sprue["currentTreatment"]["assumed"] is False
@@ -176,7 +176,7 @@ def test_result_sheet_assigns_every_stream(demo):
     assert by_stream["st_purge"]["currentAssumed"] is True
     assumed = {a["id"]: a for a in result["assumptions"]}
     assert all(set(a) == {"id", "label", "value", "unit"} for a in result["assumptions"])
-    assert "assumption:등급기준@v1" in assumed
+    assert "assumption:등급기준@v2" in assumed
     cost = next(a for key, a in assumed.items() if key.startswith("assumption:current.cost."))
     assert cost["label"] and cost["unit"] == "원/kg" and cost["value"] > 0
     assert cost["value"] == app.registry.get(cost["id"], HANBIT).value

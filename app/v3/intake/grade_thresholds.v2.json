@@ -1,0 +1,70 @@
+{
+  "version": "v2",
+  "asOf": "2026-11-18",
+  "kind": "assumption",
+  "note": "공개 업계 규격을 참고해 팀이 정한 기준값입니다. 법정 기준이나 실제 업체 매입 기준이 아니며, 업체 매입 기준표가 있으면 그 기준을 우선합니다.",
+  "meaning": {
+    "A": "공정 재투입이나 사출용 분쇄품으로 쓸 수 있는 수준",
+    "B": "재활용 업체가 받는 선별 베일 수준",
+    "C": "열분해나 혼합 재활용에 넣을 수 있는 수준",
+    "등외": "소각이나 고형연료로 가는 수준"
+  },
+  "sources": {
+    "apr": {
+      "short": "APR",
+      "label": "APR·ReMA 베일 규격",
+      "detail": "HDPE 사출 등급·유색 병 베일 이물 합계 5% 이하, PP 소형 경질 베일 15% 이하, 2023 개정",
+      "url": "https://plasticsrecycling.org/images/Markets/APR-BaleSpec-HDPE-InjectionBulkyRigid.pdf"
+    },
+    "dsd": {
+      "short": "DSD",
+      "label": "독일 DSD 선별 규격",
+      "detail": "PP 베일 순도 94~96% 이상, 연질 PO 베일 순도 90% 이상",
+      "url": "https://www.gruener-punkt.de/fileadmin/Dateien/Downloads/PDFs/Rohstofffraktionsspezifikationen2024/April/DOC-23-50738_-_Rohstofffraktionsspezifikation_323-2_flexible_PO-Artikel_-_v1.00.0001.pdf"
+    },
+    "aepw": {
+      "short": "AEPW",
+      "label": "AEPW 열분해 원료 모델 규격",
+      "detail": "이물 합계 15% 이하, PVC 1% 이하, 수분 7% 이하",
+      "url": "https://resource-recycling.com/plastics/2022/04/12/chasing-consistency/"
+    }
+  },
+  "grades": ["A", "B", "C", "등외"],
+  "default": {
+    "A": {"maxContaminationPct": 1.0, "maxMoisturePct": 0.5},
+    "B": {"maxContaminationPct": 3.0, "maxMoisturePct": 1.0},
+    "C": {"maxContaminationPct": 8.0, "maxMoisturePct": 3.0}
+  },
+  "materials": {
+    "PP": {
+      "A": {"maxContaminationPct": 1.0, "maxMoisturePct": 0.5},
+      "B": {"maxContaminationPct": 5.0, "maxMoisturePct": 1.0, "contaminationRef": ["apr", "dsd"]},
+      "C": {"maxContaminationPct": 15.0, "maxMoisturePct": 7.0, "contaminationRef": ["aepw", "apr"], "moistureRef": ["aepw"]}
+    },
+    "PE": {
+      "A": {"maxContaminationPct": 1.0, "maxMoisturePct": 0.5},
+      "B": {"maxContaminationPct": 5.0, "maxMoisturePct": 1.5, "contaminationRef": ["apr"]},
+      "C": {"maxContaminationPct": 15.0, "maxMoisturePct": 7.0, "contaminationRef": ["aepw"], "moistureRef": ["aepw"]}
+    },
+    "HDPE": {
+      "A": {"maxContaminationPct": 1.0, "maxMoisturePct": 0.5},
+      "B": {"maxContaminationPct": 5.0, "maxMoisturePct": 1.5, "contaminationRef": ["apr"]},
+      "C": {"maxContaminationPct": 15.0, "maxMoisturePct": 7.0, "contaminationRef": ["aepw"], "moistureRef": ["aepw"]}
+    },
+    "LDPE": {
+      "A": {"maxContaminationPct": 2.0, "maxMoisturePct": 1.0},
+      "B": {"maxContaminationPct": 10.0, "maxMoisturePct": 3.0, "contaminationRef": ["dsd"]},
+      "C": {"maxContaminationPct": 15.0, "maxMoisturePct": 7.0, "contaminationRef": ["aepw"], "moistureRef": ["aepw"]}
+    },
+    "PET": {
+      "A": {"maxContaminationPct": 0.5, "maxMoisturePct": 0.5},
+      "B": {"maxContaminationPct": 2.0, "maxMoisturePct": 1.0},
+      "C": {"maxContaminationPct": 5.0, "maxMoisturePct": 2.0}
+    },
+    "ABS": {
+      "A": {"maxContaminationPct": 1.0, "maxMoisturePct": 0.3},
+      "B": {"maxContaminationPct": 3.0, "maxMoisturePct": 0.8},
+      "C": {"maxContaminationPct": 6.0, "maxMoisturePct": 2.0}
+    }
+  }
+}

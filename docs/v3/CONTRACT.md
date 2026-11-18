@@ -170,7 +170,7 @@ OR-Tools를 쓸 수 있으면 CVRP와 CP-SAT를 쓰고, 없으면 같은 답을 
 - 그보다 큰 문제는 OR-Tools의 답을 쓴다(노선은 탐욕 분할보다 짧을 때만. 아니면 `"greedy"`). OR-Tools가 없으면 노선은 탐욕 분할, 배정은 오류다.
 - 풀이는 도구 입력으로 고를 수 없다.
 
-등급 기준은 `app/v3/intake/grade_thresholds.v1.json` 하나다(근거 `assumption:등급기준@v1`). `identify_stream`과 `intake.grade_model`이 같은 기준을 쓴다.
+등급 기준은 `app/v3/intake/grade_thresholds.v2.json` 하나다(근거 `assumption:등급기준@v2`. B·C 상한 일부는 APR·DSD·AEPW 공개 규격을 참고했고, `sources`와 칸별 `contaminationRef`·`moistureRef`에 적는다). `identify_stream`과 `intake.grade_model`이 같은 기준을 쓴다.
 
 기준값 키는 `judge/basis.py`가 근거로 잇는다. `kau.price`는 KAU 종가 ref 근거(단위 `원/tCO2e`)를 쓰고, `reference.price.<재질>.<형태>`는 가격조사 ref 근거를 "참고 시세"로만 보여 준다(업체 매입 단가가 아니므로 손익 계산에는 쓰지 않는다).
 
@@ -455,7 +455,7 @@ VendorProfile {"orgId": "org_saegil",
  "outcomes": {"count": 0},
  "corrections": {"count": 0, "byField": {"material": 1}, "detectorCandidates": 0},
  "gate": {"allowed": false, "reason": "...", "minRealLabels": 30, "minAccuracy": 0.9, "realLabelCount": 0,
-          "evaluated": {"model": "등급 기준값 규칙 v1", "n": 0, "accuracy": null, "label": "실제 등급 기준"}},
+          "evaluated": {"model": "등급 기준값 규칙 v2", "n": 0, "accuracy": null, "label": "실제 등급 기준"}},
  "calibration": {"count": 0, "autoApply": false, "note": "...",
                  "groups": [{"streamId", "vendorOrgId", "criterionId", "count",
                              "items": [{"inspectedOn", "sessionId", "tablePrice": {"claim"}, "actualPrice": {"claim"}, "difference": {"claim"}}]}]},

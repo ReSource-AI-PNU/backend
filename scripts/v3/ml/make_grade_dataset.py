@@ -2,7 +2,7 @@
 
     python -m scripts.v3.ml.make_grade_dataset --n 5000 --seed 20261117 --out data/grade_synthetic.v1.csv
 
-모든 행에 synthetic=true가 붙는다. 기준값은 app/v3/intake/grade_thresholds.v1.json(가정값)이다.
+모든 행에 synthetic=true가 붙는다. 기준값은 app/v3/intake/grade_thresholds.v2.json(공개 규격을 참고한 가정값)이다.
 표준 라이브러리만 쓴다.
 """
 
