@@ -2,12 +2,16 @@
 
     uv run python scripts/v3/llm_conformance.py --llm foundry [--max-calls 120] [--out 결과.json]
                                                [--dump 기록.jsonl] [--today 2026-11-18]
+                                               [--variant pp-answer-5] [--vendor-only]
 
 - 모델 설정은 서버와 같은 함수(agents/factory.build_llm_factory)로 고른다. --llm foundry면 환경 변수
   FOUNDRY_ENDPOINT, FOUNDRY_DEPLOYMENT, FOUNDRY_API_KEY를 읽는다. 키 값은 출력하지 않는다.
 - 업체가 ollama를 골랐는데 OLLAMA_BASE_URL이 없으면 그 업체는 규칙 정책으로 돈다(서버와 같다).
   --all-vendors를 주면 그 업체도 회사 측과 같은 모델이 답한다. 결과에는 업체마다 실제로 쓴 구현이 나온다.
 - 담당자 질문에는 시연 값으로 답한다(오염도 0.5%, 수분 0.8%, 로트 일치 "예", 나머지는 "모름").
+- --variant로 시연 자료를 바꿔 돌린다(VARIANTS). pp-answer-5는 실제 브라우저 QA의 경우다: 흐름은 PP
+  불량품과 포장 필름 둘이고, PP 불량품은 측정값·사진 없이 시작해 오염도 질문에 담당자가 5%로 답한다.
+  업체 측이 담당자 답에 기댄 조건부 제안을 근거 검사에 통과시키는지 본다.
 - 승인은 하지 않는다. 진단이 승인 대기(awaiting_approval)까지 가는지와 대화마다의 결과를 본다.
 
 알려 주는 것: 대화마다 마지막 상태와 메시지 종류, 초안 수, 거부 코드별 수, 첫 초안 통과율,
@@ -42,6 +46,26 @@ ANSWERS: dict[str, Any] = {
     "lotSame": "예",
 }
 UNKNOWN = "unknown"
+
+# 시연 자료를 바꾸는 경우. streams: 남길 흐름(없으면 모두), vendors: 남길 업체(없으면 모두),
+# unmeasured: 측정값·사진·혼입물·겉보기 밀도를 지우고 월 발생량을 담당자가 넣은 추정값으로 바꿔 시작할
+# 흐름(값은 질문으로 받는다), names: 흐름 이름, answers: 흐름별로 시연 값 대신 줄 답,
+# no_location: 배출 기업 위치를 지운다(화면에서 가입한 회사는 주소만 있고 위치가 없다)
+VARIANTS: dict[str, dict[str, Any]] = {
+    # 실제 브라우저 QA(2026-11-18): 화면에서 등록한 PP 사출 불량품(측정값 없음, 추정 400kg)의 오염도를
+    # 담당자가 5%로 답하고 수분은 모른다. 업체 측이 수분을 되물은 뒤 조건부 제안을 쓰다 두 번 거부돼
+    # 미소환경·남해열분해 대화가 담당자에게 넘어갔다. 그 두 업체만 남긴다
+    "pp-answer-5": {
+        "no_location": True,
+        "streams": ["st_defect"],
+        "vendors": ["org_miso", "org_namhae"],
+        "unmeasured": {"st_defect": 400},
+        "names": {"st_defect": "PP 사출 불량품"},
+        "answers": {
+            "st_defect": {"contaminationPct": 5, "moisturePct": UNKNOWN, "currentCost": 250}
+        },
+    },
+}
 
 
 class Meter:
@@ -118,10 +142,17 @@ class MeteredLLM:
         )
 
 
-def metered_factory(base: Any, meter: Meter, *, all_vendors: bool = False):
-    """all_vendors면 ollama를 고른 업체도 회사 측과 같은 모델이 답한다(Ollama에 닿지 못할 때의 대용)."""
+def metered_factory(
+    base: Any, meter: Meter, *, all_vendors: bool = False, vendor_only: bool = False
+):
+    """all_vendors면 ollama를 고른 업체도 회사 측과 같은 모델이 답한다(Ollama에 닿지 못할 때의 대용).
+
+    vendor_only면 회사 측은 규칙 정책으로 돌고 업체 측만 모델이 답한다(업체 측을 적은 호출로 잴 때).
+    """
 
     def factory(role: str, org_id: str, model: dict[str, Any] | None = None) -> Any:
+        if vendor_only and role == "company":
+            return MeteredLLM(RulePolicy(), meter, role, org_id)
         llm = base(role, org_id, model) if base is not None else None
         if llm is None and all_vendors and base is not None:
             llm = base("company", org_id, None)
@@ -130,8 +161,37 @@ def metered_factory(base: Any, meter: Meter, *, all_vendors: bool = False):
     return factory
 
 
-def _answer(field: str) -> Any:
-    return ANSWERS.get(field, UNKNOWN)
+def _answer(field: str, stream_id: str | None = None, variant: dict[str, Any] | None = None):
+    own = ((variant or {}).get("answers") or {}).get(stream_id) or {}
+    return own[field] if field in own else ANSWERS.get(field, UNKNOWN)
+
+
+def apply_variant(app: Any, emitter: str, variant: dict[str, Any] | None) -> None:
+    """시연 자료(메모리 저장소)를 경우에 맞게 바꾼다. 측정 스크립트에서만 쓴다."""
+    if not variant:
+        return
+    store = app.store
+    keep = set(variant.get("streams") or [])
+    for stream in store.list_streams(emitter):
+        if keep and stream["id"] not in keep:
+            store._data["streams"].pop(stream["id"])  # 메모리 저장소의 시연 자료
+    vendors = set(variant.get("vendors") or [])
+    for profile in store.list_vendor_profiles():
+        if vendors and profile["orgId"] not in vendors:
+            store._data["vendors"].pop(profile["orgId"])
+    for sid, kg in (variant.get("unmeasured") or {}).items():
+        stream = store.get_stream(sid)
+        stream.update(measure=None, photo=None, contaminants=[], bulkDensityKgPerM3=None)
+        stream.update(process=None, lot=None, monthlyKgEvidence=[], monthlyKgBasis=None)
+        store.put_stream(stream)
+        patch = {"monthlyKg": kg, "monthlyKgBasis": "estimated"}
+        service.update_stream(app, emitter, sid, patch, emitter)
+    if variant.get("no_location"):
+        org = store.get_org(emitter)
+        org.pop("location", None)
+        store.put_org(org)
+    for sid, name in (variant.get("names") or {}).items():
+        service.update_stream(app, emitter, sid, {"name": name}, emitter)
 
 
 def run(
@@ -142,16 +202,20 @@ def run(
     dump: Path | None = None,
     env: Any = None,
     all_vendors: bool = False,
+    variant: str | None = None,
+    vendor_only: bool = False,
 ) -> dict[str, Any]:
+    chosen = VARIANTS[variant] if variant else None
     meter = Meter(max_calls, dump)
     base = build_llm_factory(mode, os.environ if env is None else env, strict=True)
     app = service.App(
         InMemoryStore(),
         InMemoryRegistry(),
-        llm_factory=metered_factory(base, meter, all_vendors=all_vendors),
+        llm_factory=metered_factory(base, meter, all_vendors=all_vendors, vendor_only=vendor_only),
         today=today,
     )
     service.seed(app)
+    apply_variant(app, EMITTER, chosen)
     started = time.monotonic()
     session_id = service.create_session(app, EMITTER, EMITTER)["session"]["id"]
     view = service.run_session(app, session_id, EMITTER)
@@ -161,8 +225,14 @@ def run(
             break
         for question in view["questions"]:
             if not question["answered"]:
-                value = _answer(question["field"])
-                answered.append({"field": question["field"], "value": value})
+                value = _answer(question["field"], question.get("streamId"), chosen)
+                answered.append(
+                    {
+                        "streamId": question.get("streamId"),
+                        "field": question["field"],
+                        "value": value,
+                    }
+                )
                 service.answer_question(app, session_id, question["id"], value, EMITTER)
         view = service.run_session(app, session_id, EMITTER)
     wall = round(time.monotonic() - started, 1)
@@ -175,6 +245,7 @@ def report(app, session_id, view, meter: Meter, wall: float, answered) -> dict[s
     first: Counter[str] = Counter()
     first_ok: Counter[str] = Counter()
     codes: Counter[str] = Counter()
+    by_side: dict[str, Counter[str]] = {}
     per_thread: dict[str, dict[str, Any]] = {}
     for event in events:
         if event.get("kind") != "validation":
@@ -197,6 +268,7 @@ def report(app, session_id, view, meter: Meter, wall: float, answered) -> dict[s
                 row["firstTry"][0] += 1
         for item in detail.get("rejections") or []:
             codes[item["code"]] += 1
+            by_side.setdefault(side, Counter())[item["code"]] += 1
             row["rejections"][item["code"]] += 1
     threads = []
     for thread in view["threads"]:
@@ -212,6 +284,9 @@ def report(app, session_id, view, meter: Meter, wall: float, answered) -> dict[s
                     k: (thread.get("vendorModel") or {}).get(k) for k in ("provider", "name")
                 },
                 "status": thread["status"],
+                "statusReason": thread.get("statusReason")
+                if thread["status"] == "handoff"
+                else None,
                 "types": [m["type"] for m in thread["messages"]],
                 "drafts": row["drafts"],
                 "firstTry": f"{row['firstTry'][0]}/{row['firstTry'][1]}",
@@ -233,6 +308,7 @@ def report(app, session_id, view, meter: Meter, wall: float, answered) -> dict[s
         "firstTryPassRate": round(sum(first_ok.values()) / total_first, 3) if total_first else None,
         "firstTry": {k: f"{first_ok[k]}/{first[k]}" for k in first},
         "rejections": dict(codes),
+        "rejectionsBySide": {k: dict(v) for k, v in by_side.items()},
         "modelCalls": len(real),
         "callsByRole": dict(by_role),
         "modelErrors": sum(1 for c in real if c["error"]),
@@ -256,6 +332,16 @@ def main(argv: list[str] | None = None) -> int:
         action="store_true",
         help="ollama를 고른 업체도 회사 측과 같은 모델로 답하게 한다(Ollama에 닿지 못할 때)",
     )
+    parser.add_argument(
+        "--variant",
+        choices=sorted(VARIANTS),
+        help="시연 자료를 바꿔 돈다. pp-answer-5: PP 불량품의 오염도를 담당자가 5%%로 답한다",
+    )
+    parser.add_argument(
+        "--vendor-only",
+        action="store_true",
+        help="회사 측은 규칙 정책으로 돌고 업체 측만 모델이 답한다(호출을 아껴 업체 측만 잴 때)",
+    )
     args = parser.parse_args(argv)
     mode = normalize_mode(args.llm or os.environ.get("V3_LLM"))
     result = run(
@@ -264,8 +350,10 @@ def main(argv: list[str] | None = None) -> int:
         max_calls=args.max_calls,
         dump=args.dump,
         all_vendors=args.all_vendors,
+        variant=args.variant,
+        vendor_only=args.vendor_only,
     )
-    result = {"llm": mode, **result}
+    result = {"llm": mode, "variant": args.variant, "vendorOnly": args.vendor_only, **result}
     text = json.dumps(result, ensure_ascii=False, indent=2)
     if args.out:
         args.out.write_text(text + "\n", encoding="utf-8")

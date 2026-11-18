@@ -321,7 +321,7 @@ def register_model_run(app, run, viewer) -> dict                    # 재학습 
 | `app/v3/eval/world.py` | 사례의 가상 세계(저장소, 근거)를 만든다 |
 | `app/v3/eval/runner.py` | `run_cases(app 또는 registry 또는 None, cases)`. 사례별로 판정 일치, 금지 위반, 검증기 통과를 보고 집계한다. 결정적이다 |
 | `app/v3/eval/format_compliance.py` | 모델 형식 준수 시험. `python3 -m app.v3.eval.format_compliance --provider rule\|scripted\|foundry\|ollama` |
-| `scripts/v3/llm_conformance.py` | 시연 시나리오를 실제 모델로 처음부터 승인 대기까지 돌려 대화별 결과, 초안 수, 거부 코드, 첫 초안 통과율, 모델 호출 수와 시간을 낸다. `uv run python scripts/v3/llm_conformance.py --llm foundry [--max-calls 40] [--all-vendors] [--dump 기록.jsonl]`. 담당자 질문에는 시연 값(오염도 0.5%, 수분 0.8%, 로트 일치 "예", 나머지 "모름")으로 답한다 |
+| `scripts/v3/llm_conformance.py` | 시연 시나리오를 실제 모델로 처음부터 승인 대기까지 돌려 대화별 결과, 초안 수, 거부 코드, 첫 초안 통과율, 모델 호출 수와 시간을 낸다. `uv run python scripts/v3/llm_conformance.py --llm foundry [--max-calls 40] [--all-vendors] [--dump 기록.jsonl] [--variant pp-answer-5] [--vendor-only]`. 담당자 질문에는 시연 값(오염도 0.5%, 수분 0.8%, 로트 일치 "예", 나머지 "모름")으로 답한다. `--variant pp-answer-5`는 두 번째 실제 브라우저 QA의 경우(위치 없는 배출 기업, 측정값 없는 PP 사출 불량품 400kg 추정, 오염도 담당자 답 5%, 수분 모름, 미소환경·남해열분해만)이고, `--vendor-only`는 회사 측을 규칙 정책으로 돌려 업체 측만 모델로 잰다 |
 | `app/v3/eval/foundry_eval.py` | Foundry 평가(근거 충실도) 입력 JSONL(`query`, `response`, `context`)을 실행 기록에서 만든다 |
 | `app/v3/eval/report.py` | `docs/v3/eval-report.md`를 만든다. 숫자는 실행 결과에서만 나오고, 테스트가 저장된 파일과 지금 결과를 견준다 |
 | `scripts/v3/eval/run_foundry_eval.py` | Azure AI Evaluation SDK로 근거 충실도를 잰다(미실행) |
