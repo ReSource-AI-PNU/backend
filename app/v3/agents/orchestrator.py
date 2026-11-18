@@ -963,7 +963,14 @@ class Orchestrator:
             )
             route = next((r for r in ("sell", "treat") if r in routes[sid]), "keep")
             # 허가 요건은 대화를 연 업체(허가 품목이 맞아 연 곳)로 판정한다
-            talked = [publics[t.vendor_org] for t in opened if sid in t.stream_ids]
+            talked = [
+                {
+                    **publics[t.vendor_org],
+                    "name": org_label(self.store.get_org(t.vendor_org).get("name")),
+                }
+                for t in opened
+                if sid in t.stream_ids
+            ]
             arguments = {"stream": stream, "route": route}
             if talked:
                 arguments["vendors"] = talked

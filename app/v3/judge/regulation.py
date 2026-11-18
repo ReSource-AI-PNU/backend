@@ -110,9 +110,11 @@ def _permit_status(stream, vendors) -> tuple[str, str, list[str]]:
     results = [(vendor, *permit_match(stream, vendor)) for vendor in vendors]
     matched = [r for r in results if r[1] is True]
     if matched:
-        names = ", ".join(str(r[0].get("name") or r[0].get("orgId")) for r in matched)
         evidence = [e for r in matched for e in r[2]]
-        return "met", f"허가 품목이 맞는 업체({names})와만 대화했습니다.", evidence
+        names = [str(r[0]["name"]) for r in matched if r[0].get("name")]
+        if len(names) == len(matched):
+            return "met", f"허가 품목이 맞는 업체({', '.join(names)})와만 대화했습니다.", evidence
+        return "met", "허가 품목이 맞는 업체와만 대화했습니다.", evidence
     if any(r[1] is None for r in results):
         return "needs_information", "업체 허가 품목이 올라와 있지 않아 확인하지 못했습니다.", []
     return "unmet", "허가 품목이 맞는 업체가 없습니다. 이 폐기물은 넘기지 않습니다.", []
