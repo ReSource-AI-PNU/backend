@@ -904,19 +904,24 @@ class VendorAgent:
             item.update(claimId=key, unitPriceKrwPerKg=float(found["value"]))
             asked_ids.add(sid)
             label = stream_label(streams[sid])
+            word = "처리비" if found["value"] < 0 else "매입 단가"
             output = result["output"]
             if output["accepted"]:
-                lines.append(f"{label}: 요청하신 대로 {{{{{key}}}}}에 맞추겠습니다.")
+                lines.append(f"{label}의 {word}는 요청하신 대로 {{{{{key}}}}}에 맞추겠습니다.")
             elif output["improved"]:
-                lines.append(f"{label}: 정해 둔 범위 안에서 {{{{{key}}}}}까지 맞출 수 있습니다.")
+                lines.append(
+                    f"{label}의 {word}는 정해 둔 범위 안에서 {{{{{key}}}}}까지 맞출 수 있습니다."
+                )
             else:
-                lines.append(f"{label}: 처음 드린 {{{{{key}}}}}에서 더 조정하기 어렵습니다.")
+                lines.append(
+                    f"{label}의 {word}는 처음 드린 {{{{{key}}}}}에서 더 조정하기 어렵습니다."
+                )
         if not lines:
             return None
         for sid, item in items.items():
             if sid not in asked_ids:
                 lines.append(
-                    f"{stream_label(streams[sid])}: 앞서 드린 {{{{{item['claimId']}}}}} 그대로입니다."
+                    f"{stream_label(streams[sid])}의 단가는 앞서 드린 {{{{{item['claimId']}}}}} 그대로입니다."
                 )
         used = {item["claimId"] for item in items.values()}
         cited = set(re.findall(r"\{\{([^{}]+)\}\}", " ".join(conditions)))

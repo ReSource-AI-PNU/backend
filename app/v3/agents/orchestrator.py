@@ -1921,12 +1921,17 @@ class Orchestrator:
                 found = next((c for c in result["claims"] if c["id"] == "askedPrice"), None)
                 if found is None:
                     continue
-                key = f"ask_{safe_id(sid)}"
-                role = "treatmentFee" if found["value"] < 0 else "unitPrice"
-                claims.append(naming.annotate({**found, "id": key}, role, "요청 단가"))
+                key = (
+                    f"ask_{safe_id(sid)}_unitPrice"  # 받는 쪽이 이름(매입 단가·처리비)을 정하는 꼴
+                )
+                fee = found["value"] < 0
+                # claim의 근거는 요청 단가 계산 하나다(제안 단가와 요청 폭은 그 계산의 입력으로 이어진다)
+                claim = {**found, "id": key, "evidence": list(found["evidence"])[:1]}
+                claims.append(naming.annotate(claim, "treatmentFee" if fee else "unitPrice"))
                 asks.append({"streamId": sid, "claimId": key})
                 label = stream_label(self.store.get_stream(sid))
-                lines.append(f"{josa(label, '은는')} {{{{{key}}}}}로 맞춰 주실 수 있을까요?")
+                word = "처리비" if fee else "매입 단가"
+                lines.append(f"{label}의 {word}를 {{{{{key}}}}}에 맞춰 주실 수 있을까요?")
             done[thread.id] = {"asks": asks, "result": {}}
             if not asks:
                 continue
