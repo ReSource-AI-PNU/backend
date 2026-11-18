@@ -17,7 +17,8 @@ jobs:
   test:
     name: ruff · pytest
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    # 2026-11-19 법령 374조를 시드로 올린 뒤 pytest와 규칙 정책 평가가 10분을 넘겼다(맥에서 pytest 4분)
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v7
 
