@@ -70,3 +70,16 @@ def test_quote_request_is_for_the_emitter_and_listed_candidates_only(waiting):
     with pytest.raises(service.ServiceError) as err:
         service.quote_request(app, sid, HANBIT, stream["streamId"], "pv_none")
     assert err.value.code == "NOT_FOUND"
+
+
+def test_quote_request_opens_in_the_read_only_demo_app(waiting):
+    """체험하기는 저장소와 레지스트리에 쓰지 못한다. 요청서는 이미 있는 근거만 읽어 만든다."""
+    from app.v3.demo.scope import demo_app
+
+    app, view = waiting
+    stream = next(s for s in view["result"]["outsideVendors"]["streams"] if s["candidates"])
+    candidate = stream["candidates"][0]
+    letter = service.quote_request(
+        demo_app(app), view["session"]["id"], HANBIT, stream["streamId"], candidate["id"]
+    )
+    assert letter["validation"]["ok"] and letter["recipient"]["evidence"] == candidate["evidence"]

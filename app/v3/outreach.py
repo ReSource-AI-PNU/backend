@@ -16,6 +16,7 @@ from typing import Any
 from app.v3 import ids, public_vendors
 from app.v3.agents.pool import ClaimPool
 from app.v3.evidence.model import Evidence
+from app.v3.evidence.registry import EvidenceNotFound
 from app.v3.evidence.render import render_text
 from app.v3.evidence.validator import ALLOWED_TOKENS, name_tokens, validate_text
 from app.v3.judge.common import Recorder, quality
@@ -62,6 +63,16 @@ def ref_evidence(vendor: dict[str, Any]) -> Evidence:
             "codesReliable": bool(vendor.get("codesReliable", True)),
         },
     )
+
+
+def _ensure_ref(registry: Any, vendor: dict[str, Any], org_id: str) -> str:
+    """명부 한 줄의 근거 ID. 이미 있으면 읽기만 한다(체험하기의 읽기 전용 레지스트리에서도 열리게)."""
+    evidence_id = _ref_id(vendor)
+    try:
+        registry.get(evidence_id, org_id)
+    except EvidenceNotFound:
+        return registry.put(ref_evidence(vendor)).id
+    return evidence_id
 
 
 def _registered_names(store: Any) -> tuple[str, ...]:
@@ -137,7 +148,7 @@ def quote_request(
     vendor = public_vendors.get(vendor_id)
     if vendor is None:
         return None
-    ref = registry.put(ref_evidence(vendor)).id
+    ref = _ensure_ref(registry, vendor, emitter["id"])
     pool = ClaimPool(registry, emitter["id"])
     facts = pool.add_stream(stream, private=True)
     q = quality(stream)
