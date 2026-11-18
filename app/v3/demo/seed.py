@@ -533,7 +533,18 @@ def _vendors(s: _Seeder) -> list[dict[str, Any]]:
                     minMonthlyKg=250,
                 ),
             ],
-            "fleet": s.fleet(sg, [128.8721, 35.1493], 5000, 20, 1200),
+            "fleet": {
+                **s.fleet(sg, [128.8721, 35.1493], 5000, 20, 1200),
+                # 수거 노선(가상). ④ 업체 탐색이 공장 지역을 지나는지 본다
+                "routes": [
+                    {
+                        "name": "녹산·신호 노선",
+                        "days": ["화", "목"],
+                        "regions": ["부산 강서구"],
+                        "complexes": ["녹산국가산업단지", "신호일반산업단지"],
+                    }
+                ],
+            },
             "transport": s.transport(sg, "vendor"),
             "process": "재활용",
             "guardrails": {
@@ -572,7 +583,17 @@ def _vendors(s: _Seeder) -> list[dict[str, Any]]:
                     minMonthlyKg=200,
                 ),
             ],
-            "fleet": s.fleet(nh, [128.8189, 35.2296], 8000, 30, 1500),
+            "fleet": {
+                **s.fleet(nh, [128.8189, 35.2296], 8000, 30, 1500),
+                "routes": [
+                    {
+                        "name": "김해·강서 노선",
+                        "days": ["월", "수", "금"],
+                        "regions": ["경남 김해시", "부산 강서구"],
+                        "complexes": [],
+                    }
+                ],
+            },
             # 위탁 처리라 운반비를 따로 받는다(1회 운반비 × 월 수거 횟수가 순비용에 들어간다)
             "transport": s.transport(nh, "emitter", 30000),
             "process": "열분해",
@@ -602,7 +623,17 @@ def _vendors(s: _Seeder) -> list[dict[str, Any]]:
                     minMonthlyKg=300,
                 ),
             ],
-            "fleet": s.fleet(ms, [128.9795, 35.1462], 3500, 14, 1100),
+            "fleet": {
+                **s.fleet(ms, [128.9795, 35.1462], 3500, 14, 1100),
+                "routes": [
+                    {
+                        "name": "사상·사하 노선",
+                        "days": ["월", "수", "금"],
+                        "regions": ["부산 사상구", "부산 사하구"],
+                        "complexes": [],
+                    }
+                ],
+            },
             "transport": s.transport(ms, "vendor"),
             "process": "재활용",
             "guardrails": {

@@ -57,6 +57,7 @@ from app.v3.judge import basis
 from app.v3.judge.common import best_criterion, permit_match, quality, without_emitter_only
 from app.v3.judge.toolbox import TOOLS, call_tool
 from app.v3.live import STATUS_NOTES, Recorder
+from app.v3.store import NotFound
 from app.v3.textutil import josa
 from app.v3.untrusted import org_label, stream_label
 
@@ -2295,6 +2296,9 @@ class Orchestrator:
                     if check["status"] != "met" and status == "calculated":
                         status = "conditional"
                 used.append(loading)
+                pickup = self._route_check(vendor_id, session["emitterOrgId"])
+                if pickup is not None:
+                    checks.append(pickup)
             if vendor_id is None and sid in handed:
                 # 이 흐름을 맡기로 합의한 대화가 담당자에게 넘어갔다. 현행 유지를 "확정"으로 보이지 않게 한다
                 status = "needs_information"
@@ -2370,6 +2374,8 @@ class Orchestrator:
                 "vendorName": names.get(vendor_id) if vendor_id else None,
                 "threadId": threads[vendor_id].id if vendor_id in threads else None,
                 "route": item["route"],
+                # 처리 방식(재활용, 열분해, 지금 방식이면 현행 처리). 경로(매각·위탁 처리)와 따로 보인다
+                "process": self._process_of(vendor_id, by_id[sid]),
                 "status": status,
                 "unitPrice": {**offer["claim"], "id": f"{tag}_unitPrice"} if offer else None,
                 "monthlyAfter": claim_in(
@@ -2493,6 +2499,63 @@ class Orchestrator:
             # ③ 규정 확인: 폐기물마다 경로 요건 체크리스트와 관련 조항(배출 기업만 본다)
             "regulation": self._regulation(work, streams),
         }
+
+    def _route_check(self, vendor_id: str, emitter_id: str) -> dict[str, Any] | None:
+        """④ 업체가 밝힌 수거 노선(지역·산업단지)이 이 공장 지역을 지나는지. 노선을 밝히지 않았으면 None.
+
+        노선의 지역 이름에서 "국가산업단지", "산단" 같은 꼬리를 뗀 이름이 공장 지역 글에 들어 있으면 지나간다고 본다.
+        이 검사는 배정을 바꾸지 않는다(업체가 노선 밖이라도 따로 올 수 있다). 문장에는 숫자를 쓰지 않는다.
+        """
+        try:
+            fleet = self.store.get_vendor_profile(vendor_id).get("fleet") or {}
+            region = str(self.store.get_org(emitter_id).get("region") or "")
+        except NotFound:
+            return None
+        routes = fleet.get("routes") or []
+        if not routes or not region:
+            return None
+
+        def core(text: str) -> str:
+            plain = "".join(str(text).split())
+            for tail in ("국가산업단지", "일반산업단지", "산업단지", "산단"):
+                if plain.endswith(tail) and len(plain) > len(tail):
+                    return plain[: -len(tail)]
+            return plain
+
+        where = "".join(region.split())
+        passing = [
+            r
+            for r in routes
+            if any(core(p) and core(p) in where for p in [*r["regions"], *r["complexes"]])
+        ]
+        if passing:
+            days = [
+                d
+                for d in ("월", "화", "수", "목", "금", "토", "일")
+                if any(d in r["days"] for r in passing)
+            ]
+            return {
+                "key": "pickup_route",
+                "status": "met",
+                "text": f"업체가 밝힌 수거 노선이 이 공장 지역을 지나갑니다(운행 요일 {', '.join(days)}).",
+                "evidence": [],
+            }
+        return {
+            "key": "pickup_route",
+            "status": "conditional",
+            "text": "업체가 밝힌 수거 노선에 이 공장 지역이 없습니다. 따로 수거하러 올 수 있는지 확인이 필요합니다.",
+            "evidence": [],
+        }
+
+    def _process_of(self, vendor_id: str | None, stream: dict[str, Any]) -> str | None:
+        """받는 곳의 처리 방식. 업체면 프로필의 process, 지금 방식 그대로면 현행 처리(없으면 혼합 소각 가정)."""
+        if not vendor_id:
+            return str((stream.get("currentTreatment") or {}).get("method") or "혼합 소각")
+        try:
+            process = self.store.get_vendor_profile(vendor_id).get("process")
+        except NotFound:
+            return None
+        return str(process) if process else None
 
     def _regulation(self, work: dict[str, Any], streams: list[dict[str, Any]]) -> list[dict]:
         """check_requirements 결과를 화면용으로. 조항은 원문 인용 claim이고 근거 패널에서 법령이 열린다."""
