@@ -366,7 +366,29 @@ class _KeepAccess:
 
 
 def _reset_demo_only(app: App) -> dict[str, Any]:
-    """bff 모드의 시연 되돌리기. 시연 조직(시드 조직과 운영 조직)의 자료만 지우고 다시 올린다."""
+    """bff 모드의 시연 되돌리기. 시연 조직(시드 조직과 운영 조직)의 자료만 지우고 다시 올린 뒤 시연 진단 한 건을 돌린다.
+
+    시연 진단은 배포의 모델 설정(app.llm_factory)으로 돌려 체험하기에도 실제 모델의 대화가 보이게 한다(회사 측과
+    업체 측 모두, Ollama를 고른 시연 업체는 Ollama). 모델이 없거나(로컬·시험), 모델로 돌다가 오류가 나거나 승인
+    대기까지 가지 못하면 시연 자료를 한 번 더 처음 상태로 올리고(실패한 진단이 남지 않게) 규칙 정책으로 돌린다.
+    """
+    summary = _reseed_demo(app)
+    if app.llm_factory is not None:
+        status = None
+        try:
+            session_id, status = _demo_run(app, app.llm_factory)
+        except Exception:  # 모델 문제로 시연 되돌리기가 멈추면 안 된다
+            logger.warning("실제 모델로 시연 진단을 돌리지 못해 규칙 정책으로 돈다", exc_info=True)
+        if status == "awaiting_approval":
+            return {**summary, "demoSessionId": session_id, "demoSessionStatus": status}
+        logger.warning("실제 모델 시연 진단이 끝나지 않아(%s) 규칙 정책으로 다시 돈다", status)
+        summary = _reseed_demo(app)
+    session_id, status = _demo_run(app, None)
+    return {**summary, "demoSessionId": session_id, "demoSessionStatus": status}
+
+
+def _reseed_demo(app: App) -> dict[str, Any]:
+    """시연 조직의 자료를 지우고 시드를 다시 올린다. 실제 조직이 쓰던 근거의 열림은 그대로 둔다."""
     seeded = {org["id"] for org in ORGS}
     removed_threads = app.store.purge_orgs(seeded)
     for thread_id in removed_threads:
@@ -384,19 +406,16 @@ def _reset_demo_only(app: App) -> dict[str, Any]:
             extra[evidence.id] = outside
     if doomed:
         app.registry.delete(doomed)
-    summary = _seed(app, _KeepAccess(app.registry, extra), wipe=False)
-    session_id, status = _demo_diagnosis(app)
-    return {**summary, "demoSessionId": session_id, "demoSessionStatus": status}
+    return _seed(app, _KeepAccess(app.registry, extra), wipe=False)
 
 
-def _demo_diagnosis(app: App) -> tuple[str, str]:
-    """시연 배출 기업의 진단 한 건을 규칙 정책으로 승인 대기까지 돌린다. 체험하기 화면이 비지 않게 한다.
+def _demo_run(app: App, llm_factory: Any) -> tuple[str, str]:
+    """시연 배출 기업의 진단 한 건을 승인 대기까지 돌린다. llm_factory가 None이면 규칙 정책이다.
 
-    질문에는 시연 답(seed.DEMO_ANSWERS, 가상 값)으로, 그 밖에는 "모름"으로 답한다. 모델 설정과 상관없이
-    규칙 정책으로 돌린다(업체 측도 같은 프로세스에서 규칙 정책으로 답한다).
+    질문에는 시연 답(seed.DEMO_ANSWERS, 가상 값)으로, 그 밖에는 "모름"으로 답한다. 업체 측도 같은 프로세스에서 답한다.
     """
     trial = copy.copy(app)
-    trial.llm_factory = None
+    trial.llm_factory = llm_factory
     trial.vendor_gateway = LocalVendorGateway(
         lambda org, message, context: handle_vendor_message(trial, org, message, context)
     )

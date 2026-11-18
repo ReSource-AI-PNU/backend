@@ -598,3 +598,22 @@ def test_signed_up_names_do_not_block_unrelated_vendor_messages():
     assert [p["code"] for p in named] == ["OTHER_EMITTER_NAMED"]
     daon = Message("th_1", SAEGIL, HANBIT, "offer", 5, "다온산업 물량과 함께 싣겠습니다.")
     assert check_disclosure(daon, state.registry, state.store)  # 시연 조직은 그대로 본다
+
+
+def test_demo_reset_uses_the_real_models_and_falls_back_to_rules_cleanly(world, caplog):
+    """시연 진단은 배포의 모델로 돌린다. 모델이 실패하면 실패한 진단을 남기지 않고 규칙 정책으로 다시 돈다."""
+    _, state, _ = world
+    used: list[str] = []
+
+    def broken(role, org_id, model=None):
+        used.append(role)
+        raise RuntimeError("모델이 내려가 있다")
+
+    state.llm_factory = broken
+    with caplog.at_level("WARNING"):
+        reset = service._reset_demo_only(state)
+    assert used, "모델 설정이 있으면 먼저 실제 모델로 돌린다"
+    assert reset["demoSessionStatus"] == "awaiting_approval"
+    sessions = state.store.list_sessions(HANBIT)
+    assert [s["id"] for s in sessions] == [reset["demoSessionId"]]  # 실패한 진단은 남지 않는다
+    assert "규칙 정책으로" in caplog.text

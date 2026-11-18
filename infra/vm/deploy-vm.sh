@@ -23,6 +23,8 @@
 #                    6천 토큰 프롬프트에 qwen2.5:7b 8분 30초·3b 4분 10초가 걸려(2026-11-18 측정) 실시간 대화가 안 되므로,
 #                    Ollama 주소를 비우고 V3_LLM_ALL_VENDORS=1로 주 모델(Foundry)이 답하게 한다(운영 화면에는 설정과 실제가 따로 보인다)
 #                    gpu면 GPU VM(infra/gpu-vm.bicep, East US A10, infra/gpu/setup-ollama.sh로 준비)의 Ollama가 답한다.
+#                    꺼져 있으면 배포가 먼저 켜고(infra/gpu/gpu.sh up), 쓰지 않으면 맥의 자동 끄기가 끈다(install-idle-watch.sh).
+#                    꺼진 동안 Ollama 차례는 Foundry가 답한다(OLLAMA_FALLBACK=1).
 #                    주소는 GPU VM의 사설 IP로 자동으로 찾고(앱 VNet과 피어링), 앱 VM의 ollama 컨테이너는 쓰지 않는다.
 #                    임베딩은 근거 색인과 같은 Foundry 임베딩을 그대로 쓴다
 #   OLLAMA_URL       USE_OLLAMA=gpu에서 자동으로 찾은 주소 대신 쓸 Ollama 주소
@@ -138,6 +140,9 @@ put "$B" FOUNDRY_ENDPOINT "$FOUNDRY_ENDPOINT"
 put "$B" FOUNDRY_DEPLOYMENT "${FOUNDRY_DEPLOYMENT:-gpt-5-mini}"
 put_secret "$B" FOUNDRY_API_KEY foundry-api-key
 if [ "$USE_OLLAMA" = gpu ]; then
+  # GPU VM이 꺼져 있으면 켜고 Ollama가 답할 때까지 기다린다(시연 되돌리기가 실제 모델로 돈다). 실패해도 배포는 계속한다:
+  # OLLAMA_FALLBACK=1이라 Ollama에 닿지 않는 차례는 Foundry가 답한다
+  bash "$HERE/../gpu/gpu.sh" up || say "GPU VM을 켜지 못했다. 업체 측 오픈 모델 차례는 Foundry가 답한다"
   if [ -z "$OLLAMA_URL" ]; then
     gpu_ip="$(az vm list-ip-addresses -g "$RG" -n "$GPU_VM" --query "[0].virtualMachine.network.privateIpAddresses[0]" -o tsv 2>/dev/null || true)"
     [ -n "$gpu_ip" ] || { say "GPU VM $GPU_VM을 찾지 못했다(infra/gpu-vm.bicep)"; exit 1; }
@@ -145,6 +150,7 @@ if [ "$USE_OLLAMA" = gpu ]; then
   fi
   say "업체 측 오픈 모델: GPU VM의 Ollama ($OLLAMA_URL)"
   put "$B" OLLAMA_BASE_URL "$OLLAMA_URL"
+  put "$B" OLLAMA_FALLBACK 1
 elif [ "$USE_OLLAMA" = 1 ]; then
   put "$B" OLLAMA_BASE_URL "http://ollama:11434"
   put "$B" OLLAMA_EMBED_MODEL bge-m3

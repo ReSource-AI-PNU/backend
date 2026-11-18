@@ -106,11 +106,44 @@ def test_ollama_vendor_is_never_swapped_unless_asked():
     local = with_ollama("vendor", "org_namhae", OLLAMA_MODEL)
     assert isinstance(local, OllamaChat) and local.model == "qwen2.5:7b"
     # foundry에서도 V3_LLM_ALL_VENDORS=1이면 Ollama 주소가 없는 업체를 Foundry가 맡는다
-    assert build_llm_factory("foundry", FOUNDRY, strict=True)("vendor", "org_namhae", OLLAMA_MODEL) is None
+    assert (
+        build_llm_factory("foundry", FOUNDRY, strict=True)("vendor", "org_namhae", OLLAMA_MODEL)
+        is None
+    )
     foundry = build_llm_factory("foundry", {**FOUNDRY, "V3_LLM_ALL_VENDORS": "1"}, strict=True)
     assert isinstance(foundry("vendor", "org_namhae", OLLAMA_MODEL), FoundryChat)
     # 주 모델이 없으면(rule) 이 설정도 아무것도 바꾸지 않는다(모두 규칙 정책)
     assert build_llm_factory("rule", {"V3_LLM_ALL_VENDORS": "1"}, strict=True) is None
+
+
+def test_ollama_fallback_hands_the_turn_to_the_main_model_only_when_ollama_is_down(caplog):
+    """GPU VM을 꺼 두면(OLLAMA_FALLBACK=1) 그 차례는 처음부터 주 모델이 답한다. 켜져 있으면 Ollama 그대로다."""
+    env = {**FOUNDRY, "OLLAMA_BASE_URL": "http://10.71.0.4:11434", "OLLAMA_FALLBACK": "1"}
+    asked: list[str] = []
+
+    def down(url: str) -> bool:
+        asked.append(url)
+        return False
+
+    factory = build_llm_factory("foundry", env, strict=True, probe=down)
+    with caplog.at_level("WARNING"):
+        assert isinstance(factory("vendor", "org_namhae", OLLAMA_MODEL), FoundryChat)
+    assert asked == ["http://10.71.0.4:11434"] and "Ollama에 닿지 않아" in caplog.text
+    up = build_llm_factory("foundry", env, strict=True, probe=lambda url: True)
+    assert isinstance(up("vendor", "org_namhae", OLLAMA_MODEL), OllamaChat)
+    # 설정이 없으면 살아 있는지 묻지 않는다(전과 같다). 회사 측과 Foundry를 고른 업체도 묻지 않는다
+    plain = build_llm_factory(
+        "foundry", {k: v for k, v in env.items() if k != "OLLAMA_FALLBACK"}, strict=True, probe=down
+    )
+    asked.clear()
+    assert isinstance(plain("vendor", "org_namhae", OLLAMA_MODEL), OllamaChat)
+    assert isinstance(factory("company", "org_hanbit", None), FoundryChat) and asked == []
+
+
+def test_ollama_reachable_says_no_for_a_closed_port():
+    from app.v3.agents.factory import ollama_reachable
+
+    assert ollama_reachable("http://127.0.0.1:9", timeout=0.5) is False
 
 
 def test_devserver_uses_the_shared_builder_and_stops_on_missing_key(tmp_path):

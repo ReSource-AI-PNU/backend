@@ -70,7 +70,8 @@ FRONTEND_DIR=../frontend USE_OLLAMA=gpu SEED=1 bash infra/vm/deploy-vm.sh
 
 - **Azure GPU 드라이버 확장(NvidiaGpuDriverLinux)은 쓰지 않는다.** 2026-11-18 이 크기에서 확장이 GRID 드라이버와 함께 `ubuntu-desktop` 전체를 깔다가 Firefox 스냅 설정의 대화형 질문에서 멈췄다. VM을 확장 없이 다시 만들고 위 스크립트로 드라이버만 깔았다(드라이버 595.91.07, `A10-12Q`).
 - **측정(2026-11-18, qwen2.5:7b, 약 4천 토큰 프롬프트):** 프롬프트 처리 초당 1,947토큰, 생성 초당 41토큰, 한 번 6.3초. CPU(앱 VM)는 프롬프트 처리 초당 12.1토큰, 생성 초당 3.0토큰이었다.
-- **켜고 끄기:** `project=resource-ai` 꼬리표가 있어 `infra/stop.sh`·`start.sh`가 앱 VM과 함께 할당 해제·시작한다. 꺼 두는 동안에는 디스크와 공용 IP 비용만 든다. GPU VM을 꺼 둔 채 앱을 쓰려면 `USE_OLLAMA`를 비우고 다시 배포한다(남해열분해도 Foundry가 답한다).
+- **켜고 끄기(자동):** 쓸 때만 켠다. `USE_OLLAMA=gpu`로 배포하면 꺼져 있던 GPU VM을 먼저 켜고(`infra/gpu/gpu.sh up`), 맥에 건 자동 끄기(`bash infra/gpu/install-idle-watch.sh`, launchd 15분마다)가 Ollama를 60분 넘게 쓰지 않으면 할당 해제한다. 손으로는 `gpu.sh up | down | status`. 꺼져 있는 동안에도 서비스는 멈추지 않는다: 배포가 `OLLAMA_FALLBACK=1`을 넣어 Ollama에 닿지 않는 차례는 처음부터 Foundry가 답한다(운영 화면에 설정 모델과 실제 모델이 따로 나온다). 구독 권한(리소스 그룹 Contributor)으로는 VM이 스스로 끄는 역할 할당을 만들 수 없고 Azure 예약 종료(DevTestLab)·Automation·Logic Apps 공급자도 등록돼 있지 않아서, 끄기는 맥에서 한다(맥이 꺼져 있으면 돌지 않는다). `infra/stop.sh`·`start.sh`도 꼬리표로 GPU VM을 함께 끄고 켠다.
+- **체험하기:** 시연 되돌리기(`SEED=1`, `reset-demo`)는 배포의 모델 설정으로 시연 진단을 돌린다(회사 측·업체 측 Foundry, 남해열분해는 Ollama). 실패하면 시연 자료를 다시 올리고 규칙 정책으로 돈다.
 
 ## Bicep 묶음
 

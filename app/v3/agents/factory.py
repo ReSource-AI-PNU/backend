@@ -14,6 +14,7 @@
 | OLLAMA_BASE_URL | 업체가 ollama를 골랐을 때 그 업체의 모델 주소 |
 | OLLAMA_NUM_CTX | Ollama 문맥 길이(기본 16384. 에이전트 입력이 기본값 2048~4096보다 길다) |
 | V3_LLM_ALL_VENDORS | 1이면 ollama를 고른 업체도(주소가 없을 때) 주 모델(foundry 또는 anthropic)이 답한다 |
+| OLLAMA_FALLBACK | 1이면 업체 측 모델을 만들 때 Ollama가 살아 있는지 먼저 보고(3초), 닿지 않으면 그 차례는 주 모델이 답한다 |
 
 - 돌려주는 값은 llm_factory(role, org_id, model) -> LLM | None 이다. None이면 service가 규칙 정책으로 돈다.
 - 업체가 ollama를 골랐는데 주소가 없으면 다른 모델로 바꿔 부르지 않고 None을 준다(쓰지 않은 모델을
@@ -21,6 +22,9 @@
   CPU로 도는 Ollama는 실시간 대화에 너무 느려(2026-11-18 측정: 6천 토큰 프롬프트에 qwen2.5:7b 8분 30초)
   배포에서는 Ollama 주소를 비우고 이 설정을 쓴다. 그때도 화면에는
   설정한 모델과 실제로 답한 모델이 따로 나온다.
+- OLLAMA_FALLBACK=1(배포의 USE_OLLAMA=gpu): Ollama는 East US의 GPU VM에 있고 쓰지 않을 때 꺼 둔다. 꺼져 있으면
+  매 차례가 시간 초과(120초) 두 번 뒤 담당자에게 넘어가므로, 모델을 만들 때 /api/version을 3초 안에 물어 닿지 않으면
+  처음부터 주 모델을 준다. 그래서 대화 기록의 "실제로 답한 모델"도 주 모델로 정확히 남는다(설정은 ollama 그대로).
 - 설정이 빠졌을 때: strict면 LlmConfigError로 멈추고(로컬 서버), 아니면 경고를 남기고 규칙 정책으로
   돈다(배포 경로. 서버는 뜨고, 관리자 화면과 대화에 "규칙 정책(모델 미연결)"로 나온다).
 - 키 값은 예외 문구와 기록에 싣지 않는다.
@@ -29,6 +33,7 @@
 from __future__ import annotations
 
 import logging
+import urllib.request
 from collections.abc import Callable, Mapping
 from pathlib import Path
 from typing import Any
@@ -50,6 +55,18 @@ LlmFactory = Callable[[str, str, dict[str, Any] | None], Any]
 DEFAULT_REASONING_EFFORT = "low"
 DEFAULT_MAX_COMPLETION_TOKENS = 4000
 DEFAULT_OLLAMA_NUM_CTX = 16384
+OLLAMA_PROBE_TIMEOUT = 3.0
+
+
+def ollama_reachable(base_url: str, timeout: float = OLLAMA_PROBE_TIMEOUT) -> bool:
+    """Ollama 서버가 답하는가(GET /api/version). 꺼진 GPU VM은 연결이 되지 않거나 시간을 넘긴다."""
+    try:
+        with urllib.request.urlopen(
+            f"{base_url.rstrip('/')}/api/version", timeout=timeout
+        ) as response:
+            return 200 <= response.status < 300
+    except (OSError, ValueError):
+        return False
 
 
 class LlmConfigError(ValueError):
@@ -107,7 +124,11 @@ def reasoning_effort(env: Mapping[str, Any]) -> str | None:
 
 
 def build_llm_factory(
-    mode: str | None, env: Mapping[str, Any], *, strict: bool = False
+    mode: str | None,
+    env: Mapping[str, Any],
+    *,
+    strict: bool = False,
+    probe: Callable[[str], bool] = ollama_reachable,
 ) -> LlmFactory | None:
     """mode와 환경 변수로 llm_factory를 만든다. rule이면 None(환경 변수를 읽지 않는다).
 
@@ -174,6 +195,8 @@ def build_llm_factory(
 
     # ollama를 고른 업체도 주소가 없으면 주 모델로 답하게 할지 (주 모델이 있을 때만)
     all_vendors = make_main is not None and _value(env, "V3_LLM_ALL_VENDORS") == "1"
+    # Ollama가 꺼져 있으면 그 차례는 주 모델이 답하게 할지 (주 모델이 있을 때만)
+    fallback = make_main is not None and _value(env, "OLLAMA_FALLBACK") == "1"
 
     num_ctx: int | None = None
     if ollama:
@@ -189,6 +212,12 @@ def build_llm_factory(
         picked = model or {}
         if role == "vendor" and picked.get("provider") == "ollama":
             if ollama and picked.get("name"):
+                if fallback and not probe(ollama):
+                    logger.warning(
+                        "%s: Ollama에 닿지 않아(GPU VM이 꺼져 있음) 이 차례는 주 모델이 답한다",
+                        org_id,
+                    )
+                    return make_main()
                 return OllamaChat(ollama, str(picked["name"]), num_ctx=num_ctx)
             if not all_vendors:
                 logger.warning("%s: Ollama 주소나 모델 이름이 없어 규칙 정책으로 돈다", org_id)
