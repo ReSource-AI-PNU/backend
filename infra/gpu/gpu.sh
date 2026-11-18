@@ -12,7 +12,7 @@
 # (운영 화면에는 설정한 모델과 실제로 답한 모델이 따로 나온다). 그때 백엔드가 남기는 경고("Ollama에 닿지 않아")가
 # 켜 달라는 신호다. 켜지는 데 2~3분이 걸리므로 꺼진 뒤 첫 호출은 Foundry가 답하고, 켜진 뒤의 차례부터 Ollama가 답한다.
 # 구독 권한(리소스 그룹 Contributor)으로는 VM이 스스로 끄는 역할 할당도, Azure 예약 종료(DevTestLab)·Automation도
-# 쓸 수 없어서 끄기는 맥에서 한다(infra/gpu/install-idle-watch.sh).
+# 쓸 수 없어서 켜고 끄기는 맥에서 한다(infra/gpu/install-gpu-auto.sh).
 set -euo pipefail
 RG="${RG:-team_AIBIC2026_03_RG_EUS2}"
 GPU_VM="${GPU_VM:-vm-rsai-gpu}"
