@@ -29,6 +29,7 @@ from app.v3.account_store import EmailTaken, iso, parse_iso, utc_now
 from app.v3.evidence.model import Evidence
 from app.v3.evidence.registry import EvidenceForbidden, EvidenceNotFound
 from app.v3.store import SHARED_THREAD_STATUSES, NotFound, VersionConflict, system_clock
+from app.v3.untrusted import numbered_label
 
 
 class EvidenceRow(Base):
@@ -365,8 +366,10 @@ class SqlStore:
 
     # ── 흐름 ──────────────────────────────────────────────────────────
     def put_stream(self, stream: dict[str, Any]) -> dict[str, Any]:
+        """InMemoryStore.put_stream과 같다(보이는 이름과 차례 번호를 정해 label에 둔다)."""
         if not stream.get("orgId"):
             raise ValueError("흐름에는 orgId가 있어야 한다")
+        stream["label"] = numbered_label(stream, self.list_streams(stream["orgId"]))
         return self._put(STREAMS, stream["id"], stream)
 
     def get_stream(self, stream_id: str, org_id: str | None = None) -> dict[str, Any]:

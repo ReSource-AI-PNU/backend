@@ -1,8 +1,8 @@
 """여러 흐름을 거절한 대화의 닫는 이유(statusReason)에는 거절한 흐름이 모두 적힌다. 수치는 가상이다.
 
 이유는 업체도 보므로 흐름은 담당자가 넣은 이름이 아니라 보이는 이름(untrusted.stream_label)으로
-적힌다. 시연의 불량 사출품(st_defect)은 "PP 가공 전 스크랩(defect)", 스프루·런너(st_sprue)는
-"PP 가공 전 스크랩(sprue)", 포장 필름(st_film)은 "LDPE 필름(film)"이다.
+적힌다. 시연의 불량 사출품(st_defect)은 "PP 사출 불량품", 스프루·런너(st_sprue)는 "PP 스프루·러너",
+포장 필름(st_film)은 "LDPE 포장 필름"이다.
 """
 
 from __future__ import annotations
@@ -45,8 +45,8 @@ def test_status_reason_lists_every_refused_stream_with_its_reason():
     reason = thread["statusReason"]
     assert reason.startswith("받지 않는 폐기물: ")
     assert reason == (
-        "받지 않는 폐기물: PP 가공 전 스크랩(defect)은 업체의 자동 거절 조건(불량)에 해당합니다 / "
-        "PP 가공 전 스크랩(sprue)은 업체의 자동 거절 조건(스프루)에 해당합니다."
+        "받지 않는 폐기물: PP 사출 불량품은 업체의 자동 거절 조건(불량)에 해당합니다 / "
+        "PP 스프루·러너는 업체의 자동 거절 조건(스프루)에 해당합니다."
     )
     # 메시지에 실린 이유(meta.reason)는 그대로다. 닫는 이유만 모두 적는다
     last = thread["messages"][-1]
@@ -87,8 +87,8 @@ def test_same_reason_is_written_once_for_all_its_streams():
     )
     reason = Orchestrator(app)._decline_reason(thread, message)
     assert reason == (
-        "받을 수 있는 흐름이 없습니다. 받지 않는 폐기물: PP 가공 전 스크랩(sprue), LDPE 필름(film): "
-        "창고가 찼습니다 / PP 가공 전 스크랩(defect): 매입 기준에 맞지 않습니다."
+        "받을 수 있는 흐름이 없습니다. 받지 않는 폐기물: PP 스프루·러너, LDPE 포장 필름: "
+        "창고가 찼습니다 / PP 사출 불량품: 매입 기준에 맞지 않습니다."
     )
 
 
@@ -130,7 +130,7 @@ def test_a_model_that_names_only_one_stream_still_gets_all_of_them_listed():
     view = to_approval(app)
     thread = thread_of(view, MISO)
     assert thread["status"] == "declined"
-    assert thread["messages"][-1]["meta"]["reason"].startswith("PP 가공 전 스크랩(defect)")
+    assert thread["messages"][-1]["meta"]["reason"].startswith("PP 사출 불량품")
     reason = thread["statusReason"]
-    assert "(defect)" in reason and "(sprue)" in reason
+    assert "PP 사출 불량품" in reason and "PP 스프루·러너" in reason
     assert "불량 사출품" not in reason and "스프루·런너" not in reason

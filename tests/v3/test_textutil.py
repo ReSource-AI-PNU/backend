@@ -127,11 +127,14 @@ def test_helpers_that_used_both_forms_now_pick_one():
     assert subject("오염도") == "오염도가"
     # 조건은 담당자가 넣은 이름과 대조하고, 문장에는 보이는 이름을 쓴다(untrusted.stream_label)
     reason = rails.auto_decline_reason({"autoDecline": ["PVC"]}, {"name": "PVC 시트", "id": "st_x"})
-    assert reason.startswith("폐기물(x)은 ")
+    assert reason.startswith("폐기물은 ")
     reason = rails.auto_decline_reason(
         {"autoDecline": ["PVC"]}, {"name": "PVC 시트", "id": "st_x", "material": "PP", "form": "압축"}
     )
-    assert reason.startswith("PP 압축품(x)은 ")
+    assert reason.startswith("PP 압축품은 ")
+    shown = {"name": "PVC 시트", "id": "st_y", "material": "PP", "label": "PP 공정 스크랩 2"}
+    reason = rails.auto_decline_reason({"autoDecline": ["PVC"]}, {**shown, "origin": "PIR"})
+    assert reason.startswith("PP 공정 스크랩 2는 ")
     question = questions.make_question({"id": "st_x", "name": "포장 필름"}, "origin")
     assert question["text"].startswith("포장 필름은 ")
     question = questions.make_question({"id": "st_x", "name": "퍼지 덩어리"}, "origin")

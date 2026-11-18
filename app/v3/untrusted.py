@@ -4,8 +4,11 @@
 메시지에 옮기면 상대 에이전트(모델)와 상대 화면에 그대로 간다(평가 L6i의 G5·G6, 개인정보).
 
 - 흐름 이름은 상대에게 보내지 않는다. 상대에게는 코드가 정해진 낱말로 만든 이름(stream_label)이
-  간다. 재질·형태·품목 가운데 정해진 낱말만 쓰고, 구분은 흐름 ID로 한다(ID는 이미 상대에게 열린
-  값이다). 배출 기업은 자기 화면에서 원래 이름과 이 이름을 함께 본다.
+  간다. 재질(PP), 종류(불량품, 스프루·러너, 퍼지 덩어리, 포장 필름 …), 형태(분쇄품, 압축품 …)의
+  정해진 낱말만 쓴다. 종류는 담당자가 넣은 이름·공정에서 정해진 낱말을 찾아 고르고(찾은 낱말만
+  쓰고 이름 글은 옮기지 않는다), 없으면 형태·출처·품목에서 정한다. 같은 조직에 같은 이름이 둘
+  이상이면 저장할 때 뒤에 차례 번호를 붙인다("PP 불량품 2", numbered_label). 무작위 ID는 붙이지
+  않는다. 배출 기업은 자기 화면에서 원래 이름과 이 이름을 함께 본다.
 - 혼입물 이름은 정해진 낱말과 맞으면 그 낱말을, 아니면 정리한 글(safe_text, 숫자 낱말 없이 짧게)을,
   그것도 비면 "기타 혼입물"을 쓴다.
 - 회사 이름은 정리한 글(safe_text)로 보인다. 괄호·대괄호 속 덧붙임, 링크, 이메일, 전화번호,
@@ -62,14 +65,46 @@ _DIGIT = re.compile(r"\d")
 # 상대에게 보일 수 있는 정해진 낱말
 _MATERIAL_CODE = re.compile(r"[A-Za-z]{2,6}(?:\+[A-Za-z]{2,6}){0,2}")
 _MATERIAL_WORDS = ("철", "알루미늄", "구리", "스테인리스", "목재", "종이", "고무", "유리")
-_FORM_WORDS = {
-    "가공 전": "가공 전 스크랩",
-    "압축": "압축품",
-    "분쇄": "분쇄품",
+# 형태(questions.FIELDS["form"]의 고르기)와 같은 뜻으로 적는 낱말 -> 정한 형태. 업체 매입 기준표의
+# "분쇄품", 화면의 "펠릿"처럼 같은 형태를 다르게 적어도 같은 형태로 본다(form_key)
+_FORM_ALIASES = {
+    "가공 전": "가공 전",
+    "가공전": "가공 전",
+    "미가공": "가공 전",
+    "압축": "압축",
+    "압축품": "압축",
+    "분쇄": "분쇄",
+    "분쇄품": "분쇄",
+    "분쇄물": "분쇄",
+    "플레이크": "분쇄",
     "펠렛": "펠렛",
+    "펠릿": "펠렛",
+    "펠렛품": "펠렛",
     "필름": "필름",
 }
+# 형태의 보이는 이름. 가공 전은 형태 이름이 아니라 "아직 가공하지 않았다"는 뜻이라 이름에 넣지 않는다
+_FORM_NOUNS = {"압축": "압축품", "분쇄": "분쇄품", "펠렛": "펠렛", "필름": "필름"}
 _WASTE_ITEMS = ("폐플라스틱", "포장재", "금속 스크랩", "폐목재")
+# 담당자가 넣은 이름·공정에서 찾는 종류 낱말(앞의 것이 먼저) -> 보이는 이름. 찾은 낱말만 쓴다
+_KINDS = (
+    (("불량",), "불량품"),
+    (("스프루", "스푸루", "런너", "러너"), "스프루·러너"),
+    (("퍼지",), "퍼지 덩어리"),
+    (("스트레치",), "스트레치 필름"),
+    (("필름", "비닐"), "필름"),
+    (("마대", "톤백"), "마대"),
+    (("팔레트", "파렛트", "빠레트"), "팔레트"),
+    (("트레이",), "트레이"),
+    (("자투리", "끝단", "트리밍"), "자투리"),
+    (("분쇄", "플레이크"), "분쇄품"),
+    (("펠렛", "펠릿"), "펠렛"),
+    (("압축",), "압축품"),
+    (("스크랩",), "스크랩"),
+    (("포장재",), "포장재"),
+)
+# 불량품 앞에 붙이는 공정 낱말(이름·공정에서 찾는다)
+_DEFECT_PROCESSES = ("사출", "압출", "블로우", "성형")
+_PACKAGING = ("포장", "포장재")
 # 혼입물로 흔히 적는 낱말(긴 것부터 맞춘다)
 CONTAMINANT_WORDS = tuple(
     sorted(
@@ -171,30 +206,99 @@ def material_word(material: Any) -> str | None:
     return text if text in _MATERIAL_WORDS else None
 
 
-def stream_code(stream_id: Any) -> str:
-    """흐름 ID에서 구분용 짧은 표시(영문·숫자만, 12자까지)를 만든다."""
-    raw = str(stream_id or "").removeprefix("st_")
-    return re.sub(r"[^0-9A-Za-z]+", "", raw)[:12]
+def form_key(value: Any) -> str | None:
+    """형태를 정한 낱말로. 모르는 글은 앞뒤 공백만 지운 그대로, 비면 None.
+
+    "분쇄"와 "분쇄품", "펠렛"과 "펠릿"을 같은 형태로 본다(흐름의 형태와 매입 기준의 형태 대조).
+    """
+    text = _SPACES.sub(" ", str(value or "")).strip()
+    if not text:
+        return None
+    return _FORM_ALIASES.get(text, _FORM_ALIASES.get(text.replace(" ", ""), text))
+
+
+def _words(*values: Any) -> str:
+    # 링크·연락처를 먼저 지운다(낱말이 링크 안에서 우연히 맞지 않게)
+    return " ".join(_PHONE.sub(" ", _URL.sub(" ", _EMAIL.sub(" ", str(v or "")))) for v in values)
+
+
+def _kind(stream: dict[str, Any]) -> str | None:
+    """담당자가 넣은 이름·공정에서 찾은 종류의 보이는 이름. 정해진 낱말만 돌려준다."""
+    text = _words(stream.get("name"), stream.get("process"))
+    for needles, shown in _KINDS:
+        if any(n in text for n in needles):
+            break
+    else:
+        return None
+    if shown == "불량품":
+        process = next((p for p in _DEFECT_PROCESSES if p in text), None)
+        return f"{process} 불량품" if process else shown
+    if shown == "필름" and _packaging(stream):
+        return "포장 필름"
+    return shown
+
+
+def _packaging(stream: dict[str, Any]) -> bool:
+    return (
+        stream.get("origin") == "PCR"
+        or stream.get("wasteItem") == "포장재"
+        or any(w in _words(stream.get("name"), stream.get("process")) for w in _PACKAGING)
+    )
+
+
+def base_label(stream: dict[str, Any]) -> str:
+    """차례 번호 없는 보이는 이름. 재질 + 종류(+ 종류와 다른 가공 형태). 예: "PP 사출 불량품",
+    "PP 불량품(분쇄)", "LDPE 포장 필름", "PP 분쇄품", "PP 공정 스크랩", "폐기물"."""
+    form = form_key(stream.get("form"))
+    form = form if form in _FORM_ALIASES.values() else None
+    noun = _FORM_NOUNS.get(form or "")
+    kind = _kind(stream)
+    if kind and noun and noun not in kind and not (form == "필름" and "필름" in kind):
+        kind = f"{kind}({form})"
+    if not kind and noun:
+        kind = "포장 필름" if form == "필름" and _packaging(stream) else noun
+    if not kind:
+        item = stream.get("wasteItem") if stream.get("wasteItem") in _WASTE_ITEMS else None
+        if stream.get("origin") == "PIR" and item in (None, "폐플라스틱"):
+            kind = "공정 스크랩"
+        else:
+            kind = item or "폐기물"
+    material = material_word(stream.get("material"))
+    return f"{material} {kind}" if material else kind
+
+
+_ORDINAL = re.compile(r" (?:[2-9]|[1-9]\d+)")
 
 
 def stream_label(stream: dict[str, Any]) -> str:
-    """상대에게 보이는 흐름 이름. 예: "PP 압축품(sprue)", "LDPE 필름(film)", "폐기물(a)".
+    """상대에게 보이는 흐름 이름. 예: "PP 사출 불량품", "LDPE 포장 필름", "PP 불량품 2".
 
-    흐름의 label이 이미 있으면(상대 쪽으로 넘어온 흐름) 그대로 쓴다.
+    흐름에 저장된 label(numbered_label이 정한 것, 상대 쪽으로 넘어온 흐름의 것)은 지금 칸으로 만든
+    이름이거나 그 뒤에 차례 번호만 붙은 것일 때만 쓴다. 다른 글이면 버리고 다시 만든다.
     """
+    base = base_label(stream)
     given = stream.get("label")
-    if isinstance(given, str) and given:
-        return given
-    parts = []
-    material = material_word(stream.get("material"))
-    if material:
-        parts.append(material)
-    form = _FORM_WORDS.get(str(stream.get("form") or ""))
-    item = stream.get("wasteItem") if stream.get("wasteItem") in _WASTE_ITEMS else None
-    parts.append(form or item or "폐기물")
-    code = stream_code(stream.get("id"))
-    base = " ".join(parts)
-    return f"{base}({code})" if code else base
+    if isinstance(given, str) and given.startswith(base):
+        rest = given[len(base) :]
+        if not rest or _ORDINAL.fullmatch(rest):
+            return given
+    return base
+
+
+def numbered_label(stream: dict[str, Any], others: list[dict[str, Any]]) -> str:
+    """같은 조직의 다른 흐름(others)과 겹치지 않는 보이는 이름. 저장할 때 정해 흐름의 label에 둔다.
+
+    처음 것은 번호 없이, 같은 이름이 이미 있으면 " 2", " 3"을 붙인다. 이미 정한 번호는 칸이 바뀌지
+    않는 한 그대로 둔다(나중에 흐름이 늘어도 앞의 이름이 바뀌지 않는다).
+    """
+    taken = {stream_label(o) for o in others if o.get("id") != stream.get("id")}
+    current = stream_label(stream)
+    if current not in taken:
+        return current
+    base, number = base_label(stream), 2
+    while f"{base} {number}" in taken:
+        number += 1
+    return f"{base} {number}"
 
 
 def contaminant_label(value: Any) -> str:

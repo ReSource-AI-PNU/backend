@@ -16,6 +16,8 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, Protocol
 
+from app.v3.untrusted import numbered_label
+
 # 대화가 열린 적이 있어 업체가 흐름을 볼 수 있는 스레드 상태
 SHARED_THREAD_STATUSES = ("open", "agreed", "declined", "handoff", "confirmed")
 _TABLES = (
@@ -215,8 +217,12 @@ class InMemoryStore:
 
     # ── 흐름 ──────────────────────────────────────────────────────────
     def put_stream(self, stream: dict[str, Any]) -> dict[str, Any]:
+        """저장할 때 상대에게 보이는 이름(label)을 정한다. 같은 조직에 같은 이름이 있으면 차례 번호를
+        붙인다(untrusted.numbered_label). 넘긴 dict에도 label을 적는다."""
         if not stream.get("orgId"):
             raise ValueError("흐름에는 orgId가 있어야 한다")
+        others = [s for s in self._data["streams"].values() if s.get("orgId") == stream["orgId"]]
+        stream["label"] = numbered_label(stream, others)
         return self._put("streams", stream["id"], stream)
 
     def get_stream(self, stream_id: str, org_id: str | None = None) -> dict[str, Any]:

@@ -2183,8 +2183,9 @@ class Orchestrator:
                     if mine or loose or not offer["conditions"]:
                         status = "conditional"
                 known = {c["id"]: c for c in self._thread_claims(threads[vendor_id])}
+                head = f"{stream_label(by_id[sid])}:"
                 for text in offer["conditions"]:
-                    if text.startswith(f"{stream_label(by_id[sid])}:"):
+                    if text.startswith(head):
                         cited = [
                             known[m.group(1)]
                             for m in PLACEHOLDER.finditer(text)
@@ -2194,7 +2195,9 @@ class Orchestrator:
                             {
                                 "key": "vendor_condition",
                                 "status": "conditional",
-                                "text": text,  # 자리표시자는 claims로 그린다
+                                # 결과 한 줄은 이미 그 폐기물의 것이라 앞의 "이름:"은 뺀다.
+                                # 자리표시자는 claims로 그린다
+                                "text": text[len(head) :].strip() or text,
                                 "claims": cited,
                                 "evidence": list(
                                     dict.fromkeys(e for c in cited for e in c["evidence"])

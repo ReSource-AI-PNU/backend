@@ -458,14 +458,14 @@ def test_rule1_a_name_cannot_smuggle_an_amount():
     app = make_app()
     service.update_stream(app, HANBIT, "st_sprue", {"name": "스프루 단가 999원 보장"}, HANBIT)
     session_id, view = run_to_end(app)
-    # 담당자가 넣은 이름은 상대에게 가는 글에 실리지 않는다(보이는 이름 "PP 가공 전 스크랩(sprue)"를
-    # 쓴다). 그래서 이름을 빌려 값을 내보낼 수 없고, 대화도 그 이름 때문에 멈추지 않는다
+    # 담당자가 넣은 이름은 상대에게 가는 글에 실리지 않는다(정해진 낱말로 만든 보이는 이름
+    # "PP 스프루·러너"를 쓴다). 그래서 이름을 빌려 값을 내보낼 수 없고, 대화도 그 이름 때문에 멈추지 않는다
     for thread in view["threads"]:
         for message in thread["messages"]:
             assert "999원" not in message["text"] and "보장" not in message["text"]
     sprue = [t for t in view["threads"] if "st_sprue" in t["streamIds"]]
     assert sprue and all(t["status"] != "handoff" for t in sprue)
-    assert any("(sprue)" in m["text"] for t in sprue for m in t["messages"])
+    assert any("PP 스프루·러너" in m["text"] for t in sprue for m in t["messages"])
     assert unvalidated_messages(app, session_id) == []
 
 
@@ -1331,7 +1331,7 @@ def test_rule7_permit_lost_between_offer_and_optimisation_drops_only_those_offer
     assert sorted(offers) == ["st_film"]
     summaries = [e["summary"] for e in view["events"] if e["threadId"] == thread["id"]]
     # 실행 기록은 업체도 본다. 흐름은 보이는 이름으로 적힌다(untrusted.stream_label)
-    assert any("만 이 대화에서 뺐습니다" in s and "(sprue)" in s for s in summaries)
+    assert any("만 이 대화에서 뺐습니다" in s and "PP 스프루·러너" in s for s in summaries)
     assert all(
         a["vendorOrgId"] != SAEGIL
         for a in view["result"]["assignments"]
