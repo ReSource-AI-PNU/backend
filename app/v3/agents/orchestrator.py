@@ -1745,6 +1745,10 @@ class Orchestrator:
                 if x["vendorOrgId"] == thread.vendor_org and x["streamId"] in thread.stream_ids
             }
         )
+        # 질문 한도(묶음당 세 개, 두 묶음)를 다 썼으면 처음부터 담당자에게 물을 수 없다고 알린다. 그러면
+        # 회사 측은 ask_user를 고를 수 없고 모르는 값을 '확인 필요'로 둔 채 조건부 제안으로 나아간다
+        history = self.store.list_questions(session["id"])
+        exhausted = self.policy.batches_used(history) >= self.policy.max_batches
         with self.feed.turn(session["id"], thread, "company", 5):
             outcome, trace = agent.compose(
                 thread,
@@ -1756,7 +1760,8 @@ class Orchestrator:
                 state={
                     "offered": offered,
                     "excluded": excluded,
-                    "cannotAskUser": bool(work["cannotAsk"].get(thread.id)),
+                    "cannotAskUser": exhausted or bool(work["cannotAsk"].get(thread.id)),
+                    "unresolved": list(work.get("unresolved") or []),
                 },
             )
         if outcome.kind == ACCEPT:
@@ -1781,7 +1786,6 @@ class Orchestrator:
                     continue  # 모델은 물을 항목을 새로 만들 수 없다
                 if not questions.known(stream, field):
                     wanted.append(questions.make_question(stream, field, asked_by=thread.id))
-            history = self.store.list_questions(session["id"])
             batch = self.policy.next_batch(questions.ordered(wanted), history)
             if batch:
                 self._ask(session, batch, stage=5)
@@ -1793,15 +1797,9 @@ class Orchestrator:
                     thread=thread,
                     org_id=thread.emitter_org,
                 )
-            elif work["cannotAsk"].get(thread.id):
-                self._handoff(
-                    session,
-                    thread,
-                    thread.emitter_org,
-                    "담당자에게 더 물을 수 없는 값을 다시 물으려 해 담당자에게 넘깁니다.",
-                    stage=4,
-                )
-            else:  # 질문 한도를 다 썼거나 이미 물은 값이다. 확인 필요로 두고 답하게 한다
+            else:
+                # 이미 물은 값이거나 답을 기다리는 묶음이 있다. 확인 필요로 두고 다음 차례에 답하게 한다.
+                # 다음 차례의 compose는 ask_user를 받지 않으므로 다시 묻다가 담당자에게 넘어가지 않는다
                 work["cannotAsk"][thread.id] = True
                 for question in wanted:
                     entry = {"streamId": question["streamId"], "field": question["field"]}

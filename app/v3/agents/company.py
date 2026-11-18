@@ -129,6 +129,20 @@ SYSTEM_PROMPT = "\n".join(
 )
 
 
+# 담당자에게 더 물을 수 없을 때의 안내(질문 정책: 한도가 끝난 뒤 남은 값은 미확인으로 두고 업체 질문에 남긴다)
+NO_MORE_QUESTIONS = (
+    "담당자 질문 한도를 다 썼거나 물을 값을 이미 물었다. 담당자에게 다시 묻지 않는다(ask_user는 없다). "
+    "담당자가 모르는 값(state.unresolved, streams[].unknownFields)은 '확인 필요'로 적고, 업체가 그 값을 "
+    "반입 검수에서 확인할 조건으로 건 조건부 제안(conditional)을 내게 한다. 그런 조건부 제안을 받았고 남은 "
+    "조건이 그 확인뿐이면 accept한다."
+)
+NO_MORE_QUESTIONS_REJECTION = (
+    "담당자 질문 한도를 다 써서 담당자에게 더 물을 수 없습니다(ask_user를 쓸 수 없습니다). 모르는 값은 "
+    "'확인 필요'로 적고, 그 값을 반입 검수에서 확인할 조건으로 걸어 answer나 question으로 다시 쓰거나 "
+    "받은 조건부 제안을 accept하세요."
+)
+
+
 def short(stream_id: str) -> str:
     return stream_id.removeprefix("st_")
 
@@ -144,8 +158,14 @@ def guide(
     names: dict[str, str],
     results: list[dict[str, Any]],
 ) -> list[str]:
-    """이번 차례에 할 일(코드가 대화 상태에서 쓴다). 모델이 고를 수 있는 type은 types뿐이다."""
+    """이번 차례에 할 일(코드가 대화 상태에서 쓴다). 모델이 고를 수 있는 type은 types뿐이다.
+
+    cannot_ask_user이면(질문 한도를 다 썼거나 물을 값을 이미 물었다) ask_user가 types에 없다. 모르는 값은
+    '확인 필요'로 두고 그 값을 조건으로 건 조건부 제안으로 나아가게 한다(질문 정책: 한도 뒤 남은 것은 미확인).
+    """
     lines = [f"이번 차례에 쓸 수 있는 type: {', '.join(types)}."]
+    if task == "reply" and cannot_ask_user:
+        lines.append(NO_MORE_QUESTIONS)
     if task == "inquiry":
         asks = [
             f"{names.get(r['arguments'].get('streamId'), '')}: {c['ask']}"
@@ -173,7 +193,8 @@ def guide(
             "상대가 질문했다(incoming.asks). 물은 항목마다 streams[].facts의 {{id}}로 answer한다. "
             "facts에 없고 unknownFields에도 없는 값은 담당자만 안다"
             + (
-                ": '확인 필요'로 답한다(담당자에게 더 물을 수 없다)."
+                ": '확인 필요'로 답하고, 그 값은 반입 검수에서 확인할 조건으로 걸어 조건부로 제안해 "
+                "달라고 적는다(담당자에게 더 물을 수 없다)."
                 if cannot_ask_user
                 else ": type을 ask_user로 하고 userQuestions에 {streamId, field}를 적는다."
             )
@@ -294,6 +315,7 @@ class CompanyAgent:
     ) -> tuple[Outcome, Trace]:
         """task: inquiry(첫 문의) | reply(상대 메시지에 답) | confirm(양쪽 승인 뒤 확정 통지)."""
         state = dict(state or {})
+        cannot_ask = bool(state.get("cannotAskUser"))
         trace = Trace()
         pool = ClaimPool(self.registry, self.org_id)
         by_id = {s["id"]: s for s in streams}
@@ -321,7 +343,9 @@ class CompanyAgent:
             pseudo = ()
         else:
             allowed = tuple(t for t in allowed if t != "inquiry")
-            pseudo = (ACCEPT, ASK_USER)
+            # 담당자에게 더 물을 수 없으면 ask_user를 고를 수 없게 한다(골라도 담당자에게 넘기지 않고
+            # 다시 쓰게 한다). 모르는 값은 '확인 필요'로 두고 조건부 제안으로 나아간다
+            pseudo = (ACCEPT,) if cannot_ask else (ACCEPT, ASK_USER)
         incoming = next((m for m in reversed(thread.messages) if m.sender != self.org_id), None)
         offered = list(state.get("offered") or [])
         excluded = list(state.get("excluded") or [])
@@ -382,7 +406,7 @@ class CompanyAgent:
                     incoming=incoming,
                     uncovered=uncovered,
                     asked=asked_now,
-                    cannot_ask_user=bool(state.get("cannotAskUser")),
+                    cannot_ask_user=cannot_ask,
                     names=names,
                     results=tools.results,
                 ),
@@ -441,7 +465,13 @@ class CompanyAgent:
                     "uncovered": uncovered,
                     "asked": asked_now,
                     "agreed": list(state.get("agreed") or []),
-                    "cannotAskUser": bool(state.get("cannotAskUser")),
+                    "cannotAskUser": cannot_ask,
+                    # 질문 한도를 다 쓰고도 모르는 값(이 대화의 폐기물만). '확인 필요'로 두는 값이다
+                    "unresolved": [
+                        {"streamId": u.get("streamId"), "field": u.get("field")}
+                        for u in state.get("unresolved") or []
+                        if isinstance(u, dict) and u.get("streamId") in thread.stream_ids
+                    ],
                 },
                 "userQuestionFields": sorted(questions.FIELDS),
                 "tools": tools.catalog(),
@@ -451,6 +481,15 @@ class CompanyAgent:
             }
 
         def make(output: dict[str, Any]):
+            if output.get("type") == ASK_USER and ASK_USER not in pseudo:
+                raise DraftError(
+                    rejection(
+                        "TYPE_NOT_ALLOWED",
+                        NO_MORE_QUESTIONS_REJECTION,
+                        type=ASK_USER,
+                        allowed=[*allowed, *pseudo],
+                    )
+                )
             if output.get("type") == "confirm" and "confirm" not in allowed:
                 raise DraftError(
                     rejection(
