@@ -929,9 +929,9 @@ class VendorAgent:
         last = sources[-1]
         terms = json.loads(json.dumps(last.meta["terms"]))
         kind = "conditional" if any(m.type == "conditional" for m in sources) else "offer"
-        body = "단가 조정 요청을 검토했습니다. " + " ".join(lines)
+        body = "단가 조정 요청을 검토했습니다.\n" + "\n".join(f"- {line}" for line in lines)
         if conditions:
-            body += " 조건은 앞서 드린 그대로입니다: " + " ".join(conditions)
+            body += "\n조건은 앞서 드린 그대로입니다.\n" + "\n".join(f"  · {c}" for c in conditions)
         reply = Message(
             thread_id=thread.id,
             sender=vendor_org,
