@@ -500,7 +500,7 @@ VendorProfile {"orgId": "org_saegil",
 | `POST /demo/reset` | 시연 데이터를 처음 상태로 되돌린다. 관리자만(아래 "관리자 조직") |
 | `GET /orgs` | 조직 목록. 조직 레코드의 `order`가 작은 것부터(시연 주인공 `org_hanbit`이 맨 앞, 운영 조직이 맨 뒤). `order`가 없는 조직은 그 뒤에 ID 순. token 모드에서는 자기 조직과 대화 상대만 |
 | `GET /orgs/{orgId}/streams`, `PUT /orgs/{orgId}/streams/{streamId}` | 흐름 조회와 수정(현행 처리, 전처리 작업 시간·시간당 인건비, 공정 재투입 값 포함. 6장) |
-| `GET /vendors/{orgId}`, `PUT /vendors/{orgId}` | 업체 프로필(허가, 매입 기준, 노선·차량, 가드레일, 모델 선택) |
+| `GET /vendors/{orgId}`, `PUT /vendors/{orgId}` | 업체 프로필(허가, 매입 기준, 노선·차량, 가드레일, 모델 선택). 노선·차량(`fleet`)의 모양과 검사는 9장 "노선·차량" |
 | `POST /sessions` | `{emitterOrgId}`로 진단을 만든다. `emitterOrgId`가 없으면 요청한 조직이다 |
 | `GET /sessions` | 내가 당사자인 진단의 목록(최근 것이 앞). `[{id, emitterOrgId, emitterName, status, createdAt, updatedAt, as}]`. 배출 기업은 자기 진단, 업체는 자기에게 열린 대화가 있는 진단, 운영자는 전부. `as`는 `emitter`·`vendor`·`admin` |
 | `GET /sessions/{id}` | 진단 뷰 |
@@ -754,6 +754,35 @@ HTTP 오류 코드가 아니라 `approvals[].blockedCodes`(배열)와 `blockedRe
 - 비밀번호는 `hashlib.scrypt`(n=2^14, r=8, p=1, 사용자마다 16바이트 소금)로 저장하고 응답과 기록에 싣지 않는다. 확인은 `hmac.compare_digest`로 하고 없는 이메일도 같은 계산을 한다. 로그인 실패 횟수는 서버 프로세스 메모리에서 이메일마다 센다(로그인에 성공하면 지운다).
 - 초대 토큰은 32바이트 난수(URL에 쓸 수 있는 글)이고 sha256 값만 저장한다. 7일 뒤 만료되고 한 번만 쓸 수 있다. 토큰 원문은 만든 응답에만 한 번 나간다.
 - 저장: 메모리 모드는 프로세스 안, SQL 모드는 `v3_users`, `v3_memberships`, `v3_invites`(마이그레이션 `0005_v3_accounts`). 조직 레코드는 `v3_records`(kind `orgs`)에 그대로 둔다.
+
+### 노선·차량 (`PUT /vendors/{orgId}`의 `fleet`)
+
+실제 업체도 시연 업체와 같은 `fleet`을 `PUT /vendors/{orgId}`(업체 자신만)로 넣는다. 보낸 항목만 바꾸고 `null`이면 그 항목을 지운다. `fleet: null`이면 바꾸지 않는다. 검사는 `app/v3/fleet.py`이고 틀리면 422 `INVALID_VALUE`(문장이 어느 항목인지 말한다)이며 프로필을 바꾸지 않는다.
+
+```json
+{"fleet": {
+  "depot": [128.97, 35.09],
+  "capacityKg": 3000, "capacityM3": 15, "costPerKm": 900,
+  "vehicleCount": 3,
+  "routes": [
+    {"name": "강서 화목 노선", "days": ["화", "목"], "regions": ["부산 강서구"], "complexes": ["녹산국가산업단지"]}
+  ]
+}}
+```
+
+| 항목 | 검사 | 계산에 쓰는 곳 |
+|---|---|---|
+| `depot` | `[경도, 위도]`, 경도 -180~180, 위도 -90~90 | 업체 탐색의 거리와 순위, 운송비 어림, 노선 추가 비용(차고지) |
+| `capacityKg` | 0보다 크고 100,000 이하 | 적재 검사(한 번 수거량 ≤ 차량 한 대의 적재 중량), 노선 추가 비용 |
+| `capacityM3` | 0보다 크고 1,000 이하 | 부피 적재 검사 |
+| `costPerKm` | 0 이상 1,000,000 이하 | 운송비 어림, 노선 추가 비용. 업체만 보는 값이다(상대에게 나누는 계산 근거에서 뺀다) |
+| `vehicleCount` | 1 이상 1,000 이하의 정수 | 아직 쓰지 않는다(저장·표시) |
+| `routes` | 30개 이하. 항목마다 `name`(1~50자, 노선끼리 겹치지 않음), `days`(`월`~`일`에서 하나 이상. 요일 순으로 맞추고 겹침을 지운다), `regions`(수거 지역, 50자 이하 글 30개 이하), `complexes`(산업단지, 100자 이하 글 30개 이하). `regions`나 `complexes`가 하나는 있어야 한다. 다른 항목은 받지 않는다 | 아직 쓰지 않는다(저장·표시) |
+
+- `evidence`는 서버가 정한다. 보내도 버린다(GET으로 받은 `fleet`을 그대로 돌려보내도 된다). 그 밖의 모르는 항목은 422다.
+- `capacityKg`, `capacityM3`, `costPerKm`은 저장할 때 업체 입력 근거(human)가 되어 `fleet.evidence`에 들어간다(값이 같으면 있던 근거를 그대로 쓴다).
+- 운행 요일은 노선마다 적지만, 업체 측 AI가 제안에 쓰는 수거 요일의 한계는 전처럼 `guardrails.days`다.
+- 지금 판단 도구는 `depot`, `capacityKg`, `capacityM3`, `costPerKm`만 쓴다. 노선 추가 비용(`route_extra_cost`)의 기존 정류장은 `routes`가 아니라 그 업체가 다른 배출 기업과 합의·확정한 대화의 공장 위치다. `vehicleCount`와 `routes`는 판단 도구 입력(`vendor.public_profile`)에 싣지 않는다(계산 근거 ID가 바뀌지 않는다). 업체 탐색은 허가 품목·매입 기준과 차고지 거리로 고르고 수거 지역으로 거르지 않는다.
 
 ### 체험하기 (`X-Demo-View: 1`)
 

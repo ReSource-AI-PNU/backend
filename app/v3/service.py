@@ -20,6 +20,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Any
 
 from app.v3 import feedback, ids, live
+from app.v3 import fleet as fleet_input
 from app.v3 import names as naming
 from app.v3.a2a.message import STAGES
 from app.v3.a2a.policy import QuestionPolicy, evidence_owner
@@ -699,7 +700,17 @@ def update_vendor(app: App, org_id: str, patch: dict[str, Any], viewer: str) -> 
             criteria.append({**item, "id": cid, "evidence": list(dict.fromkeys(evidence))})
         profile["criteria"] = criteria
     if "fleet" in patch:
-        fleet = {**(profile.get("fleet") or {}), **(patch["fleet"] or {})}
+        # 노선·차량은 app/v3/fleet.py가 검사한다(모르는 항목, 범위 밖 값은 422). null 값은 그 항목을 지운다
+        try:
+            changes = fleet_input.clean_patch(patch["fleet"])
+        except ValueError as error:
+            raise ServiceError("INVALID_VALUE", str(error), 422) from None
+        fleet = dict(profile.get("fleet") or {})
+        for key, value in changes.items():
+            if value is None:
+                fleet.pop(key, None)
+            else:
+                fleet[key] = value
         before = list((profile.get("fleet") or {}).get("evidence") or [])
         evidence = []
         for key, label, unit in (

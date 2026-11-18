@@ -41,6 +41,7 @@ from app.v3.agents.llm import LLM
 from app.v3.agents.pool import ClaimPool
 from app.v3.evidence.units import UnitError, convert
 from app.v3.evidence.validator import validate_message
+from app.v3.fleet import INFO_KEYS
 from app.v3.judge.common import without_emitter_only
 from app.v3.untrusted import counterparty_stream, org_label
 
@@ -185,9 +186,12 @@ SYSTEM_PROMPT = "\n".join(
 
 
 def public_profile(profile: dict[str, Any], *, fleet_cost: bool = True) -> dict[str, Any]:
-    """판단 도구에 넘기는 업체 프로필. 하한·상한 단가와 자동 거절 조건, 모델 설정은 뺀다."""
+    """판단 도구에 넘기는 업체 프로필. 하한·상한 단가와 자동 거절 조건, 모델 설정은 뺀다.
+
+    노선·차량의 운영 정보(차량 수, 노선)는 계산에 쓰지 않으므로 싣지 않는다(fleet.INFO_KEYS).
+    """
     guard = profile.get("guardrails") or {}
-    fleet = dict(profile.get("fleet") or {})
+    fleet = {k: v for k, v in (profile.get("fleet") or {}).items() if k not in INFO_KEYS}
     if not fleet_cost:
         fleet.pop("costPerKm", None)
         fleet.pop("evidence", None)
