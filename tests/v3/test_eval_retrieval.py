@@ -95,19 +95,21 @@ def test_every_gold_id_exists_in_the_corpus_with_a_valid_grade(items):
 # ── 말뭉치 ───────────────────────────────────────────────────────────
 
 
-def test_extra_law_corpus_is_eval_only_and_records_its_source():
+def test_extra_law_corpus_is_the_product_law_corpus_and_records_its_source():
     extra = json.loads(retrieval.EXTRA_CORPUS.read_text(encoding="utf-8"))
     assert len(extra) >= 300
     product = InMemoryRegistry()
     load_seed_dir(product)
-    product_ids = {e.id for e in product.list(org_id=None)}
+    product_laws = {e.id: e for e in product.list(kinds=["law"], org_id=None)}
     ids = [x["id"] for x in extra]
     assert len(set(ids)) == len(ids)
-    assert not set(ids) & product_ids  # 제품 레지스트리에는 없다(평가 전용)
+    # 2026-11-19부터 ③ 규정 검토도 같은 조문을 본다(제품과 평가가 같은 말뭉치)
+    assert set(ids) <= set(product_laws)
+    assert all(product_laws[i].meta["evalOnly"] is False for i in ids)
     for x in extra:
         meta = x["meta"]
         assert x["kind"] == "law" and x["excerpt"].strip()
-        assert meta["evalOnly"] is True and meta["retrievedAt"]
+        assert meta["retrievedAt"]
         assert meta["fetchedFrom"].startswith("https://www.law.go.kr/LSW/lsInfoR.do?lsiSeq=")
         assert x["excerpt"].startswith(meta["article"])  # 조 번호로 시작하는 원문
 
@@ -124,13 +126,26 @@ def test_corpus_has_seeds_defaults_and_extra_laws(items):
 QUERIES = ["폐플라스틱 재활용 위탁", "위탁", "소각 처리", "PP 압축 경남 시장 가격", "필름"]
 
 
-def test_s0_ranks_like_the_regulation_tool(items):
+def test_regulation_tool_ranks_laws_like_the_evidence_search(items):
+    """③ 도구는 근거 검색(S1, Azure가 연결되면 S6)을 법령으로 좁혀 쓴다(2026-11-19부터)."""
     registry = retrieval.corpus_registry()
     rec = SimpleNamespace(registry=registry, org_id=None, today=DEFAULT_TODAY)
-    laws = [e for e in items if e.kind == "law"]
     for query in QUERIES:
-        expected = [law.id for law, _ in regulation._search(rec, query, 20)]
-        assert [eid for eid, _ in retrieval.rank_s0(laws, query)][:20] == expected
+        expected = [
+            hit["evidence"]["id"]
+            for hit in search.search_evidence(registry, query, kinds=["law"], org_id=None, limit=20)
+        ]
+        assert [law.id for law, _ in regulation._search(rec, query, 20)] == expected[:20]
+
+
+def test_s0_keeps_the_previous_word_count_for_comparison(items):
+    """S0은 2026-11-19까지의 ③ 도구(법령 원문에 질의 낱말이 나온 횟수의 합)다."""
+    laws = [e for e in items if e.kind == "law"]
+    ranked = retrieval.rank_s0(laws, "소각 처리")
+    assert ranked and all(score > 0 for _, score in ranked)
+    first = next(e for e in laws if e.id == ranked[0][0])
+    text = f"{first.label} {first.excerpt}"
+    assert ranked[0][1] == text.count("소각") + text.count("처리")
 
 
 def test_s1_ranks_like_the_evidence_search(items):

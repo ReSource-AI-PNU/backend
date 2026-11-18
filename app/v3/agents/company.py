@@ -263,7 +263,7 @@ class CompanyAgent:
                 route = arguments.get("route")
                 if route not in ROUTES:
                     raise ValueError("route는 sell, treat, keep 가운데 하나여야 합니다.")
-                real = {"stream": stream, "route": route}
+                real = {"stream": stream, "route": route, "vendors": [vendor]}
                 return real, f"req_{short(sid)}", {"streamId": sid}, True
             if name == "cost_carbon":
                 real = {"stream": stream, "vendor": vendor}

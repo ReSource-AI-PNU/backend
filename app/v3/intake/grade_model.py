@@ -251,7 +251,7 @@ def grade_stream(
     *,
     asked_moisture_pct: float | None = None,
 ) -> dict[str, Any]:
-    """흐름 하나의 등급. 결과는 model 근거로 등록한다.
+    """흐름 하나의 등급. 엔드포인트가 낸 등급은 model 근거, 기준값 규칙이 낸 등급은 calc 근거로 등록한다.
 
     사진 추정에 쓰는 수분은 질문으로 받은 값(asked_moisture_pct 또는 stream["askedMoisturePct"])이다.
     측정값이 함께 있을 때는 비교를 위해 측정 수분을 쓴다.
@@ -284,11 +284,24 @@ def grade_stream(
             return result
         label = "측정 등급" if basis == "measured" else "사진 추정 등급"
         input_evidence = [*inputs, assumption.id]
+        # 등급 모델 엔드포인트가 낸 등급만 model 근거다. 기준값 규칙이 낸 등급은 계산(calc) 근거로 남겨
+        # 모델처럼 보이지 않게 한다(2026-11-19)
+        endpoint = predicted["basis"] == "endpoint"
+        key = f"{stream_id}-{basis}"
         evidence = registry.put(
             Evidence(
-                id=ids.model_id(ENDPOINT_NAME, predicted["modelVersion"], f"{stream_id}-{basis}"),
-                kind="model",
-                label=f"{stream.get('name') or stream_id} {label}",
+                id=(
+                    ids.model_id(ENDPOINT_NAME, predicted["modelVersion"], key)
+                    if endpoint
+                    else ids.calc_id(
+                        "grade_rules",
+                        {"version": predicted["modelVersion"], "inputs": result["inputs"]},
+                        key,
+                    )
+                ),
+                kind="model" if endpoint else "calc",
+                label=f"{stream.get('name') or stream_id} {label}"
+                + ("" if endpoint else "(기준값 규칙 계산)"),
                 value=predicted["grade"],
                 excerpt=(
                     f"{label} {predicted['grade']}: 재질 {material or '미확인'}, "
@@ -303,6 +316,7 @@ def grade_stream(
                 access=(org_id,),
                 meta={
                     "tool": "grade_stream",
+                    **({} if endpoint else {"formula": predicted["rule"]}),
                     "basis": basis,
                     "modelBasis": predicted["basis"],
                     "inputs": result["inputs"],

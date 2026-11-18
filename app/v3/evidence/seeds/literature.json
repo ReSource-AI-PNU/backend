@@ -1,0 +1,35 @@
+[
+  {
+    "id": "ref:문헌-Petrik2025:혼합폐플라스틱-열분해@2024-12",
+    "kind": "ref",
+    "label": "혼합폐플라스틱 열분해(화학적 재활용) 배출계수 · 문헌값",
+    "value": 1.239,
+    "unit": "kgCO2e/kg",
+    "excerpt": "Without considering credits, the emissions for unwashed and washed pyrolysis cases range from 1156 to 1239 kg CO2 eq., leading to 48%–51% savings compared to the non-credited reference system.",
+    "source": "Petrík, Genuino, Kramer, Shen (2025) · Waste Management & Research 43(8):1219–1233, doi:10.1177/0734242X241306605 (CC BY)",
+    "asOf": "2024-12-31",
+    "validUntil": null,
+    "access": [
+      "*"
+    ],
+    "version": 1,
+    "meta": {
+      "series": "문헌값",
+      "item": "혼합폐플라스틱-열분해",
+      "period": "2024-12",
+      "url": "https://doi.org/10.1177/0734242X241306605",
+      "retrievedAt": "2026-11-19T00:00:00.000Z",
+      "conditions": [
+        "폐기물 1,000kg(혼합 플라스틱 선별 잔재 DKR-350) 처리 기준, 크레딧(대체 효과)을 빼기 전 값",
+        "범위 1,156~1,239 kg CO2 eq. 가운데 위쪽 값(이점을 부풀리지 않는 쪽)을 kg당으로 적었다",
+        "열분해유를 화학 원료(나프타 대체)로 쓰는 경우"
+      ],
+      "caveats": [
+        "한국 공식 계수가 아니다. 환경성적표지 평가계수(공공데이터포털 15120968)에 열분해 항목이 없어 쓴 네덜란드 파일럿 문헌값이다",
+        "환경성적표지 소각·재활용 값처럼 크레딧을 빼기 전 값이지만 지역과 기초 데이터(ecoinvent 3.7.1, 네덜란드 전력)가 다르다",
+        "독립 출처 JRC 2023(EUR 31423 EN) 0.85~1.36, BASF/Sphera 2020 약 1.16과 범위가 맞는다",
+        "열분해유를 연료로 파는 업체에는 맞지 않는다"
+      ]
+    }
+  }
+]

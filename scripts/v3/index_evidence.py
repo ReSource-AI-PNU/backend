@@ -23,6 +23,7 @@ from __future__ import annotations
 import argparse
 import os
 import sys
+import time
 from collections.abc import Mapping
 from typing import Any
 
@@ -110,7 +111,11 @@ def main(
     try:
         kinds = parse_kinds(args.kinds)
         client = search_azure.client_from_env(
-            env, transport=transport, embed_transport=embed_transport
+            env,
+            transport=transport,
+            embed_transport=embed_transport,
+            # 임베딩 한도(429)나 연결 끊김이면 기다렸다 다시 보낸다. 시험에서 가짜 transport면 기다리지 않는다
+            sleep=time.sleep if transport is None else None,
         )
     except ValueError as error:
         print(f"설정 오류: {error}", file=sys.stderr)

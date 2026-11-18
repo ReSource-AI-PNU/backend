@@ -74,7 +74,8 @@ def test_measured_grade_wins_and_mismatch_asks():
     assert result["photoEstimate"]["grade"] == "B"
     assert [c["key"] for c in result["checks"]] == ["grade_mismatch"]
     evidence = registry.get(result["evidence"][0], "org_hanbit")
-    assert evidence.kind == "model" and evidence.value == "A"
+    # 기준값 규칙이 낸 등급은 모델이 아니라 계산 근거다
+    assert evidence.kind == "calc" and evidence.value == "A"
     assert evidence.meta["inputEvidence"] == ["measure:x:y:z@d", "assumption:등급기준@v2"]
     assert registry.get("assumption:등급기준@v2", "org_other").kind == "assumption"
     with pytest.raises(PermissionError):
@@ -94,7 +95,9 @@ def test_photo_estimate_needs_asked_moisture():
         "사진 추정",
     )
     assert answered["checks"] == []
-    assert answered["evidence"] == ["model:rsai-grade:v2:st_sprue-photo_estimate"]
+    assert len(answered["evidence"]) == 1
+    assert answered["evidence"][0].startswith("calc:grade_rules:")
+    assert answered["evidence"][0].endswith(":st_sprue-photo_estimate")
 
 
 def test_no_inputs_asks_for_measurement():

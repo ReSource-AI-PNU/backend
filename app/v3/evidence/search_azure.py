@@ -27,6 +27,11 @@ VECTOR_PROFILE = "rsai-hnsw-profile"
 VECTOR_ALGORITHM = "rsai-hnsw"
 KOREAN_ANALYZER = "ko.microsoft"
 UPSERT_BATCH = 500
+# 임베딩은 따로 작게 나눠 보낸다. 근거 수백 건을 한 요청에 넣으면 분당 토큰 한도(429)를 넘고,
+# 5만 자가 넘는 조문은 모델 입력 한도(8,192토큰)를 넘는다(2026-11-19 법령 374조 색인에서 확인)
+EMBED_BATCH = 12
+EMBED_MAX_CHARS = 5000  # 벡터는 앞 5,000자로 만든다. 글 검색 필드에는 전문을 그대로 넣는다
+EMBED_RETRIES = 8
 SELECT_FIELDS = "id,evidenceId,kind,access,payload"
 
 
@@ -100,7 +105,8 @@ def index_definition(
 
 
 def embedding_text(evidence: Evidence) -> str:
-    return "\n".join(part for part in (evidence.label, evidence.excerpt, evidence.source) if part)
+    text = "\n".join(part for part in (evidence.label, evidence.excerpt, evidence.source) if part)
+    return text[:EMBED_MAX_CHARS]
 
 
 def to_document(evidence: Evidence, vector: Sequence[float] | None = None) -> dict[str, Any]:
@@ -197,7 +203,11 @@ class AzureSearchClient:
         embed: Embed | None = None,
         api_version: str = API_VERSION,
         vector_dimensions: int = 1024,
+        sleep: Callable[[float], None] | None = None,
     ) -> None:
+        # 기다리는 함수는 색인 스크립트가 넣는다(scripts/v3/index_evidence.py). 판단 경로의 모듈은 시계를 쓰지 않는다
+        # (규칙 12). 없으면 기다리지 않고 바로 다시 보낸다
+        self._sleep = sleep
         self.endpoint = endpoint.rstrip("/")
         self.index = index
         self._api_key = api_key
@@ -215,10 +225,30 @@ class AzureSearchClient:
         total = 0
         for start in range(0, len(evidences), UPSERT_BATCH):
             batch = list(evidences[start : start + UPSERT_BATCH])
-            vectors = self._embed([embedding_text(e) for e in batch]) if self._embed else None
+            vectors = self._vectors([embedding_text(e) for e in batch]) if self._embed else None
             self._call("POST", f"/indexes/{self.index}/docs/index", upsert_payload(batch, vectors))
             total += len(batch)
         return total
+
+    def _vectors(self, texts: list[str]) -> list[list[float]]:
+        """EMBED_BATCH개씩 임베딩한다. 한도 초과(429)와 연결 끊김은 기다렸다 다시 보낸다."""
+        vectors: list[list[float]] = []
+        for start in range(0, len(texts), EMBED_BATCH):
+            chunk = texts[start : start + EMBED_BATCH]
+            for attempt in range(EMBED_RETRIES):
+                try:
+                    vectors.extend(self._embed(chunk))  # type: ignore[misc]
+                    break
+                except Exception as error:  # 임베딩 구현마다 오류 꼴이 다르다
+                    limited = getattr(error, "status", None) == 429
+                    dropped = isinstance(
+                        error, (OSError, TimeoutError)
+                    ) or "연결하지 못했다" in str(error)
+                    if not (limited or dropped) or attempt == EMBED_RETRIES - 1:
+                        raise
+                    if self._sleep is not None:
+                        self._sleep(20 if limited else 5)
+        return vectors
 
     def search(
         self,
@@ -294,7 +324,11 @@ def embeddings_from_env(env: Mapping[str, str], *, transport: Any = None) -> Emb
 
 
 def client_from_env(
-    env: Mapping[str, str], *, transport: Transport | None = None, embed_transport: Any = None
+    env: Mapping[str, str],
+    *,
+    transport: Transport | None = None,
+    embed_transport: Any = None,
+    sleep: Callable[[float], None] | None = None,
 ) -> AzureSearchClient | None:
     """AZURE_SEARCH_ENDPOINT와 AZURE_SEARCH_API_KEY가 모두 있으면 클라이언트, 아니면 None.
 
@@ -316,6 +350,7 @@ def client_from_env(
         transport=transport,
         embed=embeddings_from_env(env, transport=embed_transport),
         vector_dimensions=dimensions,
+        sleep=sleep,
     )
 
 

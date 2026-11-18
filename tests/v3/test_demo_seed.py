@@ -98,7 +98,10 @@ def test_every_reference_is_registered_with_matching_value(demo):
     assert set(referenced) == set(summary["evidenceIds"])
     for evidence_id in summary["evidenceIds"]:
         evidence = registry.get(evidence_id)
-        assert evidence.kind in ("doc", "measure", "model", "human")
+        # 시연 사진의 오염 비율은 탐지 모델을 돌린 값이 아니라 가정값이다(model이 아니다)
+        assert evidence.kind in ("doc", "measure", "human", "assumption")
+        if evidence.kind == "assumption":
+            assert "시연" in evidence.label and "오염" in evidence.label
         assert evidence.meta["synthetic"] is True and "가상" in evidence.source
 
 

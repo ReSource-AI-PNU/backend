@@ -78,7 +78,10 @@ def test_correction_becomes_human_evidence_and_detector_candidate(confirmed):
     )
     rows = feedback.export_detection_corrections(app)
     assert [r["field"] for r in rows] == ["box", "material"]  # 등급 교정은 탐지 후보가 아니다
-    assert all(r["hasPhoto"] and r["photoEvidence"][0].startswith("model:") for r in rows)
+    # 시연 흐름의 사진 근거는 탐지 모델을 돌리지 않은 가정값이다(실제 업로드면 model: 근거)
+    assert all(
+        r["hasPhoto"] and r["photoEvidence"][0].startswith("assumption:시연사진-") for r in rows
+    )
     assert rows[0]["after"] == box
     # 같은 항목을 다시 고치면 새 근거가 된다(앞 기록을 덮지 않는다)
     again = service.record_correction(

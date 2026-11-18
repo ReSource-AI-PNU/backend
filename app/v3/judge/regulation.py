@@ -1,40 +1,59 @@
-"""③ 조항 검색, 요건 판정, 허가 품목 대조. 조항은 law 근거의 원문에서만 따온다."""
+"""③ 조항 검색, 요건 판정, 허가 품목 대조. 조항은 law 근거의 원문에서만 따온다.
+
+조항 검색은 근거 검색(evidence/search.py)을 법령으로 좁혀 쓴다. 로컬 BM25F(한국어 낱말 나누기·분야 동의어)이고,
+Azure AI Search가 연결돼 있으면 그 하이브리드·시맨틱 순위와 RRF로 합친다. 2026-11-19 검색 평가(test-v1,
+80질의)에서 nDCG@10이 이전의 낱말 수 세기 0.138, 로컬 BM25F 0.616, Azure 하이브리드+시맨틱 0.598,
+둘을 합친 것 0.623이었다(docs/v3/eval). Azure가 실패하면 로컬 순위로 답한다.
+"""
 
 from __future__ import annotations
 
+import json
 import re
+from functools import cache
+from pathlib import Path
+from typing import Any
 
+from app.v3.evidence import lexical, search
+from app.v3.evidence.registry import EvidenceForbidden, EvidenceNotFound
+from app.v3.evidence.validator import MIN_QUOTE_CHARS
 from app.v3.judge.common import Recorder, permit_match
 
 _SPLIT = re.compile(r"(?<=[.。다])\s+|\n+")
-ROUTE_TOPICS = {"sell": ["재활용", "위탁"], "treat": ["처리", "위탁"], "keep": ["소각", "처리"]}
+QUOTE_MAX = 300  # 인용은 문장 하나, 길면 앞부분만(원문의 부분 문자열이라 검증기를 그대로 통과한다)
 
 
 def _tokens(text: str) -> list[str]:
+    """이전 판의 낱말 나누기. 검색 평가의 비교 기준(S0)이 쓴다."""
     return [t for t in re.split(r"[\s,·/()]+", str(text)) if len(t) >= 2]
 
 
-def _snippet(excerpt: str, tokens: list[str]) -> str:
-    """원문에서 낱말이 든 문장을 글자 그대로 잘라 낸다. 없으면 첫 문장."""
-    parts = [p for p in _SPLIT.split(excerpt) if p.strip()]
-    for part in parts:
-        if any(t in part for t in tokens):
-            return part.strip()
-    return (parts[0] if parts else excerpt).strip()
+def _snippet(excerpt: str, query: str) -> str:
+    """질의 낱말(조사를 뗀 꼴)이 가장 많이 든 문장을 원문 그대로 잘라 낸다. 없으면 첫 문장."""
+    wanted = {w for w in lexical.words(query) if len(w) >= 2}
+    # 검증기는 10자보다 짧은 인용을 받지 않는다(조문 전체가 짧은 경우는 예외)
+    parts = [p.strip() for p in _SPLIT.split(excerpt) if len(p.strip()) >= MIN_QUOTE_CHARS]
+    if not parts:
+        return excerpt.strip()[:QUOTE_MAX]
+    scores = [sum(1 for w in wanted if w in part) for part in parts]
+    best = max(range(len(parts)), key=lambda i: (scores[i], -i))
+    return parts[best][:QUOTE_MAX]
 
 
 def _search(rec: Recorder, query: str, limit: int):
-    tokens = _tokens(query)
-    scored = []
-    for law in rec.registry.list(kinds=["law"], org_id=rec.org_id):
+    """[(법령 근거, 인용문)]. 시행 중인 조항만, 검색 순위대로."""
+    found = []
+    hits = search.search_evidence(
+        rec.registry, query, kinds=["law"], org_id=rec.org_id, limit=max(limit * 3, 10)
+    )
+    for hit in hits:
+        law = rec.registry.get(hit["evidence"]["id"], rec.org_id)
         if law.expired(rec.today):
             continue
-        haystack = f"{law.label} {law.excerpt}"
-        score = sum(haystack.count(t) for t in tokens)
-        if score > 0:
-            scored.append((-score, law.id, law))
-    scored.sort(key=lambda s: s[:2])
-    return [(law, _snippet(law.excerpt, tokens)) for _, _, law in scored[:limit]]
+        found.append((law, _snippet(law.excerpt, query)))
+        if len(found) >= limit:
+            break
+    return found
 
 
 def _has_law(rec: Recorder) -> bool:
@@ -61,38 +80,127 @@ def search_clauses(registry, *, org_id, today, query, limit=5):
     return rec.result("calculated", {"results": results})
 
 
-def check_requirements(registry, *, org_id, today, stream, route, topics=None):
-    """관련 조항을 찾아 보여 준다. 충족 여부는 스스로 단정하지 않고 담당자 확인으로 남긴다."""
-    args = {"stream": stream, "route": route, "topics": topics}
+REQUIREMENTS_FILE = Path(__file__).with_name("requirements.v1.json")
+ROUTE_WORDS = {
+    "sell": "재활용 위탁 매각",
+    "treat": "처리 위탁 처리업",
+    "keep": "소각 처분 위탁",
+    "reuse": "자가 재활용 재활용시설",
+}
+
+
+@cache
+def requirements() -> tuple[dict[str, Any], ...]:
+    """경로별 요건 체크리스트(requirements.v1.json). 요건마다 법령 조항과 원문 인용이 붙어 있다.
+
+    2026-11-19 법령 말뭉치(폐기물관리법·시행령·시행규칙·순환경제사회 전환 촉진법)에서 뽑았다. decidedBy가
+    permit_match인 요건은 업체 허가 품목 대조로 판정하고, staff인 요건은 서비스가 확인할 수 없어 담당자 할 일로 낸다.
+    """
+    return tuple(json.loads(REQUIREMENTS_FILE.read_text(encoding="utf-8")))
+
+
+def _permit_status(stream, vendors) -> tuple[str, str, list[str]]:
+    """허가 요건: 대화를 연 업체 가운데 허가 품목이 맞는 곳이 있는가."""
+    if not vendors:
+        return (
+            "conditional",
+            "지금 맡기는 업체의 허가증에 이 폐기물이 들어 있는지 확인이 필요합니다.",
+            [],
+        )
+    results = [(vendor, *permit_match(stream, vendor)) for vendor in vendors]
+    matched = [r for r in results if r[1] is True]
+    if matched:
+        names = ", ".join(str(r[0].get("name") or r[0].get("orgId")) for r in matched)
+        evidence = [e for r in matched for e in r[2]]
+        return "met", f"허가 품목이 맞는 업체({names})와만 대화했습니다.", evidence
+    if any(r[1] is None for r in results):
+        return "needs_information", "업체 허가 품목이 올라와 있지 않아 확인하지 못했습니다.", []
+    return "unmet", "허가 품목이 맞는 업체가 없습니다. 이 폐기물은 넘기지 않습니다.", []
+
+
+def check_requirements(registry, *, org_id, today, stream, route, topics=None, vendors=None):
+    """경로에 걸리는 요건을 체크리스트로 판정하고, 폐기물과 경로로 찾은 관련 조항을 더한다.
+
+    허가 요건은 업체 허가 품목 대조로 판정한다(vendors가 없으면 담당자 확인). 나머지는 서비스가 확인할 수 없는
+    담당자 할 일이라 판정을 막지 않는다. 결과 상태는 허가 요건이 충족되면 calculated, 확인이 필요하면 conditional,
+    허가 정보가 없으면 needs_information이다.
+    """
+    vendors = list(vendors or [])
+    args = {
+        "stream": stream,
+        "route": route,
+        "topics": topics,
+        "vendors": sorted(str(v.get("orgId")) for v in vendors),
+    }
     rec = Recorder("check_requirements", registry, org_id, today, args)
-    output = {"streamId": stream.get("id"), "route": route, "items": []}
+    output = {"streamId": stream.get("id"), "route": route, "items": [], "related": []}
     if not _has_law(rec):
         rec.check("law_index", "conditional", "법령 근거가 적재되지 않았습니다. 확인 필요.")
         return rec.result("needs_information", output)
-    wanted = list(topics or [stream.get("wasteItem"), *ROUTE_TOPICS.get(route, [])])
-    index = 0
-    for topic in [t for t in wanted if t]:
-        hits = _search(rec, str(topic), 1)
-        if not hits:
-            rec.check(
-                f"topic:{topic}",
-                "conditional",
-                f"'{topic}' 관련 조항을 찾지 못했습니다. 확인 필요.",
-            )
-            output["items"].append({"topic": topic, "claim": None})
-            continue
-        law, quote = hits[0]
-        claim = rec.clause(f"clause{chr(ord('A') + index)}", quote, law.id)
-        index += 1
+    cited: set[str] = set()
+    decided: list[str] = []
+    for index, req in enumerate(r for r in requirements() if route in r["routes"]):
+        claims, laws = [], []
+        for number, clause in enumerate(req["clauses"]):
+            try:
+                law = registry.get(clause["evidenceId"], org_id)
+            except (EvidenceNotFound, EvidenceForbidden):
+                continue
+            if law.expired(today) or clause["quote"] not in law.excerpt:
+                continue  # 조문이 바뀌었으면 인용하지 않는다(검증기가 거부할 인용을 내지 않는다)
+            claims.append(rec.clause(f"req{index}c{number}", clause["quote"], law.id)["id"])
+            laws.append(law.id)
+            cited.add(law.id)
+        if req["decidedBy"] == "permit_match":
+            status, note, permit_evidence = _permit_status(stream, vendors)
+            decided.append(status)
+        else:
+            status, note, permit_evidence = "conditional", "담당자가 확인할 일입니다.", []
         rec.check(
-            f"topic:{topic}",
-            "conditional",
-            f"'{topic}' 관련 조항이 있습니다. 적용 여부는 담당자 확인이 필요합니다.",
+            f"req:{req['key']}",
+            status,
+            f"{req['title']}: {note}",
             None,
-            [law.id],
+            [*permit_evidence, *laws],
         )
-        output["items"].append({"topic": topic, "claim": claim["id"], "evidenceId": law.id})
-    return rec.result("conditional", output)
+        output["items"].append(
+            {
+                "key": req["key"],
+                "title": req["title"],
+                "applies": req.get("applies"),
+                "action": req["action"],
+                "decidedBy": req["decidedBy"],
+                "status": status,
+                "note": note,
+                "claims": claims,
+                "evidence": list(dict.fromkeys([*permit_evidence, *laws])),
+            }
+        )
+    # 폐기물과 경로로 찾은 관련 조항(체크리스트에 없는 것). 담당자가 따로 준 주제가 있으면 그것도 찾는다
+    queries = [
+        " ".join(
+            str(x)
+            for x in (stream.get("wasteItem"), stream.get("material"), ROUTE_WORDS.get(route, ""))
+            if x
+        )
+    ]
+    queries += [str(t) for t in topics or [] if t]
+    for query in queries:
+        for law, quote in _search(rec, query, 6):
+            if law.id in cited or len(output["related"]) >= 3:
+                continue
+            cited.add(law.id)
+            claim = rec.clause(f"rel{len(output['related'])}", quote, law.id)
+            output["related"].append(
+                {"query": query, "claim": claim["id"], "evidenceId": law.id, "label": law.label}
+            )
+    if "needs_information" in decided:
+        status = "needs_information"
+    elif any(s != "met" for s in decided):
+        status = "conditional"
+    else:
+        status = "calculated"
+    return rec.result(status, output)
 
 
 def match_permit(registry, *, org_id, today, stream, vendor):

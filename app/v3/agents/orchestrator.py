@@ -961,14 +961,27 @@ class Orchestrator:
                 session, "judge_reuse", {"stream": stream}, summary_ids={"streamId": sid}
             )
             route = next((r for r in ("sell", "treat") if r in routes[sid]), "keep")
+            # 허가 요건은 대화를 연 업체(허가 품목이 맞아 연 곳)로 판정한다
+            talked = [publics[t.vendor_org] for t in opened if sid in t.stream_ids]
+            arguments = {"stream": stream, "route": route}
+            if talked:
+                arguments["vendors"] = talked
             required = self._tool(
                 session,
                 "check_requirements",
-                {"stream": stream, "route": route},
+                arguments,
                 summary_ids={"streamId": sid, "route": route},
             )
             work["requirements"][sid] = required
             states.append(required["status"])
+            if (work["reuse"][sid]["output"] or {}).get("eligible"):
+                # 공정 재투입 후보면 사업장 안에서 재활용할 때 지킬 것도 함께 낸다(배정을 막지 않는다)
+                work.setdefault("reuseRequirements", {})[sid] = self._tool(
+                    session,
+                    "check_requirements",
+                    {"stream": stream, "route": "reuse"},
+                    summary_ids={"streamId": sid, "route": "reuse"},
+                )
         work["stages"]["3"] = "needs_check" if any(s != "calculated" for s in states) else "done"
 
         for thread in opened:  # ④ 연 스레드마다 문의
@@ -2477,7 +2490,58 @@ class Orchestrator:
             "outsideVendors": work.get("outside"),
             # 분리 개선 안내(배출 기업만 본다)
             "improvements": self._improvements(org_id, streams, assignments, sorted(threads)),
+            # ③ 규정 확인: 폐기물마다 경로 요건 체크리스트와 관련 조항(배출 기업만 본다)
+            "regulation": self._regulation(work, streams),
         }
+
+    def _regulation(self, work: dict[str, Any], streams: list[dict[str, Any]]) -> list[dict]:
+        """check_requirements 결과를 화면용으로. 조항은 원문 인용 claim이고 근거 패널에서 법령이 열린다."""
+
+        def clause(claim: dict[str, Any]) -> dict[str, Any]:
+            law_id = claim["evidence"][0]
+            try:
+                label = self.registry.get(law_id, None).label
+            except EvidenceNotFound:
+                label = None
+            return {**claim, **({"label": label} if label else {})}
+
+        def section(result: dict[str, Any] | None) -> dict[str, Any] | None:
+            if not result:
+                return None
+            output = result.get("output") or {}
+            if "related" not in output:  # 체크리스트 전의 결과
+                return None
+            claims = {c["id"]: c for c in result.get("claims") or []}
+            return {
+                "route": output.get("route"),
+                "status": result.get("status"),
+                "items": [
+                    {
+                        **{
+                            k: item[k]
+                            for k in ("key", "title", "applies", "action", "status", "note")
+                        },
+                        "kind": "check" if item["decidedBy"] == "permit_match" else "todo",
+                        "clauses": [clause(claims[c]) for c in item["claims"] if c in claims],
+                    }
+                    for item in output.get("items") or []
+                ],
+                "related": [
+                    clause(claims[r["claim"]])
+                    for r in output.get("related") or []
+                    if r["claim"] in claims
+                ],
+            }
+
+        out = []
+        for stream in streams:
+            sid = stream["id"]
+            main = section(work["requirements"].get(sid))
+            if main is None:
+                continue
+            reuse = section((work.get("reuseRequirements") or {}).get(sid))
+            out.append({"streamId": sid, **main, "reuse": reuse})
+        return out
 
     def _improvements(self, org_id, streams, assignments, vendor_ids) -> list[dict[str, Any]]:
         """폐기물마다 무엇을 하면 어느 업체가 얼마에 더 받는지(improve.py). 실패해도 결과 한 장은 낸다."""
@@ -2802,7 +2866,31 @@ class Orchestrator:
                         lines.append(f"   반입 전 확인: {check['text']}")
             lines.append("반입 검수 결과가 조건과 다르면 앱에서 다시 협의합니다.")
             lines.extend(contract_lines(use))
+            lines.extend(law_lines(use))
             return lines
+
+        def law_lines(use) -> list[str]:
+            """③ 규정 확인의 요건 체크리스트. 요건마다 첫 조항을 원문 그대로 인용한다(법령은 공개 근거라 업체와 함께 본다)."""
+            words = {"met": "충족", "unmet": "불충족", "needs_information": "확인 필요"}
+            out: list[str] = []
+            seen: set[str] = set()
+            for sid in assigned:
+                required = work["requirements"].get(sid) or {}
+                claims = {c["id"]: c for c in required.get("claims") or []}
+                for item in (required.get("output") or {}).get("items") or []:
+                    if "key" not in item or item["key"] in seen:
+                        continue
+                    seen.add(item["key"])
+                    first = next((claims[c] for c in item["claims"] if c in claims), None)
+                    quote = use(first, f"law_{safe_id(item['key'])}") if first else None
+                    state = (
+                        words.get(item["status"], "확인 필요")
+                        if item["decidedBy"] == "permit_match"
+                        else "담당자 할 일"
+                    )
+                    line = f"- {item['title']}: {state}"
+                    out.append(f"{line}. 근거 {quote}" if quote else line)
+            return ["", "지켜야 할 법령 요건", *out] if out else []
 
         def contract_lines(use) -> list[str]:
             """단가와 계약 조건. 2026-11-19 배출 사업장 설문의 "단가 상호불신으로 장기 계약이 어렵다"에 답한다:

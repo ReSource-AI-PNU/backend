@@ -152,3 +152,51 @@ def test_http_error_raises_without_leaking_key():
         client(transport).search("x", org_id="org_hanbit")
     assert info.value.status == 403
     assert "test-key" not in str(info.value)
+
+
+def test_upsert_embeds_in_small_batches_cuts_long_text_and_waits_on_rate_limit():
+    """2026-11-19 법령 374조 색인: 한 요청에 다 넣으면 429, 5만 자 조문은 입력 한도를 넘었다."""
+    from app.v3.agents.llm import LLMError
+
+    sizes, waits = [], []
+    failures = iter(
+        [
+            LLMError("모델 호출 실패(429): 한도", 429),
+            LLMError("모델 서버에 연결하지 못했다: URLError"),
+        ]
+    )
+
+    def embed(texts):
+        sizes.append(len(texts))
+        assert all(len(t) <= az.EMBED_MAX_CHARS for t in texts)
+        failure = next(failures, None)
+        if failure is not None:
+            raise failure
+        return fake_embed(texts)
+
+    long_law = Evidence(
+        id="law:시험용법:제2조@2026-01-01", kind="law", label="긴 조문",
+        excerpt="가" * 60000, source="시험용법", as_of="2026-01-01",
+    )  # fmt: skip
+    items = [long_law] + [
+        Evidence(id=f"law:시험용법:제{n}조@2026-01-01", kind="law", label=f"조문 {n}",
+                 excerpt="수탁자의 허가 품목을 확인하여야 한다.", source="시험용법", as_of="2026-01-01")
+        for n in range(3, 3 + az.EMBED_BATCH + 3)
+    ]  # fmt: skip
+    transport = FakeTransport()
+    c = client(transport, embed=embed, vector_dimensions=3, sleep=waits.append)
+    assert c.upsert(items) == len(items)
+    assert max(sizes) <= az.EMBED_BATCH
+    assert waits == [20, 5]  # 429는 20초, 연결 끊김은 5초 기다린다
+    ((_, _, _, body),) = transport.calls
+    long_doc = next(d for d in body["value"] if d["evidenceId"] == long_law.id)
+    assert len(long_doc["payload"]) > 0 and len(body["value"]) == len(items)
+
+
+def test_upsert_does_not_retry_other_embedding_errors():
+    def embed(texts):
+        raise ValueError("벡터 차원이 다르다")
+
+    c = client(FakeTransport(), embed=embed, vector_dimensions=3, sleep=lambda s: None)
+    with pytest.raises(ValueError, match="차원"):
+        c.upsert([LAW])

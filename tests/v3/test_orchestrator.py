@@ -58,12 +58,10 @@ def test_first_stop_is_a_batch_of_questions(demo):
     assert asked["stages"][0]["status"] == "running"
     assert {s["status"] for s in asked["stages"][1:]} == {"waiting"}
     sprue = asked["streams"][-1]
-    assert sprue["grade"] == {
-        "value": "A",
-        "basis": "measured",
-        "label": "측정 등급",
-        "evidence": ["model:rsai-grade:v2:st_sprue-measured"],
-    }
+    grade_evidence = sprue["grade"].pop("evidence")
+    assert sprue["grade"] == {"value": "A", "basis": "measured", "label": "측정 등급"}
+    # 기준값 규칙이 낸 등급은 계산 근거다(모델처럼 보이지 않게)
+    assert len(grade_evidence) == 1 and grade_evidence[0].startswith("calc:grade_rules:")
     assert value(sprue["monthlyKg"]) == 600 and sprue["monthlyKg"]["evidence"]
     assert sprue["currentTreatment"]["assumed"] is False
     film = asked["streams"][1]
@@ -158,10 +156,11 @@ def test_result_sheet_assigns_every_stream(demo):
     assert value(totals["difference"]) == value(totals["monthlyAfter"]) - value(
         totals["monthlyNow"]
     )
-    # 탄소는 공식 배출계수(환경성적표지)로 낸다. 열분해는 계수가 없어 그 흐름만 빠진다
-    assert by_stream["st_purge"]["carbon"] is None
+    # 탄소는 공식 배출계수(환경성적표지)로 낸다. 열분해는 그 표에 없어 문헌값(크레딧 전, 화학 원료 용도)을 쓴다
+    purge = by_stream["st_purge"]["carbon"]
+    assert value(purge) < 0 and any("Petrik2025" in e for e in purge["evidence"])
     assert value(totals["carbon"]) == pytest.approx(
-        sum(value(by_stream[s]["carbon"]) for s in ("st_sprue", "st_film", "st_defect"))
+        sum(value(by_stream[s]["carbon"]) for s in ("st_sprue", "st_film", "st_defect", "st_purge"))
     )
     assert value(by_stream["st_sprue"]["carbon"]) == pytest.approx(
         (0.0186 - 3.412554039) * 600 / 1000, abs=1e-6
@@ -230,7 +229,8 @@ def test_stage_bar_and_graph(demo):
     ]
     status = {s["stage"]: s["status"] for s in waiting["stages"]}
     assert status[1] == "needs_check"  # 모른다고 답한 수분이 남아 있다
-    assert status[3] == "needs_check"  # 조항 적용 여부는 담당자 확인으로 남긴다
+    # 허가 요건은 대화를 연 업체의 허가 품목 대조로 충족되고, 나머지 요건은 담당자 할 일이라 막지 않는다
+    assert status[3] == "done"
     assert status[2] == status[4] == status[5] == status[6] == "done"
     graph = waiting["graph"]
     kinds = {n["type"] for n in graph["nodes"]}

@@ -1418,16 +1418,31 @@ def _graph(
     if owner:
         for sid, required in sorted(work["requirements"].items()):
             for found in required["output"].get("items") or []:
-                evidence_id = found.get("evidenceId")
-                if evidence_id and evidence_node(evidence_id):
-                    edge(
-                        sid,
-                        evidence_id,
-                        "conditional",
-                        f"'{found['topic']}' 관련 조항(적용 여부는 담당자 확인)",
-                        [evidence_id],
-                        kind="regulation",
-                    )
+                if "topic" in found:  # 2026-11-19 전의 결과: 주제 낱말로 찾은 조항 하나
+                    evidence_id = found.get("evidenceId")
+                    if evidence_id and evidence_node(evidence_id):
+                        edge(
+                            sid,
+                            evidence_id,
+                            "conditional",
+                            f"'{found['topic']}' 관련 조항(적용 여부는 담당자 확인)",
+                            [evidence_id],
+                            kind="regulation",
+                        )
+                    continue
+                # 요건 체크리스트: 요건마다 첫 조항 하나로 잇는다(같은 조항을 여러 번 그리지 않는다)
+                laws = [e for e in found.get("evidence") or [] if e.startswith("law:")]
+                if not laws or not evidence_node(laws[0]):
+                    continue
+                status = found["status"] if found["status"] in ("met", "unmet") else "conditional"
+                edge(
+                    sid,
+                    laws[0],
+                    status,
+                    f"{found['title']} · {found['note']}",
+                    list(found.get("evidence") or []),
+                    kind="regulation",
+                )
     return {"nodes": list(nodes.values()), "edges": edges}
 
 

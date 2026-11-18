@@ -237,13 +237,13 @@ def source_label(kind: str | None, source: str | None, meta: dict[str, Any] | No
     text = str(source or "")
     meta = meta or {}
     tool = meta.get("tool")
+    if tool == "grade_stream":
+        return "등급 판정 모델" if kind == "model" else "등급 기준값 규칙(가정값)"
     if kind == "calc" and tool_label(tool):
         return str(tool_label(tool))
     found = _TOOL_SOURCE.match(text)
     if found and tool_label(found.group(1)):
         return str(tool_label(found.group(1)))
-    if kind == "model" and tool == "grade_stream":
-        return "등급 판정 모델" if "엔드포인트" in text else "등급 기준값 규칙(가정값)"
     found = _DOCUMENT_SOURCE.match(text)
     if found:
         return f"{found.group('doc')} · 문서에서 읽고 담당자가 확인한 값"

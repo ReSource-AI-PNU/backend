@@ -77,8 +77,8 @@ _SPECS = [
     ToolSpec(
         "check_requirements",
         3,
-        "폐기물과 경로에 걸리는 조항을 찾아 담당자 확인 항목으로 낸다.",
-        _schema({"stream": OBJ, "route": STR}, {"topics": ARR}),
+        "경로에 걸리는 법령 요건을 체크리스트로 판정하고(업체 허가는 대조, 나머지는 담당자 할 일) 관련 조항을 더한다.",
+        _schema({"stream": OBJ, "route": STR}, {"topics": ARR, "vendors": ARR}),
         check_requirements,
     ),
     ToolSpec(

@@ -225,7 +225,8 @@ class _Seeder:
         }
 
     def photo(self, org: str, stream_id: str, contamination: float, found: str) -> dict:
-        eid = ids.model_id("resource-ai-detector", "v1", f"{stream_id}-오염비율")
+        # 탐지 모델을 돌린 값이 아니므로 model 근거가 아니라 가정값으로 남긴다(화면에 "가정값"으로 보인다)
+        eid = ids.assumption_id(f"시연사진-{stream_id}-오염비율", "v1")
         self.put(
             eid,
             org,

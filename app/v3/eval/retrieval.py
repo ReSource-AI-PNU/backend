@@ -42,7 +42,6 @@ from app.v3.eval.world import DEFAULT_TODAY, base_registry
 from app.v3.evidence import lexical, search
 from app.v3.evidence.model import PUBLIC, Evidence
 from app.v3.evidence.registry import InMemoryRegistry
-from app.v3.evidence.seeds import load_seed_file
 from app.v3.judge import regulation
 
 SETS = Path(__file__).with_name("sets")
@@ -61,8 +60,8 @@ TYPES = {
     "none": "답 없음",
 }
 LOCAL_SYSTEMS = {
-    "S0": "③ 도구 낱말 수 세기(법령만)",
-    "S1": "근거 검색 BM25F(필드 가중 + 한국어 낱말·2-gram + 분야 동의어)",
+    "S0": "이전 ③ 도구 낱말 수 세기(법령만, 2026-11-19까지)",
+    "S1": "근거 검색 BM25F(필드 가중 + 한국어 낱말·2-gram + 분야 동의어, ③ 도구의 로컬 순위)",
     "S1v1": "이전 근거 검색 어휘 점수(낱말 + 한글 2-gram, 참고)",
 }
 AZURE_SYSTEMS = {
@@ -70,7 +69,7 @@ AZURE_SYSTEMS = {
     "S3": "벡터(임베딩)",
     "S4": "하이브리드(BM25 + 벡터, RRF)",
     "S5": "하이브리드 + 시맨틱 랭커",
-    "S6": "S1 + S5 하이브리드(RRF)",
+    "S6": "S1 + S5 하이브리드(RRF, Azure가 연결된 ③ 도구)",
 }
 SYSTEMS = {**LOCAL_SYSTEMS, **AZURE_SYSTEMS}
 AZURE_OPT_IN = "V3_EVAL_L2_AZURE"
@@ -112,10 +111,12 @@ def load_queries(split: str) -> list[dict[str, Any]]:
 
 
 def corpus_registry(*, extended: bool = True) -> InMemoryRegistry:
-    """공개 근거 레지스트리. extended면 평가 전용 법령 말뭉치를 더한다."""
+    """공개 근거 레지스트리. 2026-11-19부터 제품 시드가 법령 말뭉치(EXTRA_CORPUS)를 함께 올리므로
+    제품의 공개 근거와 같다. extended=False면 법령 말뭉치를 뺀다(그 전의 제품 말뭉치)."""
     registry = base_registry()
-    if extended and EXTRA_CORPUS.exists():
-        load_seed_file(registry, EXTRA_CORPUS)
+    if not extended and EXTRA_CORPUS.exists():
+        extra = {x["id"] for x in json.loads(EXTRA_CORPUS.read_text(encoding="utf-8"))}
+        registry = InMemoryRegistry([e for e in registry.list(org_id=None) if e.id not in extra])
     return registry
 
 

@@ -206,7 +206,9 @@ def test_regulation_never_invents_clauses():
     r = run(reg, "check_requirements", stream=stream(), route="sell")
     assert r["status"] == "conditional" and all(c["status"] == "conditional" for c in r["checks"])
     assert all(c["value"] in text for c in r["claims"])
-    assert any(i["claim"] is None for i in r["output"]["items"])  # 못 찾은 주제는 비워 둔다
+    # 요건의 조항이 레지스트리에 없으면 인용하지 않고 비워 둔다(관련 조항만 검색으로 찾는다)
+    assert all(i["claims"] == [] for i in r["output"]["items"])
+    assert [x["evidenceId"] for x in r["output"]["related"]] == ["law:가상법:제1조@2026-01-01"]
 
 
 def test_permit_mismatch_blocks_thread_with_evidence():

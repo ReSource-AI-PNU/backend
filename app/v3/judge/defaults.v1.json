@@ -8,9 +8,7 @@
       "key": "current.alt.위탁재활용-무상"
     }
   ],
-  "missing": [
-    "emission.pyrolysis.폐플라스틱"
-  ],
+  "missing": [],
   "refs": {
     "kau.price": [
       "ref:KAU:KAU26-종가@2026-11-16"
@@ -53,6 +51,12 @@
     ],
     "labor.costPerHour": [
       "ref:최저임금:시간급@2026"
+    ],
+    "emission.pyrolysis.폐플라스틱": [
+      "ref:문헌-Petrik2025:혼합폐플라스틱-열분해@2024-12"
+    ],
+    "emission.pyrolysis.포장재": [
+      "ref:문헌-Petrik2025:혼합폐플라스틱-열분해@2024-12"
     ]
   },
   "items": [
