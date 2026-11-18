@@ -106,10 +106,7 @@ def test_ollama_vendor_is_never_swapped_unless_asked():
     local = with_ollama("vendor", "org_namhae", OLLAMA_MODEL)
     assert isinstance(local, OllamaChat) and local.model == "qwen2.5:7b"
     # foundry에서도 V3_LLM_ALL_VENDORS=1이면 Ollama 주소가 없는 업체를 Foundry가 맡는다
-    assert (
-        build_llm_factory("foundry", FOUNDRY, strict=True)("vendor", "org_namhae", OLLAMA_MODEL)
-        is None
-    )
+    assert build_llm_factory("foundry", FOUNDRY, strict=True)("vendor", "org_namhae", OLLAMA_MODEL) is None
     foundry = build_llm_factory("foundry", {**FOUNDRY, "V3_LLM_ALL_VENDORS": "1"}, strict=True)
     assert isinstance(foundry("vendor", "org_namhae", OLLAMA_MODEL), FoundryChat)
     # 주 모델이 없으면(rule) 이 설정도 아무것도 바꾸지 않는다(모두 규칙 정책)

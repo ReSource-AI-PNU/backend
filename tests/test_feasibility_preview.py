@@ -25,9 +25,7 @@ def test_preview_demo_calculates_and_keeps_nulls(client, request_body):
     assert response.status_code == 200
     result = response.json()
     assert (result["totalNow"], result["totalAfter"], result["difference"]) == (
-        -387500,
-        595000,
-        982500,
+        -387500, 595000, 982500
     )
     assert result["status"] == "conditional"
     assert [d["route"] for d in result["decisions"]] == ["reuse", "sell", "pyrolysis", "bundle"]
@@ -54,9 +52,7 @@ def test_pending_and_fractional_amounts(client, request_body):
     result = client.post("/api/v1/feasibility/preview", json=request_body).json()
     assert result["status"] == "needs_information" and result["totalAfter"] is None
     assert [d["reasonCode"] for d in result["decisions"][:3]] == [
-        "zero_quantity",
-        "unconfirmed_quantity",
-        "unsupported_combination",
+        "zero_quantity", "unconfirmed_quantity", "unsupported_combination"
     ]
     assert result["decisions"][0]["monthlyAfter"] is None
     request_body["streams"] = [deepcopy(DEMO_REQUEST["streams"][0])]
@@ -65,9 +61,7 @@ def test_pending_and_fractional_amounts(client, request_body):
     assert (result["totalNow"], result["totalAfter"]) == (-31.25, -29887.5)
 
 
-@pytest.mark.parametrize(
-    "case", ["empty", "duplicate", "unknown_id", "bad_route", "missing", "extra"]
-)
+@pytest.mark.parametrize("case", ["empty", "duplicate", "unknown_id", "bad_route", "missing", "extra"])
 def test_bad_requests_return_422(client, request_body, case):
     if case == "empty":
         request_body["streams"] = []

@@ -112,9 +112,7 @@ def with_ask_lines(text: str, asks: list[dict[str, str]], names: dict[str, str])
         return text
     lines = []
     for stream_id in dict.fromkeys(a["streamId"] for a in asks):
-        fields = [
-            ASK_LABELS.get(a["field"], "확인할 값") for a in asks if a["streamId"] == stream_id
-        ]
+        fields = [ASK_LABELS.get(a["field"], "확인할 값") for a in asks if a["streamId"] == stream_id]
         lines.append(f"- {names.get(stream_id) or '폐기물'}: {', '.join(dict.fromkeys(fields))}")
     return "\n".join([text.rstrip(), *lines])
 

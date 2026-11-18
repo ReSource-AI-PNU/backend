@@ -118,15 +118,8 @@ def _config_value(mapping: dict[str, float], key: str, name: str) -> float | Non
 
 
 def validate_config(config: DemoConfig) -> None:
-    for name in (
-        "reuse_per_kg",
-        "bundle_transport_per_kg",
-        "solo_sale_penalty_per_kg",
-        "labor_per_hour",
-        "reuse_labor_hours",
-        "sell_labor_hours",
-        "bundle_labor_hours",
-    ):
+    for name in ("reuse_per_kg", "bundle_transport_per_kg", "solo_sale_penalty_per_kg",
+                 "labor_per_hour", "reuse_labor_hours", "sell_labor_hours", "bundle_labor_hours"):
         _number(getattr(config, name), name, minimum=0)
     if _number(config.pyrolysis_per_kg, "pyrolysis_per_kg") > 0:
         raise ValueError("pyrolysis_per_kg must be nonpositive")
@@ -135,11 +128,8 @@ def validate_config(config: DemoConfig) -> None:
             raise ValueError(f"{name} must be at most 1")
     if config.reuse_max_contamination > config.sell_max_contamination:
         raise ValueError("reuse threshold exceeds sell threshold")
-    for mapping, sign in (
-        (config.minimum_kg, 1),
-        (config.sale_per_kg, 1),
-        (config.current_per_kg, -1),
-    ):
+    for mapping, sign in ((config.minimum_kg, 1), (config.sale_per_kg, 1),
+                          (config.current_per_kg, -1)):
         for key, value in mapping.items():
             if _number(value, key) * sign < 0:
                 raise ValueError(f"invalid configured value: {key}")
@@ -160,14 +150,8 @@ def _is_plastic(flow: Flow) -> bool:
     return flow.item == "폐플라스틱" or (flow.item == "포장재" and _is_film(flow.material))
 
 
-def _ladder(
-    route: Route,
-    current: float,
-    sale: float | None,
-    has_removal: bool,
-    solo: bool,
-    config: DemoConfig,
-) -> tuple[LadderStep, ...]:
+def _ladder(route: Route, current: float, sale: float | None, has_removal: bool, solo: bool,
+            config: DemoConfig) -> tuple[LadderStep, ...]:
     """Per-kg steps from the current route up to the chosen one (frontend mock ladderFor).
 
     Unlike the mock, the "partial removal" step appears only when there is something to remove,
@@ -185,18 +169,15 @@ def _ladder(
     elif route == "sell" and sale is not None:
         steps.append(LadderStep("분리해 매각", sale))
     elif route == "bundle" and sale is not None:
-        steps += [
-            LadderStep("분리해 단독 매각", sale - config.solo_sale_penalty_per_kg),
-            LadderStep("단지 묶음 매각", sale - config.bundle_transport_per_kg),
-        ]
+        steps += [LadderStep("분리해 단독 매각", sale - config.solo_sale_penalty_per_kg),
+                  LadderStep("단지 묶음 매각", sale - config.bundle_transport_per_kg)]
     elif route == "pyrolysis":
         steps.append(LadderStep("열분해 위탁", config.pyrolysis_per_kg))
     return tuple(steps)
 
 
-def _alternatives(
-    route: Route, flow: Flow, current: float, sale: float | None, mixed: bool, config: DemoConfig
-) -> tuple[Alternative, ...]:
+def _alternatives(route: Route, flow: Flow, current: float, sale: float | None, mixed: bool,
+                  config: DemoConfig) -> tuple[Alternative, ...]:
     """Routes not chosen, with a nominal per-kg value and why (frontend mock decide).
 
     The per-kg value is what the route would be worth if it applied; the note says why it
@@ -210,28 +191,18 @@ def _alternatives(
         if other == "reuse":
             if flow.item != "폐플라스틱" or flow.origin == "PCR":
                 continue
-            per_kg, note = (
-                config.reuse_per_kg,
-                "같은 공정에 다시 넣으려면 단일 재질·무오염이어야 합니다.",
-            )
+            per_kg, note = config.reuse_per_kg, "같은 공정에 다시 넣으려면 단일 재질·무오염이어야 합니다."
         elif other == "sell":
             if sale is None:
                 continue
             per_kg = sale - (config.solo_sale_penalty_per_kg if small_pcr else 0)
-            note = (
-                "재질이 섞여 매입처가 받지 않습니다."
-                if mixed
-                else "혼자 팔면 출장비 때문에 단가가 깎입니다."
-                if small_pcr
-                else "이물을 떼야 매입 기준을 맞춥니다."
-            )
+            note = ("재질이 섞여 매입처가 받지 않습니다." if mixed
+                    else "혼자 팔면 출장비 때문에 단가가 깎입니다." if small_pcr
+                    else "이물을 떼야 매입 기준을 맞춥니다.")
         elif other == "bundle":
             if flow.origin != "PCR" or sale is None:
                 continue
-            per_kg, note = (
-                sale - config.bundle_transport_per_kg,
-                "같은 단지 기업과 순회 수거로 묶습니다.",
-            )
+            per_kg, note = sale - config.bundle_transport_per_kg, "같은 단지 기업과 순회 수거로 묶습니다."
         elif other == "pyrolysis":
             # 열분해는 플라스틱 흐름의 경로다. 금속·목재 등에는 대안으로 내지 않는다.
             if not _is_plastic(flow):
@@ -265,37 +236,17 @@ def evaluate_flow(flow: Flow, config: DemoConfig, override: Route | None = None)
             if detection.ratio is not None and _number(detection.ratio, "ratio", minimum=0) > 1:
                 raise ValueError("ratio must be at most 1")
     if not flow.item or not flow.material or flow.origin is None or flow.monthly_kg is None:
-        return FlowResult(
-            flow.id,
-            "needs_information",
-            reason="품목, 재질, 출처와 월 발생량 확인 필요",
-            reason_code="missing_information",
-        )
+        return FlowResult(flow.id, "needs_information", reason="품목, 재질, 출처와 월 발생량 확인 필요", reason_code="missing_information")
     if not isinstance(flow.item, str) or not isinstance(flow.material, str):
         raise ValueError("item and material must be strings")  # noqa: TRY004
     if flow.single_material is None or flow.detections is None:
-        return FlowResult(
-            flow.id,
-            "needs_information",
-            reason="단일 재질과 이물 정보 확인 필요",
-            reason_code="missing_information",
-        )
+        return FlowResult(flow.id, "needs_information", reason="단일 재질과 이물 정보 확인 필요", reason_code="missing_information")
     active = [d for d in flow.detections if not d.removed]
     if any(d.ratio is None for d in active):
-        return FlowResult(
-            flow.id,
-            "needs_information",
-            reason="이물 비율 확인 필요",
-            reason_code="missing_information",
-        )
+        return FlowResult(flow.id, "needs_information", reason="이물 비율 확인 필요", reason_code="missing_information")
     current = _config_value(config.current_per_kg, flow.item, "current_per_kg")
     if current is None:
-        return FlowResult(
-            flow.id,
-            "needs_information",
-            reason="시연 현재 처리 단가 확인 필요",
-            reason_code="missing_information",
-        )
+        return FlowResult(flow.id, "needs_information", reason="시연 현재 처리 단가 확인 필요", reason_code="missing_information")
     contamination = fsum(d.ratio for d in active if d.ratio is not None)
     if contamination > 1:
         raise ValueError("sum of contaminant ratios exceeds 1")
@@ -310,20 +261,10 @@ def evaluate_flow(flow: Flow, config: DemoConfig, override: Route | None = None)
     elif flow.origin == "PCR":
         # #10 specifies film resins by whole name. Other packaging has no supplied film rule.
         if flow.item == "포장재" and not _is_film(flow.material):
-            return FlowResult(
-                flow.id,
-                "needs_information",
-                reason="LDPE·LLDPE 외 포장재의 시연 규칙 확인 필요",
-                reason_code="unsupported_combination",
-            )
+            return FlowResult(flow.id, "needs_information", reason="LDPE·LLDPE 외 포장재의 시연 규칙 확인 필요", reason_code="unsupported_combination")
         minimum = _config_value(config.minimum_kg, flow.item, "minimum_kg")
         if minimum is None:
-            return FlowResult(
-                flow.id,
-                "needs_information",
-                reason="시연 최소 물량 확인 필요",
-                reason_code="missing_information",
-            )
+            return FlowResult(flow.id, "needs_information", reason="시연 최소 물량 확인 필요", reason_code="missing_information")
         ai = "bundle" if flow.monthly_kg < minimum else "sell"
         reason = "시연 규칙: PCR 최소 물량 " + ("미만 묶음 후보" if ai == "bundle" else "이상 매각")
     elif flow.item == "폐플라스틱" and contamination < config.reuse_max_contamination:
@@ -339,28 +280,15 @@ def evaluate_flow(flow: Flow, config: DemoConfig, override: Route | None = None)
     supported = config.supported_routes.get((flow.item, flow.material.strip().upper()), frozenset())
     if route not in supported:
         return FlowResult(
-            flow.id,
-            "needs_information",
-            route=route,
-            ai_route=ai if route != ai else None,
+            flow.id, "needs_information", route=route, ai_route=ai if route != ai else None,
             reason="해당 품목·재질·경로 조합의 시연 계산값이 없음 (실제 적합성 판단 아님)",
             reason_code="unsupported_combination",
         )
 
-    sale = (
-        _config_value(config.sale_per_kg, flow.item, "sale_per_kg")
-        if route in ("sell", "bundle")
-        else None
-    )
+    sale = _config_value(config.sale_per_kg, flow.item, "sale_per_kg") if route in ("sell", "bundle") else None
     if route in ("sell", "bundle") and sale is None:
-        return FlowResult(
-            flow.id,
-            "needs_information",
-            route=route,
-            ai_route=ai if route != ai else None,
-            reason="시연 매각 단가 확인 필요",
-            reason_code="missing_information",
-        )
+        return FlowResult(flow.id, "needs_information", route=route, ai_route=ai if route != ai else None,
+                          reason="시연 매각 단가 확인 필요", reason_code="missing_information")
     # Zero action/transport is the explicit frontend demo assumption for other routes.
     removable = [d.label for d in active if "혼입" not in d.label and "혼합" not in d.label]
     if route == "reuse":
@@ -380,13 +308,9 @@ def evaluate_flow(flow: Flow, config: DemoConfig, override: Route | None = None)
         transport = flow.monthly_kg * config.bundle_transport_per_kg
     else:
         transport = flow.monthly_kg * solo_penalty
-    after = {
-        "reuse": config.reuse_per_kg,
-        "pyrolysis": config.pyrolysis_per_kg,
-        "incinerate": current,
-        "sell": sale - solo_penalty if sale is not None else None,
-        "bundle": sale - config.bundle_transport_per_kg if sale is not None else None,
-    }[route]
+    after = {"reuse": config.reuse_per_kg, "pyrolysis": config.pyrolysis_per_kg,
+             "incinerate": current, "sell": sale - solo_penalty if sale is not None else None,
+             "bundle": sale - config.bundle_transport_per_kg if sale is not None else None}[route]
     quantity = flow.monthly_kg
     now = current * quantity
     monthly_after = after * quantity - labor
@@ -397,57 +321,26 @@ def evaluate_flow(flow: Flow, config: DemoConfig, override: Route | None = None)
     item_sale = _config_value(config.sale_per_kg, flow.item, "sale_per_kg")
     ladder = _ladder(route, current, item_sale, bool(removable), solo, config)
     alternatives = _alternatives(route, flow, current, item_sale, mixed, config)
-    if not all(
-        isfinite(x)
-        for x in (
-            now,
-            monthly_after,
-            monthly_after - now,
-            cash,
-            avoidance,
-            disposal,
-            transport,
-            labor,
-            *(step.per_kg for step in ladder),
-            *(alt.per_kg for alt in alternatives),
-        )
-    ):
+    if not all(isfinite(x) for x in (
+        now, monthly_after, monthly_after - now, cash, avoidance, disposal, transport, labor,
+        *(step.per_kg for step in ladder), *(alt.per_kg for alt in alternatives),
+    )):
         raise ValueError("calculation exceeds finite floating-point range")
     return FlowResult(
-        flow.id,
-        "conditional" if route == "bundle" else "calculated",
-        route,
-        ai if route != ai else None,
-        reason,
-        current,
-        after,
-        now,
-        monthly_after,
-        monthly_after - now,
-        cash,
-        avoidance,
-        disposal,
-        transport,
-        labor,
-        action,
-        "conditional" if route == "bundle" else None,
-        (
-            "모든 단가와 규칙은 synthetic/demo",
-            "재투입은 분쇄·관리비 포함 순효과; 매출이 아닌 구매비 회피",
-            "묶음 운송비와 소량 PCR 단독 매각 출장비는 kg당 순효과에 포함; 인건비만 별도 차감",
-            "기타 운송비와 작업 없는 경로의 인건비는 시연상 명시적으로 0",
-            "회수율·신재 대체율을 추정하지 않음; 실제 적합성·수용·거래 미확정",
-        ),
-        ladder=ladder,
-        alternatives=alternatives,
+        flow.id, "conditional" if route == "bundle" else "calculated", route,
+        ai if route != ai else None, reason, current, after, now, monthly_after,
+        monthly_after - now, cash, avoidance, disposal, transport, labor,
+        action, "conditional" if route == "bundle" else None,
+        ("모든 단가와 규칙은 synthetic/demo", "재투입은 분쇄·관리비 포함 순효과; 매출이 아닌 구매비 회피",
+         "묶음 운송비와 소량 PCR 단독 매각 출장비는 kg당 순효과에 포함; 인건비만 별도 차감",
+         "기타 운송비와 작업 없는 경로의 인건비는 시연상 명시적으로 0",
+         "회수율·신재 대체율을 추정하지 않음; 실제 적합성·수용·거래 미확정"),
+        ladder=ladder, alternatives=alternatives,
     )
 
 
-def evaluate_factory(
-    flows: tuple[Flow, ...] | list[Flow],
-    config: DemoConfig,
-    overrides: dict[str, Route] | None = None,
-) -> FactoryResult:
+def evaluate_factory(flows: tuple[Flow, ...] | list[Flow], config: DemoConfig,
+                     overrides: dict[str, Route] | None = None) -> FactoryResult:
     if not flows:
         raise ValueError("at least one flow is required")
     ids = [flow.id for flow in flows]
@@ -463,10 +356,5 @@ def evaluate_factory(
     after = sum(d.monthly_after for d in decisions)
     if not all(isfinite(x) for x in (now, after, after - now)):
         raise ValueError("factory totals exceed finite floating-point range")
-    return FactoryResult(
-        decisions,
-        now,
-        after,
-        after - now,
-        "conditional" if any(d.bundle_status for d in decisions) else "calculated",
-    )
+    return FactoryResult(decisions, now, after, after - now,
+                         "conditional" if any(d.bundle_status for d in decisions) else "calculated")

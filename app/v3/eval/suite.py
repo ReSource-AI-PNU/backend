@@ -600,9 +600,7 @@ def superseded(old: dict[str, Any], new: dict[str, Any], reason: str = SUPERSEDE
             key: None
             if item is None
             else {
-                "label": public.metric_text(*HEADLINE.get(key, ("", key)), str(item.get("label")))[
-                    0
-                ],
+                "label": public.metric_text(*HEADLINE.get(key, ("", key)), str(item.get("label")))[0],
                 "value": item.get("value"),
             }
             for key, item in (old.get("headline") or {}).items()

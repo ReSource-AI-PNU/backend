@@ -1,5 +1,4 @@
 """① 식별·분류 API. 흐름 하나의 사진·영상을 받아 Stream.classify 와 출처 추정, 되묻기 질문을 돌려준다."""
-
 from __future__ import annotations
 
 import shutil
@@ -38,9 +37,7 @@ async def classify(
     stream_id: Annotated[str, Form()],
     name: Annotated[str, Form(description="흐름 이름 (예: 스프루·러너)")] = "",
     process: Annotated[str, Form(description="공정명 (예: 사출 1·2라인)")] = "",
-    material_doc_text: Annotated[
-        str, Form(description="원자재 명세·MSDS 에서 뽑은 텍스트 (선택, backend#9)")
-    ] = "",
+    material_doc_text: Annotated[str, Form(description="원자재 명세·MSDS 에서 뽑은 텍스트 (선택, backend#9)")] = "",
     material_hint: Annotated[str | None, Form(description="사용자가 아는 수지 (예: PP)")] = None,
 ) -> ClassifyOutput:
     tmp = Path(tempfile.mkdtemp(prefix="upload_"))
@@ -60,14 +57,7 @@ async def classify(
                     w.write(chunk)
             paths.append(str(dst))
         try:
-            return classify_stream(
-                paths,
-                stream_id=stream_id,
-                name=name,
-                process=process,
-                material_doc_text=material_doc_text,
-                material_hint=material_hint,
-            )
+            return classify_stream(paths, stream_id=stream_id, name=name, process=process, material_doc_text=material_doc_text, material_hint=material_hint)
         except ModelUnavailable as e:
             raise HTTPException(503, f"식별 모델을 쓸 수 없습니다: {e}")
     finally:

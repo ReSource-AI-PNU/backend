@@ -30,9 +30,8 @@ class FeasibilityPreviewRequest(Contract):
 
 
 DEMO_REQUEST = {
-    "streams": [
-        s.model_dump(mode="json", by_alias=True, exclude_unset=True) for s in demo_session().streams
-    ],
+    "streams": [s.model_dump(mode="json", by_alias=True, exclude_unset=True)
+                for s in demo_session().streams],
     "overrides": {},
 }
 
@@ -41,15 +40,13 @@ DEMO_REQUEST = {
 def preview(
     request: Annotated[
         FeasibilityPreviewRequest,
-        Body(
-            openapi_examples={
-                "synthetic_factory": {
-                    "summary": "가상 PP 사출 공장 네 흐름",
-                    "description": "서버의 synthetic/demo 단가와 규칙으로 계산합니다.",
-                    "value": DEMO_REQUEST,
-                }
+        Body(openapi_examples={
+            "synthetic_factory": {
+                "summary": "가상 PP 사출 공장 네 흐름",
+                "description": "서버의 synthetic/demo 단가와 규칙으로 계산합니다.",
+                "value": DEMO_REQUEST,
             }
-        ),
+        }),
     ],
 ) -> FeasibilityResult:
     """Calculate a synthetic preview without storing or changing a session."""

@@ -30,31 +30,10 @@ CONFIG = DemoConfig(
 
 FLOWS = (
     Flow("sprue", "폐플라스틱", "PP", "PIR", 600, True, ()),
-    Flow(
-        "defect",
-        "폐플라스틱",
-        "PP",
-        "PIR",
-        400,
-        True,
-        (Detection("종이 라벨", 0.04), Detection("금속 인서트", 0.02)),
-    ),
-    Flow(
-        "purge",
-        "폐플라스틱",
-        "PP+ABS",
-        "PIR",
-        250,
-        False,
-        (Detection("ABS 혼입", 0.35), Detection("탄화물", 0.05)),
-    ),
-    Flow(
-        "film",
-        "포장재",
-        "LDPE",
-        "PCR",
-        300,
-        True,
-        (Detection("종이 태그", 0.02), Detection("테이프", 0.01)),
-    ),
+    Flow("defect", "폐플라스틱", "PP", "PIR", 400, True,
+         (Detection("종이 라벨", 0.04), Detection("금속 인서트", 0.02))),
+    Flow("purge", "폐플라스틱", "PP+ABS", "PIR", 250, False,
+         (Detection("ABS 혼입", 0.35), Detection("탄화물", 0.05))),
+    Flow("film", "포장재", "LDPE", "PCR", 300, True,
+         (Detection("종이 태그", 0.02), Detection("테이프", 0.01))),
 )

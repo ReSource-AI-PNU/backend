@@ -28,25 +28,9 @@ class FakeDetector:
             "model_version": "v3-test",
             "mode": "photos",
             "primary_material": "plastic",
-            "items": [
-                {
-                    "material": "plastic",
-                    "area_ratio": np.float32(0.5),
-                    "confidence": 0.9,
-                    "count_estimate": 1,
-                }
-            ],
+            "items": [{"material": "plastic", "area_ratio": np.float32(0.5), "confidence": 0.9, "count_estimate": 1}],
             "contamination": {"overall_ratio": 0.06, "reliable": True, "note": ""},
-            "detections": [
-                {
-                    "id": "d0",
-                    "label": "plastic",
-                    "kind": "item",
-                    "confidence": 0.9,
-                    "box": [0, 0, 1, 1],
-                    "ratio": None,
-                }
-            ],
+            "detections": [{"id": "d0", "label": "plastic", "kind": "item", "confidence": 0.9, "box": [0, 0, 1, 1], "ratio": None}],
             "frames_analyzed": 1,
             "tracks_total": 0,
             "rep_frame": 0,
@@ -64,32 +48,20 @@ def fake(monkeypatch):
 
 
 def body(filename="a.png", data=PNG_1PX):
-    return {
-        "input_data": {
-            "filename": filename,
-            "media_type": "image",
-            "content_base64": base64.b64encode(data).decode(),
-        }
-    }
+    return {"input_data": {"filename": filename, "media_type": "image", "content_base64": base64.b64encode(data).decode()}}
 
 
 def test_rejects_requests_without_the_key(fake):
     client = TestClient(score_api.app)
     assert client.post("/score", json=body()).status_code == 401
-    assert (
-        client.post("/score", json=body(), headers={"Authorization": "Bearer wrong"}).status_code
-        == 401
-    )
+    assert client.post("/score", json=body(), headers={"Authorization": "Bearer wrong"}).status_code == 401
     assert fake.seen == []
 
 
 def test_refuses_everything_when_no_key_is_set(monkeypatch):
     monkeypatch.delenv("DETECTOR_API_KEY", raising=False)
     client = TestClient(score_api.app)
-    assert (
-        client.post("/score", json=body(), headers={"Authorization": "Bearer anything"}).status_code
-        == 503
-    )
+    assert client.post("/score", json=body(), headers={"Authorization": "Bearer anything"}).status_code == 503
 
 
 def test_checks_the_input(fake):
@@ -121,10 +93,6 @@ def test_other_photo_formats_are_converted_to_png(fake):
     ok, encoded = cv2.imencode(".bmp", np.zeros((4, 4, 3), dtype=np.uint8))
     assert ok
     client = TestClient(score_api.app)
-    response = client.post(
-        "/score",
-        json=body("photo.bmp", encoded.tobytes()),
-        headers={"Authorization": f"Bearer {KEY}"},
-    )
+    response = client.post("/score", json=body("photo.bmp", encoded.tobytes()), headers={"Authorization": f"Bearer {KEY}"})
     assert response.status_code == 200
     assert fake.seen[-1].endswith("input.png")

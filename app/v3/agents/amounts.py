@@ -43,7 +43,9 @@ _MASS = (
     (re.compile(r"톤|tonnes?|tons?|(?<![a-z])t(?![a-z])", re.IGNORECASE), 1000.0),
     (re.compile(r"그램|grams?|(?<![a-z])g(?![a-z])", re.IGNORECASE), 0.001),
 )
-_PER_KG = re.compile(r"(?:킬로그램|킬로|키로|kg)\s*당|/\s*(?:kg|킬로|키로)|per\s*kg", re.IGNORECASE)
+_PER_KG = re.compile(
+    r"(?:킬로그램|킬로|키로|kg)\s*당|/\s*(?:kg|킬로|키로)|per\s*kg", re.IGNORECASE
+)
 _PER_TON = re.compile(r"(?:톤|t)\s*당|/\s*(?:t|톤)(?![a-z])|per\s*(?:ton|tonne)", re.IGNORECASE)
 _MONTH = re.compile(r"월|달|개월|month", re.IGNORECASE)
 _YEAR = re.compile(r"년|연간|(?<![가-힣])연(?![가-힣])|year|annual", re.IGNORECASE)

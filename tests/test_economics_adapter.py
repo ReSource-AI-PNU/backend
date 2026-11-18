@@ -22,10 +22,7 @@ def test_fixture_totals_and_action(streams):
     result = evaluate_streams(streams, CONFIG)
     assert result.status == "conditional"
     assert [(d.monthly_now, d.monthly_after) for d in result.decisions] == [
-        (-150000, 510000),
-        (-100000, 90000),
-        (-62500, -20000),
-        (-75000, 15000),
+        (-150000, 510000), (-100000, 90000), (-62500, -20000), (-75000, 15000)
     ]
     assert (result.total_now, result.total_after, result.difference) == (-387500, 595000, 982500)
     reuse, sell, pyro, bundle = result.decisions
@@ -43,9 +40,7 @@ def test_fixture_totals_and_action(streams):
         {"label": "분쇄 재투입", "perKg": 900},
     ]
     assert [(a["route"], a["perKg"]) for a in body["decisions"][3]["alternatives"]] == [
-        ("sell", -40),
-        ("pyrolysis", -80),
-        ("incinerate", -250),
+        ("sell", -40), ("pyrolysis", -80), ("incinerate", -250)
     ]
     assert all(d["dataMode"] == "synthetic_demo" for d in body["decisions"])
     assert result.total_now == sum(d.monthly_now for d in result.decisions)
@@ -57,10 +52,7 @@ def test_missing_and_unconfirmed_are_held_without_losing_other_streams(streams):
     result = evaluate_streams(streams, CONFIG)
     assert result.status == "needs_information"
     assert (result.total_now, result.total_after, result.difference) == (None, None, None)
-    assert [d.reason_code for d in result.decisions[:2]] == [
-        "zero_quantity",
-        "unconfirmed_quantity",
-    ]
+    assert [d.reason_code for d in result.decisions[:2]] == ["zero_quantity", "unconfirmed_quantity"]
     assert all(d.monthly_after is None for d in result.decisions[:2])
     assert result.decisions[2].monthly_after == -20000
 
@@ -71,10 +63,7 @@ def test_contaminant_only_missing_ratio_and_removed(streams):
     contaminant = streams[1].classify.detections[1]
     contaminant.ratio = None
     result = evaluate_streams([streams[1]], CONFIG)
-    assert (result.status, result.decisions[0].reason_code) == (
-        "needs_information",
-        "missing_information",
-    )
+    assert (result.status, result.decisions[0].reason_code) == ("needs_information", "missing_information")
     contaminant.removed = True
     assert evaluate_streams([streams[1]], CONFIG).status == "calculated"
     contaminant.removed = None
@@ -87,10 +76,7 @@ def test_override_and_unsupported(streams):
     assert (result.decisions[0].route, result.decisions[0].ai_route) == ("sell", "reuse")
     stream.classify.material = "HDPE"
     result = evaluate_streams([stream], CONFIG)
-    assert (result.status, result.decisions[0].reason_code) == (
-        "needs_information",
-        "unsupported_combination",
-    )
+    assert (result.status, result.decisions[0].reason_code) == ("needs_information", "unsupported_combination")
     assert result.decisions[0].after_per_kg is None
 
 
@@ -134,7 +120,6 @@ def test_contract_api_example_and_identification_compatibility(streams):
     assert body["streams"][0]["classify"]["material"] == "PP"
     assert body["feasibility"]["carbonNowT"] is None
     assert body["feasibility"]["decisions"][0]["ladder"][-1] == {
-        "label": "분쇄 재투입",
-        "perKg": 900,
+        "label": "분쇄 재투입", "perKg": 900
     }
     assert Session.model_validate(body).streams[0].classify == streams[0].classify
