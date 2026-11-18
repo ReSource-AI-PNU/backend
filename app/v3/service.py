@@ -419,6 +419,7 @@ def list_orgs(app: App, viewer: str | None = None, scoped: bool = False) -> list
     scoped면(token 인증 모드) 요청한 조직 자신과 대화 상대만 준다: 배출 기업은 자기 진단의 스레드에
     있는 업체, 업체는 자기와 실제로 열린 대화의 배출 기업. 관리자는 모두 본다. scoped가 아니면
     (header 모드, 시연 전용) 조직을 밝히지 않아도 모든 조직을 준다(화면의 조직 고르기용).
+    탈퇴로 지운 조직(deleted: true, accounts._tombstone)은 그 조직과 대화가 남은 상대에게만 나온다.
     """
 
     def position(org: dict[str, Any]) -> tuple[bool, float, str]:
@@ -427,11 +428,12 @@ def list_orgs(app: App, viewer: str | None = None, scoped: bool = False) -> list
         return (not known, float(order) if known else 0.0, str(org.get("id")))
 
     orgs = sorted(app.store.list_orgs(), key=position)
+    present = [org for org in orgs if not org.get("deleted")]
     if not scoped:
-        return orgs
+        return present
     me = _org(app, viewer)
     if me.get("role") == "admin":
-        return orgs
+        return present
     allowed = {str(viewer)}
     for session in app.store.list_sessions(viewer):
         mine = viewer == session["emitterOrgId"]

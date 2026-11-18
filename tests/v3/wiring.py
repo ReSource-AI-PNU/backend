@@ -303,6 +303,21 @@ def contract_routes(doc: str | Path = "docs/v3/CONTRACT.md") -> set[tuple[str, s
     return {(method, normalize(path)) for method, path in _ROUTE.findall(section)}
 
 
+def contract_table_routes(
+    title: str, doc: str | Path = "docs/v3/CONTRACT.md", after: str = ""
+) -> set[tuple[str, str]]:
+    """계약의 한 절(title, after 다음에 처음 나오는 것)에 있는 표의 첫 칸에 적힌 (메서드, 경로)만."""
+    text = (ROOT / doc).read_text(encoding="utf-8")
+    start = text.index(title, text.index(after) if after else 0)
+    end = text.find("\n#", start + len(title))
+    rows = [
+        line.split("|")[1]
+        for line in text[start : end if end != -1 else len(text)].splitlines()
+        if line.startswith("| `")
+    ]
+    return {(method, normalize(path)) for row in rows for method, path in _ROUTE.findall(row)}
+
+
 def fastapi_routes(path: str | Path, router: str = "router") -> set[tuple[str, str]]:
     """`@router.get("/path")` 꼴의 장식자에서 (메서드, 경로)를 모은다."""
     found = set()

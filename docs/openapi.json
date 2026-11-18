@@ -4131,6 +4131,82 @@
             }
           }
         }
+      },
+      "delete": {
+        "tags": [
+          "v3-accounts"
+        ],
+        "summary": "Delete Me",
+        "operationId": "delete_me_api_v3_accounts_me_delete",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v3/accounts/password": {
+      "post": {
+        "tags": [
+          "v3-accounts"
+        ],
+        "summary": "Change Password",
+        "operationId": "change_password_api_v3_accounts_password_post",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v3/orgs/{org_id}": {
+      "patch": {
+        "tags": [
+          "v3-accounts"
+        ],
+        "summary": "Update Org",
+        "operationId": "update_org_api_v3_orgs__org_id__patch",
+        "parameters": [
+          {
+            "name": "org_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Org Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
       }
     },
     "/api/v3/orgs/{org_id}/members": {
@@ -4148,6 +4224,104 @@
             "schema": {
               "type": "string",
               "title": "Org Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v3/orgs/{org_id}/members/{member_id}": {
+      "delete": {
+        "tags": [
+          "v3-accounts"
+        ],
+        "summary": "Remove Member",
+        "operationId": "remove_member_api_v3_orgs__org_id__members__member_id__delete",
+        "parameters": [
+          {
+            "name": "org_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Org Id"
+            }
+          },
+          {
+            "name": "member_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Member Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v3/orgs/{org_id}/owners/{member_id}": {
+      "post": {
+        "tags": [
+          "v3-accounts"
+        ],
+        "summary": "Make Owner",
+        "operationId": "make_owner_api_v3_orgs__org_id__owners__member_id__post",
+        "parameters": [
+          {
+            "name": "org_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Org Id"
+            }
+          },
+          {
+            "name": "member_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Member Id"
             }
           }
         ],

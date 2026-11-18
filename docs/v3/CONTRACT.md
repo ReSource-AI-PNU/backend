@@ -613,22 +613,25 @@ VendorProfile {"orgId": "org_saegil",
 | `INVALID_BFF_KEY` | 401 | bff 모드인데 `Authorization: Bearer` 키가 없거나 맞지 않다 |
 | `USER_REQUIRED` | 401 | bff 모드에서 사용자가 필요한 경로인데 `X-User-Id`가 없다 |
 | `UNKNOWN_USER` | 401 | bff 모드에서 `X-User-Id`가 가입한 사용자가 아니다 |
-| `INVALID_CREDENTIALS` | 401 | 로그인 이메일이나 비밀번호가 틀렸다. 어느 쪽이 틀렸는지 알려 주지 않는다(문장도 같다) |
+| `INVALID_CREDENTIALS` | 401 | 로그인 이메일이나 비밀번호가 틀렸다. 어느 쪽이 틀렸는지 알려 주지 않는다(문장도 같다). 비밀번호 바꾸기와 탈퇴(9장)에서 다시 확인한 지금 비밀번호가 틀려도 같은 코드다 |
 | `UNKNOWN_ORG` | 401 | 모르는 조직이다 |
 | `FORBIDDEN` | 403 | 그 조직이 할 수 없는 일이다(다른 조직의 자료, 관리자 전용 경로, 배출 기업만 하는 진행·답·교정 등) |
 | `WRONG_ROLE` | 403 | 조직의 역할이 맞지 않는다(배출 기업만, 처리 업체만) |
 | `NOT_A_MEMBER` | 403 | bff 모드에서 사용자가 그 조직(`X-Org-Id`나 주소의 조직)의 구성원이 아니다 |
-| `OWNER_ONLY` | 403 | 조직 소유자(owner)만 할 수 있다(초대 만들기) |
-| `DEMO_READ_ONLY` | 403 | 체험하기(`X-Demo-View: 1`)에서 GET이 아닌 요청을 보냈다 |
+| `OWNER_ONLY` | 403 | 조직 소유자(owner)만 할 수 있다(초대 만들기, 조직 정보 고치기, 다른 구성원 빼기, 소유자 지정. 9장) |
+| `DEMO_READ_ONLY` | 403 | 체험하기(`X-Demo-View: 1`)에서 GET이 아닌 요청을 보냈다. 시연 조직이나 운영 조직의 정보를 고치려 했을 때도(9장 조직 고치기) |
 | `NOT_DEMO_ORG` | 403 | 체험하기의 `X-Org-Id`가 시연 조직이 아니다(실제 조직, 운영 조직, 없는 조직) |
 | `NOT_FOUND` | 404 | 그런 주소가 없다(bff가 아닌 모드에서 9장의 경로를 부른 경우도) |
 | `ORG_NOT_FOUND`, `VENDOR_NOT_FOUND`, `STREAM_NOT_FOUND`, `SESSION_NOT_FOUND`, `THREAD_NOT_FOUND`, `QUESTION_NOT_FOUND`, `EVIDENCE_NOT_FOUND` | 404 | 없거나 볼 수 없다(볼 수 없는 것은 있는지도 알려 주지 않는다) |
+| `MEMBER_NOT_FOUND` | 404 | 빼거나 소유자로 지정하려는 사용자가 그 조직의 구성원이 아니다(9장) |
 | `NOT_AGREED` | 409 | 합의된 조건이 없는 대화를 승인하려 했다 |
 | `EMAIL_TAKEN` | 409 | 이미 가입한 이메일이다(대소문자와 앞뒤 공백은 가리지 않는다) |
 | `APPROVAL_BLOCKED` | 409 | 승인이 막혀 있다. 이유는 `approvals[].blockedReason`과 `blockedCodes`에 있다(아래 "승인을 막는 사유 코드") |
 | `PERMIT_MISMATCH` | 409 | 승인하려는 대화의 업체 허가 품목이 합의 뒤에 바뀌어 흐름과 맞지 않는다. 승인하지 않는다. 맞는 흐름이 남지 않으면 그 대화를 근거와 함께 `decline`으로 닫고, 일부만 맞지 않으면 그 흐름만 빼고 승인을 지운다(남은 조건으로 다시 승인한다) |
 | `THREAD_NOT_CONFIRMED` | 409 | 확정되지 않은 대화에 실제 결과를 기록하려 했다 |
-| `RUN_IN_PROGRESS` | 409 | 그 진단의 진행(run, 답, 승인)이 이미 돌고 있다(위 "실시간 진행"의 실행 자리) |
+| `RUN_IN_PROGRESS` | 409 | 그 진단의 진행(run, 답, 승인)이 이미 돌고 있다(위 "실시간 진행"의 실행 자리). 탈퇴로 지울 조직이 들어간 진단이 진행 중일 때도(9장 "탈퇴"). 아무것도 지우지 않는다 |
+| `LAST_OWNER` | 409 | 조직의 마지막 owner를 빼거나 마지막 owner가 나가려 했다. 먼저 다른 구성원을 owner로 지정한다(9장) |
+| `TRANSFER_OWNERSHIP_FIRST` | 409 | 탈퇴하려는 사용자가 다른 구성원이 있는 조직의 유일한 owner다. 먼저 다른 구성원을 owner로 지정한다. 아무것도 지우지 않는다(9장 "탈퇴") |
 | `INVITE_INVALID` | 410 | 초대가 없거나, 만료되었거나(7일), 이미 쓰였다 |
 | `TOO_LARGE` | 413 | 본문이 20MB를 넘는다 |
 | `UNSUPPORTED_MEDIA` | 415 | 사진·영상이 아닌 파일이다. 탐지 모델이 연결되지 않았어도 형식 검사가 먼저다 |
@@ -641,7 +644,7 @@ VendorProfile {"orgId": "org_saegil",
 | `NO_CHANGE` | 422 | 교정 전후 값이 같다 |
 | `STREAM_NOT_IN_THREAD` | 422 | 그 대화에서 확정된 흐름이 아니다(실제 결과 기록) |
 | `INVALID_MESSAGE` | 422 | 업체 측 에이전트가 받은 메시지를 처리할 수 없다 |
-| `TOO_MANY_ATTEMPTS` | 429 | 같은 이메일로 15분 안에 로그인을 10번 틀렸다(서버 프로세스 메모리에서 센다) |
+| `TOO_MANY_ATTEMPTS` | 429 | 같은 이메일로 15분 안에 로그인을 10번 틀렸다(서버 프로세스 메모리에서 센다). 비밀번호 바꾸기·탈퇴에서 지금 비밀번호를 틀린 횟수도 같은 칸에 센다 |
 | `INTERNAL` | 500 | 예상하지 못한 오류. 내용은 응답에 싣지 않는다 |
 | `DOCUMENT_FAILED`, `SHIELD_FAILED`, `DETECTOR_FAILED` | 502 | Document Intelligence, Prompt Shields, 탐지 엔드포인트 호출이 실패했거나 계약과 다른 답이 왔다 |
 | `DOCUMENT_INTELLIGENCE_UNAVAILABLE` | 503 | Document Intelligence가 설정되지 않아 글이 아닌 문서를 읽을 수 없다 |
@@ -740,8 +743,13 @@ HTTP 오류 코드가 아니라 `approvals[].blockedCodes`(배열)와 `blockedRe
 | `POST /accounts/signup` | 키 | `{email, password, name}` → 201 `{user: {id, email, name}}`. 이메일은 앞뒤 공백을 떼고 소문자로 맞춘다. 비밀번호는 8자 이상 256자 이하. 이미 있으면 409 `EMAIL_TAKEN`, 꼴이 틀리면 422 `INVALID_VALUE` |
 | `POST /accounts/login` | 키 | `{email, password}` → 200 `{user, memberships: [{orgId, orgName, kind, memberRole}]}`. 틀리면 401 `INVALID_CREDENTIALS`(이메일이 없을 때와 비밀번호가 틀릴 때 같은 답), 15분에 10번 틀리면 429 `TOO_MANY_ATTEMPTS` |
 | `GET /accounts/me` | 키, `X-User-Id` | 로그인과 같은 모양 |
+| `POST /accounts/password` | 키, `X-User-Id` | `{currentPassword, newPassword}` → 204. 아래 "비밀번호 바꾸기" |
+| `DELETE /accounts/me` | 키, `X-User-Id` | 탈퇴. 본문 `{password}` → 204. 아래 "탈퇴" |
 | `POST /orgs` | 키, `X-User-Id` | `{name, kind: "emitter" \| "vendor", bizNo?, region?, address?, location?: [경도, 위도]}` → 201 조직. 만든 사람이 owner다 |
+| `PATCH /orgs/{orgId}` | 키, `X-User-Id`(그 조직의 owner) | `{name?, bizNo?, region?, address?, location?}` → 200 `POST /orgs`의 응답과 같은 모양(`memberRole` 포함). 아래 "조직 고치기" |
 | `GET /orgs/{orgId}/members` | 키, `X-User-Id`(그 조직의 구성원) | `[{userId, name, email, memberRole}]` |
+| `DELETE /orgs/{orgId}/members/{userId}` | 키, `X-User-Id`(owner, 또는 자기 자신) | 204(본문 없음). owner는 누구든 빼고 member는 자기만 뺀다(나가기). 아래 "구성원과 소유자" |
+| `POST /orgs/{orgId}/owners/{userId}` | 키, `X-User-Id`(그 조직의 owner) | 그 구성원을 owner로 지정한다. 200 `{userId, name, email, memberRole: "owner"}`(구성원 목록의 한 줄). 이미 owner면 그대로 |
 | `POST /orgs/{orgId}/invites` | 키, `X-User-Id`(그 조직의 owner) | 201 `{token, expiresAt}`. 구성원이 아니면 403 `NOT_A_MEMBER`, owner가 아니면 403 `OWNER_ONLY` |
 | `GET /invites/{token}` | 키 | 초대 화면(로그인 전)이 초대한 조직을 보인다. 200 `{orgName, kind, expiresAt, valid: true}`. 조직 ID, 만든 사람, 구성원은 싣지 않는다. 초대를 쓰지 않는다. 없거나 만료되었거나 이미 쓴 초대는 410 `INVITE_INVALID`(어느 쪽인지 밝히지 않는다) |
 | `POST /invites/{token}/accept` | 키, `X-User-Id` | 200 `{orgId, orgName, kind, memberRole: "member"}`. 없거나 만료되었거나 이미 쓴 초대는 410 `INVITE_INVALID`. 이미 구성원이면 초대를 쓰고 있던 소속을 그대로 준다 |
@@ -753,7 +761,55 @@ HTTP 오류 코드가 아니라 `approvals[].blockedCodes`(배열)와 `blockedRe
 - 새 업체는 빈 프로필(`permits: [], criteria: [], fleet: {}, guardrails: {}`)로 시작한다. `PUT /vendors/{orgId}`와 문서 올리기로 채운다. 허가 품목이나 매입 기준이 하나라도 생겨야 업체 탐색에 나온다. 실제 배출 기업의 업체 탐색은 시연 업체와 이렇게 채운 가입 업체를 모두 본다. 시연 배출 기업의 진단은 시연 업체만 본다.
 - 비밀번호는 `hashlib.scrypt`(n=2^14, r=8, p=1, 사용자마다 16바이트 소금)로 저장하고 응답과 기록에 싣지 않는다. 확인은 `hmac.compare_digest`로 하고 없는 이메일도 같은 계산을 한다. 로그인 실패 횟수는 서버 프로세스 메모리에서 이메일마다 센다(로그인에 성공하면 지운다).
 - 초대 토큰은 32바이트 난수(URL에 쓸 수 있는 글)이고 sha256 값만 저장한다. 7일 뒤 만료되고 한 번만 쓸 수 있다. 토큰 원문은 만든 응답에만 한 번 나간다.
-- 저장: 메모리 모드는 프로세스 안, SQL 모드는 `v3_users`, `v3_memberships`, `v3_invites`(마이그레이션 `0005_v3_accounts`). 조직 레코드는 `v3_records`(kind `orgs`)에 그대로 둔다.
+- 저장: 메모리 모드는 프로세스 안, SQL 모드는 `v3_users`, `v3_memberships`, `v3_invites`(마이그레이션 `0005_v3_accounts`). 조직 레코드는 `v3_records`(kind `orgs`)에 그대로 둔다. 조직 고치기·구성원 빼기·비밀번호 바꾸기·탈퇴는 같은 테이블의 행을 고치거나 지우므로 새 마이그레이션이 없다.
+
+### 조직 고치기 (`PATCH /orgs/{orgId}`)
+
+- owner만 부른다(구성원이 아니면 403 `NOT_A_MEMBER`, member면 403 `OWNER_ONLY`). 시연 조직과 운영 조직(시드 조직. 시연 되돌리기가 다시 올린다)은 owner여도 403 `DEMO_READ_ONLY`다.
+- 보낸 항목만 바꾼다. 검사는 `POST /orgs`와 같다: `name`은 1~100자(비울 수 없다), `bizNo`는 숫자 10자리(`000-00-00000`으로 맞춘다), `region`·`address`는 200자 이하, `location`은 `[경도, 위도]`. `bizNo`, `region`, `address`, `location`은 `null`이나 빈 글이면 비운다. 틀리면 422 `INVALID_VALUE`이고 아무것도 바꾸지 않는다.
+- `kind`는 바꿀 수 없다(지금 값과 다르면 422 `INVALID_VALUE`, 같으면 무시한다). 모르는 항목은 무시한다.
+- 바뀐 이름과 위치는 다음 진행부터 쓰인다. 이미 나간 메시지의 글은 바뀌지 않는다.
+
+### 구성원과 소유자
+
+- `DELETE /orgs/{orgId}/members/{userId}`: owner는 누구든 빼고, member는 자기만 뺀다(남을 빼려 하면 403 `OWNER_ONLY`). 그 사용자가 구성원이 아니면 404 `MEMBER_NOT_FOUND`. 빼려는 사람이 그 조직의 마지막 owner면 409 `LAST_OWNER`(자기가 나가는 경우도). 빠진 사람이 그 조직에 만들어 두고 아직 쓰지 않은 초대는 함께 지운다.
+- `POST /orgs/{orgId}/owners/{userId}`: owner가 다른 구성원을 owner로 지정한다. owner는 여럿일 수 있다. owner를 member로 내리는 경로는 없다(그 사람을 빼고 다시 초대한다).
+- 두 owner가 동시에 서로를 빼면 owner가 남지 않을 수 있다(확인과 지우기가 한 트랜잭션이 아니다). 그때는 운영자가 `grant-admin`과 같은 방법으로 넣는다.
+
+### 비밀번호 바꾸기 (`POST /accounts/password`)
+
+- `{currentPassword, newPassword}` → 204. 지금 비밀번호가 틀리면 401 `INVALID_CREDENTIALS`, 새 비밀번호가 8자 미만·256자 초과이거나 지금과 같으면 422 `INVALID_VALUE`.
+- 틀린 횟수는 로그인과 같은 제한(이메일마다 15분에 10번, `app.login_limiter`)에 센다. 넘으면 429 `TOO_MANY_ATTEMPTS`이고 그동안 로그인도 막힌다. 맞으면 그 이메일의 실패 기록을 지운다.
+- 새 비밀번호는 새 소금으로 같은 scrypt 값으로 저장한다. 백엔드에는 로그인 세션이 없으므로, 다른 기기의 로그인 세션을 끊는 일은 BFF가 한다.
+
+### 탈퇴 (`DELETE /accounts/me`)
+
+본문 `{password}`로 지금 비밀번호를 다시 확인한다(틀리면 401 `INVALID_CREDENTIALS`, 횟수 제한은 위와 같다). 그다음 사용자가 속한 조직마다 정한다.
+
+| 사용자의 자리 | 하는 일 |
+|---|---|
+| member, 또는 다른 owner가 있는 조직 | 소속만 지운다. 조직과 자료는 그대로다 |
+| 혼자 owner이고 다른 구성원이 있는 조직 | 409 `TRANSFER_OWNERSHIP_FIRST`(조직 이름을 문장에 싣는다). 아무것도 지우지 않는다. 먼저 `POST /orgs/{orgId}/owners/{userId}`로 넘긴다 |
+| 혼자 owner이고 다른 구성원이 없는 조직 | 조직을 함께 지운다(아래 표). 시연 조직과 운영 조직은 지우지 않고 소속만 지운다 |
+
+지울 조직이 들어간 진단(그 조직이 배출 기업인 진단, 그 업체와 대화가 있는 진단)이 지금 진행 중이면 409 `RUN_IN_PROGRESS`이고 아무것도 지우지 않는다. 막히지 않으면 조직을 먼저 지우고 사용자를 마지막에 지운다. SQL 저장에서 지우기는 여러 트랜잭션으로 나뉜다. 도중에 실패하면(500) 사용자는 남아 있으므로 다시 부르면 남은 것을 지운다(같은 일을 다시 해도 결과가 같다).
+
+**지우는 것과 남기는 것.**
+
+| 자료 | 처리 | 까닭 |
+|---|---|---|
+| 사용자 레코드(이메일, 이름, 비밀번호 scrypt 값), 그 사람의 모든 소속 | 지운다 | 개인 정보다. 같은 이메일로 다시 가입하면 새 사용자다 |
+| 그 사람이 만들었거나 쓴 초대 | 지운다 | |
+| 로그인 실패 기록(프로세스 메모리) | 지운다 | |
+| 지우는 조직의 흐름(폐기물), 업체 프로필 | 지운다 | 다만 다른 배출 기업과 **확정한** 대화가 있는 업체의 프로필은 `departed: true`로 남기고 업체 탐색에서 뺀다. 상대의 확정 기록(결과 한 장, 이행 계획서, 최적안 다시 계산)이 그 매입 기준·차량 값에 기댄다 |
+| 지우는 배출 기업의 진단과 그 안의 모든 것(업체와의 대화와 업체 측 메시지, 질문, 승인, 문서, 실행 기록, 실시간 진행 기록) | 지운다 | 업체 화면에서도 그 진단이 사라진다 |
+| 지우는 업체와 다른 배출 기업 사이의 대화 | 남긴다. 진행 중·합의한 대화는 코드가 쓴 `handoff`로 닫는다(`statusReason`: "상대 업체가 서비스를 떠나 이 대화를 마쳤습니다.", 승인과 배정을 지우고 최적안을 다시 계산한다). 열지 않은 대화는 같은 이유로 열지 않는다. 확정한 대화와 이미 닫힌 대화는 그대로다 | 상대 배출 기업의 기록이다. 이미 주고받은 메시지 글에 그 업체 이름이 남을 수 있다 |
+| 지우는 조직만 볼 수 있는 근거(측정값, 올린 문서, 사진 추정, 교정 기록, 업체 입력값, 그 조직이 부른 판단 도구의 계산 등) | 지운다 | 남긴 업체 프로필이 가리키는 근거는 남긴다 |
+| 다른 조직에도 열린 근거(대화가 열려 상대에게 보인 흐름 값·계산, 허가증·매입 기준, 업체의 실제 결과 기록 등) | 남긴다(내용과 접근 목록 그대로) | 상대가 받은 메시지와 문서가 인용한 기록이다. 접근 목록에 남은 지운 조직 ID는 구성원을 들일 수 없어 아무도 쓰지 못한다 |
+| 조직 레코드 | 개인·사업자 정보가 없는 자리로 바꾼다: `{id, name: "탈퇴한 배출 기업" \| "탈퇴한 업체", role, demo: false, deleted: true, deletedAt}`. 사업자등록번호, 지역, 주소, 위치, 원래 이름은 지운다 | 남은 대화와 근거가 그 ID를 가리키고, ID를 다시 쓰지 않게 한다. 조직 목록(`GET /orgs`)에는 그 조직과 대화가 남은 상대에게만 나온다. 구성원을 들일 수 없다(초대도 운영자 명령도 막는다) |
+| 그 조직의 소속과 초대 | 지운다 | |
+
+- 운영자는 `python -m scripts.v3.accounts_admin delete-user <이메일>`로 같은 규칙으로 지운다(비밀번호를 묻지 않는다). `--force-org`를 주면 혼자 owner인 조직을 다른 구성원이 있어도 지운다(그 구성원들의 소속도 지운다). `list-users --like <찾기 글>`은 이메일이나 이름으로 사용자를 찾는다(대소문자 무시, `*`·`%`는 아무 글자열, 없으면 포함 검색. 비밀번호 값은 내보내지 않는다). 둘 다 백엔드 컨테이너 안에서 서버와 같은 설정으로 돈다.
 
 ### 노선·차량 (`PUT /vendors/{orgId}`의 `fleet`)
 

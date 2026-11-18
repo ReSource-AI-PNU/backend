@@ -8,7 +8,7 @@
 from __future__ import annotations
 
 from fastapi import APIRouter, Request
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, Response
 
 from app.v3 import accounts, httpio, service
 from app.v3.api import bff_key_only, call, guarded, json_object
@@ -34,6 +34,10 @@ def created(body: dict) -> JSONResponse:
     return JSONResponse(body, status_code=201)
 
 
+def no_content() -> Response:
+    return Response(status_code=204)
+
+
 @router.post("/accounts/signup")
 @guarded
 async def signup(request: Request):
@@ -56,6 +60,25 @@ async def me(request: Request):
     return await call(accounts.me, _user_id(request))
 
 
+@router.delete("/accounts/me")
+@guarded
+async def delete_me(request: Request):
+    # 탈퇴. 본문 {password}로 다시 확인한다
+    user_id = _user_id(request)
+    body = await json_object(request)
+    await call(accounts.delete_account, user_id, body)
+    return no_content()
+
+
+@router.post("/accounts/password")
+@guarded
+async def change_password(request: Request):
+    user_id = _user_id(request)
+    body = await json_object(request)
+    await call(accounts.change_password, user_id, body)
+    return no_content()
+
+
 @router.post("/orgs")
 @guarded
 async def create_org(request: Request):
@@ -64,10 +87,32 @@ async def create_org(request: Request):
     return created(await call(accounts.create_org, user_id, body))
 
 
+@router.patch("/orgs/{org_id}")
+@guarded
+async def update_org(org_id: str, request: Request):
+    user_id = _user_id(request)
+    body = await json_object(request)
+    return await call(accounts.update_org, user_id, org_id, body)
+
+
 @router.get("/orgs/{org_id}/members")
 @guarded
 async def members(org_id: str, request: Request):
     return await call(accounts.list_members, _user_id(request), org_id)
+
+
+@router.delete("/orgs/{org_id}/members/{member_id}")
+@guarded
+async def remove_member(org_id: str, member_id: str, request: Request):
+    # owner는 누구든 빼고, member는 자기만 뺀다(나가기)
+    await call(accounts.remove_member, _user_id(request), org_id, member_id)
+    return no_content()
+
+
+@router.post("/orgs/{org_id}/owners/{member_id}")
+@guarded
+async def make_owner(org_id: str, member_id: str, request: Request):
+    return await call(accounts.make_owner, _user_id(request), org_id, member_id)
 
 
 @router.post("/orgs/{org_id}/invites")

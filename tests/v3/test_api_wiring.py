@@ -136,6 +136,15 @@ def test_devserver_routes_equal_the_contract():
     assert wiring.match_routes("app/v3/devserver.py") == wiring.contract_routes()
 
 
+def test_account_routes_equal_the_contract_table():
+    """9장 "경로" 표의 경로와 accounts_api.py(bff 모드 전용)의 경로가 같다. devserver는 bff를 쓰지 않는다."""
+    table = wiring.contract_table_routes("### 경로", after="## 9. 계정과 조직")
+    assert ("DELETE", "/accounts/me") in table and ("PATCH", "/orgs/{}") in table
+    assert wiring.fastapi_routes("app/v3/accounts_api.py") == table
+    assert table & wiring.contract_routes() == set()  # 8장과 겹치지 않는다
+    assert table & wiring.match_routes("app/v3/devserver.py") == set()
+
+
 def test_api_routes_equal_the_contract():
     contract, api = wiring.contract_routes(), wiring.fastapi_routes("app/v3/api.py")
     assert KNOWN_API_GAPS == set()

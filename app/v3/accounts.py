@@ -8,6 +8,10 @@
 - 조직 레코드는 기존 저장소(app.store)의 orgs에 둔다. role이 계약의 kind다. 새 조직의 ID는
   org_ + 난수 12자라 시연 조직의 ID(org_hanbit 등)와 겹치지 않는다.
 - 초대 토큰은 32바이트 난수이고 sha256 값만 저장한다. 7일 뒤 만료되고 한 번만 쓸 수 있다.
+- 비밀번호 바꾸기와 탈퇴는 지금 비밀번호를 다시 확인한다. 틀린 횟수는 로그인과 같은 제한(이메일마다)에 센다.
+- 탈퇴(delete_account)와 운영자 명령(delete_user)은 사용자 레코드(이메일, 이름, 비밀번호 값)와 소속을
+  지운다. 혼자 owner인 조직은 다른 구성원이 없을 때만 함께 지운다(_delete_orgs). 무엇을 지우고 무엇을
+  남기는지는 계약 9장 "탈퇴"에 있다.
 """
 
 from __future__ import annotations
@@ -21,7 +25,12 @@ import secrets
 from datetime import timedelta
 from typing import Any
 
+from app.v3 import service
+from app.v3.a2a.policy import evidence_owner
 from app.v3.account_store import EmailTaken, iso, parse_iso
+from app.v3.agents.orchestrator import Orchestrator
+from app.v3.demo.seed import ORGS as SEED_ORGS
+from app.v3.evidence.model import PUBLIC
 from app.v3.service import App, ServiceError
 from app.v3.store import NotFound
 
@@ -32,6 +41,11 @@ INVITE_DAYS = 7
 ORG_KINDS = ("emitter", "vendor")
 MEMBER_ROLES = ("owner", "member")
 _EMAIL = re.compile(r"[^@\s]+@[^@\s]+\.[^@\s]+")
+# 시연 조직과 운영 조직(시연 되돌리기가 다시 올린다). 고치거나 탈퇴로 지우지 않는다
+SEEDED = frozenset(org["id"] for org in SEED_ORGS)
+# 탈퇴한 업체와 열려 있던 대화를 닫을 때 남기는 이유(숫자 없음. 상대 배출 기업이 본다)
+DEPARTED_REASON = "상대 업체가 서비스를 떠나 이 대화를 마쳤습니다."
+DEPARTED_NAMES = {"vendor": "탈퇴한 업체", "emitter": "탈퇴한 배출 기업"}
 _BIZ_NO = re.compile(r"(\d{3})-?(\d{2})-?(\d{5})")
 
 
@@ -406,9 +420,11 @@ def grant_membership(app: App, email: str, org_id: str, member_role: str = "owne
     if user is None:
         raise ValueError("그 이메일로 가입한 사용자가 없다")
     try:
-        app.store.get_org(org_id)
+        org = app.store.get_org(org_id)
     except NotFound:
         raise ValueError(f"조직 {org_id}가 없다(시연 데이터를 먼저 올린다)") from None
+    if org.get("deleted"):
+        raise ValueError(f"조직 {org_id}는 탈퇴로 지운 조직이다")
     membership = app.accounts.add_membership(
         {
             "userId": user["id"],
@@ -418,3 +434,311 @@ def grant_membership(app: App, email: str, org_id: str, member_role: str = "owne
         }
     )
     return _membership_view(app, membership) or {}
+
+
+# ── 조직 고치기, 구성원 빼기, 소유자 지정 ────────────────────────────
+def _owner_of(app: App, user_id: str, org_id: str, action: str) -> dict[str, Any]:
+    membership = check_member(app, user_id, org_id)
+    if membership["memberRole"] != "owner":
+        raise ServiceError("OWNER_ONLY", f"조직 소유자만 {action}.", 403)
+    return membership
+
+
+def _seeded(org: dict[str, Any]) -> bool:
+    return bool(org.get("demo")) or org.get("id") in SEEDED
+
+
+def update_org(app: App, user_id: str, org_id: str, body: dict[str, Any]) -> dict[str, Any]:
+    """조직 정보를 고친다(owner만). 보낸 항목만 바꾸고 null이나 빈 글이면 그 항목을 비운다(name 빼고).
+
+    검사는 POST /orgs와 같다. 조직 종류(kind)는 바꿀 수 없다. 시연 조직과 운영 조직은 고칠 수 없다.
+    값을 모두 확인한 뒤에 한 번에 저장한다.
+    """
+    membership = _owner_of(app, user_id, org_id, "조직 정보를 고칠 수 있습니다")
+    try:
+        org = app.store.get_org(org_id)
+    except NotFound:
+        raise ServiceError("ORG_NOT_FOUND", "그런 조직이 없습니다.", 404) from None
+    if _seeded(org):
+        raise ServiceError(
+            "DEMO_READ_ONLY", "시연 조직과 운영 조직의 정보는 고칠 수 없습니다.", 403
+        )
+    if "kind" in body and body["kind"] != org.get("role"):
+        raise _invalid("조직 종류(kind)는 바꿀 수 없습니다.")
+    changed = dict(org)
+    if "name" in body:
+        changed["name"] = _text(body, "name", "조직 이름", 100, needed=True)
+    if "bizNo" in body:
+        changed["bizNo"] = _biz_no(body.get("bizNo"))
+    for key, label in (("region", "지역"), ("address", "주소")):
+        if key in body:
+            changed[key] = _text(body, key, label, 200, needed=False)
+    if "location" in body:
+        changed["location"] = _location(body.get("location"))
+    if changed != org:
+        app.store.put_org(changed)
+    return {**org_view(changed), "memberRole": membership["memberRole"]}
+
+
+def _target(app: App, target_id: str, org_id: str) -> dict[str, Any]:
+    found = app.accounts.get_membership(target_id, org_id) if target_id else None
+    if found is None:
+        raise ServiceError("MEMBER_NOT_FOUND", "그 사용자는 이 조직의 구성원이 아닙니다.", 404)
+    return found
+
+
+def _owners(app: App, org_id: str) -> list[str]:
+    return [
+        m["userId"]
+        for m in app.accounts.list_memberships(org_id=org_id)
+        if m["memberRole"] == "owner"
+    ]
+
+
+def remove_member(app: App, user_id: str, org_id: str, target_id: str) -> None:
+    """구성원을 뺀다. owner는 누구든 빼고, member는 자기만 뺀다(나가기). 마지막 owner는 빠질 수 없다.
+
+    빠진 사람이 그 조직에 만들어 두고 아직 쓰지 않은 초대도 지운다.
+    """
+    membership = check_member(app, user_id, org_id)
+    if target_id != user_id and membership["memberRole"] != "owner":
+        raise ServiceError("OWNER_ONLY", "조직 소유자만 다른 구성원을 뺄 수 있습니다.", 403)
+    target = _target(app, target_id, org_id)
+    if target["memberRole"] == "owner" and _owners(app, org_id) == [target_id]:
+        raise ServiceError(
+            "LAST_OWNER",
+            "조직의 마지막 소유자는 빠질 수 없습니다. 먼저 다른 구성원을 소유자로 지정해 주세요.",
+            409,
+        )
+    app.accounts.remove_membership(target_id, org_id)
+    app.accounts.delete_invites(org_id=org_id, user_id=target_id, unused_only=True)
+
+
+def make_owner(app: App, user_id: str, org_id: str, target_id: str) -> dict[str, Any]:
+    """다른 구성원을 owner로 지정한다(owner만). 이미 owner면 그대로 준다. 구성원 목록의 한 줄 모양이다."""
+    _owner_of(app, user_id, org_id, "소유자를 지정할 수 있습니다")
+    target = _target(app, target_id, org_id)
+    if target["memberRole"] != "owner":
+        target = app.accounts.set_member_role(target_id, org_id, "owner") or target
+    user = app.accounts.get_user(target_id) or {}
+    return {
+        "userId": target_id,
+        "name": user.get("name"),
+        "email": user.get("email"),
+        "memberRole": target["memberRole"],
+    }
+
+
+# ── 비밀번호 바꾸기, 탈퇴 ────────────────────────────────────────────
+def _not_blocked(app: App, user: dict[str, Any]) -> None:
+    if app.login_limiter.blocked(user["email"]):
+        raise ServiceError(
+            "TOO_MANY_ATTEMPTS", "비밀번호를 너무 많이 틀렸습니다. 잠시 뒤에 다시 해 주세요.", 429
+        )
+
+
+def _confirm_password(app: App, user: dict[str, Any], given: Any) -> str:
+    """지금 비밀번호를 확인한다. 틀린 횟수는 로그인과 같은 제한(이메일마다 15분에 10번)에 센다."""
+    key = user["email"]
+    _not_blocked(app, user)
+    password = given if isinstance(given, str) and len(given) <= MAX_PASSWORD else ""
+    if not password or not verify_password(password, user["passwordHash"]):
+        app.login_limiter.failed(key)
+        raise ServiceError("INVALID_CREDENTIALS", "지금 비밀번호가 맞지 않습니다.", 401)
+    app.login_limiter.succeeded(key)
+    return password
+
+
+def change_password(app: App, user_id: str, body: dict[str, Any]) -> None:
+    """{currentPassword, newPassword}. 새 비밀번호는 가입과 같은 규칙(8~256자)이고 새 소금으로 저장한다."""
+    user = _user(app, user_id)
+    _not_blocked(app, user)  # 막혔으면 새 비밀번호를 보기 전에 429다
+    new = _password(body.get("newPassword"))
+    current = _confirm_password(app, user, body.get("currentPassword"))
+    if hmac.compare_digest(new.encode("utf-8"), current.encode("utf-8")):
+        raise _invalid("새 비밀번호가 지금 비밀번호와 같습니다.")
+    app.accounts.set_password(user_id, hash_password(new))
+
+
+def _deletion_plan(app: App, user_id: str, *, force_orgs: bool) -> dict[str, list[str]]:
+    """{"leave": 빠지기만 할 조직, "delete": 함께 지울 조직}. 지우기 전에 막을 일이 있으면 오류를 낸다.
+
+    - member이거나 다른 owner가 있는 조직: 빠지기만 한다.
+    - 혼자 owner이고 다른 구성원이 있는 조직: 409 TRANSFER_OWNERSHIP_FIRST(force_orgs면 지운다).
+    - 혼자 owner이고 다른 구성원이 없는 조직: 함께 지운다. 시연 조직과 운영 조직은 지우지 않고 빠지기만 한다.
+    - 지울 조직이 들어간 진단이 지금 진행 중이면 409 RUN_IN_PROGRESS(아무것도 지우지 않는다).
+    """
+    leave: list[str] = []
+    doomed: list[str] = []
+    blocked: list[str] = []
+    for membership in app.accounts.list_memberships(user_id=user_id):
+        org_id = membership["orgId"]
+        try:
+            org = app.store.get_org(org_id)
+        except NotFound:
+            leave.append(org_id)
+            continue
+        others = [m for m in app.accounts.list_memberships(org_id=org_id) if m["userId"] != user_id]
+        sole_owner = membership["memberRole"] == "owner" and not any(
+            m["memberRole"] == "owner" for m in others
+        )
+        if not sole_owner:
+            leave.append(org_id)
+        elif others and not force_orgs:
+            blocked.append(str(org.get("name") or org_id))
+        elif _seeded(org):
+            leave.append(org_id)
+        else:  # 앞서 지우다 멈춘 조직(deleted)도 다시 지운다(같은 일을 다시 해도 결과가 같다)
+            doomed.append(org_id)
+    if blocked:
+        raise ServiceError(
+            "TRANSFER_OWNERSHIP_FIRST",
+            "다른 구성원이 있는 조직의 유일한 소유자입니다. 먼저 다른 구성원을 소유자로 지정해 주세요: "
+            + ", ".join(blocked),
+            409,
+        )
+    for session_id in _affected_sessions(app, set(doomed)):
+        if service._live_run(app, session_id) is not None:
+            raise ServiceError(
+                "RUN_IN_PROGRESS",
+                "지울 조직이 들어간 진단이 지금 진행 중입니다. 끝난 뒤에 다시 해 주세요.",
+                409,
+            )
+    return {"leave": leave, "delete": doomed}
+
+
+def _affected_sessions(app: App, doomed: set[str]) -> list[str]:
+    """지울 조직이 배출 기업인 진단과, 지울 업체와 열린 대화가 있는 다른 진단."""
+    found: list[str] = []
+    for org_id in sorted(doomed):
+        for thread in app.store.list_threads(org_id=org_id):
+            found.append(thread["sessionId"])
+        found += [s["id"] for s in app.store.list_sessions(org_id)]
+    return list(dict.fromkeys(found))
+
+
+def _tombstone(org: dict[str, Any], now: str) -> dict[str, Any]:
+    """지운 조직의 자리. 이름·사업자등록번호·지역·주소·위치는 없다. 다른 조직의 기록이 이 ID를 가리키고
+    (탈퇴한 업체와의 대화, 근거의 접근 목록), ID를 다시 쓰지 않게 하려고 남긴다. 구성원을 들일 수 없다."""
+    role = org.get("role")
+    return {
+        "id": org["id"],
+        "name": DEPARTED_NAMES.get(str(role), "탈퇴한 조직"),
+        "role": role,
+        "demo": False,
+        "deleted": True,
+        "deletedAt": now,
+    }
+
+
+def _delete_orgs(app: App, org_ids: list[str]) -> dict[str, list[str]]:
+    """조직을 지운다(탈퇴). 계약 9장 "탈퇴"의 표대로 지우고 남긴다. 지운 대화와 닫은 대화 ID를 준다.
+
+    1. 업체면 다른 배출 기업과 진행 중·합의한 대화를 코드가 쓴 handoff로 닫고(중립 이유), 열지 않은 대화는
+       열지 않기로 한다(Orchestrator.close_for_departed). 프로필이 아직 있을 때 한다(최적안 다시 계산).
+    2. 저장소: 조직, 흐름, 업체 프로필, 그 조직이 배출 기업인 진단(스레드·질문·승인·문서·실행 기록)을
+       지운다(store.purge_orgs). 다른 배출 기업과 확정한 대화가 있는 업체의 프로필은 그 거래 기록이 기대므로
+       departed: true로 남긴다(업체 탐색에 나오지 않는다).
+    3. 조직 레코드는 개인·사업자 정보가 없는 자리(_tombstone)로 바꾼다.
+    4. 근거: 지울 조직만 볼 수 있는 근거를 지운다. 다른 조직에 열린 근거는 상대의 기록으로 남긴다
+       (남긴 업체 프로필이 가리키는 근거도 남긴다).
+    5. 그 조직의 소속과 초대를 모두 지운다.
+    """
+    wanted = set(org_ids)
+    if not wanted:
+        return {"closedThreads": [], "removedThreads": []}
+    orgs = {org_id: app.store.get_org(org_id) for org_id in org_ids}
+    closed: list[str] = []
+    for org_id in org_ids:
+        if orgs[org_id].get("role") == "vendor":
+            closed += Orchestrator(app).close_for_departed(org_id, DEPARTED_REASON)
+    kept: dict[str, dict[str, Any]] = {}
+    for org_id in org_ids:
+        confirmed = [
+            t
+            for t in app.store.list_threads(org_id=org_id)
+            if t.get("vendorOrgId") == org_id
+            and t.get("emitterOrgId") not in wanted
+            and t.get("status") == "confirmed"
+        ]
+        if confirmed:
+            try:
+                kept[org_id] = app.store.get_vendor_profile(org_id)
+            except NotFound:
+                pass
+    removed = app.store.purge_orgs(wanted)
+    for thread_id in removed:
+        app.vendor_memo.pop(thread_id, None)
+    now = app.store.now()
+    for org_id in org_ids:
+        app.store.put_org(_tombstone(orgs[org_id], now))
+        if org_id in kept:
+            app.store.put_vendor_profile({**kept[org_id], "departed": True})
+    protected = {
+        evidence_id
+        for profile in kept.values()
+        for section in ("permits", "criteria")
+        for item in profile.get(section) or []
+        for evidence_id in item.get("evidence") or []
+    }
+    for profile in kept.values():
+        for section in ("fleet", "transport"):
+            protected.update((profile.get(section) or {}).get("evidence") or [])
+    doomed_evidence = [
+        evidence.id
+        for evidence in app.registry.list(org_id=None)
+        if PUBLIC not in evidence.access
+        and evidence.id not in protected
+        and not [org for org in evidence.access if org not in wanted]
+        and (evidence.access or evidence_owner(evidence) in wanted)
+    ]
+    if doomed_evidence:
+        app.registry.delete(doomed_evidence)
+    for org_id in org_ids:
+        for membership in app.accounts.list_memberships(org_id=org_id):
+            app.accounts.remove_membership(membership["userId"], org_id)
+        app.accounts.delete_invites(org_id=org_id)
+    return {"closedThreads": closed, "removedThreads": removed}
+
+
+def _remove_user(app: App, user: dict[str, Any], plan: dict[str, list[str]]) -> dict[str, Any]:
+    done = _delete_orgs(app, plan["delete"])
+    app.accounts.delete_invites(user_id=user["id"])
+    app.accounts.delete_user(user["id"])  # 사용자 행과 남은 소속을 함께 지운다
+    app.login_limiter.succeeded(user["email"])
+    return {
+        "userId": user["id"],
+        "leftOrgs": plan["leave"],
+        "deletedOrgs": plan["delete"],
+        **done,
+    }
+
+
+def delete_account(app: App, user_id: str, body: dict[str, Any]) -> None:
+    """탈퇴. {password}로 다시 확인한 뒤 지운다(계약 9장 "탈퇴"). 막히면 아무것도 지우지 않는다."""
+    user = _user(app, user_id)
+    _confirm_password(app, user, body.get("password"))
+    _remove_user(app, user, _deletion_plan(app, user_id, force_orgs=False))
+
+
+def delete_user(app: App, email: str, *, force_orgs: bool = False) -> dict[str, Any]:
+    """운영자 명령(scripts/v3/accounts_admin.py delete-user). 탈퇴와 같은 규칙이고 비밀번호를 묻지 않는다.
+
+    force_orgs면 혼자 owner인 조직을 다른 구성원이 있어도 지운다(그 구성원들의 소속도 지운다).
+    """
+    user = app.accounts.find_user(normalize_email(email))
+    if user is None:
+        raise ValueError("그 이메일로 가입한 사용자가 없다")
+    return _remove_user(app, user, _deletion_plan(app, user["id"], force_orgs=force_orgs))
+
+
+def list_users(app: App, like: str | None = None) -> list[dict[str, Any]]:
+    """운영자 명령(list-users). 비밀번호 값은 싣지 않는다."""
+    return [
+        {
+            **public_user(user),
+            "createdAt": user.get("createdAt"),
+            "memberships": _account(app, user)["memberships"],
+        }
+        for user in app.accounts.list_users(like)
+    ]

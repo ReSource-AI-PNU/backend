@@ -92,13 +92,16 @@ def discoverable_profiles(store: Any, emitter: dict[str, Any]) -> dict[str, dict
     - 허가 품목이나 매입 기준이 하나도 없는 프로필(가입만 하고 아직 채우지 않은 업체)은 뺀다.
     - 시연 배출 기업(demo: true)은 시연 업체만 본다. 체험하기로 열리는 시연 진단에 실제 업체가 섞이지
       않게 하려는 것이다. 실제 배출 기업은 시연 업체와 가입한 업체를 모두 본다.
+    - 탈퇴한 업체(departed: true. 다른 회사와 확정한 거래 기록 때문에 프로필만 남았다)는 뺀다.
     """
     demo_only = bool(emitter.get("demo"))
     demo_ids = {o["id"] for o in store.list_orgs() if o.get("demo")} if demo_only else set()
     return {
         p["orgId"]: p
         for p in store.list_vendor_profiles()
-        if (p.get("permits") or p.get("criteria")) and (not demo_only or p["orgId"] in demo_ids)
+        if (p.get("permits") or p.get("criteria"))
+        and not p.get("departed")
+        and (not demo_only or p["orgId"] in demo_ids)
     }
 
 
@@ -2796,6 +2799,38 @@ class Orchestrator:
                 stage=4,
                 reassign=False,
             ):
+                again.append(session["id"])
+            self._save(session)
+            closed.append(thread.id)
+        for session_id in dict.fromkeys(again):  # 진단마다 한 번만 다시 계산한다
+            session = self.store.get_session(session_id)
+            self._reassign(session)
+            self._save(session)
+        return closed
+
+    # ── 탈퇴한 업체 ───────────────────────────────────────────────────
+    def close_for_departed(self, vendor_org_id: str, reason: str) -> list[str]:
+        """탈퇴한 업체와 다른 배출 기업 사이의 대화를 닫는다. 닫은 대화 ID를 준다.
+
+        진행 중이거나 합의한 대화는 코드가 쓴 handoff(배출 기업 쪽, 숫자 없는 reason)로 닫고 승인과
+        배정을 지운 뒤 최적안을 다시 계산한다(handoff_for_injection과 같다). 아직 열지 않은 대화는 열지
+        않기로 하고 같은 이유를 남긴다. 확정한 대화, 이미 닫힌 대화는 그대로 둔다(상대의 기록이다).
+        """
+        closed: list[str] = []
+        again: list[str] = []
+        for raw in self.store.list_threads(org_id=vendor_org_id):
+            thread = Thread.from_dict(raw)
+            if thread.vendor_org != vendor_org_id:
+                continue
+            if thread.status == "not_opened" and not thread.blocked and not thread.messages:
+                thread.refuse_open(reason)
+                self.store.put_thread(thread)
+                closed.append(thread.id)
+                continue
+            if thread.status not in ("open", "agreed"):
+                continue
+            session = self.store.get_session(thread.session_id)
+            if self._handoff(session, thread, thread.emitter_org, reason, stage=4, reassign=False):
                 again.append(session["id"])
             self._save(session)
             closed.append(thread.id)
