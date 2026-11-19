@@ -82,6 +82,7 @@ RERANK_SYSTEMS = {
 SYSTEMS = {**LOCAL_SYSTEMS, **AZURE_SYSTEMS, **RERANK_SYSTEMS}
 AZURE_OPT_IN = "V3_EVAL_L2_AZURE"
 RERANK_OPT_IN = "V3_EVAL_L2_RERANK"
+PRODUCT_SYSTEMS = ("S8", "S7")  # 앞의 것부터: 운영(Azure + 재순위), Azure 없는 배포(로컬 + 재순위)
 RERANK_WORKERS = 3  # 배포의 분당 토큰 한도(요청마다 입력 + 최대 출력 토큰을 미리 잡는다) 안에서
 DEPTH = 20  # 순위를 이만큼 받아 둔다(지표는 10까지만 본다)
 BASELINE_TOLERANCE = 0.02  # 평가 설계 16장: S0·S1 nDCG@10이 기준선보다 0.02 넘게 떨어지면 실패
@@ -566,7 +567,11 @@ def run_layer(
         if name not in thresholds:  # 기준선에 없는 방식(Azure)은 개발셋으로 바로 정한다
             thresholds[name] = choose_threshold(on_dev(name))
     chosen = baseline.get("chosen")
-    if chosen not in results:
+    # 재순위를 잰 실행이면 제품이 실제로 쓰는 구성(Azure가 있으면 S8, 없으면 S7)을 주 지표로 한다
+    product = next((name for name in PRODUCT_SYSTEMS if name in results), None)
+    if product is not None:
+        chosen = product
+    elif chosen not in results:
         dev_ndcg = {
             name: _mean([r["ndcg@10"] for r in on_dev(name) if "ndcg@10" in r]) or 0.0
             for name in results
@@ -606,7 +611,12 @@ def run_layer(
             f"법령 {summary['extraLaws']}조(law.go.kr 본문, sets/corpus/laws_extra.json)."
         ),
         (
-            f"주 지표는 개발셋 nDCG@10으로 고른 방식({chosen})이다. 답 있는 질의 {answerable}개, "
+            (
+                f"주 지표는 운영 구성({chosen}, 검색 + 모델 재순위)이다. "
+                if product is not None
+                else f"주 지표는 개발셋 nDCG@10으로 고른 방식({chosen})이다. "
+            )
+            + f"답 있는 질의 {answerable}개, "
             f"답 없는 질의 {len(queries) - answerable}개."
         ),
         "정답 등급은 한 사람(초안)이 근거 원문을 읽고 매겼다. 이중 라벨과 κ는 아직 재지 않았다.",

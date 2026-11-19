@@ -128,3 +128,6 @@ def test_eval_measures_the_reranked_system_only_when_asked():
     assert not any(line.startswith("S7") for line in on["notMeasured"])
     names = [row[0] for row in on["tables"][0]["rows"]]
     assert any(name.startswith("S7") for name in names) and chat.calls
+    # 재순위를 잰 실행은 제품이 쓰는 구성을 주 지표로 한다
+    assert off["details"]["chosen"] == "S1" and on["details"]["chosen"] == "S7"
+    assert all(m.get("system") == "S7" for m in on["metrics"])
