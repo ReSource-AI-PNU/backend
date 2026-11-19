@@ -37,6 +37,7 @@ LABELS: dict[str, str] = {
     "unitPrice": "매입 단가",
     "treatmentFee": "처리비",
     "currentUnitCost": "현행 처리 단가",
+    "currentUnitPrice": "현행 판매 단가",
     "referencePrice": "참고 시세",
     "monthlyKg": "월 발생량",
     "totalKg": "합친 월 물량",
@@ -68,6 +69,7 @@ ROLES = tuple(LABELS)
 _KEYS: dict[str, tuple[str, str | None]] = {
     "unitPrice": ("unitPrice", None),
     "currentUnitCost": ("currentUnitCost", None),
+    "currentUnitPrice": ("currentUnitPrice", None),
     "referencePrice": ("referencePrice", None),
     "monthlyKg": ("monthlyKg", None),
     "minMonthlyKg": ("threshold", "최소 물량"),

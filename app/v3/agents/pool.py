@@ -24,6 +24,7 @@ _UNSAFE = re.compile(r"[^A-Za-z0-9_]+")
 # 현행 처리 방법(입력이 없으면 혼합 소각 가정)에 견준 값이라 여기에 든다
 PRIVATE_KEYS = (
     "currentUnitCost",
+    "currentUnitPrice",
     "monthlyNow",
     "difference",
     "carbonDifference",
@@ -303,15 +304,26 @@ class ClaimPool:
             facts.append(("monthlyKg", answers.get("monthlyKg"), "kg/월", answer_ev, "월 발생량"))
         if private:
             current = stream.get("currentTreatment") or {}
-            facts.append(
-                (
-                    "currentUnitCost",
-                    current.get("unitCostKrwPerKg"),
-                    "원/kg",
-                    current.get("evidence"),
-                    "현행 처리 단가",
+            if current.get("sale"):  # 지금 팔고 있다: 받는 kg당 금액(+)
+                facts.append(
+                    (
+                        "currentUnitPrice",
+                        current.get("salePriceKrwPerKg"),
+                        "원/kg",
+                        current.get("evidence"),
+                        "현행 판매 단가",
+                    )
                 )
-            )
+            else:
+                facts.append(
+                    (
+                        "currentUnitCost",
+                        current.get("unitCostKrwPerKg"),
+                        "원/kg",
+                        current.get("evidence"),
+                        "현행 처리 단가",
+                    )
+                )
         out: dict[str, str] = {}
         for field_name, value, unit, evidence, label, *key in facts:
             if field_name in out:

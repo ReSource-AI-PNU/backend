@@ -165,7 +165,7 @@ def improvements(
         facts = pool.add_stream(stream, private=True)
         kg_entry = pool.get(facts.get("monthlyKg")) if facts.get("monthlyKg") else None
         assigned = by_stream.get(stream["id"]) or {}
-        # 지금 kg당 손익(+매입, −처리비): 배정 단가, 없으면 현행 처리비의 반대 부호
+        # 지금 kg당 손익(+매입, −처리비): 배정 단가, 없으면 현행 판매 단가나 현행 처리비의 반대 부호
         base_value, base_evidence = None, []
         unit_price = assigned.get("unitPrice")
         if unit_price and isinstance(unit_price.get("value"), (int, float)):
@@ -173,6 +173,11 @@ def improvements(
                 float(unit_price["value"]),
                 list(unit_price.get("evidence") or []),
             )
+        elif facts.get("currentUnitPrice"):  # 지금 팔고 있다: 받는 단가가 기준
+            entry = pool.get(facts["currentUnitPrice"])
+            if entry is not None:
+                claim = entry.claim.to_dict()
+                base_value, base_evidence = float(claim["value"]), list(claim["evidence"])
         elif facts.get("currentUnitCost"):
             entry = pool.get(facts["currentUnitCost"])
             if entry is not None:

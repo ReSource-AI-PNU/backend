@@ -621,6 +621,25 @@ def update_stream(
             stream["currentTreatment"] = None  # 입력이 없으면 혼합 소각 가정값을 쓴다
         elif not isinstance(current, dict):
             raise ServiceError("INVALID_VALUE", "현행 처리는 객체로 보내 주세요.", 422)
+        elif current.get("sale"):
+            # 지금 재활용 업체에 팔고 돈을 받는다: 받는 kg당 금액(+)으로 적는다(current_cost.signed_cost)
+            price = current.get("salePriceKrwPerKg")
+            if isinstance(price, bool) or not isinstance(price, (int, float)) or price < 0:
+                raise ServiceError(
+                    "INVALID_VALUE", "현행 판매 단가는 0 이상의 숫자(원/kg)여야 합니다.", 422
+                )
+            before = stream.get("currentTreatment") or {}
+            # 처리비 근거를 판매 단가 근거로 다시 쓰지 않는다(값이 같아도 뜻이 다르다)
+            old = list(before.get("evidence") or []) if before.get("sale") else []
+            evidence = _grounded(
+                app, org_id, f"{stream_id}-현행판매단가", "현행 판매 단가", price, "원/kg", old
+            )
+            stream["currentTreatment"] = {
+                "method": current_cost.sale_method(current.get("method")),
+                "sale": True,
+                "salePriceKrwPerKg": price,
+                "evidence": [evidence],
+            }
         elif current.get("billing") is not None:
             # 차량·횟수 단위나 월 정액 계약: 월 발생량으로 kg당 처리비로 바꾼다(current_cost)
             try:
@@ -640,7 +659,8 @@ def update_stream(
                 raise ServiceError(
                     "INVALID_VALUE", "현행 처리 단가는 0 이상의 숫자(원/kg)여야 합니다.", 422
                 )
-            old = list((stream.get("currentTreatment") or {}).get("evidence") or [])
+            before = stream.get("currentTreatment") or {}
+            old = [] if before.get("sale") else list(before.get("evidence") or [])
             evidence = _grounded(
                 app, org_id, f"{stream_id}-현행처리단가", "현행 처리 단가", cost, "원/kg", old
             )
@@ -1164,8 +1184,10 @@ def _stream_view(
     }
     if owner:
         current = stream.get("currentTreatment") or {}
-        cost = _claim(pool, facts.get("currentUnitCost"))
-        assumed = cost is None
+        sale = bool(current.get("sale"))
+        price = _claim(pool, facts.get("currentUnitPrice")) if sale else None
+        cost = None if sale else _claim(pool, facts.get("currentUnitCost"))
+        assumed = cost is None and price is None
         if assumed:
             found = basis.resolve(app.registry, viewer, f"current.cost.{stream.get('wasteItem')}")
             if found is not None:
@@ -1182,6 +1204,9 @@ def _stream_view(
         view["currentTreatment"] = {
             "method": "혼합 소각" if assumed else current.get("method"),
             "unitCost": cost,
+            # 지금 팔고 있으면 받는 kg당 금액(현행 판매 단가). 그때 unitCost는 null이다
+            "sale": sale and not assumed,
+            "unitPrice": price,
             "assumed": assumed,
             # 차량·횟수 단위나 월 정액으로 받은 계약(kg당으로 바꾼 원래 꼴). 없으면 null
             "billing": None

@@ -9,6 +9,10 @@
   둘 다 배출 기업만 본다(현행 처리비는 업체에 열지 않는다).
 - 글 답("회당 30만원, 한 달에 2번", "월 60만원", "1년에 720만원")은 parse_billing이 읽는다. "kg당 250원",
   "톤당 25만원"처럼 무게 단가로 적은 답은 여기서 읽지 않는다(amounts.read_amount가 읽는다).
+
+지금 재활용 업체에 팔고 돈을 받는 경우(2026-11-19 설문: "지금 처리: 재활용 업체에 판다")는 현행 처리를
+{"sale": true, "salePriceKrwPerKg": 받는 kg당 금액}으로 적는다. 계산은 signed_cost로 처리비의 반대 부호(−판매 단가)를
+쓰므로 현행 월 손익이 +판매 단가 × 월 발생량이 되고, 배정의 "지금 방식 그대로"도 그 값을 넘는 제안만 고른다.
 """
 
 from __future__ import annotations
@@ -21,6 +25,9 @@ from app.v3.agents.amounts import _ONE_PERIOD, _PER_KG, _PER_TON, _numbers, _tex
 from app.v3.evidence.model import Evidence
 
 KINDS = ("per_trip", "monthly")
+SALE_METHOD = "재활용 업체 판매"
+# 배출 기업이 팔아서 돈을 받는다는 말. "업체가 250원 받는다"(처리비를 낸다)와 헷갈리지 않게 '받는다'만으로는 보지 않는다
+_SALE = re.compile(r"판매|판다|팝니다|팔아|팔고|팔면|팔리|매각|돈을\s*받|받고\s*팔")
 _TRIP = re.compile(
     r"회당|번당|회에|번에|한\s*번|차당|대당|한\s*차|차\s*한\s*대|트럭|차량|수거\s*한\s*번|1\s*회"
 )
@@ -29,6 +36,37 @@ _YEAR = re.compile(r"년|연간|(?<![가-힣])연(?![가-힣])|year", re.IGNOREC
 _COUNT_AFTER = re.compile(r"^\s*(?:회|번|차례|대|트럭)")
 _MONEY_AFTER = re.compile(r"^\s*(?:원|krw|won)", re.IGNORECASE)
 ASK_COUNT = "한 달에 몇 번 수거하는지도 함께 적어 주세요. 예: 회당 30만원, 월 2회"
+
+
+def says_sale(text: Any) -> bool:
+    """담당자 답이 "팔아서 돈을 받는다"는 뜻인지."""
+    return isinstance(text, str) and bool(_SALE.search(text))
+
+
+def is_sale(current: dict[str, Any] | None) -> bool:
+    return bool((current or {}).get("sale"))
+
+
+def sale_method(method: Any) -> str:
+    """판매로 적은 현행 처리의 방법 이름. 비었거나 소각·매립처럼 돈을 내는 처리 이름이면 SALE_METHOD로 둔다."""
+    text = str(method or "").strip()
+    if not text or any(word in text for word in ("소각", "매립")):
+        return SALE_METHOD
+    return text
+
+
+def _number(value: Any) -> bool:
+    return isinstance(value, (int, float)) and not isinstance(value, bool)
+
+
+def signed_cost(current: dict[str, Any] | None) -> float | None:
+    """현행 kg당 처리비. 내는 돈은 +, 팔아서 받는 돈은 −판매 단가. 적은 값이 없으면 None."""
+    current = current or {}
+    if is_sale(current):
+        price = current.get("salePriceKrwPerKg")
+        return -float(price) if _number(price) else None
+    cost = current.get("unitCostKrwPerKg")
+    return float(cost) if _number(cost) else None
 
 
 def _won(value: float) -> str:

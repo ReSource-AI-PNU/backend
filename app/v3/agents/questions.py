@@ -22,9 +22,11 @@ FIELDS: dict[str, dict[str, Any]] = {
         "priority": 4,
         "answerType": "number",
         "unit": "원/kg",
-        "label": "현행 처리비",
-        "text": "{name_object} 지금 처리하는 데 얼마를 내고 계신가요? kg당 금액을 모르면 "
-        "'회당 얼마, 한 달 몇 번'이나 '한 달 얼마'처럼 계약한 대로 적어 주세요. 모르면 '모름'으로 답해 주세요.",
+        "label": "현행 처리비·판매 단가",
+        # 지금 팔고 돈을 받는 사업장도 있다(2026-11-19 설문). 판매면 '판매'를 붙여 답한다(current_cost.says_sale)
+        "text": "{name_object} 지금 처리하는 데 kg당 얼마를 내고 계신가요? 재활용 업체에 팔아 돈을 받고 "
+        "있다면 판매로 표시하고 kg당 받는 금액을 적어 주세요. kg당 금액을 모르면 '회당 얼마, 한 달 몇 번'이나 "
+        "'한 달 얼마'처럼 계약한 대로 적어 주세요. 모르면 '모름'으로 답해 주세요.",
     },
     "material": {
         "priority": 1,
@@ -169,7 +171,7 @@ def known(stream: dict[str, Any], field: str) -> bool:
     if field == "lotSame":
         return False
     if field == "currentCost":
-        return (stream.get("currentTreatment") or {}).get("unitCostKrwPerKg") is not None
+        return current_cost.signed_cost(stream.get("currentTreatment")) is not None
     return stream.get(field) is not None
 
 
@@ -201,6 +203,12 @@ def parse_answer(field: str, value: Any) -> Any:
     if isinstance(value, str) and _UNKNOWN_WORDS.fullmatch(value.strip().lower()):
         return UNKNOWN
     if field == "currentCost":
+        if current_cost.says_sale(value):
+            # 지금 팔고 있다("판매 kg당 200원", "톤당 20만원에 팔아요"): 받는 kg당 금액
+            price = read_amount(value, "원/kg", "현행 판매 단가")
+            if not math.isfinite(price) or price < 0:
+                raise ValueError("0 이상의 숫자로 답해 주세요.")
+            return {"salePriceKrwPerKg": price}
         # 차량·횟수 단위나 월 정액 계약("회당 30만원, 월 2회", "월 60만원")은 월 발생량으로 kg당으로 바꾼다(current_cost)
         billing = current_cost.parse_billing(value)
         if billing is not None:
@@ -230,6 +238,33 @@ def apply_answer(
     spec = FIELDS[field]
     name = stream.get("name") or stream["id"]
     answers = dict(stream.get("answers") or {})
+    if field == "currentCost" and isinstance(value, dict) and "salePriceKrwPerKg" in value:
+        price = float(value["salePriceKrwPerKg"])
+        evidence = registry.put(
+            Evidence(
+                id=ids.human_id(stream["orgId"], f"{stream['id']}-현행판매단가"),
+                kind="human",
+                label=f"{name} 현행 판매 단가(담당자 답변)",
+                value=price,
+                unit="원/kg",
+                excerpt=f"담당자가 질문에 답한 값: {name} 현행 판매 단가 {price:g}원/kg",
+                source="담당자 질문 답변",
+                as_of=today,
+                access=(stream["orgId"],),
+                meta={"ownerOrgId": stream["orgId"], "streamId": stream["id"], "field": field},
+            )
+        )
+        current = dict(stream.get("currentTreatment") or {})
+        stream["currentTreatment"] = {
+            "method": current.get("method") if current.get("sale") else current_cost.SALE_METHOD,
+            "sale": True,
+            "salePriceKrwPerKg": price,
+            "evidence": [evidence.id],
+        }
+        answers[field] = -price  # 처리비 부호(받는 돈은 −). 배출 기업만 보는 답이다
+        stream["answers"] = answers
+        stream["unknownFields"] = [f for f in stream.get("unknownFields") or [] if f != field]
+        return stream
     if field == "currentCost" and isinstance(value, dict) and "billing" in value:
         current = dict(stream.get("currentTreatment") or {})
         treatment = current_cost.to_treatment(

@@ -213,6 +213,7 @@ VendorProfile {"orgId": "org_saegil",
 - `pretreatHoursPerMonth`는 0 이상(시간/월), `laborCostKrwPerHour`는 0보다 큰 값(원/시간)이다. 작업 시간이 있을 때만 전처리 인건비를 계산하고, 시간당 인건비를 비우면 최저임금 기준값(`ref:최저임금:시간급@2026`)으로 계산한다. 작업 시간을 `null`로 보내면 둘 다 지운다.
 - `reuse`는 `virginPriceKrwPerKg`(0보다 큰 값), `reusableKgPerMonth`(0보다 큰 값)가 함께 있어야 하고 `regrindCostKrwPerKg`는 비우면 0이다. `null`로 보내면 지운다. 틀린 값은 422 `INVALID_VALUE`다.
 - 담당자 질문에 현행 처리비만 답했으면(`field: "currentCost"`) `currentTreatment.methodAssumed`가 `true`로 남는다. 처리 방법은 묻지 않았으므로 혼합 소각으로 보았다는 뜻이다.
+- **지금 팔고 있는 경우(2026-11-19):** 재활용 업체에 팔고 돈을 받으면 현행 처리를 `{"method": "재활용 업체 판매", "sale": true, "salePriceKrwPerKg": 200, "evidence": ["human:..."]}`로 적는다(`unitCostKrwPerKg`는 없다). 계산은 처리비의 반대 부호(−판매 단가)로 해서 현행 월 손익이 `+판매 단가 × 월 발생량`이 되고, 배정의 "지금 방식 그대로"도 그 손익을 넘는 제안만 고른다. 판매 단가는 claim `currentUnitPrice`(현행 판매 단가, 원/kg, 양수)로 남고 `currentUnitCost`처럼 배출 기업만 본다. 탄소는 현행을 재활용으로 보아 견준다. 질문 답은 "판매"·"팔아요"처럼 판다는 말이 있으면 판매 단가로 읽는다(`current_cost.says_sale`. "업체가 받는다"만으로는 판매로 보지 않는다).
 
 ## 7. 화면용 진단 뷰
 
@@ -225,7 +226,7 @@ VendorProfile {"orgId": "org_saegil",
   "stages": [{"stage": 1, "key": "identify", "label": "식별·분류", "status": "waiting | running | done | needs_check"}],
   "streams": [{"id": "st_sprue", "name": "...", "material": "PP", "origin": "PIR", "form": "...",
                "monthlyKg": {"claim"}, "grade": {"value": "A", "basis": "measured | photo_estimate", "evidence": ["..."]},
-               "currentTreatment": {"method": "혼합 소각", "unitCost": {"claim"}, "assumed": true},
+               "currentTreatment": {"method": "혼합 소각", "unitCost": {"claim"}, "sale": false, "unitPrice": null, "assumed": true},
                "costInputs": {"pretreatHoursPerMonth": 4, "laborCostKrwPerHour": 12000,
                               "reuse": {"virginPriceKrwPerKg": 1500, "reusableKgPerMonth": 400, "regrindCostKrwPerKg": 120}}}],
   "threads": [{"id": "th_1", "vendorOrgId": "org_saegil", "vendorName": "(주)새길자원", "vendorModel": {"provider": "foundry", "name": "gpt-5-mini"},
@@ -301,7 +302,8 @@ VendorProfile {"orgId": "org_saegil",
   |---|---|---|
   | `unitPrice` | 매입 단가 | 값이 0 이상인 단가 |
   | `treatmentFee` | 처리비 | 값이 음수인 단가. **값은 음수 그대로다.** 화면은 크기로 보여 준다 |
-  | `currentUnitCost` | 현행 처리 단가 | |
+  | `currentUnitCost` | 현행 처리 단가 | 내는 돈을 양수로 적는다 |
+  | `currentUnitPrice` | 현행 판매 단가 | 지금 팔고 있을 때 받는 돈(양수). 이때 `currentTreatment.unitCost`는 `null`, `sale`은 `true`다 |
   | `referencePrice` | 참고 시세 | |
   | `monthlyKg` | 월 발생량 | |
   | `totalKg`, `totalM3` | 합친 월 물량, 합친 월 부피 | |
@@ -513,7 +515,7 @@ VendorProfile {"orgId": "org_saegil",
 | `GET /trust` | 공개 신뢰 페이지가 읽는 최신 평가 요약(`docs/v3/eval/latest.json`, 평가 설계 17장). 조직 데이터가 없어 `GET /health`처럼 인증 없이 답한다. 파일을 읽지 못하면 503 `TRUST_UNAVAILABLE` |
 | `POST /demo/reset` | 시연 데이터를 처음 상태로 되돌린다. 관리자만(아래 "관리자 조직") |
 | `GET /orgs` | 조직 목록. 조직 레코드의 `order`가 작은 것부터(시연 주인공 `org_hanbit`이 맨 앞, 운영 조직이 맨 뒤). `order`가 없는 조직은 그 뒤에 ID 순. token 모드에서는 자기 조직과 대화 상대만 |
-| `GET /orgs/{orgId}/streams`, `PUT /orgs/{orgId}/streams/{streamId}` | 흐름 조회와 수정(현행 처리, 전처리 작업 시간·시간당 인건비, 공정 재투입 값 포함. 6장). 현행 처리는 `{method, unitCostKrwPerKg}` 대신 `{method, billing: {kind: "per_trip", krwPerTrip, tripsPerMonth} | {kind: "monthly", krwPerMonth}}`로도 받는다(차량·횟수 단위나 월 정액 계약). 월 발생량으로 kg당 처리비를 계산해 calc 근거로 남기고, 월 발생량이 없으면 422 `INVALID_VALUE`. 질문 답(`currentCost`)도 "회당 30만원, 월 2회", "월 60만원", "1년에 720만원"을 같은 방식으로 읽는다(`app/v3/current_cost.py`) |
+| `GET /orgs/{orgId}/streams`, `PUT /orgs/{orgId}/streams/{streamId}` | 흐름 조회와 수정(현행 처리, 전처리 작업 시간·시간당 인건비, 공정 재투입 값 포함. 6장). 현행 처리는 `{method, unitCostKrwPerKg}` 대신 `{method, billing: {kind: "per_trip", krwPerTrip, tripsPerMonth} | {kind: "monthly", krwPerMonth}}`로도 받는다(차량·횟수 단위나 월 정액 계약). 지금 팔고 있으면 `{method?, sale: true, salePriceKrwPerKg}`(0 이상, 원/kg. 방법을 비우면 "재활용 업체 판매")로 받는다. 월 발생량으로 kg당 처리비를 계산해 calc 근거로 남기고, 월 발생량이 없으면 422 `INVALID_VALUE`. 질문 답(`currentCost`)도 "회당 30만원, 월 2회", "월 60만원", "1년에 720만원"을 같은 방식으로 읽는다(`app/v3/current_cost.py`) |
 | `GET /orgs/{orgId}/report?from=&to=` | 재활용·탄소 실적 리포트 `{orgId, period, generatedOn, records, totals, planned}`. 배출 기업 본인과 운영자만(업체 403 `WRONG_ROLE`). `records`는 기간(YYYY-MM-DD, 검수일 기준) 안 실제 결과 기록마다 실제 중량·단가(업체 기록 근거)와 금액·탄소 변화(calc), `totals`는 그 합(반출 무게, 매각 수익, 처리비, 탄소), `planned`는 양쪽이 확정한 합의의 한 달 예상(결과 한 장의 배정). 숫자는 모두 claim이다(`app/v3/report.py`) |
 | `GET /vendors/{orgId}`, `PUT /vendors/{orgId}` | 업체 프로필(허가, 매입 기준, 노선·차량, 가드레일, 모델 선택). 노선·차량(`fleet`)의 모양과 검사는 9장 "노선·차량" |
 | `POST /sessions` | `{emitterOrgId}`로 진단을 만든다. `emitterOrgId`가 없으면 요청한 조직이다 |

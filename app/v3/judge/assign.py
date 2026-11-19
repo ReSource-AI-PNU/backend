@@ -23,7 +23,7 @@ from app.v3.judge.common import (
     transport_charge,
 )
 from app.v3.judge.permits import permit_level
-from app.v3.judge.route import current_cost, reuse_checks, reuse_numbers
+from app.v3.judge.route import current_cost, now_formula, reuse_checks, reuse_numbers
 
 try:  # 없으면 순수 파이썬 완전 탐색으로만 돈다
     from ortools.sat.python import cp_model  # noqa: F401
@@ -481,7 +481,7 @@ def optimize_assignment(
             f"{tag}MonthlyNow",
             now,
             "원/월",
-            "−현행 처리비 × 월 발생량",
+            now_formula(stream),
             item["cost_ev"],
             label=names.calc_label("monthlyNow", who),
         )

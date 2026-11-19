@@ -587,6 +587,8 @@ def current_process(method) -> str | None:
         return "incinerate"
     if "매립" in text:
         return "landfill"
+    if "판매" in text:  # 지금 재활용 업체에 팔고 있다(current_cost.SALE_METHOD)
+        return "recycle"
     return None
 
 

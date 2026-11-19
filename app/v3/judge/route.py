@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import math
 
+from app.v3 import current_cost as current_costs
 from app.v3.judge import defaults
 from app.v3.judge.common import (
     Recorder,
@@ -18,15 +19,29 @@ from app.v3.judge.common import (
 
 
 def current_cost(rec: Recorder, stream: dict):
-    """(kg당 처리비, 근거 ID, 가정 여부, 방식). 입력이 없으면 혼합 소각 가정값."""
+    """(kg당 처리비, 근거 ID, 가정 여부, 방식). 입력이 없으면 혼합 소각 가정값.
+
+    지금 팔고 있으면 처리비는 −판매 단가다(현행 월 손익 = −처리비 × 월 발생량 = +판매 단가 × 월 발생량).
+    """
     current = stream.get("currentTreatment") or {}
-    cost = num(current.get("unitCostKrwPerKg"))
+    cost = current_costs.signed_cost(current)
     if cost is not None:
-        return cost, list(current.get("evidence") or []), False, current.get("method") or "현행"
+        if current_costs.is_sale(current):
+            method = current_costs.sale_method(current.get("method"))
+        else:
+            method = current.get("method") or "현행"
+        return cost, list(current.get("evidence") or []), False, method
     assumed = rec.basis(f"current.cost.{stream.get('wasteItem')}")
     if assumed is None:
         return None, [], True, "혼합 소각"
     return float(assumed.value), [assumed.id], True, "혼합 소각"
+
+
+def now_formula(stream: dict) -> str:
+    """현행 월 손익의 계산식 문장."""
+    if current_costs.is_sale(stream.get("currentTreatment")):
+        return "현행 판매 단가 × 월 발생량"
+    return "−현행 처리비 × 월 발생량"
 
 
 def baseline(rec: Recorder, stream: dict, kg: float, after: float | None, prefix=""):
@@ -39,18 +54,26 @@ def baseline(rec: Recorder, stream: dict, kg: float, after: float | None, prefix
         )
         return info, None
     # 현행 처리 단가와 거기서 나온 값은 상대 업체에 열지 않는다
-    rec.number(
-        f"{prefix}currentUnitCost",
-        cost,
-        "원/kg",
-        f"현행({method}) kg당 처리비",
-        cost_ev,
-        private=True,
-    )
+    if current_costs.is_sale(stream.get("currentTreatment")):
+        rec.number(
+            f"{prefix}currentUnitPrice",
+            -cost,
+            "원/kg",
+            f"현행({method}) kg당 판매 단가",
+            cost_ev,
+            private=True,
+        )
+    else:
+        rec.number(
+            f"{prefix}currentUnitCost",
+            cost,
+            "원/kg",
+            f"현행({method}) kg당 처리비",
+            cost_ev,
+            private=True,
+        )
     now = -cost * kg
-    rec.number(
-        f"{prefix}monthlyNow", now, "원/월", "−현행 처리비 × 월 발생량", cost_ev, private=True
-    )
+    rec.number(f"{prefix}monthlyNow", now, "원/월", now_formula(stream), cost_ev, private=True)
     if assumed:
         rec.check(
             "current_assumed",

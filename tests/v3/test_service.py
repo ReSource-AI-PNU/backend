@@ -235,6 +235,8 @@ def test_stream_and_vendor_updates_are_grounded():
             "label": "현행 처리 단가",
             "role": "currentUnitCost",
         },
+        "sale": False,
+        "unitPrice": None,
         "assumed": False,
         "billing": None,
     }

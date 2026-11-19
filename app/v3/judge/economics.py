@@ -6,6 +6,7 @@ import itertools
 import logging
 import math
 
+from app.v3 import current_cost as current_costs
 from app.v3.judge.common import (
     CARBON_FORMULA,
     TOTAL_CARBON_FORMULA,
@@ -154,6 +155,9 @@ def cost_carbon(
     output["current"], _ = baseline(rec, stream, kg, after)
 
     method = current_cost(rec, stream)[3]
+    if current_costs.is_sale(stream.get("currentTreatment")):
+        # 지금 팔고 있으면 방법 이름과 관계없이 재활용으로 견준다
+        method = current_costs.SALE_METHOD
     per_kg, carbon_ev, why = carbon_per_kg(rec, stream, vendor, price, method)
     # 수거 운행 배출: 이 폐기물만 보낼 때 업체가 오가는 거리로 본다(최적 배정은 같은 업체로 가는 폐기물끼리 나눈다)
     trip = transport_carbon(rec, vendor, origin, distance_provider, pickupsPerMonth)
