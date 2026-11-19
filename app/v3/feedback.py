@@ -730,7 +730,8 @@ def record_outcome(
     """새 반입 검수 한 건을 등록한다. 권한과 스레드 상태는 service가 확인한다.
 
     같은 날 같은 폐기물을 여러 번 받아도 요청 번호(requestId)가 다르면 건마다 따로 남는다. 같은 요청
-    번호로 다시 오면(재시도·두 번 누름) 새로 만들지 않고 이미 만든 건의 최신 판을 돌려준다.
+    번호로 다시 오면(재시도·두 번 누름) 새로 만들지 않고 이미 만든 건의 최신 판을 돌려준다. 번호가 없으면
+    (2026-11-19 전 화면) 서버가 만든 번호로 새 반입 한 건이 된다.
     (기록, 새로 만들었는지)를 돌려준다. documentName을 주면 doc 근거(검수 문서), 없으면 human 근거다.
     """
     if body.get("inspectionId") not in (None, ""):
@@ -739,9 +740,23 @@ def record_outcome(
             "이미 기록한 검수를 고치려면 정정(PUT /sessions/{sessionId}/outcomes/{inspectionId})으로 "
             "보내 주세요. 새 반입이면 inspectionId 없이 보냅니다.",
         )
-    request_id = _request_id(body)
     values = _values(app, body)
     vendor = thread["vendorOrgId"]
+    if body.get("requestId") in (None, ""):
+        # 하위 호환: requestId를 보내지 않는 예전 화면·API 호출은 서버가 번호를 만들어 새 반입 한 건으로 받는다.
+        # 번호가 매번 달라 재전송을 한 건으로 묶지 못하므로 화면은 늘 보낸다. 같은 날 같은 값이라도 기존 기록을
+        # 고치지 않는다. 시계는 앱에 주입한 것만 읽고(규칙 12) 지금까지의 검수 수를 섞어 같은 시각에도 겹치지 않게 한다
+        request_id = "auto-" + ids.digest(
+            {
+                "thread": thread["id"],
+                "stream": stream["id"],
+                "values": values,
+                "at": _now(app),
+                "count": len(_revisions(app)),
+            }
+        )
+    else:
+        request_id = _request_id(body)
     inspection_id = inspection_key(vendor, session["id"], request_id)
     revisions = _inspection(app, inspection_id)
     if revisions:

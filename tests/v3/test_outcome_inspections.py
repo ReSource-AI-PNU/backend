@@ -118,6 +118,20 @@ def test_resending_the_same_registration_does_not_add_a_second_record(confirmed)
     assert totals(app)[:3] == (2, 780, 234000)
 
 
+def test_requests_without_a_request_id_still_register_new_deliveries(confirmed):
+    """하위 호환: requestId를 보내지 않는 예전 화면도 새 반입 한 건씩 기록되고 앞 기록을 고치지 않는다."""
+    app, view = confirmed
+    sid = view["session"]["id"]
+    old_screen = {k: v for k, v in body(view, "unused-0000", 580).items() if k != "requestId"}
+    first = service.record_outcome(app, sid, old_screen, SAEGIL)["outcome"]
+    second = service.record_outcome(app, sid, {**old_screen, "actualKg": 200}, SAEGIL)["outcome"]
+    same = service.record_outcome(app, sid, {**old_screen, "actualKg": 200}, SAEGIL)["outcome"]
+    assert first["requestId"].startswith("auto-") and first["revision"] == 1
+    # 번호가 없으면 재전송을 묶지 못한다(그래서 새 화면은 늘 보낸다). 대신 기존 기록을 덮지 않는다
+    assert len({first["inspectionId"], second["inspectionId"], same["inspectionId"]}) == 3
+    assert totals(app)[:3] == (3, 980, 294000)
+
+
 def test_correction_makes_a_new_revision_and_keeps_the_first_record(confirmed):
     app, view = confirmed
     sid = view["session"]["id"]

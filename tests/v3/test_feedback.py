@@ -159,8 +159,7 @@ def test_outcome_only_from_the_threads_vendor_after_confirmation():
         ({"actualGrade": None}, "INVALID_VALUE"),  # 등급도 단가도 없다
         ({"actualKg": -1}, "INVALID_VALUE"),
         ({"actualUnitPriceKrwPerKg": "삼백"}, "INVALID_VALUE"),
-        ({"requestId": None}, "INVALID_REQUEST_ID"),  # 재전송을 한 건으로 묶을 번호가 없다
-        ({"requestId": "짧음"}, "INVALID_REQUEST_ID"),
+        ({"requestId": "짧음"}, "INVALID_REQUEST_ID"),  # 보냈다면 꼴이 맞아야 한다
         ({"inspectionId": "insp-0"}, "USE_CORRECTION"),  # 이미 있는 건을 고치는 것은 정정이다
     ):
         fails(code, 422, service.record_outcome, app, sid, {**body, **patch}, SAEGIL)

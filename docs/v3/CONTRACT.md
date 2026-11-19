@@ -553,7 +553,7 @@ VendorProfile {"orgId": "org_saegil",
 | `POST /intake/documents/confirm` | `{orgId, documentName, fields}`. 담당자가 확인한 추출값(`confirmed: true`)만 doc 근거로 등록한다. 응답은 `{"evidence": [근거 ID], "profile": 요약 \| null}`. 업체가 확인한 허가증·매입 기준표 값은 업체 프로필의 허가 품목·매입 기준에도 들어간다(추출 항목의 `target`으로 어느 품목·기준의 값인지 안다. 화면은 받은 `fields`를 그대로 돌려보낸다). 폐기물 종류가 같은 허가 품목, 재질·등급·형태가 같은 매입 기준은 고치고 근거를 붙이며 새로 만들지 않는다(다시 확인해도 겹치지 않는다). 단가를 확인하지 않은 새 기준은 만들지 않는다. `profile`은 `{permitsAdded, permitsUpdated, criteriaAdded, criteriaUpdated, permits, criteria, skipped}`이고 업체가 아니면 `null`이다 |
 | `GET /admin/status`, `POST /admin/eval` | 색인·기준값 상태와 재학습 표, 사례 시험 실행(관리자만) |
 | `POST /sessions/{id}/corrections` | `{streamId, field, before, after, note}`. 배출 기업 담당자가 고친 값을 기록한다 |
-| `POST /sessions/{id}/outcomes` | `{requestId, threadId, streamId, actualGrade, actualUnitPriceKrwPerKg, actualKg, inspectedOn, note, weighTicket?, documentName?}`. 업체가 확정 뒤 새 반입 검수 한 건을 등록한다. 같은 `requestId`로 다시 오면 한 건으로 처리한다 |
+| `POST /sessions/{id}/outcomes` | `{requestId?, threadId, streamId, actualGrade, actualUnitPriceKrwPerKg, actualKg, inspectedOn, note, weighTicket?, documentName?}`. 업체가 확정 뒤 새 반입 검수 한 건을 등록한다. 같은 `requestId`로 다시 오면 한 건으로 처리한다 |
 | `PUT /sessions/{id}/outcomes/{inspectionId}` | `{baseRevision, requestId, reason, actualGrade, actualUnitPriceKrwPerKg, actualKg, inspectedOn, note, weighTicket?, documentName?}`. 이미 기록한 검수 한 건을 정정한다(새 판) |
 | `GET /admin/retrain/export`, `POST /admin/retrain/runs` | 재학습 행 내보내기, 재학습 실행 결과 등록(관리자만) |
 
@@ -687,7 +687,7 @@ VendorProfile {"orgId": "org_saegil",
 | `INVALID_ANSWER` | 422 | 질문의 답이 그 항목에 맞지 않는다(빈 답 포함) |
 | `INVALID_FIELD` | 422 | 교정할 수 없는 항목이다(`POST /sessions/{id}/corrections`의 `field`) |
 | `NO_CHANGE` | 422 | 교정 전후 값이 같다(실제 결과 정정도 같다) |
-| `INVALID_REQUEST_ID` | 422 | 실제 결과 등록·정정에 `requestId`가 없거나 꼴이 틀렸다(영문·숫자·`_.:-` 8~100자) |
+| `INVALID_REQUEST_ID` | 422 | 실제 결과 등록·정정의 `requestId` 꼴이 틀렸다(영문·숫자·`_.:-` 8~100자). 정정에는 꼭 있어야 한다(새 반입 등록은 없으면 서버가 만든다) |
 | `USE_CORRECTION` | 422 | 새 반입 등록(`POST /sessions/{id}/outcomes`)에 `inspectionId`를 보냈다. 이미 있는 검수를 고치는 것은 `PUT /sessions/{id}/outcomes/{inspectionId}`다 |
 | `STREAM_NOT_IN_THREAD` | 422 | 그 대화에서 확정된 흐름이 아니다(실제 결과 기록) |
 | `INVALID_MESSAGE` | 422 | 업체 측 에이전트가 받은 메시지를 처리할 수 없다 |
@@ -764,7 +764,7 @@ HTTP 오류 코드가 아니라 `approvals[].blockedCodes`(배열)와 `blockedRe
 
 - `POST /sessions/{id}/corrections`: 그 진단의 배출 기업만 부를 수 있다(업체는 403, 당사자가 아니면 404). `field`는 `box | material | origin | form | contaminant | grade | contaminationPct | moisturePct`다. human 근거(`human:<조직>:교정-<흐름>-<항목>-<순번>`)로 등록하고, 앞의 다섯 항목은 탐지 모델 재학습 데이터 후보가 된다. 기록만 남기며 흐름의 값은 바꾸지 않는다(흐름은 `PUT /orgs/{orgId}/streams/{streamId}`로 고친다). 응답은 `{"correction": 기록, "evidence": [근거 ID]}`.
 - `POST /sessions/{id}/outcomes`(새 반입 등록): 그 스레드의 업체만, 스레드가 `confirmed`일 때만 받는다(아니면 `THREAD_NOT_CONFIRMED` 409). `streamId`는 그 스레드에서 확정된 흐름이어야 하고, 실제 등급이나 실제 단가 가운데 하나는 있어야 한다. `documentName`을 주면 doc 근거, 없으면 human 근거로 등록한다. 소유는 업체이고 배출 기업과 나눈다. 같은 날 같은 흐름을 여러 번 받았으면 건마다 따로 보낸다(검수일로 합치거나 덮지 않는다).
-  - `requestId`(필수, 영문·숫자·`_.:-` 8~100자)는 화면이 등록 한 번마다 만드는 번호다. 검수 ID는 `insp-` + (업체, 진단, `requestId`)의 해시다. 같은 번호와 같은 내용으로 다시 오면(네트워크 재시도, 두 번 누름) 새 건을 만들지 않고 이미 만든 건의 최신 판을 `replayed: true`로 돌려준다. 같은 번호에 다른 내용이면 409 `REQUEST_ID_REUSED`, 번호가 없거나 틀리면 422 `INVALID_REQUEST_ID`, 본문에 `inspectionId`가 있으면 422 `USE_CORRECTION`(정정은 아래 PUT)이다.
+  - `requestId`(영문·숫자·`_.:-` 8~100자)는 화면이 등록 한 번마다 만드는 번호다. 화면은 늘 보낸다. 보내지 않으면(2026-11-19 전 화면과의 하위 호환) 서버가 만든 번호(`auto-…`)로 새 반입 한 건이 되고, 번호가 매번 달라 재전송을 한 건으로 묶지 못한다. 검수 ID는 `insp-` + (업체, 진단, `requestId`)의 해시다. 같은 번호와 같은 내용으로 다시 오면(네트워크 재시도, 두 번 누름) 새 건을 만들지 않고 이미 만든 건의 최신 판을 `replayed: true`로 돌려준다. 같은 번호에 다른 내용이면 409 `REQUEST_ID_REUSED`, 번호의 꼴이 틀리면 422 `INVALID_REQUEST_ID`, 본문에 `inspectionId`가 있으면 422 `USE_CORRECTION`(정정은 아래 PUT)이다.
   - `weighTicket`(선택, 40자까지)은 계량표 번호다. 같은 업체가 같은 검수일에 같은 번호로 다른 검수를 이미 기록했으면 409 `DUPLICATE_TICKET`이다(같은 계량표를 손으로 두 번 적은 경우).
   - 근거 ID는 판마다 따로다: `human:<업체>:검수-<검수 ID>-r<판>-<등급|단가|중량>`(문서면 `doc:<업체>:<문서>:…`). 응답은 `{"outcome": 기록, "evidence": [근거 ID], "replayed": bool}`.
 - `PUT /sessions/{id}/outcomes/{inspectionId}`(정정): 그 검수를 기록한 업체만(배출 기업 403, 당사자가 아니거나 없는 검수면 404 `OUTCOME_NOT_FOUND`), 스레드가 `confirmed`일 때만. 본문은 고친 뒤의 값 전체와 `baseRevision`(담당자가 보고 고친 판), `reason`(정정 사유, 필수, 200자까지), `requestId`다. 앞 판의 근거는 덮지 않고 새 판(`revision` + 1)과 새 근거를 만든다. `baseRevision`이 최신 판이 아니면 409 `REVISION_CONFLICT`, 값이 같으면 422 `NO_CHANGE`, `threadId`·`streamId`를 바꾸려 하면 422다. 같은 `requestId`로 다시 오면 `replayed: true`로 이미 만든 판을 돌려준다. 실적 리포트와 재학습(등급 학습 행, 기준값 보정 후보)은 검수 건마다 최신 판 하나만 센다.
