@@ -162,29 +162,6 @@ def _fixed_transport(vendor: dict) -> float:
     return float(transport_charge(vendor)["monthly"] or 0.0)
 
 
-def _transport_room(choice: dict, choices: list[dict]) -> tuple[float, dict] | None:
-    """(운반비 반영 전 월 손익 − 다음으로 나은 선택지의 월 손익, 그 선택지). 견줄 확정 선택지가 없으면 None.
-
-    다른 업체는 운반비가 정해진 곳만 견준다(그 업체의 월 운반비를 모두 뺀 값). 현행 유지와 재투입은 늘 견준다.
-    """
-    others = []
-    for other in choices:
-        if other is choice:
-            continue
-        value = other["value"]
-        if other["vendor"] is not None:
-            charge = transport_charge(other["vendor"])
-            if charge["pending"] or charge["unavailable"]:
-                continue
-            value -= float(charge["monthly"] or 0.0)
-        others.append((value, _name(other), other))
-    if not others:
-        return None
-    value, _, best = max(others, key=lambda o: (round(o[0], 6), [-ord(c) for c in o[1]]))
-    gap = choice["value"] - value
-    return (gap, best) if gap > 0 else None
-
-
 def _tagged(label: str, tail: str) -> str:
     """calc 근거 이름의 " 계산" 앞에 꼬리표를 넣는다. "변경 뒤 월 손익(별도 운반비 반영 전) 계산"."""
     if not tail:
@@ -672,6 +649,33 @@ def optimize_assignment(
         share[members[-1]] = left
         for i in members:
             charges[i] = charge
+
+    def room_of(i: int) -> tuple[float, dict] | None:
+        """(고른 배정의 월 손익 − 이 흐름만 다음으로 나은 선택지로 바꾼 배정의 월 손익, 그 선택지).
+
+        운반비가 정해지지 않은 업체가 이 흐름 하나만 맡을 때만 낸다. 바꾼 배정도 최소 물량·용량을 지켜야 하고,
+        운반비를 모르거나 수거 불가인 다른 업체는 견주지 않는다. 월 손익은 업체마다 한 번 드는 운반비를 뺀 값이다.
+        """
+        choice = best[i]
+        if len(groups.get(str(choice["vendor"].get("orgId"))) or []) != 1:
+            return None
+        base, _ = _money_carbon(best)
+        found = None
+        for other in options[i]:
+            if other is choice:
+                continue
+            if other["vendor"] is not None:
+                terms = transport_charge(other["vendor"])
+                if terms["pending"] or terms["unavailable"]:
+                    continue
+            combo = tuple(other if k == i else c for k, c in enumerate(best))
+            if not feasible(combo):
+                continue
+            gap = base - _money_carbon(combo)[0]
+            if found is None or gap < found[0] - 1e-9:
+                found = (gap, other)
+        return found if found and found[0] > 0 else None
+
     # 합계 계산 근거가 흐름별 계산 근거를 입력으로 잇게 한다(계산 사슬: 합계 → 흐름별 → 원 근거)
     parts: dict[str, list[str]] = {"now": [], "after": [], "difference": [], "carbon": []}
     for i, (item, choice) in enumerate(zip(usable, best, strict=True)):
@@ -824,15 +828,15 @@ def optimize_assignment(
         }
         if pending:
             # 운반비가 정해지지 않은 배정: 운반비가 한 달 얼마를 넘으면 다음으로 나은 선택지가 나은지 남긴다
-            room = _transport_room(choice, options[i])
+            room = room_of(i)
             if room is not None:
                 gap, other = room
                 entry["transportRoom"] = rec.number(
                     f"{tag}TransportRoom",
                     gap,
                     "원/월",
-                    "별도 운반비 반영 전 월 손익 − 다음으로 나은 선택지의 월 손익. 이 업체의 월 운반비가 "
-                    "이보다 크면 다음 선택지가 낫습니다",
+                    "별도 운반비 반영 전 월 손익 − 이 폐기물만 다음으로 나은 선택지로 바꿨을 때의 월 손익. "
+                    "이 업체의 월 운반비가 이보다 크면 다음 선택지가 낫습니다",
                     [after_id, *(other["ev"] if other["vendor"] is not None else [now_id])],
                     label=f"{who} 운반비 손익분기 계산" if who else "운반비 손익분기 계산",
                 )["id"]

@@ -151,6 +151,40 @@ def test_effective_terms_split_pickup_status_from_fee():
     assert unknown["status"] == "unknown" and unknown["basis"] == "undecided"
 
 
+def test_service_area_and_off_route_stance_decide_together():
+    routes = [{"name": "미음", "days": ["화"], "regions": ["부산 강서구 미음"], "complexes": []}]
+    region = "부산 강서구 녹산산단"
+    included = {"paidBy": "vendor", "evidence": []}
+    inside = pickup.effective(included, routes, region, {"serviceAreas": ["부산 강서구"]})
+    assert (
+        inside["status"] == "visit" and inside["reason"] == "area" and inside["basis"] == "included"
+    )
+    outside = pickup.effective(included, routes, region, {"serviceAreas": ["경남 양산시"]})
+    assert outside["status"] == "unavailable" and outside["reason"] == "area"
+    assert outside["areas"] == ["경남 양산시"]
+    far = pickup.effective(included, routes, region, {"maxPickupKm": 10}, 25.0)
+    assert far["status"] == "unavailable" and far["reason"] == "distance"
+    unknown_km = pickup.effective(included, routes, region, {"maxPickupKm": 10}, None)
+    assert unknown_km["status"] == "check" and unknown_km["reason"] == "distance"
+    # 지역 안이지만 노선 밖 수거 불가를 밝혔으면 어느 쪽으로도 정하지 않는다
+    conflict = pickup.effective(
+        {**included, "offRoute": {"status": "unavailable"}},
+        routes,
+        region,
+        {"serviceAreas": ["부산 강서구"]},
+    )
+    assert conflict["status"] == "check" and conflict["reason"] == "conflict"
+    assert pickup.monthly(conflict) is None
+    # 지역 밖이어도 노선 밖 방문을 밝혔으면 그 견적으로 간다
+    visit = pickup.effective(
+        {**included, "offRoute": {"status": "visit", "paidBy": "emitter", "feePerMonthKrw": 50000}},
+        routes,
+        region,
+        {"serviceAreas": ["경남 양산시"]},
+    )
+    assert visit["status"] == "visit" and pickup.monthly(visit) == 50000
+
+
 # ── 네 상태를 같은 폐기물로 비교 ─────────────────────────────────────────
 def test_four_pickup_states_on_the_same_waste():
     out, reg_of = {}, {}
@@ -176,7 +210,9 @@ def test_four_pickup_states_on_the_same_waste():
         assert any(c["key"] == "pickup:st_defect" for c in done["checks"])
 
     done, item = out["visit"]
-    assert item["route"] == "sell" and item["status"] == "calculated"
+    # 수거·운반은 확정이다(배정 상태는 허가증 원문 대조 같은 다른 확인 때문에 조건부일 수 있다)
+    assert item["route"] == "sell"
+    assert not [c for c in done["checks"] if c["key"].startswith(("transport:", "pickup:"))]
     assert item["pickupStatus"] == "visit" and item["transportPending"] is False
     assert claim(done, item["revenue"])["value"] == 88000
     fee = claim(done, item["transportFee"])
@@ -504,3 +540,24 @@ def test_per_pickup_quote_without_a_count_is_not_filled_from_the_minimum():
         "월 수거 횟수 확인 필요"
         in next(c for c in cost["checks"] if c["key"] == "transport")["text"]
     )
+
+
+def test_off_route_quote_without_a_count_stays_pending_in_the_conversation():
+    """노선 밖 방문 견적에 월 횟수가 없으면 업체 측 답이 정기 수거 횟수를 끌어다 운반비를 확정하지 않는다."""
+    app = make_app()
+    _only_miso_for_defect(app)
+    no_count = {
+        **VISIT,
+        "evidence": ["doc:org_miso:반입조건표:노선밖운반비"],
+        "pickupsEvidence": [],
+    }
+    no_count.pop("pickupsPerMonth")
+    _miso_off_route(app, no_count)
+    view = to_approval(app)
+    row = _defect_row(view)
+    assert row["vendorOrgId"] == MISO and row["pickup"]["status"] == "visit"
+    assert row["pickup"]["fee"]["value"] == 30000 and row["pickup"]["pickups"] is None
+    assert row["pickup"]["monthly"] is None and row["transportPending"] is True
+    thread = next(t for t in view["threads"] if t["vendorOrgId"] == MISO and t["messages"])
+    said = next(m for m in reversed(thread["messages"]) if "수거·운반:" in m["text"])
+    assert "월 수거 횟수는 담당자가 확인한 뒤 알려 드립니다" in said["text"]

@@ -46,7 +46,7 @@ from app.v3.evidence.validator import validate_message
 from app.v3.fleet import INFO_KEYS
 from app.v3.judge import negotiate
 from app.v3.judge import pickup as pickup_terms
-from app.v3.judge.common import without_emitter_only
+from app.v3.judge.common import Recorder, vendor_distance, without_emitter_only
 from app.v3.untrusted import counterparty_stream, org_label, stream_label
 
 logger = logging.getLogger(__name__)
@@ -515,14 +515,16 @@ def _attach_haul(
 ) -> None:
     """조건을 내는 답에 수거·운반 견적을 붙인다. 모델이 쓰지 않아도 코드가 같은 꼴로 붙인다.
 
-    회당 운반비인데 견적에 월 횟수가 없으면, 이 답에서 업체가 밝힌 수거 횟수(terms.pickupsPerMonthRef로 본문에 쓴
-    claim)만 쓴다. 그것도 없으면 횟수 없이 보낸다(회사 측은 월 운반비를 정하지 않고 "월 수거 횟수 확인 필요"로 둔다).
+    회당 운반비인데 견적에 월 횟수가 없으면, 노선 수거에서는 이 답에서 업체가 밝힌 수거 횟수(terms.pickupsPerMonthRef로
+    본문에 쓴 claim)를 쓴다. 노선 밖 방문 견적은 견적에 적힌 횟수만 쓴다. 횟수가 없으면 횟수 없이 보낸다(회사 측은
+    월 운반비를 정하지 않고 "월 수거 횟수 확인 필요"로 둔다).
     숫자는 claim으로만 쓴다(본문에 {{id}}).
     """
     if "수거·운반:" in (reply.text or ""):
         return
     fee_ref, pickups_ref = refs.get("fee"), refs.get("pickups")
-    if haul.get("unit") == "per_pickup" and pickups_ref is None:
+    # 노선 밖 방문 견적(visit)은 그 견적에 적힌 횟수만 쓴다. 업체가 횟수를 비워 두었으면 정기 수거 횟수로 채우지 않는다
+    if haul.get("unit") == "per_pickup" and pickups_ref is None and haul.get("status") != "visit":
         terms = output.get("terms") if isinstance(output.get("terms"), dict) else {}
         cited = terms.get("pickupsPerMonthRef")
         said = {c.id for c in reply.claims}
@@ -543,6 +545,10 @@ def _attach_haul(
         "days": list(haul.get("days") or []),
         # 노선 수거의 운반비 조건(노선 밖이라 이 공장에 그대로 쓰지 않았을 때 참고로 보인다)
         "routeBasis": haul.get("routeBasis"),
+        # 무엇으로 정했는가(route, area, distance, offRoute)와 수거 가능 지역(밝혔을 때)
+        "reason": haul.get("reason"),
+        "area": haul.get("area"),
+        "areas": list(haul.get("areas") or []),
     }
 
 
@@ -563,6 +569,18 @@ class VendorAgent:
         self.llm = llm
         self.distance_provider = distance_provider
         self.memo = memo if memo is not None else {}
+
+    def _pickup_km(
+        self, vendor_org: str, fleet: dict[str, Any], emitter: dict[str, Any]
+    ) -> float | None:
+        """차고지 → 공장 거리(최대 수거 거리를 밝혔을 때만). 회사 측 최적 배정과 같은 계산이다."""
+        if fleet.get("maxPickupKm") is None:
+            return None
+        rec = Recorder("pickup_distance", self.registry, vendor_org, self.today, {})
+        found = vendor_distance(
+            rec, {"fleet": fleet}, emitter.get("location"), self.distance_provider
+        )
+        return found["km"] if found["known"] else None
 
     # ── 도구 입력: ID → 레코드 ─────────────────────────────────────────
     def _other_stops(self, vendor_org: str, emitter_org: str) -> list[dict[str, Any]]:
@@ -1095,10 +1113,13 @@ class VendorAgent:
         facts = {s["id"]: pool.add_stream(s) for s in streams}
         criteria = pool.add_vendor_profile(profile)
         # 이 공장에 적용할 수거 상태와 운반비 조건(노선·운반 조건과 공장 지역). 조건을 내는 답에 코드가 붙인다
+        fleet = profile.get("fleet") or {}
         haul = pickup_terms.effective(
             profile.get("transport"),
-            (profile.get("fleet") or {}).get("routes"),
+            fleet.get("routes"),
             emitter.get("region"),
+            fleet,
+            self._pickup_km(vendor_org, fleet, emitter),
         )
         haul_refs = _haul_claims(pool, haul, vendor_org)
         if not any(m.seq == message.get("seq") for m in thread.messages):

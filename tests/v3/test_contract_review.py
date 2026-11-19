@@ -106,12 +106,20 @@ def test_result_checks_service_area_and_vendor_screen_saves_it():
         app, SAEGIL, {"fleet": {"serviceAreas": ["부산 강서구"], "maxPickupKm": 35}}, SAEGIL
     )
     assert saved["fleet"]["serviceAreas"] == ["부산 강서구"] and saved["fleet"]["maxPickupKm"] == 35
+    # 노선이 없는 미소환경이 수거 가능 지역을 밝히면 노선 밖이어도 "업체 수거 가능 확인"이 된다(수거 상태 한 줄)
+    service.update_vendor(app, MISO, {"fleet": {"serviceAreas": ["부산 강서구"]}}, MISO)
     view = to_approval(app)
     rows = [a for a in view["result"]["assignments"] if a["vendorOrgId"] == SAEGIL]
     assert rows
     for row in rows:
-        area = [c for c in row["checks"] if c["key"] == "pickup_area"]
-        assert area and area[0]["status"] == "met"
+        route = [c for c in row["checks"] if c["key"] == "pickup_route"]
+        assert route and route[0]["status"] == "met"
+        assert not [c for c in row["checks"] if c["key"] == "pickup_area"]  # 한 줄로 합쳤다
+    miso = [a for a in view["result"]["assignments"] if a["vendorOrgId"] == MISO]
+    for row in miso:
+        assert row["pickup"]["status"] == "visit" and row["transportPending"] is False
+        route = next(c for c in row["checks"] if c["key"] == "pickup_route")
+        assert route["status"] == "met" and "수거 가능 지역(부산 강서구) 안" in route["text"]
 
 
 # ── 계약 검토 담당 ──────────────────────────────────────────────────
@@ -173,13 +181,22 @@ def test_vendor_outside_its_service_area_cannot_be_approved():
     assert review["status"] == "blocked"
     pickup = next(i for i in review["items"] if i["key"] == "pickup")
     assert pickup["status"] == "block" and "경남 양산시" in pickup["text"]
+    # 수거 가능 지역이 바뀐 것은 합의 뒤 수거·운반 조건 변경이라 승인이 먼저 막힌다(PICKUP_TERMS_CHANGED).
+    # 계약 검토도 같은 판단으로 막는다(위 review)
     for org in (HANBIT, MISO):
         with pytest.raises(service.ServiceError) as caught:
             service.approve(app, sid, thread["id"], org)
-        assert caught.value.code == "REVIEW_BLOCKED"
+        assert caught.value.code == "APPROVAL_BLOCKED"
         assert "수거 가능 지역" in caught.value.message
-    # 업체가 지역을 넓히면 다시 승인할 수 있다
+    # 업체가 지역을 넓히면 수거·운반 조건이 다시 바뀐 것이라(별도 수거 확인 → 업체 수거 가능) 다시 진행해
+    # 새 조건으로 합의한 뒤에 승인할 수 있다(PICKUP_TERMS_CHANGED)
     service.update_vendor(app, MISO, {"fleet": {"serviceAreas": ["부산"]}}, MISO)
+    with pytest.raises(service.ServiceError) as caught:
+        service.approve(app, sid, thread["id"], HANBIT)
+    assert caught.value.code == "APPROVAL_BLOCKED"
+    fresh = service.run_session(app, sid, HANBIT)
+    again = next(a for a in fresh["approvals"] if a["threadId"] == thread["id"])
+    assert not again["blocked"] and again["review"]["status"] != "blocked"
     service.approve(app, sid, thread["id"], HANBIT)
 
 

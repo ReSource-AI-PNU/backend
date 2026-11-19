@@ -56,7 +56,14 @@ from app.v3.evidence.validator import (
 from app.v3.intake.grade_model import GradeModelError, grade_stream
 from app.v3.judge import basis, negotiate, permits
 from app.v3.judge import pickup as pickup_terms
-from app.v3.judge.common import best_criterion, permit_match, quality, without_emitter_only
+from app.v3.judge.common import Recorder as JudgeRecorder
+from app.v3.judge.common import (
+    best_criterion,
+    permit_match,
+    quality,
+    vendor_distance,
+    without_emitter_only,
+)
 from app.v3.judge.toolbox import TOOLS, call_tool
 from app.v3.live import STATUS_NOTES, Recorder
 from app.v3.store import NotFound
@@ -212,7 +219,19 @@ def clean_haul(raw: Any) -> dict[str, Any] | None:
         "routeBasis": raw.get("routeBasis")
         if raw.get("routeBasis") in pickup_terms.BASES
         else None,
+        "reason": raw.get("reason") if raw.get("reason") in HAUL_REASONS else None,
+        # 업체가 적은 수거 가능 지역 이름(짧은 글만)
+        "area": _short_text(raw.get("area")),
+        "areas": [a for a in map(_short_text, list(raw.get("areas") or [])[:10]) if a],
     }
+
+
+HAUL_REASONS = ("route", "area", "distance", "offRoute", "conflict")
+
+
+def _short_text(value: Any) -> str | None:
+    text = " ".join(str(value).split()) if isinstance(value, str) else ""
+    return text[:50] or None
 
 
 def _claim_number(claim: Any, unit: str) -> float | None:
@@ -243,6 +262,9 @@ def haul_answer(raw: Any, claims: dict[str, Claim], seq: int) -> dict[str, Any] 
         "status": haul["status"],
         "days": haul["days"],
         "routeBasis": haul["routeBasis"],
+        "reason": haul["reason"],
+        "area": haul["area"],
+        "areas": haul["areas"],
         "basis": haul["basis"],
         "paidBy": haul["paidBy"],
         "amount": amount,
@@ -269,15 +291,42 @@ def haul_words(shown: dict[str, Any]) -> str:
 
 def haul_check(haul: dict[str, Any]) -> dict[str, Any]:
     """결과 한 줄의 "수거 노선" 확인 항목. 문장에는 숫자를 쓰지 않는다."""
-    status = haul.get("status")
+    status, reason = haul.get("status"), haul.get("reason")
     days = list(haul.get("days") or [])
+    area = haul.get("area")
+    areas = [str(a) for a in haul.get("areas") or []]
+    listed = ", ".join(areas[:3]) + (" 등" if len(areas) > 3 else "")
     text = {
         "route": "업체가 밝힌 수거 노선이 이 공장 지역을 지나갑니다"
         + (f"(운행 요일 {', '.join(days)})." if days else "."),
-        "visit": "공장 지역이 업체의 수거 노선 밖이지만 업체가 따로 수거하러 온다고 밝혔습니다.",
-        "check": "업체가 밝힌 수거 노선에 이 공장 지역이 없습니다. 따로 수거하러 올 수 있는지와 "
-        "운반비를 확인해야 합니다.",
-        "unavailable": "업체가 이 공장까지 수거하러 올 수 없다고 밝혔습니다.",
+        "visit": (
+            f"공장 지역이 업체가 밝힌 수거 가능 지역({area}) 안에 있습니다. 정기 노선 밖이라 수거 요일은 따로 정합니다."
+            if reason == "area" and area
+            else "공장까지 거리가 업체가 밝힌 최대 수거 거리 안입니다. 정기 노선 밖이라 수거 요일은 따로 정합니다."
+            if reason == "distance"
+            else "공장 지역이 업체의 수거 노선 밖이지만 업체가 따로 수거하러 온다고 밝혔습니다."
+        ),
+        "check": (
+            "공장까지 거리를 알 수 없어 업체가 밝힌 최대 수거 거리와 대조하지 못했습니다. 수거하러 올 수 있는지와 "
+            "운반비를 확인해야 합니다."
+            if reason == "distance"
+            else "공장 지역이 업체가 밝힌 수거 가능 지역에는 들지만 업체가 노선 밖 공장은 수거하지 않는다고 밝혔습니다. "
+            "수거하러 올 수 있는지와 운반비를 확인해야 합니다."
+            if reason == "conflict"
+            else "업체가 밝힌 수거 노선에 이 공장 지역이 없습니다. 따로 수거하러 올 수 있는지와 운반비를 확인해야 합니다."
+        ),
+        "unavailable": (
+            f"공장 지역이 업체가 밝힌 수거 가능 지역({listed}) 밖에 있습니다. 업체가 따로 수거하러 오기로 "
+            "확인하기 전에는 맡길 수 없습니다."
+            if reason == "area" and listed
+            else "공장 지역이 업체가 밝힌 수거 가능 지역 밖에 있습니다. 업체가 따로 수거하러 오기로 확인하기 "
+            "전에는 맡길 수 없습니다."
+            if reason == "area"
+            else "공장까지 거리가 업체가 밝힌 최대 수거 거리를 넘습니다. 업체가 따로 수거하러 오기로 확인하기 "
+            "전에는 맡길 수 없습니다."
+            if reason == "distance"
+            else "업체가 이 공장까지 수거하러 올 수 없다고 밝혔습니다."
+        ),
         "unknown": "업체가 수거 노선을 밝히지 않아 이 공장까지 수거하러 오는지 확인이 필요합니다.",
     }.get(str(status), "수거 방식을 확인해야 합니다.")
     return {
@@ -2421,13 +2470,32 @@ class Orchestrator:
             return None
 
     def _profile_haul(self, session: dict[str, Any], profile: dict[str, Any]) -> dict[str, Any]:
-        """업체 프로필(노선·운반 조건)과 공장 지역으로 정한 이 공장의 수거·운반 조건."""
+        """업체 프로필(노선·운반 조건, 수거 가능 지역·최대 수거 거리)과 공장 지역으로 정한 이 공장의 수거·운반 조건."""
+        fleet = profile.get("fleet") or {}
         found = pickup_terms.effective(
             profile.get("transport"),
-            (profile.get("fleet") or {}).get("routes"),
+            fleet.get("routes"),
             self._region(session),
+            fleet,
+            self._pickup_km(session, fleet),
         )
         return {**found, "source": "profile", "seq": None}
+
+    def _pickup_km(self, session: dict[str, Any], fleet: dict[str, Any]) -> float | None:
+        """공장 → 업체 차고지 거리(최대 수거 거리를 밝힌 업체만). 최적 배정의 거리와 같은 계산이다."""
+        if fleet.get("maxPickupKm") is None:
+            return None
+        try:
+            origin = self.store.get_org(session["emitterOrgId"]).get("location")
+        except NotFound:
+            return None
+        rec = JudgeRecorder(
+            "pickup_distance", self.registry, session["emitterOrgId"], self.today, {}
+        )
+        found = vendor_distance(
+            rec, {"fleet": fleet}, origin, getattr(self.app, "distance_provider", None)
+        )
+        return found["km"] if found["known"] else None
 
     def _haul(self, session: dict[str, Any], profile: dict[str, Any]) -> dict[str, Any]:
         """이 공장의 수거·운반 조건. 업체가 조건 답에 밝힌 것이 있으면 그것, 없으면 프로필에서 정한 것."""
@@ -3022,14 +3090,7 @@ class Orchestrator:
                 pickup = self._route_check(session, vendor_id)
                 if pickup is not None:
                     checks.append(pickup)
-                # 업체가 밝힌 수거 가능 지역·최대 수거 거리(2026-11-19 멘토링). 밝히지 않았으면 싣지 않는다
-                area = self._area_check(
-                    vendor_id,
-                    session["emitterOrgId"],
-                    claim_in(optimized, item.get("transportKm"), f"{tag}_transportKm"),
-                )
-                if area is not None:
-                    checks.append(area)
+                # 수거 가능 지역·최대 수거 거리(2026-11-19 멘토링)도 위 수거 상태 한 줄(pickup_route)에 들어 있다
                 permit = item.get("permit")
                 if permit:
                     checks.append(
@@ -3387,17 +3448,6 @@ class Orchestrator:
             "source": haul.get("source"),
         }
 
-    def _area_check(
-        self, vendor_id: str, emitter_id: str, distance: dict[str, Any] | None
-    ) -> dict[str, Any] | None:
-        """④ 업체가 밝힌 수거 가능 지역(시·군·구, 산업단지)과 최대 수거 거리가 이 공장을 덮는지(reviewer.area_check)."""
-        try:
-            fleet = self.store.get_vendor_profile(vendor_id).get("fleet") or {}
-            region = str(self.store.get_org(emitter_id).get("region") or "")
-        except NotFound:
-            return None
-        return reviewer.area_check(fleet, region, distance)
-
     def _process_of(self, vendor_id: str | None, stream: dict[str, Any]) -> str | None:
         """받는 곳의 처리 방식. 업체면 프로필의 process, 지금 방식 그대로면 현행 처리(없으면 혼합 소각 가정)."""
         if not vendor_id:
@@ -3532,14 +3582,15 @@ class Orchestrator:
         blocked = self._verify(session, thread)
         if blocked:
             self._save(session)
+            codes = {item.rsplit(": ", 1)[-1] for item in blocked}
             raise OrchestratorError(
                 "APPROVAL_BLOCKED",
-                "합의한 뒤에 업체의 조건이 바뀌어 승인할 수 없습니다. 진단을 다시 진행하면 "
+                "합의한 뒤에 업체의 수거·운반 조건(노선, 수거 가능 지역, 운반비)이 바뀌어 승인할 수 없습니다. "
+                "진단을 다시 진행하면 새 조건으로 운반비와 한 달 손익을 다시 계산합니다."
+                if codes == {"PICKUP_TERMS_CHANGED"}
+                else "합의한 뒤에 업체의 조건이 바뀌어 승인할 수 없습니다. 진단을 다시 진행하면 "
                 "새 조건으로 대화를 이어 갑니다."
-                if any(
-                    item.endswith((": VENDOR_TERMS_CHANGED", ": PICKUP_TERMS_CHANGED"))
-                    for item in blocked
-                )
+                if codes & REOPEN_CODES
                 else "근거 확인에 실패한 항목이 있어 승인할 수 없습니다.",
             )
         # 계약 검토 담당(agents/reviewer.py)이 막은 항목이 있으면 어느 쪽도 승인할 수 없다. 사람이 승인하기 전의
@@ -3584,7 +3635,8 @@ class Orchestrator:
     def contract_review(self, session: dict[str, Any], thread: Thread) -> dict[str, Any]:
         """계약 검토 담당의 검토(agents/reviewer.py). 합의한 대화 하나의 조건을 결과 한 장과 다시 대조한다.
 
-        수거 가능 지역은 결과 한 장을 만든 뒤에 업체가 바꿨을 수 있어 지금 프로필로 다시 본다.
+        수거 상태(노선, 수거 가능 지역·최대 거리, 노선 밖 조건)는 결과 한 장을 만든 뒤에 업체가 바꿨을 수 있어 지금
+        프로필로 다시 본다(judge/pickup.py. 결과 한 장의 "수거 노선" 확인 항목과 같은 판단이다).
         """
         work = session["work"]
         result = work.get("result") or {}
@@ -3592,9 +3644,15 @@ class Orchestrator:
         for row in result.get("assignments") or []:
             if row.get("threadId") != thread.id:
                 continue
-            checks = [c for c in row.get("checks") or [] if c.get("key") != "pickup_area"]
-            area = self._area_check(thread.vendor_org, thread.emitter_org, row.get("transportKm"))
-            rows.append({**row, "checks": [*checks, *([area] if area else [])]})
+            # 수거 상태(노선, 수거 가능 지역·최대 거리, 노선 밖 조건)는 지금 업체 프로필로 다시 정한다
+            checks = [c for c in row.get("checks") or [] if c.get("key") != "pickup_route"]
+            try:
+                profile = self.store.get_vendor_profile(thread.vendor_org)
+            except NotFound:
+                rows.append({**row, "checks": checks})
+                continue
+            area = haul_check(self._profile_haul(session, profile))
+            rows.append({**row, "checks": [*checks, area]})
         try:
             guard = self.store.get_vendor_profile(thread.vendor_org).get("guardrails") or {}
         except NotFound:

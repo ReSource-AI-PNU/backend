@@ -14,13 +14,16 @@
   단가처럼 상대에게 감춘 값도 쓰지 않는다. 검토 결과는 양쪽이 함께 본다.
 
 수거 가능 지역(area_check)도 여기에 둔다. 업체가 밝힌 수거 가능 지역(시·군·구, 산업단지)과 차고지에서의
-최대 수거 거리를 공장 지역·거리와 견준다(fleet.serviceAreas, fleet.maxPickupKm).
+최대 수거 거리를 공장 지역·거리와 견준다(fleet.serviceAreas, fleet.maxPickupKm). 대조 규칙은 judge/pickup.py의
+service_area 하나이고, 결과 한 장과 검토는 그 규칙으로 정한 수거 상태(확인 항목 "pickup_route")를 읽는다.
 """
 
 from __future__ import annotations
 
 import re
 from typing import Any
+
+from app.v3.judge import pickup
 
 LABEL = "계약 검토 담당"
 ACTOR = "contract_reviewer"
@@ -45,71 +48,8 @@ FROM_CHECK = {"met": "ok", "conditional": "check", "needs_information": "check",
 
 # ── 수거 가능 지역 ──────────────────────────────────────────────────
 
-PROVINCES = {
-    "부산광역시": "부산",
-    "울산광역시": "울산",
-    "대구광역시": "대구",
-    "서울특별시": "서울",
-    "인천광역시": "인천",
-    "광주광역시": "광주",
-    "대전광역시": "대전",
-    "세종특별자치시": "세종",
-    "경기도": "경기",
-    "강원도": "강원",
-    "강원특별자치도": "강원",
-    "충청북도": "충북",
-    "충청남도": "충남",
-    "전라북도": "전북",
-    "전북특별자치도": "전북",
-    "전라남도": "전남",
-    "경상북도": "경북",
-    "경상남도": "경남",
-    "제주특별자치도": "제주",
-}
-SHORT = frozenset(PROVINCES.values())
-TAILS = ("국가산업단지", "일반산업단지", "산업단지", "산단")
-
-
-def _plain(text: Any) -> str:
-    return "".join(str(text or "").split())
-
-
-def _core(token: str) -> str:
-    for tail in TAILS:
-        if token.endswith(tail) and len(token) > len(tail):
-            return token[: -len(tail)]
-    return token
-
-
-def _where(region: str) -> str:
-    where = _plain(region)
-    for long, short in PROVINCES.items():
-        where = where.replace(long, short)
-    return where
-
-
-def in_area(area: str, region: str) -> bool:
-    """공장 지역 글(region, 예: "부산 강서구 녹산산단")이 업체가 적은 수거 가능 지역 하나(area) 안에 드는지.
-
-    지역은 띄어 쓴 낱말로 본다("경남 김해시", "부산", "녹산국가산업단지"). 시·도만 적었으면 그 시·도가 공장 지역에
-    있어야 하고, 시·군·구나 산업단지를 적었으면 그 낱말이 모두 공장 지역에 있어야 한다. 시·도를 함께 적었고 공장
-    지역에도 시·도가 있으면 둘이 같아야 한다(부산 강서구와 서울 강서구를 가른다).
-    """
-    where = _where(region)
-    if not where:
-        return False
-    tokens = [_core(PROVINCES.get(t, t)) for t in str(area or "").split()]
-    tokens = [t for t in tokens if t]
-    if not tokens:
-        return False
-    named = [t for t in tokens if t in SHORT]
-    rest = [t for t in tokens if t not in SHORT]
-    if not rest:
-        return all(t in where for t in named)
-    if not all(t in where for t in rest):
-        return False
-    there = [p for p in SHORT if where.startswith(p)]
-    return not (named and there and not set(named) & set(there))
+# 지역 대조는 수거 상태 판단(judge/pickup.py)과 같은 함수를 쓴다(결과 한 장의 "수거 노선"과 검토가 같은 말을 한다)
+in_area = pickup.in_area
 
 
 def _number(value: Any) -> float | None:
@@ -123,20 +63,21 @@ def area_check(
     region: str | None,
     distance: dict[str, Any] | None = None,
 ) -> dict[str, Any] | None:
-    """결과 한 장의 "수거 가능 지역" 확인 항목(key pickup_area). 업체가 지역도 거리도 밝히지 않았으면 None.
+    """수거 가능 지역 대조 한 줄(key pickup_area). 업체가 지역도 거리도 밝히지 않았으면 None.
+
+    결과 한 장과 계약 검토는 이 대조를 수거 상태(judge/pickup.py, 확인 항목 "pickup_route")에 합쳐 쓴다. 이 함수는
+    같은 규칙(pickup.service_area)으로 대조 결과만 따로 적을 때 쓴다.
 
     distance는 공장에서 업체까지 거리 claim(최적 배정이 낸 transportKm)이다. 근거가 있으면 문장에 자리표시자로 넣어
     화면이 근거가 열리는 값으로 그린다. 업체가 밝힌 최대 거리 값은 문장에 쓰지 않는다(업체 근거는 배출 기업에 열지 않는다).
     밝힌 지역이나 거리 안이면 met, 거리를 알 수 없어 대조하지 못했으면 conditional, 밖이면 unmet이다.
     """
-    fleet = fleet or {}
-    areas = [str(a).strip() for a in fleet.get("serviceAreas") or [] if str(a).strip()]
-    limit = _number(fleet.get("maxPickupKm"))
-    if not areas and limit is None:
-        return None
-    hit = next((a for a in areas if in_area(a, region or "")), None)
     km = _number((distance or {}).get("value")) if distance else None
-    near = limit is not None and km is not None and km <= limit
+    found = pickup.service_area(fleet or {}, region or "", km)
+    if found is None:
+        return None
+    areas, limit, hit = found["areas"], found["limit"], found["area"]
+    near = found["inside"] is True and found["by"] == "distance"
     numbered = bool(distance and distance.get("evidence") and km is not None)
     claims = [distance] if numbered and distance else []
     span = (
