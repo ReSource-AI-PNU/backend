@@ -1,58 +1,61 @@
 {
- "assign": {
-  "p1": "st_defect",
-  "p2": "st_film",
-  "p3": "st_sprue",
-  "p4": "st_film",
-  "p5": "st_purge"
- },
- "weighed": {},
- "note": "합성 장면 정답과 바닥 자국 IoU로 짝지은 결과",
- "matches": [
-  {
-   "pred": "p1",
-   "truth": "g4",
-   "kind": "pallet",
-   "streamId": "st_defect",
-   "iou": 0.669,
-   "volumePred": 0.898,
-   "volumeTrue": 0.6471
+  "assign": {
+    "p1": "st_defect",
+    "p2": "st_film",
+    "p3": "st_sprue",
+    "p4": "st_film",
+    "p5": "st_purge"
   },
-  {
-   "pred": "p2",
-   "truth": "g5",
-   "kind": "film",
-   "streamId": "st_film",
-   "iou": 0.568,
-   "volumePred": 0.304,
-   "volumeTrue": 0.2022
+  "weighed": {
+    "p3": 520
   },
-  {
-   "pred": "p3",
-   "truth": "g1",
-   "kind": "tonbag",
-   "streamId": "st_sprue",
-   "iou": 0.7,
-   "volumePred": 2.201,
-   "volumeTrue": 2.069
-  },
-  {
-   "pred": "p4",
-   "truth": "g2",
-   "kind": "film",
-   "streamId": "st_film",
-   "iou": 0.576,
-   "volumePred": 0.464,
-   "volumeTrue": 0.3263
-  },
-  {
-   "pred": "p5",
-   "truth": "g3",
-   "kind": "drums",
-   "streamId": "st_purge",
-   "iou": 0.606,
-   "volumePred": 0.765,
-   "volumeTrue": 0.4633
-  }
- ]
+  "note": "합성 장면 정답과 바닥 자국 IoU로 짝지은 결과",
+  "matches": [
+    {
+      "pred": "p1",
+      "truth": "g4",
+      "kind": "pallet",
+      "streamId": "st_defect",
+      "iou": 0.669,
+      "volumePred": 0.898,
+      "volumeTrue": 0.6471
+    },
+    {
+      "pred": "p2",
+      "truth": "g5",
+      "kind": "film",
+      "streamId": "st_film",
+      "iou": 0.568,
+      "volumePred": 0.304,
+      "volumeTrue": 0.2022
+    },
+    {
+      "pred": "p3",
+      "truth": "g1",
+      "kind": "tonbag",
+      "streamId": "st_sprue",
+      "iou": 0.7,
+      "volumePred": 2.201,
+      "volumeTrue": 2.069
+    },
+    {
+      "pred": "p4",
+      "truth": "g2",
+      "kind": "film",
+      "streamId": "st_film",
+      "iou": 0.576,
+      "volumePred": 0.464,
+      "volumeTrue": 0.3263
+    },
+    {
+      "pred": "p5",
+      "truth": "g3",
+      "kind": "drums",
+      "streamId": "st_purge",
+      "iou": 0.606,
+      "volumePred": 0.765,
+      "volumeTrue": 0.4633
+    }
+  ],
+  "weighedNote": "시연 값: 스프루·런너 톤백 두 개(합성 장면 정답 부피 2.07 m³) × 시드 겉보기 밀도 250 kg/m³ ≈ 520 kg. 계량 보정 흐름을 보이려고 넣었다"
 }
