@@ -620,3 +620,9 @@ def test_inputs_that_used_to_slip_through():
             recon.client_from_env({recon.ENV_URL: url})
     with pytest.raises(recon.ReconError):
         recon.ReconClient("http://10.72.0.4:8090", fake).job("../health")
+
+
+def test_evidence_dates_are_korean_days():
+    assert views._kst_day("2026-11-19T17:30:00+00:00") == "2026-11-20"
+    assert views._shot({"createdAt": "2026-11-19T17:30:00+00:00"}) == "2026-11-20 촬영"
+    assert views._kst_day("2026-11-19") == "2026-11-19"

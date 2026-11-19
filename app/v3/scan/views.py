@@ -23,7 +23,7 @@ from app.v3.evidence.model import PUBLIC, Evidence
 from app.v3.scan import layout
 from app.v3.scan.client import ReconError
 from app.v3.scan.result import ResultError, read_points, read_result
-from app.v3.service import App, ServiceError, _owner
+from app.v3.service import SEOUL, App, ServiceError, _owner
 from app.v3.store import NotFound
 
 logger = logging.getLogger(__name__)
@@ -106,9 +106,20 @@ def _fmt(value: float, digits: int = 2) -> str:
     return f"{value:,.{digits}f}".rstrip("0").rstrip(".") if digits else f"{value:,.0f}"
 
 
+def _kst_day(stamp: Any) -> str:
+    """저장소 시각(UTC ISO)을 한국 날짜로. 읽지 못하면 앞 10자."""
+    try:
+        moment = datetime.fromisoformat(str(stamp))
+    except (TypeError, ValueError):
+        return str(stamp or "")[:10]
+    if moment.tzinfo is None:
+        return moment.date().isoformat()
+    return moment.astimezone(SEOUL).date().isoformat()
+
+
 def _shot(scan: dict[str, Any]) -> str:
-    """근거 출처에 쓰는 스캔 이름(내부 ID 대신 찍은 날)."""
-    day = str(scan.get("createdAt") or "")[:10]
+    """근거 출처에 쓰는 스캔 이름(내부 ID 대신 찍은 날, 한국 날짜)."""
+    day = _kst_day(scan.get("createdAt")) if scan.get("createdAt") else ""
     return f"{day} 촬영" if day else "촬영"
 
 
@@ -292,7 +303,7 @@ def _floor_id(scan: dict[str, Any]) -> str:
 
 def _register_volumes(app: App, scan: dict[str, Any]) -> None:
     result = scan["result"]
-    day = str(scan.get("completedAt") or scan["createdAt"])[:10]
+    day = _kst_day(scan.get("completedAt") or scan["createdAt"])
     _put(
         app,
         Evidence(
