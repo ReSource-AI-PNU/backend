@@ -242,6 +242,30 @@ class _Grid:
         return blocked == 0
 
 
+def _inside_with_margin(corners: Sequence[Point], poly: Sequence[Point], margin: float) -> bool:
+    """사각형이 다각형 안에 있고 모든 변이 경계에서 margin 이상 떨어져 있는가(비스듬한 벽도 정확히 잰다)."""
+    if not all(contains(poly, c) for c in corners):
+        return False
+    n = len(poly)
+    for i in range(4):
+        a, b = corners[i], corners[(i + 1) % 4]
+        for j in range(n):
+            c, d = poly[j], poly[(j + 1) % n]
+            if _segments_cross(a, b, c, d):
+                return False
+            if (
+                min(
+                    _segment_distance(a, c, d),
+                    _segment_distance(b, c, d),
+                    _segment_distance(c, a, b),
+                    _segment_distance(d, a, b),
+                )
+                < margin - 1e-9
+            ):
+                return False
+    return True
+
+
 def _box_gap(a: tuple[float, float, float, float], b: tuple[float, float, float, float]) -> float:
     """주 방향 좌표의 두 축 정렬 사각형(u, v, hu, hv) 사이 거리."""
     du = max(0.0, abs(a[0] - b[0]) - a[2] - b[2])
@@ -322,6 +346,9 @@ def propose(
             best: tuple[float, float, float, float, float] | None = None
             for _, turn, _, _, u, v, hu, hv in candidates:
                 if not grid.free(u, v, hu, hv):
+                    continue
+                corners = [(u - hu, v - hv), (u + hu, v - hv), (u + hu, v + hv), (u - hu, v + hv)]
+                if not _inside_with_margin(corners, grid.floor_local, wall):
                     continue
                 box = (u, v, hu, hv)
                 if _box_gap(box, (pick[0], pick[1], 0.0, 0.0)) < clear:

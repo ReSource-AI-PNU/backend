@@ -8,6 +8,7 @@
 from __future__ import annotations
 
 import math
+import re
 import struct
 from typing import Any
 
@@ -19,6 +20,8 @@ MAX_PILES = 60
 MAX_POLYGON = 400
 MAX_THUMBNAIL = 120_000  # data URL 글자 수
 WARNINGS = ("low-coverage", "scale-uncertain", "no-floor", "few-piles", "dark")
+PILE_ID = re.compile(r"[A-Za-z0-9_-]{1,20}")  # 근거 ID와 주소에 들어간다
+THUMBNAIL = re.compile(r"data:image/jpeg;base64,[A-Za-z0-9+/]+={0,2}")
 
 
 class ResultError(ValueError):
@@ -50,11 +53,7 @@ def _polygon(
 def _thumbnail(value: Any) -> str | None:
     if value is None:
         return None
-    if (
-        not isinstance(value, str)
-        or not value.startswith("data:image/jpeg;base64,")
-        or len(value) > MAX_THUMBNAIL
-    ):
+    if not isinstance(value, str) or len(value) > MAX_THUMBNAIL or not THUMBNAIL.fullmatch(value):
         raise ResultError("thumbnail은 JPEG data URL이어야 합니다.")
     return value
 
@@ -76,9 +75,11 @@ def read_result(payload: Any) -> dict[str, Any]:
         raise ResultError("piles 형식이 잘못됐습니다.")
     piles, seen = [], set()
     for raw in piles_raw:
-        if not isinstance(raw, dict) or not isinstance(raw.get("id"), str) or not raw["id"]:
+        if not isinstance(raw, dict) or not isinstance(raw.get("id"), str):
             raise ResultError("더미에 id가 없습니다.")
-        pid = raw["id"][:20]
+        pid = raw["id"]
+        if not PILE_ID.fullmatch(pid):
+            raise ResultError("더미 id는 영문·숫자·_-로 20자 이하여야 합니다.")
         if pid in seen:
             raise ResultError("더미 id가 겹칩니다.")
         seen.add(pid)
@@ -128,7 +129,10 @@ def read_result(payload: Any) -> dict[str, Any]:
             "min": _point(bounds.get("min"), "bounds", 3),
             "max": _point(bounds.get("max"), "bounds", 3),
         }
-    warnings = [w for w in (payload.get("warnings") or []) if w in WARNINGS]
+    raw_warnings = payload.get("warnings") or []
+    if not isinstance(raw_warnings, list):
+        raise ResultError("warnings는 목록이어야 합니다.")
+    warnings = [w for w in raw_warnings if isinstance(w, str) and w in WARNINGS]
     models = payload.get("models") if isinstance(payload.get("models"), dict) else {}
     timings = payload.get("timingsSec") if isinstance(payload.get("timingsSec"), dict) else {}
     return {

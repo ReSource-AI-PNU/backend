@@ -13,6 +13,8 @@ from __future__ import annotations
 
 import base64
 import logging
+import math
+import threading
 from datetime import datetime
 from typing import Any
 
@@ -58,7 +60,12 @@ FAILURES = {
     "TOO_FEW_FRAMES": "장면이 너무 적습니다. 20초 이상 천천히 걸으며 다시 찍어 주세요.",
     "BAD_IMAGE": "사진을 읽지 못했습니다. 다른 영상으로 다시 올려 주세요.",
     "STALE": "분석을 끝내지 못했습니다. 다시 올려 주세요.",
+    # 영상이 아니라 분석 쪽 문제다. 다시 찍게 하지 않는다
+    "SERVER": "분석 중에 문제가 생겨 끝내지 못했습니다. 같은 영상을 잠시 뒤 다시 올려 주세요.",
 }
+CAPTURE_CODES = ("NO_FLOOR", "NO_PILES", "TOO_FEW_FRAMES", "BAD_IMAGE", "RECON_FAILED")
+MIN_DENSITY, MAX_DENSITY = 10.0, 1500.0  # 계량으로 맞춘 밀도의 상식 범위(kg/m³)
+_create_lock = threading.Lock()  # 한 회사 한 건 확인과 맡기기를 한 번에 한다(같은 프로세스)
 DEFAULT_FAILURE = (
     "이 영상으로는 3D 재구성을 하지 못했습니다. 더미 둘레를 천천히 한 바퀴 돌며 다시 찍어 주세요."
 )
@@ -99,6 +106,12 @@ def _fmt(value: float, digits: int = 2) -> str:
     return f"{value:,.{digits}f}".rstrip("0").rstrip(".") if digits else f"{value:,.0f}"
 
 
+def _shot(scan: dict[str, Any]) -> str:
+    """근거 출처에 쓰는 스캔 이름(내부 ID 대신 찍은 날)."""
+    day = str(scan.get("createdAt") or "")[:10]
+    return f"{day} 촬영" if day else "촬영"
+
+
 def _put(app: App, evidence: Evidence) -> str:
     return app.registry.put(evidence).id
 
@@ -114,6 +127,13 @@ def create_scan(
 ) -> dict[str, Any]:
     """장면 사진들을 재구성 서버에 맡기고 진행 중인 스캔을 만든다."""
     _owner(app, org_id, viewer, "emitter")
+    if duration_sec is not None and (
+        isinstance(duration_sec, bool)
+        or not isinstance(duration_sec, (int, float))
+        or not math.isfinite(duration_sec)
+        or not 0 < duration_sec <= 3600
+    ):
+        duration_sec = None  # 화면이 보낸 참고값이다. 잘못된 값은 버린다
     if not frames or any(not _image(data) for _, data in frames):
         raise ServiceError("UNSUPPORTED_MEDIA", "사진(JPEG·PNG)만 올릴 수 있습니다.", 415)
     if len(frames) < MIN_FRAMES:
@@ -125,6 +145,18 @@ def create_scan(
     client = getattr(app, "recon", None)
     if client is None or not client.configured:
         raise UNAVAILABLE
+    with _create_lock:
+        return _submit(app, org_id, frames, source, duration_sec, client)
+
+
+def _submit(
+    app: App,
+    org_id: str,
+    frames: list[tuple[str, bytes]],
+    source: str,
+    duration_sec: float | None,
+    client: Any,
+) -> dict[str, Any]:
     # GPU 하나를 여러 회사가 함께 쓴다: 한 회사는 한 번에 하나만 맡긴다(끝났거나 멈춘 것은 세지 않는다)
     for other in app.store.list_scans(org_id):
         if (
@@ -177,7 +209,12 @@ def _fail(app: App, scan: dict[str, Any], code: str) -> dict[str, Any]:
     scan.update(
         status="failed",
         progress=None,
-        failure={"code": code, "message": FAILURES.get(code, DEFAULT_FAILURE)},
+        failure={
+            "code": code,
+            # 찍는 법으로 고칠 수 있는 실패만 다시 찍으라고 한다. 모르는 코드는 분석 쪽 문제로 본다
+            "message": FAILURES.get(code)
+            or (DEFAULT_FAILURE if code in CAPTURE_CODES else FAILURES["SERVER"]),
+        },
     )
     return app.store.put_scan(scan)
 
@@ -215,10 +252,13 @@ def refresh(app: App, scan: dict[str, Any]) -> dict[str, Any]:
         result = read_result(job.get("result"))
         points = client.points(str(scan.get("jobId")))
         read_points(points, len(result["piles"]))
+        return complete(app, scan, result, points)
     except (ResultError, ReconError) as error:
         logger.warning("재구성 결과를 받지 못했다 %s: %s", scan["id"], error)
-        return _fail(app, scan, "RECON_FAILED")
-    return complete(app, scan, result, points)
+        return _fail(app, scan, "SERVER")
+    except Exception:  # 결과가 이상해도 그 회사의 스캔 화면이 계속 500이 되지 않게 실패로 닫는다
+        logger.exception("재구성 결과를 저장하지 못했다 %s", scan["id"])
+        return _fail(app, scan, "SERVER")
 
 
 def complete(
@@ -246,9 +286,31 @@ def _volume_id(scan: dict[str, Any], pile_id: str) -> str:
     return ids.model_id(MODEL_NAME, MODEL_VERSION, f"{scan['id']}-{pile_id}-부피")
 
 
+def _floor_id(scan: dict[str, Any]) -> str:
+    return ids.model_id(MODEL_NAME, MODEL_VERSION, f"{scan['id']}-바닥넓이")
+
+
 def _register_volumes(app: App, scan: dict[str, Any]) -> None:
     result = scan["result"]
     day = str(scan.get("completedAt") or scan["createdAt"])[:10]
+    _put(
+        app,
+        Evidence(
+            id=_floor_id(scan),
+            kind="model",
+            label="보관장 바닥 넓이(3D 스캔)",
+            value=result["floor"]["areaM2"],
+            unit="m²",
+            excerpt=(
+                f"보관장 영상의 장면 {result['frames']['used']}장으로 3D 재구성해 찾은 바닥 평면의 보인 넓이 "
+                f"{_fmt(result['floor']['areaM2'], 1)} m² (찍히지 않은 바닥은 들지 않는다)"
+            ),
+            source=f"보관장 3D 스캔({_shot(scan)})",
+            as_of=day,
+            access=(scan["orgId"],),
+            meta={"scanId": scan["id"], "planeRmsM": result["floor"]["planeRmsM"]},
+        ),
+    )
     for index, pile in enumerate(result["piles"], start=1):
         lo, hi = pile["volumeRangeM3"]
         _put(
@@ -264,7 +326,7 @@ def _register_volumes(app: App, scan: dict[str, Any]) -> None:
                     f"{_fmt(pile['volumeM3'])} m³ (범위 {_fmt(lo)}~{_fmt(hi)} m³, 바닥 자국의 "
                     f"{round(pile['coverage'] * 100)}%가 보임, 실제 크기 추정 퍼짐 ±{_fmt(result['scale']['spreadPct'], 1)}%)"
                 ),
-                source=f"보관장 3D 스캔 {scan['id']} · {day}",
+                source=f"보관장 3D 스캔({_shot(scan)})",
                 as_of=day,
                 access=(scan["orgId"],),
                 meta={
@@ -275,7 +337,6 @@ def _register_volumes(app: App, scan: dict[str, Any]) -> None:
                     "heightM": pile["heightM"],
                     "sizeM": pile["sizeM"],
                     "scale": result["scale"],
-                    "models": result["models"],
                 },
             ),
         )
@@ -339,10 +400,10 @@ def _density(
                         f"계량한 무게 {_fmt(kg_sum, 0)} kg ÷ 같은 더미의 3D 스캔 부피 {_fmt(vol_sum)} m³ "
                         f"= {_fmt(density, 1)} kg/m³"
                     ),
-                    source=f"보관장 3D 스캔 {scan['id']} 계량 보정",
+                    source=f"보관장 3D 스캔({_shot(scan)}) · 계량 보정",
                     as_of=day,
                     access=(org,),
-                    meta={"inputs": sources},
+                    meta={"inputEvidence": sources},
                 ),
             )
             return {
@@ -470,10 +531,10 @@ def derive(app: App, scan: dict[str, Any]) -> dict[str, Any]:
                                     f"더미 {index} 부피 {'하한' if key == 'low' else '상한'} {_fmt(vol)} m³ × "
                                     f"{density['label']} {_fmt(dens, 1)} kg/m³ = {_fmt(value, 0)} kg"
                                 ),
-                                source=f"보관장 3D 스캔 {scan['id']} 무게 계산",
+                                source=f"보관장 3D 스캔({_shot(scan)}) · 무게 계산",
                                 as_of=day,
                                 access=(org,),
-                                meta={"inputs": [_volume_id(scan, pid), *density["evidence"]]},
+                                meta={"inputEvidence": [_volume_id(scan, pid), *density["evidence"]]},
                             ),
                         )
                     )  # fmt: skip
@@ -502,10 +563,10 @@ def derive(app: App, scan: dict[str, Any]) -> dict[str, Any]:
             value=total_volume,
             unit="m³",
             excerpt=" + ".join(f"{_fmt(p['volumeM3'])}" for p in result["piles"]) + f" = {_fmt(total_volume)} m³",
-            source=f"보관장 3D 스캔 {scan['id']} 합계",
+            source=f"보관장 3D 스캔({_shot(scan)}) · 합계",
             as_of=day,
             access=(org,),
-            meta={"inputs": [_volume_id(scan, p["id"]) for p in result["piles"]]},
+            meta={"inputEvidence": [_volume_id(scan, p["id"]) for p in result["piles"]]},
         ),
     )  # fmt: skip
     summary: dict[str, Any] = {
@@ -514,6 +575,11 @@ def derive(app: App, scan: dict[str, Any]) -> dict[str, Any]:
         "weight": None,
         "weightPending": len(result["piles"]) - len(weights),
         "floorAreaM2": result["floor"]["areaM2"] if result["floor"] else None,
+        "floorArea": _claim(
+            f"{scan['id']}_floorArea", result["floor"]["areaM2"], "m²", [_floor_id(scan)]
+        )
+        if result["floor"]
+        else None,
     }
     if weights:
         lows, highs = sum(w[1] for w in weights), sum(w[2] for w in weights)
@@ -531,10 +597,10 @@ def derive(app: App, scan: dict[str, Any]) -> dict[str, Any]:
                         unit="kg",
                         excerpt=f"무게를 잰 더미 {len(weights)}개의 {'하한' if key == 'low' else '상한'} 합 = {_fmt(value, 0)} kg"
                         + (f" (무게 기준이 없는 더미 {summary['weightPending']}개는 빠짐)" if summary["weightPending"] else ""),
-                        source=f"보관장 3D 스캔 {scan['id']} 합계",
+                        source=f"보관장 3D 스캔({_shot(scan)}) · 합계",
                         as_of=day,
                         access=(org,),
-                        meta={"inputs": inputs},
+                        meta={"inputEvidence": inputs},
                     ),
                 )
             )  # fmt: skip
@@ -600,13 +666,82 @@ def _layout(
         (pickup["x"], pickup["y"]),
         rules,
     )
+    inputs = [_volume_id(scan, p["id"]) for p in result["piles"]] + rule_ids
+    current = _metric_evidence(
+        app, scan, "current", planned["current"], pickup, zone_of, inputs, day
+    )
+    proposal = planned["proposal"]
+    if proposal is not None:
+        proposal = {
+            **proposal,
+            "metrics": _metric_evidence(
+                app, scan, "proposal", proposal["metrics"], pickup, zone_of, inputs, day
+            ),
+        }
     return {
         "pickup": pickup,
         "rules": {**rules, "evidence": rule_ids},
-        "current": planned["current"],
-        "proposal": planned["proposal"],
+        "current": current,
+        "proposal": proposal,
         "unavailable": planned["unavailable"],
     }
+
+
+METRIC_TEXT = {
+    "mixedPairs": ("다른 폐기물과 1 m 안에 붙은 더미 쌍", "쌍"),
+    "minMixedGapM": ("다른 폐기물 사이 가장 가까운 간격", "m"),
+    "weightedDistanceM": ("상차 지점까지 평균 거리(부피 가중)", "m"),
+}
+
+
+def _metric_evidence(
+    app: App,
+    scan: dict[str, Any],
+    which: str,
+    metrics: dict[str, Any],
+    pickup: dict[str, Any],
+    zone_of: dict[str, Any],
+    inputs: list[str],
+    day: str,
+) -> dict[str, Any]:
+    """정리안 지표마다 calc 근거를 등록하고 {"evidence": {지표: 근거 ID}}를 붙인다."""
+    side = "지금 배치" if which == "current" else "정리안"
+    found: dict[str, str | None] = {}
+    for key, (text, unit) in METRIC_TEXT.items():
+        value = metrics.get(key)
+        if value is None:
+            found[key] = None
+            continue
+        basis = {
+            "scan": scan["id"],
+            "which": which,
+            "pickup": pickup,
+            "zones": zone_of,
+            "m": metrics,
+        }
+        found[key] = _put(
+            app,
+            Evidence(
+                id=ids.calc_id("scan_layout", basis, key),
+                kind="calc",
+                label=f"{side} · {text}",
+                value=value,
+                unit=unit,
+                excerpt=(
+                    f"{side}의 더미 자국(3D 스캔)과 상차 지점으로 계산한 {text}: {_fmt(float(value))} {unit}"
+                    + (
+                        " (다른 폐기물이면서 간격이 1 m보다 좁은 쌍의 수)"
+                        if key == "mixedPairs"
+                        else ""
+                    )
+                ),
+                source=f"보관장 3D 스캔({_shot(scan)}) · 정리안 계산",
+                as_of=day,
+                access=(scan["orgId"],),
+                meta={"inputEvidence": inputs},
+            ),
+        )
+    return {**metrics, "evidence": found}
 
 
 # ── 화면 ─────────────────────────────────────────────────────────────
@@ -735,7 +870,7 @@ def update_pile(
 ) -> dict[str, Any]:
     """더미의 폐기물(streamId)과 계량한 무게(weighedKg)를 고친다. null이면 지운다."""
     if not isinstance(patch, dict) or not ({"streamId", "weighedKg"} & set(patch)):
-        raise ServiceError("INVALID_BODY", "streamId나 weighedKg를 보내 주세요.", 422)
+        raise ServiceError("INVALID_BODY", "고칠 내용(폐기물이나 계량한 무게)을 보내 주세요.", 422)
     scan = _done(app, org_id, scan_id, viewer)
     piles = {p["id"]: p for p in scan["result"]["piles"]}
     if pile_id not in piles:
@@ -766,6 +901,14 @@ def update_pile(
         elif pile_id not in assign:
             raise ServiceError("STREAM_REQUIRED", "먼저 이 더미의 폐기물을 골라 주세요.", 422)
         else:
+            density = float(kg) / max(piles[pile_id]["volumeM3"], 1e-6)
+            if not MIN_DENSITY <= density <= MAX_DENSITY:
+                raise ServiceError(
+                    "INVALID_VALUE",
+                    f"계량한 무게를 이 더미의 부피로 나누면 {_fmt(density, 0)} kg/m³라 맞지 않습니다. "
+                    "무게나 더미를 다시 확인해 주세요.",
+                    422,
+                )
             weighed[pile_id] = float(kg)
             _put(
                 app,
@@ -776,7 +919,7 @@ def update_pile(
                     value=float(kg),
                     unit="kg",
                     excerpt=f"담당자가 적은 더미 {index}의 계량 무게 {_fmt(float(kg), 1)} kg",
-                    source=f"보관장 3D 스캔 {scan['id']} · 담당자 입력",
+                    source=f"보관장 3D 스캔({_shot(scan)}) · 담당자 입력",
                     as_of=str(app.today),
                     access=(org_id,),
                 ),
@@ -791,14 +934,14 @@ def update_layout(
 ) -> dict[str, Any]:
     """상차 지점을 바꾼다. {"pickup": {"x", "y"}} 또는 {"pickup": null}(영상을 찍기 시작한 곳)."""
     if not isinstance(patch, dict) or "pickup" not in patch:
-        raise ServiceError("INVALID_BODY", "pickup을 보내 주세요.", 422)
+        raise ServiceError("INVALID_BODY", "상차 지점을 보내 주세요.", 422)
     scan = _done(app, org_id, scan_id, viewer)
     pickup = patch["pickup"]
     if pickup is None:
         scan["pickup"] = None
     else:
         if not isinstance(pickup, dict):
-            raise ServiceError("INVALID_VALUE", "pickup은 {x, y}여야 합니다.", 422)
+            raise ServiceError("INVALID_VALUE", "상차 지점 좌표가 잘못됐습니다.", 422)
         point = []
         for key in ("x", "y"):
             value = pickup.get(key)

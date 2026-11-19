@@ -82,7 +82,7 @@ def _weigh(app: Any, scan: dict[str, Any], pile_id: str, kg: float) -> dict[str,
             value=kg,
             unit="kg",
             excerpt=f"담당자가 적은 더미 {index}의 계량 무게 {kg:g} kg (시연 값)",
-            source=f"보관장 3D 스캔 {scan['id']} · 담당자 입력",
+            source=f"보관장 3D 스캔({views._shot(scan)}) · 담당자 입력",
             as_of=str(app.today),
             access=(scan["orgId"],),
         )

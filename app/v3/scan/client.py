@@ -11,6 +11,7 @@ from __future__ import annotations
 import hashlib
 import ipaddress
 import json
+import re
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -37,12 +38,23 @@ class ReconError(RuntimeError):
         self.code, self.status = code, status
 
 
+class _NoRedirect(urllib.request.HTTPRedirectHandler):
+    """재구성 서버의 넘겨주기(3xx)를 따라가지 않는다(설정한 주소 밖으로 사진을 보내지 않는다)."""
+
+    def redirect_request(self, *args: Any, **kwargs: Any) -> None:
+        return None
+
+
+_OPENER = urllib.request.build_opener(_NoRedirect)
+JOB_ID = re.compile(r"[A-Za-z0-9_-]{1,100}")
+
+
 def _default_transport(
     method: str, url: str, headers: dict[str, str], body: bytes | None, timeout: float
 ) -> tuple[int, dict[str, str], bytes]:
     request = urllib.request.Request(url, data=body, headers=headers, method=method)
     try:
-        with urllib.request.urlopen(request, timeout=timeout) as response:
+        with _OPENER.open(request, timeout=timeout) as response:
             return response.status, dict(response.headers.items()), response.read()
     except urllib.error.HTTPError as error:
         return error.code, dict(error.headers.items()), error.read()
@@ -63,7 +75,13 @@ def allowed_url(url: str, env: Mapping[str, str] | None = None) -> bool:
         address = ipaddress.ip_address(host)
     except ValueError:
         return False
-    return address.is_private  # 10.x, 172.16-31.x, 192.168.x, 루프백(로컬 점검)
+    # 10.x, 172.16-31.x, 192.168.x, 루프백(로컬 점검)만. 링크 로컬(169.254, 메타데이터)과 0.0.0.0은 뺀다
+    return (
+        isinstance(address, ipaddress.IPv4Address)
+        and address.is_private
+        and not address.is_link_local
+        and not address.is_unspecified
+    )
 
 
 def multipart(files: Sequence[tuple[str, bytes]], field: str = "frames") -> tuple[str, bytes]:
@@ -145,16 +163,20 @@ class ReconClient:
         )
         payload = self._json(status, data)
         job = payload.get("jobId")
-        if not isinstance(job, str) or not job or len(job) > 100:
+        if not isinstance(job, str) or not JOB_ID.fullmatch(job):
             raise ReconError("BAD_RESPONSE", "재구성 서버가 작업 번호를 주지 않았습니다.", status)
         return job
 
     def job(self, job_id: str) -> dict[str, Any]:
-        status, data = self._call("GET", f"/jobs/{urllib.parse.quote(job_id, safe='')}")
+        if not JOB_ID.fullmatch(str(job_id)):
+            raise ReconError("BAD_RESPONSE", "작업 번호가 잘못됐습니다.")
+        status, data = self._call("GET", f"/jobs/{job_id}")
         return self._json(status, data)
 
     def points(self, job_id: str) -> bytes:
-        status, data = self._call("GET", f"/jobs/{urllib.parse.quote(job_id, safe='')}/points")
+        if not JOB_ID.fullmatch(str(job_id)):
+            raise ReconError("BAD_RESPONSE", "작업 번호가 잘못됐습니다.")
+        status, data = self._call("GET", f"/jobs/{job_id}/points")
         if status != 200:
             raise ReconError("BAD_RESPONSE", "점군을 받지 못했습니다.", status)
         return data

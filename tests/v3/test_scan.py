@@ -234,7 +234,7 @@ def test_weight_from_stream_density_film_reference_and_weighing():
     assert piles["p1"]["weight"]["high"]["value"] == round(hi * 250)
     evidence_ok(app, piles["p1"]["weight"]["low"])
     calc = app.registry.get(piles["p1"]["weight"]["low"]["evidence"][0], HANBIT)
-    assert calc.kind == "calc" and views._volume_id({"id": sid}, "p1") in calc.meta["inputs"]
+    assert calc.kind == "calc" and views._volume_id({"id": sid}, "p1") in calc.meta["inputEvidence"]
     film = piles["p5"]["density"]
     assert film["basis"] == "ref" and film["lowKgM3"] == pytest.approx(20.8, abs=0.05)
     assert film["highKgM3"] == pytest.approx(89.0, abs=0.05)
@@ -539,3 +539,84 @@ def test_demo_seed_skips_without_assets(tmp_path, monkeypatch):
     monkeypatch.setattr(scan_demo, "ASSETS", tmp_path)
     app = make_app()
     assert app.store.list_scans(HANBIT) == []
+
+
+# ── 금붕어 검증에서 나온 것 ──────────────────────────────────────────
+def test_odd_result_closes_the_scan_instead_of_500():
+    payload = sample_result()
+    payload["warnings"] = 5
+    app, _ = scan_app(FakeRecon(result_payload=payload))
+    view = views.create_scan(app, HANBIT, FRAMES, "video", None, HANBIT)
+    for _ in range(3):
+        view = views.get_scan(app, HANBIT, view["id"], HANBIT)
+    assert view["status"] == "failed" and "잠시 뒤 다시 올려" in view["failure"]["message"]
+    assert views.list_scans(app, HANBIT, HANBIT)["scans"][0]["status"] == "failed"
+    bad = sample_result()
+    bad["piles"][0]["id"] = "p 1"
+    with pytest.raises(result.ResultError):
+        result.read_result(bad)
+    bad = sample_result()
+    bad["piles"][0]["thumbnail"] = 'data:image/jpeg;base64,"><script>x</script>'
+    with pytest.raises(result.ResultError):
+        result.read_result(bad)
+
+
+def test_calc_evidence_links_its_inputs_and_metrics_have_evidence():
+    from app.v3.evidence import search
+
+    app, _ = scan_app()
+    sid = finished(app)["id"]
+    views.update_pile(app, HANBIT, sid, "p1", {"streamId": "st_sprue"}, HANBIT)
+    view = views.update_pile(app, HANBIT, sid, "p5", {"streamId": "st_film"}, HANBIT)
+    weight = view["piles"][0]["weight"]["low"]["evidence"][0]
+    chain = search.evidence_chain(app.registry, weight, HANBIT)
+    assert {c["id"] for c in chain} >= {views._volume_id({"id": sid}, "p1")}
+    total = view["summary"]["volume"]["evidence"][0]
+    assert len(search.evidence_chain(app.registry, total, HANBIT)) == 5
+    evidence_ok(app, view["summary"]["floorArea"])
+    for side in (view["layout"]["current"], view["layout"]["proposal"]["metrics"]):
+        for key in ("mixedPairs", "weightedDistanceM"):
+            ev = app.registry.get(side["evidence"][key], HANBIT)
+            assert ev.kind == "calc" and ev.value == side[key]
+    for ev in app.registry.list(org_id=HANBIT):
+        if ev.id.startswith(("model:resource-ai-scan3d", "calc:scan_")):
+            assert sid not in ev.source and "models" not in ev.meta
+
+
+def test_wall_margin_holds_on_slanted_walls():
+    floor = [(0, 0), (10, 0), (10, 2), (6, 6), (0, 6)]
+    spec = [
+        ("p1", (2, 2), (1.2, 1.0), 0),
+        ("p2", (3.5, 2), (1.2, 1.0), 0),
+        ("p3", (2, 4), (1.0, 1.0), 0),
+        ("p4", (4, 4), (1.4, 1.0), 0),
+    ]
+    piles = _piles(spec)
+    zones = {"p1": "a", "p2": "b", "p3": "a", "p4": "b"}
+    out = layout.propose(floor, piles, zones, {"a": "A", "b": "B"}, (8, 3))
+    assert out["proposal"] is not None
+    edges = [[floor[i], floor[(i + 1) % len(floor)]] for i in range(len(floor))]
+    for p in out["proposal"]["piles"]:
+        rect = [tuple(v) for v in p["footprint"]]
+        for edge in edges:
+            assert layout.polygon_distance(rect, edge + [edge[1]]) >= 0.3 - 1e-3, p
+
+
+def test_inputs_that_used_to_slip_through():
+    app, fake = scan_app()
+    view = views.create_scan(app, HANBIT, FRAMES, "video", float("inf"), HANBIT)
+    assert app.store.get_scan(view["id"])["durationSec"] is None
+    json.dumps(app.store.get_scan(view["id"]), allow_nan=False)
+    for _ in range(3):
+        views.get_scan(app, HANBIT, view["id"], HANBIT)
+    sid = view["id"]
+    views.update_pile(app, HANBIT, sid, "p1", {"streamId": "st_sprue"}, HANBIT)
+    assert _code(views.update_pile, app, HANBIT, sid, "p1", {"weighedKg": 90000}, HANBIT) == (
+        "INVALID_VALUE",
+        422,
+    )
+    for url in ("http://169.254.169.254", "http://0.0.0.0:8090", "http://[2002::1]:8090"):
+        with pytest.raises(ValueError):
+            recon.client_from_env({recon.ENV_URL: url})
+    with pytest.raises(recon.ReconError):
+        recon.ReconClient("http://10.72.0.4:8090", fake).job("../health")
