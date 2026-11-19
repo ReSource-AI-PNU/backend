@@ -332,3 +332,42 @@ def test_permit_mismatch_found_after_opening_closes_with_decline_and_evidence():
         view["session"]["status"] == "awaiting_approval"
         and recheck(app, view)[0] == recheck(app, view)[1]
     )
+
+
+def test_unstated_pickups_ref_is_dropped_but_a_missing_price_ref_is_named():
+    """11-19 실제 모델 평가: 업체 AI가 풀의 수거 횟수를 terms에만 가리키고 본문에 쓰지 않아 두 번 거부되고
+    인계되던 길(GUARDRAIL_TERMS_REF). 본문에 밝히지 않은 횟수는 조건이 아니므로 참조만 뺀다."""
+    load = draft(
+        "answer",
+        "",
+        streams=[],
+        toolCalls=[{"name": "check_loading", "arguments": {"streamIds": ["st_sprue"]}}],
+    )
+    seen = {}
+
+    def unstated(messages, tools, schema):
+        pool = briefing_of(messages)["pool"]
+        ids = [c["id"] if isinstance(c, dict) else str(c) for c in pool]
+        seen["pickups"] = next(i for i in ids if i.endswith("pickupsPerMonth"))
+        return {**GOOD, "terms": {**GOOD["terms"], "pickupsPerMonthRef": seen["pickups"]}}
+
+    _app, llm, view = run_with_vendor(load, unstated)
+    offer = thread_of(view, SAEGIL)["messages"][1]
+    assert seen["pickups"].startswith("load_")
+    assert offer["validation"]["ok"] and offer["validation"]["attempts"] == 1, codes(offer)
+
+    # 풀에 없는 ID는 그대로 거부한다
+    made_up = {**GOOD, "terms": {**GOOD["terms"], "pickupsPerMonthRef": "load_x_pickupsPerMonth"}}
+    _app, llm, view = run_with_vendor(made_up, GOOD)
+    assert "GUARDRAIL_TERMS_REF" in codes(thread_of(view, SAEGIL)["messages"][1])
+
+    # 본문에 쓰지 않은 단가 ID는 거부하고, 다시 쓰는 모델에게 그 ID와 고칠 길을 알린다
+    missing = {
+        **GOOD,
+        "terms": {**GOOD["terms"], "items": [{"streamId": "st_sprue", "unitPriceRef": "pc_x"}]},
+    }
+    _app, llm, view = run_with_vendor(missing, GOOD)
+    offer = thread_of(view, SAEGIL)["messages"][1]
+    assert "GUARDRAIL_TERMS_REF" in codes(offer) and offer["validation"]["attempts"] == 2
+    told = next(iter(briefing_of(llm.calls[1]["messages"])["rejections"]))
+    assert "pc_x" in told["message"] and "본문" in told["message"]

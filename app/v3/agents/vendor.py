@@ -417,8 +417,8 @@ def guide(
     tail = []
     if load_claims.get("pickupsPerMonth"):
         tail.append(
-            f"수거 횟수는 {{{{{load_claims['pickupsPerMonth']}}}}}"
-            "(terms.pickupsPerMonthRef에 그 id를 적는다)"
+            f"수거 횟수를 밝히려면 본문에 '수거 횟수는 {{{{{load_claims['pickupsPerMonth']}}}}}입니다'를 "
+            "쓰고 terms.pickupsPerMonthRef에도 그 id를 적는다(본문에 쓰지 않으면 적지 않는다)"
         )
     tail.append(f"수거 요일은 {'·'.join(days) or '가드레일의 요일'} 가운데에서 terms.days에 적는다")
     if load_checks.get("min_volume") not in (None, "met"):
@@ -603,12 +603,22 @@ class VendorAgent:
             sid = str((item or {}).get("streamId"))
             ref = str((item or {}).get("unitPriceRef"))
             claim = claims.get(ref)
-            if sid not in message.stream_ids or claim is None:
+            if sid not in message.stream_ids:
                 found.append(
                     rejection(
                         "GUARDRAIL_TERMS_REF",
-                        "terms.items의 streamId는 메시지의 폐기물이어야 하고, unitPriceRef는 "
-                        "본문에 쓴 claim ID여야 합니다.",
+                        f"terms.items의 streamId({sid})는 이 메시지의 폐기물"
+                        f"({', '.join(message.stream_ids)}) 가운데 하나여야 합니다.",
+                    )
+                )
+                continue
+            if claim is None:
+                found.append(
+                    rejection(
+                        "GUARDRAIL_TERMS_REF",
+                        f"terms.items의 unitPriceRef({ref})를 본문에 쓰지 않았습니다. 본문의 그 "
+                        f"폐기물 줄에 {{{{{ref}}}}}로 단가를 적거나, 본문에 쓴 단가 claim ID로 "
+                        "바꾸세요.",
                     )
                 )
                 continue
@@ -635,21 +645,28 @@ class VendorAgent:
         ref = raw.get("pickupsPerMonthRef")
         if ref:
             claim = claims.get(str(ref))
-            if claim is None or not isinstance(claim.value, (int, float)):
+            if claim is not None and _is_number(claim.value):
+                pickups = float(claim.value)
+            elif claim is None and str(ref) in pool:
+                # 풀에 있는 수거 횟수를 가리켰지만 본문에 쓰지 않았다: 상대에게 밝히지 않은 횟수는
+                # 조건이 아니므로 참조만 뺀다(본문에 쓴 횟수 claim은 아래 가드레일 검사가 따로 본다)
+                pickups = None
+            else:
                 found.append(
                     rejection(
                         "GUARDRAIL_TERMS_REF",
-                        "pickupsPerMonthRef는 본문에 쓴 수거 횟수 claim ID여야 합니다.",
+                        f"pickupsPerMonthRef({ref})는 본문에 쓴 수거 횟수 claim ID여야 합니다. "
+                        "본문에 그 {{id}}로 수거 횟수를 적거나 pickupsPerMonthRef를 빼세요.",
                     )
                 )
-            else:
-                pickups = float(claim.value)
         days = [str(d) for d in (raw.get("days") if isinstance(raw.get("days"), list) else [])]
         if any(d not in rails.WEEKDAYS for d in days):
+            wrong = [d for d in days if d not in rails.WEEKDAYS]
             found.append(
                 rejection(
                     "GUARDRAIL_TERMS_REF",
-                    f"terms.days에는 요일({', '.join(rails.WEEKDAYS)})만 적을 수 있습니다.",
+                    f"terms.days에는 요일 한 글자({', '.join(rails.WEEKDAYS)})만 적을 수 있습니다"
+                    f"(받지 못한 값: {', '.join(wrong)}).",
                 )
             )
             days = [d for d in days if d in rails.WEEKDAYS]
