@@ -518,7 +518,7 @@ VendorProfile {"orgId": "org_saegil",
 | `GET /orgs` | 조직 목록. 조직 레코드의 `order`가 작은 것부터(시연 주인공 `org_hanbit`이 맨 앞, 운영 조직이 맨 뒤). `order`가 없는 조직은 그 뒤에 ID 순. token 모드에서는 자기 조직과 대화 상대만 |
 | `GET /orgs/{orgId}/streams`, `PUT /orgs/{orgId}/streams/{streamId}` | 흐름 조회와 수정(현행 처리, 전처리 작업 시간·시간당 인건비, 공정 재투입 값 포함. 6장). 현행 처리는 `{method, unitCostKrwPerKg}` 대신 `{method, billing: {kind: "per_trip", krwPerTrip, tripsPerMonth} | {kind: "monthly", krwPerMonth}}`로도 받는다(차량·횟수 단위나 월 정액 계약). 지금 팔고 있으면 `{method?, sale: true, salePriceKrwPerKg}`(0 이상, 원/kg. 방법을 비우면 "재활용 업체 판매")로 받는다. 월 발생량으로 kg당 처리비를 계산해 calc 근거로 남기고, 월 발생량이 없으면 422 `INVALID_VALUE`. 질문 답(`currentCost`)도 "회당 30만원, 월 2회", "월 60만원", "1년에 720만원"을 같은 방식으로 읽는다(`app/v3/current_cost.py`) |
 | `GET /orgs/{orgId}/report?from=&to=` | 재활용·탄소 실적 리포트 `{orgId, period, generatedOn, records, totals, planned}`. 배출 기업 본인과 운영자만(업체 403 `WRONG_ROLE`). `records`는 기간(YYYY-MM-DD, 검수일 기준) 안 실제 결과 기록마다 실제 중량·단가(업체 기록 근거)와 금액·탄소 변화(calc), `totals`는 그 합(반출 무게, 매각 수익, 처리비, 탄소), `planned`는 양쪽이 확정한 합의의 한 달 예상(결과 한 장의 배정). 숫자는 모두 claim이다(`app/v3/report.py`) |
-| `GET /vendors/{orgId}`, `PUT /vendors/{orgId}` | 업체 프로필(허가, 매입 기준, 노선·차량, 가드레일, 모델 선택). 노선·차량(`fleet`)의 모양과 검사는 9장 "노선·차량" |
+| `GET /vendors/{orgId}`, `PUT /vendors/{orgId}` | 업체 프로필(허가, 매입 기준, 노선·차량, 운반 조건, 가드레일, 모델 선택). 노선·차량(`fleet`)의 모양과 검사는 9장 "노선·차량", 운반 조건(`transport`, 노선 밖 공장 수거 포함)은 9장 "운반 조건" |
 | `POST /sessions` | `{emitterOrgId}`로 진단을 만든다. `emitterOrgId`가 없으면 요청한 조직이다 |
 | `GET /sessions` | 내가 당사자인 진단의 목록(최근 것이 앞). `[{id, emitterOrgId, emitterName, status, createdAt, updatedAt, as}]`. 배출 기업은 자기 진단, 업체는 자기에게 열린 대화가 있는 진단, 운영자는 전부. `as`는 `emitter`·`vendor`·`admin` |
 | `GET /sessions/{id}` | 진단 뷰 |
@@ -861,6 +861,29 @@ HTTP 오류 코드가 아니라 `approvals[].blockedCodes`(배열)와 `blockedRe
 - `capacityKg`, `capacityM3`, `costPerKm`은 저장할 때 업체 입력 근거(human)가 되어 `fleet.evidence`에 들어간다(값이 같으면 있던 근거를 그대로 쓴다).
 - 운행 요일은 노선마다 적지만, 업체 측 AI가 제안에 쓰는 수거 요일의 한계는 전처럼 `guardrails.days`다.
 - 지금 판단 도구는 `depot`, `capacityKg`, `capacityM3`, `costPerKm`만 쓴다. 노선 추가 비용(`route_extra_cost`)의 기존 정류장은 `routes`가 아니라 그 업체가 다른 배출 기업과 합의·확정한 대화의 공장 위치다. `vehicleCount`와 `routes`는 판단 도구 입력(`vendor.public_profile`)에 싣지 않는다(계산 근거 ID가 바뀌지 않는다). 업체 탐색은 허가 품목·매입 기준과 차고지 거리로 고르고 수거 지역으로 거르지 않는다.
+
+### 운반 조건 (`PUT /vendors/{orgId}`의 `transport`, 2026-11-19)
+
+업체가 업체 정보에서 노선 수거의 운반비와 **수거 노선 밖 공장의 별도 수거 조건**을 정한다(업체 자신만). 검사는 `app/v3/transport_input.py`이고 틀리면 422 `INVALID_VALUE`(문장이 어느 항목인지 말한다)이며 프로필을 바꾸지 않는다. `transport: null`이면 바꾸지 않고, `offRoute: null`이면 노선 밖 조건만 지운다. 최상위에 `basis`·`paidBy`·금액이 없으면 노선 수거 조건은 그대로 둔다.
+
+```json
+{"transport": {
+  "paidBy": "vendor",
+  "offRoute": {"status": "visit", "basis": "separate", "feePerPickupKrw": 30000, "pickupsPerMonth": 2}
+}}
+```
+
+| 항목 | 검사 |
+|---|---|
+| `basis` | `included`(단가에 포함, 업체 부담) · `separate`(따로 받음, 공장 부담) · `undecided`(미정). 없으면 `paidBy`로 정한다(`vendor` → 포함, `emitter` → 따로) |
+| `feePerPickupKrw` · `feePerMonthKrw` | `separate`일 때 하나만, 0보다 크고 1,000만 이하. 둘 다 없으면 금액 미정(금액 확인 필요)이다 |
+| `pickupsPerMonth` | 회당 금액일 때만, 0보다 크고 100 이하. 모르면 비운다(월 운반비를 정하지 않는다) |
+| `offRoute.status` | `visit`(노선 밖 공장도 따로 수거하러 감) · `unavailable`(수거 불가. 운반비 항목을 받지 않는다) |
+
+- 화면의 네 가지 답: 수거 불가 = `{status: unavailable}`, 수거 가능·추가비 없음 = `{status: visit, basis: included}`, 수거 가능·추가비 있음 = `{status: visit, basis: separate, 금액, 횟수}`, 비용 미정 = `{status: visit, basis: undecided}`. 이 조건을 판단에 쓰는 규칙은 `app/v3/judge/pickup.py`다.
+- 저장하면 담당자 입력 근거(human)가 생긴다: `evidence` = [금액, 횟수, 조건 문장], `feeEvidence` = [금액(원/회·원/월)], `pickupsEvidence` = [횟수(회/월)]. 출처는 "{업체 이름} 담당자 입력(업체 정보 · 노선 밖 공장 수거 조건)", 기준일은 저장한 날, 원문은 고른 조건 문장이다. 같은 조건을 다시 보내면 근거 ID와 판이 그대로이고, 조건을 바꾸면 같은 ID의 판이 오른다(그 근거를 인용한 대화는 바뀐 것을 안다). 이미 대화 상대에게 열린 근거는 고쳐 써도 계속 열려 있다.
+- 저장 뒤에는 다른 업체 정보 수정과 같이 승인을 기다리는 진단을 다시 확인한다(합의 뒤 수거·운반 조건이 바뀌면 승인이 막히고 앞선 승인이 지워진다).
+- `evidence`, `feeEvidence`, `pickupsEvidence`는 서버가 정한다. 보내도 버린다(GET으로 받은 `transport`를 그대로 돌려보내도 된다). 매입 기준표 저장(`POST /intake/criteria/confirm`)은 노선 수거 조건만 바꾸고 `offRoute`는 그대로 둔다.
 
 ### 체험하기 (`X-Demo-View: 1`)
 

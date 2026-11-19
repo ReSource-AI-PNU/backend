@@ -19,7 +19,16 @@ from dataclasses import replace
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
-from app.v3 import current_cost, feedback, ids, live, outreach, public_vendors, report
+from app.v3 import (
+    current_cost,
+    feedback,
+    ids,
+    live,
+    outreach,
+    public_vendors,
+    report,
+    transport_input,
+)
 from app.v3 import fleet as fleet_input
 from app.v3 import names as naming
 from app.v3.a2a.message import STAGES
@@ -772,6 +781,96 @@ def _update_costs(app: App, org_id: str, stream_id: str, stream: dict, patch: di
         }
 
 
+def _put_terms_evidence(app: App, org_id: str, evidence: Evidence) -> str:
+    """운반 조건 근거를 저장한다. 같은 ID의 근거가 이미 다른 조직(대화 상대)에 열려 있으면 그대로 열어 둔다."""
+    try:
+        old = app.registry.get(evidence.id, None)
+        access = tuple(dict.fromkeys([*evidence.access, *old.access]))
+        evidence = replace(evidence, access=access)
+    except (EvidenceNotFound, EvidenceForbidden):
+        pass
+    return app.registry.put(evidence).id
+
+
+def _terms_evidence(
+    app: App, org_id: str, section: dict[str, Any], *, off_route: bool
+) -> dict[str, list[str]]:
+    """운반 조건 한 묶음의 근거: 담당자가 고른 조건 문장, 금액, 한 달 수거 횟수(업체 담당자 입력).
+
+    {"evidence": [금액, 횟수, 조건 문장], "feeEvidence": [금액], "pickupsEvidence": [횟수]}. 금액 근거가 앞에 온다
+    (운반비 계산이 이 값을 인용한다). 누가(업체 이름과 담당자 입력) 언제(오늘) 확인했는지를 근거에 남긴다.
+    """
+    name = _org(app, org_id).get("name") or org_id
+    scope = "노선밖수거" if off_route else "노선수거"
+    title = "노선 밖 공장 수거 조건" if off_route else "노선 수거 운반비"
+    source = f"{name} 담당자 입력(업체 정보 · {title})"
+    meta = {"ownerOrgId": org_id, "enteredBy": name, "enteredOn": app.today}
+    out: dict[str, list[str]] = {"feeEvidence": [], "pickupsEvidence": []}
+    for key, label, unit, bucket in (
+        ("feePerPickupKrw", f"{title}: 회당 운반비", "원/회", "feeEvidence"),
+        ("feePerMonthKrw", f"{title}: 한 달 운반비", "원/월", "feeEvidence"),
+        ("pickupsPerMonth", f"{title}: 한 달 수거 횟수", "회/월", "pickupsEvidence"),
+    ):
+        value = section.get(key)
+        if value is None:
+            continue
+        out[bucket].append(
+            _put_terms_evidence(
+                app,
+                org_id,
+                Evidence(
+                    id=ids.human_id(org_id, f"{scope}-{key}"),
+                    kind="human",
+                    label=label,
+                    value=float(value),
+                    unit=unit,
+                    excerpt=transport_input.describe(section, off_route=off_route),
+                    source=source,
+                    as_of=app.today,
+                    access=(org_id,),
+                    meta={**meta, "key": f"{scope}-{key}"},
+                ),
+            )
+        )
+    stance = _put_terms_evidence(
+        app,
+        org_id,
+        Evidence(
+            id=ids.human_id(org_id, f"{scope}-조건"),
+            kind="human",
+            label=title,
+            excerpt=transport_input.describe(section, off_route=off_route),
+            source=source,
+            as_of=app.today,
+            access=(org_id,),
+            meta={**meta, "key": f"{scope}-조건"},
+        ),
+    )
+    out["evidence"] = [*out["feeEvidence"], *out["pickupsEvidence"], stance]
+    return out
+
+
+def _transport_terms(
+    app: App, org_id: str, old: Any, change: dict[str, Any]
+) -> dict[str, Any] | None:
+    """지금 운반 조건(old)에 바꿀 내용(transport_input.clean_patch)을 반영한다. 조건이 같으면 근거도 그대로 둔다."""
+    old = dict(old) if isinstance(old, dict) else {}
+    out = dict(old)
+    base = change.get("base")
+    if base is not None and not transport_input.same(old, base):
+        for key in (*transport_input.BASE_KEYS, *transport_input.SERVER_KEYS):
+            out.pop(key, None)
+        out.update(base)
+        out.update(_terms_evidence(app, org_id, base, off_route=False))
+    if "offRoute" in change:
+        off = change["offRoute"]
+        if off is None:
+            out.pop("offRoute", None)
+        elif not transport_input.same(old.get("offRoute"), off):
+            out["offRoute"] = {**off, **_terms_evidence(app, org_id, off, off_route=True)}
+    return out or None
+
+
 def get_vendor(app: App, org_id: str, viewer: str) -> dict[str, Any]:
     me = _org(app, viewer)
     try:
@@ -887,6 +986,17 @@ def update_vendor(app: App, org_id: str, patch: dict[str, Any], viewer: str) -> 
                 evidence.append(found)
         fleet["evidence"] = list(dict.fromkeys(evidence))
         profile["fleet"] = fleet
+    if "transport" in patch:
+        # 운반 조건(노선 수거의 운반비, 노선 밖 공장의 별도 수거)은 app/v3/transport_input.py가 검사한다
+        try:
+            change = transport_input.clean_patch(patch["transport"])
+        except ValueError as error:
+            raise ServiceError("INVALID_VALUE", str(error), 422) from None
+        terms = _transport_terms(app, org_id, profile.get("transport"), change)
+        if terms:
+            profile["transport"] = terms
+        else:
+            profile.pop("transport", None)
     saved = app.store.put_vendor_profile(profile)
     _recheck(app, org_id)
     return {**saved, "name": app.store.get_org(org_id).get("name")}
@@ -2537,6 +2647,10 @@ def confirm_criteria(
         if paid == "separate" and fee is not None:
             transport["feePerPickupKrw"] = fee
         stored = copy.deepcopy(app.store.get_vendor_profile(org_id))
+        # 노선 밖 공장의 수거 조건은 매입 기준표에서 읽지 않는다. 업체가 따로 정한 값을 지우지 않는다
+        off_route = (stored.get("transport") or {}).get("offRoute")
+        if off_route:
+            transport["offRoute"] = off_route
         if stored.get("transport") != transport:
             stored["transport"] = transport
             app.store.put_vendor_profile(stored)
