@@ -149,7 +149,7 @@ def build_app() -> service.App:
     from app.v3 import tracing
     from app.v3.agents import maf
     from app.v3.evidence import rerank, search, search_azure
-    from app.v3.intake import detector, documents, shields
+    from app.v3.intake import criteria_llm, detector, documents, shields
     from app.v3.judge.distance import distance_provider_from_env
 
     if settings.database_url:
@@ -212,12 +212,24 @@ def build_app() -> service.App:
             shields.ENV_KEY: settings.azure_content_safety_api_key,
         }
     )
+    # 매입 기준표 판독기: V3_LLM=foundry이고 Foundry 주소·배포·키가 있으면 모델이 문서를 읽는다
+    criteria_reader = criteria_llm.reader_from_env(
+        {
+            "V3_LLM": settings.v3_llm,
+            "FOUNDRY_ENDPOINT": settings.foundry_endpoint,
+            "FOUNDRY_DEPLOYMENT": settings.foundry_deployment,
+            "FOUNDRY_API_KEY": settings.foundry_api_key,
+            criteria_llm.ENV_SWITCH: os.environ.get(criteria_llm.ENV_SWITCH, ""),
+            "V3_CRITERIA_REASONING": os.environ.get("V3_CRITERIA_REASONING", ""),
+        }
+    )
     logger.info(
-        "근거 검색 %s(재순위 %s), Document Intelligence %s, Prompt Shields %s",
+        "근거 검색 %s(재순위 %s), Document Intelligence %s, Prompt Shields %s, 매입 기준표 판독 %s",
         search.backend_name(),
         search.reranker_name() or "없음",
         "연결" if document_client else "미연결",
         "연결" if shield_client else "미연결",
+        "모델" if criteria_reader else "머리글 규칙",
     )
     auth = current_auth()  # 설정이 틀리면(모르는 모드, token인데 토큰 없음) 여기서 멈춘다
     if auth.mode == httpio.AUTH_HEADER:
@@ -251,6 +263,7 @@ def build_app() -> service.App:
         ),
         documents=document_client,
         shields=shield_client,
+        criteria_reader=criteria_reader,
     )
 
 
@@ -776,6 +789,17 @@ async def upload_media(request: Request):
     org_id = fields.get("orgId") or viewer
     stream_id = fields.get("streamId") or ""
     return await call(service.upload_media, org_id, stream_id, filename, data, viewer)
+
+
+@router.post("/intake/criteria/confirm")
+@guarded
+async def confirm_criteria(request: Request):
+    """매입 기준표 검토 화면에서 담당자가 확인·고친 행을 저장한다(service.confirm_criteria)."""
+    viewer = await viewer_of(request)
+    body = await json_object(request)
+    org_id = str(body.get("orgId") or viewer)
+    name = str(body.get("documentName") or "")
+    return await call(service.confirm_criteria, org_id, name, body.get("rows"), viewer)
 
 
 @router.post("/intake/documents/confirm")

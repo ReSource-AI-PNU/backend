@@ -47,7 +47,7 @@ from app.v3.evidence.registry import EvidenceForbidden, EvidenceNotFound
 from app.v3.evidence.seeds import load_seed_dir
 from app.v3.evidence.units import UnitError, same_value
 from app.v3.evidence.validator import validate_message, validate_text
-from app.v3.intake import csv_measure, documents, shields
+from app.v3.intake import criteria_llm, csv_measure, documents, shields
 from app.v3.intake import detector as media
 from app.v3.judge import basis
 from app.v3.judge.common import quality, without_emitter_only
@@ -132,8 +132,11 @@ class App:
         auth_mode: str = "header",
         accounts: Any = None,
         negotiate: bool = True,
+        criteria_reader: Any = None,
     ) -> None:
         self.store = store
+        # 매입 기준표를 모델로 읽는 판독기(intake/criteria_llm.CriteriaReader). 없으면 예전 머리글 규칙으로 읽는다
+        self.criteria_reader = criteria_reader
         # ⑥ 합의 전 단가 협상 한 번(orchestrator._negotiate). 고정 평가셋(test-v1)과 협상 전 흐름을 보는
         # 시험은 끈다(기대값이 매입 기준표 단가다). 협상은 tests/v3/test_negotiation.py가 본다
         self.negotiate = bool(negotiate)
@@ -2124,6 +2127,11 @@ def upload_document(
     문서 글은 Prompt Shields로 검사한다. 지시문 주입이 탐지되면 문서를 쓰지 않고, 올린 조직의
     진행 중인 대화를 handoff로 넘긴다. Prompt Shields가 설정되지 않았으면 검사하지 않았다는
     표시(shieldUnavailable)를 그대로 돌려준다.
+
+    매입 기준표는 판독기(app.criteria_reader)가 있으면 모델이 문서를 읽어 행 단위 초안(draft)을 만든다.
+    draft.outcome은 ready | needs_review(일부 값이 애매함) | not_found(매입 조건 없음) | model_failed(모델을
+    부르지 못함, failure에 화면 문장)다. 초안은 confirm_criteria로 담당자가 확인·저장한 행만 업체 프로필이 된다.
+    판독기가 없으면 예전처럼 머리글 규칙으로 읽은 fields를 돌려준다.
     """
     _owner(app, org_id, viewer)
     if kind not in documents.EXTRACTORS:
@@ -2165,6 +2173,16 @@ def upload_document(
     if shield["attackDetected"]:
         closed = Orchestrator(app).handoff_for_injection(org_id, filename)
         return {**base, "blocked": True, "handoff": True, "threadIds": closed, "fields": []}
+    if kind == "purchase_criteria" and app.criteria_reader is not None:
+        read = _read_criteria(app, data, filename, layout)
+        found = read["draft"].pop("instructions", None)
+        if found:
+            # Prompt Shields가 놓친 지시문을 판독기가 찾았다. 같은 절차로 문서를 쓰지 않고 대화를 넘긴다
+            logger.warning("매입 기준표 판독기가 문서 안 지시문을 찾았다: %s", filename)
+            closed = Orchestrator(app).handoff_for_injection(org_id, filename)
+            base["shield"] = {**shield, "attackDetected": True, "detectedBy": "reader"}
+            return {**base, "blocked": True, "handoff": True, "threadIds": closed, "fields": []}
+        return {**base, **read}
     extracted = documents.EXTRACTORS[kind](layout)
     fields = extracted.pop("fields", [])
     return {
@@ -2176,6 +2194,33 @@ def upload_document(
         "extracted": extracted,
         "needsReview": any(f.get("needsReview") for f in fields),
         "note": "뽑은 값은 담당자가 확인하기 전에는 근거로 쓰지 않습니다.",
+    }
+
+
+def _read_criteria(app: App, data: bytes, filename: str, layout: dict[str, Any]) -> dict[str, Any]:
+    """매입 기준표를 모델로 읽은 초안. 모델을 부르지 못하면 outcome model_failed와 화면 문장을 준다."""
+    try:
+        draft = app.criteria_reader.read(data, filename, layout)
+    except criteria_llm.ReaderFailure as failure:
+        # 모델의 오류 원문은 화면에 보이지 않는다(운영 기록과 운영 화면의 마지막 오류에만 남는다)
+        logger.warning("매입 기준표 판독 실패(%s): %s", failure.code, failure.detail)
+        draft = {
+            "outcome": "model_failed",
+            "failure": failure.to_dict(),
+            "rows": [],
+            "common": [],
+            "notes": [],
+            "reviewCount": 0,
+            "reader": {"by": "ai"},
+        }
+    return {
+        "blocked": False,
+        "handoff": False,
+        "threadIds": [],
+        "fields": [],
+        "draft": draft,
+        "needsReview": draft["outcome"] != "ready",
+        "note": "AI가 읽은 값은 담당자가 확인하고 저장하기 전에는 업체 탐색에 쓰지 않습니다.",
     }
 
 
@@ -2285,6 +2330,151 @@ def confirm_document(
     return {"evidence": list(registered.values()), "profile": profile}
 
 
+_CRITERION_EVIDENCE = (
+    ("unitPriceKrwPerKg", "단가", "원/kg"),
+    ("minMonthlyKg", "최소 물량", "kg/월"),
+    ("maxContaminationPct", "오염도 상한", "%"),
+    ("maxMoisturePct", "수분 상한", "%"),
+    ("collectionFeePerPickupKrw", "1회 수거비", "원/회"),
+)
+_FEE_TEXT = {"included": "수거비 단가에 포함", "separate": "수거비 따로 받음"}
+
+
+def _criterion_evidence(
+    app: App,
+    org_id: str,
+    viewer: str,
+    name: str,
+    row: dict[str, Any],
+    item: tuple[str, str, Any, str | None],
+) -> str:
+    """저장한 매입 기준 행의 값 하나를 근거로 등록하고 ID를 돌려준다.
+
+    문서에서 읽은 그대로면 doc 근거(발췌는 그 칸의 문서 원문과 쪽), 담당자가 고쳤거나 직접 더한 행이면
+    human 근거(담당자가 적은 값, 문서 원문이 있으면 함께)다.
+    """
+    field, title, value, unit = item
+    label = " ".join(x for x in (row["material"], row["grade"], row["form"]) if x)
+    key = "-".join(str(x or "x") for x in (row["material"], row["grade"], row["form"]))
+    page = row["source"]["page"]
+    quote = row["source"]["quotes"].get(field) or row["source"]["quote"] or ""
+    if row["manual"] or field in row["edited"]:
+        shown = f"{value:,g}{unit or ''}" if isinstance(value, float) else str(value)
+        excerpt = f"담당자가 적은 값: {shown}"
+        if quote and not row["manual"]:
+            excerpt += f" (문서 원문: {quote})"
+        evidence = Evidence(
+            id=ids.human_id(org_id, f"매입기준-{name}-{key}-{field}"),
+            kind="human",
+            label=f"{label} {title}",
+            value=value,
+            unit=unit,
+            excerpt=excerpt,
+            source="담당자 입력(매입 기준표 검토 화면)"
+            if row["manual"]
+            else f"{name} · 담당자가 고쳐 적은 값",
+            as_of=app.today,
+            access=(org_id,),
+            meta={"ownerOrgId": org_id, "document": name, "field": field, "page": page},
+        )
+    else:
+        evidence = Evidence(
+            id=ids.doc_id(org_id, name, f"{key}-{field}"),
+            kind="doc",
+            label=f"{label} {title}",
+            value=value,
+            unit=unit,
+            excerpt=quote or str(value),
+            source=f"{name}{f' {page}쪽' if page else ''} · 문서에서 읽고 담당자가 확인한 값",
+            as_of=app.today,
+            access=(org_id,),
+            meta={
+                "document": name,
+                "field": field,
+                "page": page,
+                "confirmedBy": viewer,
+                "readBy": "ai",
+            },
+        )
+    return app.registry.put(evidence).id
+
+
+def confirm_criteria(
+    app: App, org_id: str, document_name: str, rows: Any, viewer: str
+) -> dict[str, Any]:
+    """담당자가 검토 화면에서 확인·고친 매입 기준 행을 저장한다. 저장한 행만 업체 탐색에 쓰인다.
+
+    - 행은 criteria_llm.clean_rows가 검사한다(재질 코드, 단가 필수·범위, 물량·상한 범위, 중복). 틀리면 422.
+    - 값마다 근거를 등록한다. 문서에서 읽은 그대로면 doc 근거(문서 원문·쪽), 담당자가 고쳤거나 직접 더한 행이면
+      human 근거(담당자 입력, 문서 원문이 있으면 함께)다.
+    - 업체 프로필의 매입 기준을 재질·등급·형태로 맞춰 고치거나 더한다(_profile_from_document).
+    - 수거비 조건이 모든 행에서 같으면 업체의 운반 조건(transport)으로 쓴다(포함이면 업체 부담, 따로면 1회 수거비).
+    """
+    _owner(app, org_id, viewer, "vendor")
+    try:
+        clean = criteria_llm.clean_rows(rows)
+    except criteria_llm.RowError as error:
+        raise ServiceError("INVALID_CRITERIA", str(error), 422) from None
+    name = str(document_name or "매입 기준표")[:120]
+    found: dict[str, Any] = {"permits": [], "criteria": [], "skipped": []}
+    registered: list[str] = []
+    fee_evidence: dict[tuple, list[str]] = {}
+    for row in clean:
+        evidence: list[str] = []
+
+        def put(field: str, title: str, value: Any, unit: str | None, row=row) -> str:
+            return _criterion_evidence(app, org_id, viewer, name, row, (field, title, value, unit))
+
+        by_field: dict[str, str] = {}
+        for field, title, unit in _CRITERION_EVIDENCE:
+            if row.get(field) is not None:
+                by_field[field] = put(field, title, float(row[field]), unit)
+                evidence.append(by_field[field])
+        if row["collectionFee"]:
+            fee_id = put("collectionFee", "수거비", _FEE_TEXT[row["collectionFee"]], None)
+            evidence.append(fee_id)
+            fee_key = (row["collectionFee"], row["collectionFeePerPickupKrw"])
+            # 1회 수거비가 있으면 그 금액 근거가 먼저다(운반비 계산이 이 값을 인용한다)
+            fee_ids = [by_field.get("collectionFeePerPickupKrw"), fee_id]
+            fee_evidence.setdefault(fee_key, []).extend(i for i in fee_ids if i)
+        registered += evidence
+        found["criteria"].append(
+            {
+                "material": row["material"],
+                "grade": row["grade"],
+                "form": row["form"],
+                "unitPriceKrwPerKg": row["unitPriceKrwPerKg"],
+                "minMonthlyKg": row["minMonthlyKg"],
+                "maxContaminationPct": row["maxContaminationPct"],
+                "maxMoisturePct": row["maxMoisturePct"],
+                "collectionFee": row["collectionFee"],
+                "evidence": evidence,
+            }
+        )
+    profile = _profile_from_document(app, org_id, found)
+    profile["transportUpdated"] = False
+    if len(fee_evidence) == 1:
+        (paid, fee), fee_ids = next(iter(fee_evidence.items()))
+        transport: dict[str, Any] = {
+            "paidBy": "vendor" if paid == "included" else "emitter",
+            "evidence": list(dict.fromkeys(fee_ids)),
+        }
+        if paid == "separate" and fee is not None:
+            transport["feePerPickupKrw"] = fee
+        stored = copy.deepcopy(app.store.get_vendor_profile(org_id))
+        if stored.get("transport") != transport:
+            stored["transport"] = transport
+            app.store.put_vendor_profile(stored)
+            profile["transportUpdated"] = True
+        profile["transport"] = transport
+    elif len(fee_evidence) > 1:
+        profile["skipped"].append(
+            "줄마다 수거비 조건이 달라 업체의 운반 조건에는 넣지 않았습니다. 줄마다의 조건은 매입 기준에 남겼습니다."
+        )
+    _recheck(app, org_id)
+    return {"evidence": list(dict.fromkeys(registered)), "profile": profile}
+
+
 def _same(a: Any, b: Any) -> bool:
     return (a or None) == (b or None)
 
@@ -2348,6 +2538,8 @@ def _profile_from_document(app: App, org_id: str, found: dict[str, Any]) -> dict
             None,
         )
         values = {k: item[k] for k in documents.CRITERION_KEYS if item.get(k) is not None}
+        if item.get("collectionFee"):
+            values["collectionFee"] = item["collectionFee"]
         if same is None:
             if values.get("unitPriceKrwPerKg") is None:
                 found["skipped"].append(
@@ -2415,6 +2607,14 @@ def admin_status(app: App, viewer: str) -> dict[str, Any]:
         },
         "promptShields": {"configured": bool(app.shields and app.shields.configured)},
         "documentIntelligence": {"configured": bool(app.documents and app.documents.configured)},
+        # 매입 기준표 판독기: 모델 이름, 마지막으로 보낸 입력(page_images | pdf_file | text | text_fallback),
+        # 마지막 실패(그림 입력 거부 포함). 일반 사용자 화면에는 보이지 않는다
+        "criteriaReader": {
+            "configured": app.criteria_reader is not None,
+            "model": getattr(app.criteria_reader, "model", None),
+            "lastInput": getattr(app.criteria_reader, "last_input", None),
+            "lastError": getattr(app.criteria_reader, "last_error", None),
+        },
         "gradeEndpoint": {"configured": bool(app.grade_client and app.grade_client.configured)},
         "detector": {"configured": bool(app.detector and app.detector.configured)},
         "distance": {

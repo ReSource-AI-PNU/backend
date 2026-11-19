@@ -9,7 +9,7 @@ import json
 from collections.abc import Mapping
 from typing import Any
 
-from app.v3.intake._http import Transport, default_transport
+from app.v3.intake._http import Transport, default_transport, send
 from app.v3.textutil import josa
 
 API_VERSION = "2024-09-01"
@@ -48,7 +48,7 @@ class PromptShieldsClient:
         ).encode("utf-8")
         headers = {"Content-Type": "application/json", "Ocp-Apim-Subscription-Key": self.api_key}
         try:
-            status, _, raw = self.transport("POST", url, headers, body)
+            status, _, raw = send(self.transport, "POST", url, headers, body)
         except OSError as error:
             raise ShieldError(f"Prompt Shields에 연결하지 못했습니다: {error}") from error
         if status != 200:

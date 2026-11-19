@@ -14,6 +14,9 @@ dependencies = [
     "alembic>=1.14,<2",
     "psycopg[binary]>=3.2,<4",
     "ortools>=9.12,<10",
+    # 매입 기준표 PDF를 쪽 그림으로 그려 모델에 보인다(app/v3/intake/criteria_llm.py)
+    "pypdfium2>=4.30,<6",
+    "pillow>=10",
 ]
 
 [project.optional-dependencies]

@@ -50,6 +50,20 @@ def default_transport(
         return error.code, dict(error.headers.items()), error.read()
 
 
+def send(
+    transport: Transport, method: str, url: str, headers: dict[str, str], body: bytes | None
+) -> tuple[int, dict[str, str], bytes]:
+    """transport를 부르고, 연결이 끊기거나 시간이 넘으면(OSError) 한 번만 다시 부른다.
+
+    2026-11-19 매입 기준표 평가(33회)에서 Document Intelligence 연결 끊김과 Prompt Shields TLS 시간 초과가
+    한 번씩 났다. 응답을 받은 실패(4xx·5xx)는 다시 부르지 않는다.
+    """
+    try:
+        return transport(method, url, headers, body)
+    except OSError:
+        return transport(method, url, headers, body)
+
+
 def header(headers: dict[str, str], name: str) -> str | None:
     """머리글 이름은 대소문자를 가리지 않는다."""
     wanted = name.lower()

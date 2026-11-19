@@ -1,0 +1,109 @@
+{
+  "_note": "매입 기준표 판독 기대값. 행은 재질·등급(필요하면 형태 일부)으로 찾는다. 값이 null이면 비워 둬야 하고, review에 적은 칸은 확인 대상이어야 한다. price는 kg당 원(양수), direction은 buy(매입) | fee(처리비).",
+  "01_basic.pdf": {
+    "title": "기본 표",
+    "outcome": ["ready"],
+    "rowCount": 3,
+    "rows": [
+      {"match": {"material": "PP", "grade": "A"}, "expect": {"price": 320, "direction": "buy", "minMonthlyKg": 1000, "maxContaminationPct": 3, "maxMoisturePct": 5, "collectionFee": "included"}},
+      {"match": {"material": "PP", "grade": "B"}, "expect": {"price": 250, "direction": "buy", "minMonthlyKg": 1000, "maxContaminationPct": 8, "maxMoisturePct": 10, "collectionFee": "included"}},
+      {"match": {"material": "HDPE", "grade": "A"}, "expect": {"price": 280, "direction": "buy", "minMonthlyKg": 500, "maxContaminationPct": 3, "maxMoisturePct": 5, "collectionFee": "included"}}
+    ]
+  },
+  "02_reordered_units.pdf": {
+    "title": "열 순서·열 이름·단위(원/톤, 톤/월)를 바꾼 표",
+    "outcome": ["ready"],
+    "rowCount": 3,
+    "rows": [
+      {"match": {"material": "PP", "grade": "A"}, "expect": {"price": 320, "direction": "buy", "minMonthlyKg": 1000, "maxContaminationPct": 3, "maxMoisturePct": 5, "collectionFee": "included"}},
+      {"match": {"material": "PP", "grade": "B"}, "expect": {"price": 250, "direction": "buy", "minMonthlyKg": 1000, "maxContaminationPct": 8, "maxMoisturePct": 10, "collectionFee": "included"}},
+      {"match": {"material": "HDPE", "grade": "A"}, "expect": {"price": 280, "direction": "buy", "minMonthlyKg": 500, "maxContaminationPct": 3, "maxMoisturePct": 5, "collectionFee": "included"}}
+    ]
+  },
+  "03_title_two_headers.pdf": {
+    "title": "표 제목이 첫 행에 있고 머리글이 두 줄인 표",
+    "outcome": ["ready"],
+    "rowCount": 3,
+    "rows": [
+      {"match": {"material": "PP", "grade": "A"}, "expect": {"price": 320, "direction": "buy", "minMonthlyKg": 1000, "maxContaminationPct": 3, "maxMoisturePct": 5, "collectionFee": "included"}},
+      {"match": {"material": "PP", "grade": "B"}, "expect": {"price": 250, "direction": "buy", "minMonthlyKg": 1000, "maxContaminationPct": 8, "maxMoisturePct": 10, "collectionFee": "included"}},
+      {"match": {"material": "HDPE", "grade": "A"}, "expect": {"price": 280, "direction": "buy", "minMonthlyKg": 500, "maxContaminationPct": 3, "maxMoisturePct": 5, "collectionFee": "included"}}
+    ]
+  },
+  "04_merged_cells.pdf": {
+    "title": "재질·형태·최소 물량 칸이 여러 등급 행에 걸쳐 병합된 표",
+    "outcome": ["ready"],
+    "rowCount": 5,
+    "rows": [
+      {"match": {"material": "PP", "grade": "A"}, "expect": {"price": 320, "direction": "buy", "minMonthlyKg": 1000, "maxContaminationPct": 3, "maxMoisturePct": 5, "collectionFee": "included"}},
+      {"match": {"material": "PP", "grade": "B"}, "expect": {"price": 250, "direction": "buy", "minMonthlyKg": 1000, "maxContaminationPct": 8, "maxMoisturePct": 10, "collectionFee": "included"}},
+      {"match": {"material": "PP", "grade": "C"}, "expect": {"price": 180, "direction": "buy", "minMonthlyKg": 1000, "maxContaminationPct": 15, "maxMoisturePct": 15, "collectionFee": "included"}},
+      {"match": {"material": "HDPE", "grade": "A"}, "expect": {"price": 280, "direction": "buy", "minMonthlyKg": 500, "maxContaminationPct": 3, "maxMoisturePct": 5, "collectionFee": "included"}},
+      {"match": {"material": "HDPE", "grade": "B"}, "expect": {"price": 210, "direction": "buy", "minMonthlyKg": 500, "maxContaminationPct": 8, "maxMoisturePct": 10, "collectionFee": "included"}}
+    ]
+  },
+  "05_footnote_units.pdf": {
+    "title": "단가·물량 단위가 표 밖 각주에 있는 표(원/톤, 톤/월)",
+    "outcome": ["ready"],
+    "rowCount": 3,
+    "rows": [
+      {"match": {"material": "PP", "grade": "A"}, "expect": {"price": 320, "direction": "buy", "minMonthlyKg": 1000, "maxContaminationPct": 3, "maxMoisturePct": 5, "collectionFee": "included"}},
+      {"match": {"material": "PP", "grade": "B"}, "expect": {"price": 250, "direction": "buy", "minMonthlyKg": 1000, "maxContaminationPct": 8, "maxMoisturePct": 10, "collectionFee": "included"}},
+      {"match": {"material": "HDPE", "grade": "A"}, "expect": {"price": 280, "direction": "buy", "minMonthlyKg": 500, "maxContaminationPct": 3, "maxMoisturePct": 5, "collectionFee": "included"}}
+    ]
+  },
+  "06_continued_pages.pdf": {
+    "title": "26행 표가 머리글 없이 2쪽으로 이어지는 문서(PP 행은 2쪽)",
+    "outcome": ["ready"],
+    "rowCount": 26,
+    "rows": [
+      {"match": {"material": "PP", "grade": "A", "form": "사출"}, "expect": {"price": 320, "direction": "buy", "minMonthlyKg": 1000, "maxContaminationPct": 3, "maxMoisturePct": 5, "collectionFee": "included", "page": 2}},
+      {"match": {"material": "PP", "grade": "B", "form": "사출"}, "expect": {"price": 250, "direction": "buy", "minMonthlyKg": 1000, "maxContaminationPct": 8, "maxMoisturePct": 10, "page": 2}},
+      {"match": {"material": "PP", "grade": "A", "form": "필름"}, "expect": {"price": 200, "direction": "buy", "minMonthlyKg": 500, "maxContaminationPct": 3, "maxMoisturePct": 5, "page": 2}},
+      {"match": {"material": "PE", "grade": "B", "form": "혼합"}, "expect": {"price": 160, "direction": "buy", "minMonthlyKg": 500, "maxContaminationPct": 8, "maxMoisturePct": 10, "page": 2}},
+      {"match": {"material": "PS", "grade": "A", "form": "사출"}, "expect": {"price": 210, "direction": "buy", "minMonthlyKg": 500, "maxContaminationPct": 3, "maxMoisturePct": 5, "page": 1}},
+      {"match": {"material": "PET", "grade": "A", "form": "압축"}, "expect": {"price": 240, "direction": "buy", "minMonthlyKg": 2000, "maxContaminationPct": 5, "maxMoisturePct": 8}}
+    ]
+  },
+  "07_scanned.pdf": {
+    "title": "이미지로 스캔한 PDF(04를 200dpi 회색조로 기울여 스캔, 글자층 없음)",
+    "outcome": ["ready", "needs_review"],
+    "rowCount": 5,
+    "rows": [
+      {"match": {"material": "PP", "grade": "A"}, "expect": {"price": 320, "direction": "buy", "minMonthlyKg": 1000, "maxContaminationPct": 3, "maxMoisturePct": 5, "collectionFee": "included"}},
+      {"match": {"material": "PP", "grade": "B"}, "expect": {"price": 250, "direction": "buy", "minMonthlyKg": 1000, "maxContaminationPct": 8, "maxMoisturePct": 10}},
+      {"match": {"material": "PP", "grade": "C"}, "expect": {"price": 180, "direction": "buy", "minMonthlyKg": 1000, "maxContaminationPct": 15, "maxMoisturePct": 15}},
+      {"match": {"material": "HDPE", "grade": "B"}, "expect": {"price": 210, "direction": "buy", "minMonthlyKg": 500, "maxContaminationPct": 8, "maxMoisturePct": 10}}
+    ]
+  },
+  "08_no_grid_quote.pdf": {
+    "title": "격자선 없이 문장으로 적은 견적서(톤당 32만 원, 매월 1톤 이상, 무상 수거)",
+    "outcome": ["ready"],
+    "rowCount": 2,
+    "rows": [
+      {"match": {"material": "PP", "grade": "A"}, "expect": {"price": 320, "direction": "buy", "minMonthlyKg": 1000, "maxContaminationPct": 3, "maxMoisturePct": 5, "collectionFee": "included"}},
+      {"match": {"material": "PP", "grade": "B"}, "expect": {"price": 250, "direction": "buy", "minMonthlyKg": 1000, "maxContaminationPct": 8, "maxMoisturePct": 10, "collectionFee": "included"}}
+    ]
+  },
+  "09_ambiguous.pdf": {
+    "title": "범위 단가, 협의가, 단위 미상, 지급 방향 불명, 회당 물량, 수거비 별도",
+    "outcome": ["needs_review"],
+    "rowCount": 4,
+    "rows": [
+      {"match": {"material": "PP", "grade": "A"}, "expect": {"price": null, "candidates": [300, 400], "direction": "buy", "minMonthlyKg": null, "collectionFee": "separate", "feePerPickupKrw": 50000}, "review": ["price", "minMonthlyKg"]},
+      {"match": {"material": "PP", "grade": "B"}, "expect": {"price": null, "minMonthlyKg": null, "collectionFee": "separate"}, "review": ["price", "minMonthlyKg"]},
+      {"match": {"material": "PE"}, "expect": {"price": null, "minMonthlyKg": 500}, "review": ["price"]},
+      {"match": {"material": "ABS", "grade": "A"}, "expect": {"price": 200, "direction": null, "minMonthlyKg": 1000}, "review": ["price"]}
+    ]
+  },
+  "10_not_criteria.pdf": {
+    "title": "매입 조건이 없는 회사 소개서",
+    "outcome": ["not_found"],
+    "rowCount": 0,
+    "rows": []
+  },
+  "11_injection.pdf": {
+    "title": "흰 글씨로 숨긴 지시문이 있는 매입 기준표",
+    "blocked": true
+  }
+}

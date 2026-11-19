@@ -131,7 +131,8 @@ def test_contract_routes_are_read():
     assert ("GET", "/trust") in routes
     assert ("GET", "/sessions/{}/quote-request") in routes
     assert ("GET", "/orgs/{}/report") in routes
-    assert len(routes) == 30
+    assert ("POST", "/intake/criteria/confirm") in routes
+    assert len(routes) == 31
 
 
 def test_devserver_routes_equal_the_contract():

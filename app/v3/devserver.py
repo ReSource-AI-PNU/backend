@@ -66,7 +66,7 @@ from app.v3.agents.factory import (
     normalize_mode,
 )
 from app.v3.evidence.registry import InMemoryRegistry, JsonFileRegistry
-from app.v3.intake import detector, documents, shields
+from app.v3.intake import criteria_llm, detector, documents, shields
 from app.v3.judge.distance import distance_provider_from_env
 from app.v3.store import InMemoryStore, JsonFileStore
 
@@ -325,6 +325,15 @@ def route(app: service.App, request: Request) -> Any:
                 fields,
                 viewer,
             )
+        case ("POST", ["intake", "criteria", "confirm"]):
+            body = request.json()
+            return service.confirm_criteria(
+                app,
+                str(body.get("orgId") or viewer),
+                str(body.get("documentName") or ""),
+                body.get("rows"),
+                viewer,
+            )
         case ("GET", ["admin", "status"]):
             return service.admin_status(app, viewer)
         case ("POST", ["admin", "eval"]):
@@ -545,6 +554,8 @@ def build_app(
         detector=detector.client_from_env(settings),
         documents=documents.client_from_env(settings),
         shields=shields.client_from_env(settings),
+        # --llm foundry와 Foundry 주소·배포·키가 있으면 매입 기준표를 모델이 읽는다(V3_CRITERIA_READER=0이면 끔)
+        criteria_reader=criteria_llm.reader_from_env({**settings, "V3_LLM": llm}),
     )
     app.resumed = resumed  # 이어 간 것인지(서버가 뜰 때 알려 준다)
     if remote_vendors:

@@ -15,7 +15,7 @@ from typing import Any
 
 from app.v3 import ids
 from app.v3.evidence.model import Evidence
-from app.v3.intake._http import Transport, default_transport, header
+from app.v3.intake._http import Transport, default_transport, header, send
 
 API_VERSION = "2024-11-30"
 # Document Intelligence 리소스의 주소(https://<이름>.cognitiveservices.azure.com/)와 키
@@ -65,7 +65,7 @@ class DocumentIntelligenceClient:
         body = json.dumps({"base64Source": base64.b64encode(data).decode("ascii")}).encode("ascii")
         headers = {"Content-Type": "application/json", "Ocp-Apim-Subscription-Key": self.api_key}
         try:
-            status, response_headers, _ = self.transport("POST", url, headers, body)
+            status, response_headers, _ = send(self.transport, "POST", url, headers, body)
         except OSError as error:
             raise DocumentError(f"Document Intelligence에 연결하지 못했습니다: {error}") from error
         location = header(response_headers, "Operation-Location")
@@ -76,7 +76,7 @@ class DocumentIntelligenceClient:
     def get_result(self, operation_url: str) -> dict[str, Any]:
         headers = {"Ocp-Apim-Subscription-Key": self.api_key}
         try:
-            status, _, raw = self.transport("GET", operation_url, headers, None)
+            status, _, raw = send(self.transport, "GET", operation_url, headers, None)
         except OSError as error:
             raise DocumentError(f"Document Intelligence에 연결하지 못했습니다: {error}") from error
         if status != 200:
