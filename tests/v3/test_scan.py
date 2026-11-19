@@ -646,3 +646,13 @@ def test_a_pile_with_no_room_stays_and_the_rest_still_move():
     assert placed["big"]["center"] == pytest.approx([0.0, 0.5])
     assert proposal["moved"] >= 1
     assert proposal["metrics"]["mixedPairs"] <= out["current"]["mixedPairs"]
+
+
+def test_portrait_frames_get_a_landscape_note():
+    payload = sample_result()
+    payload["frames"].update(width=294, height=518)
+    app, _ = scan_app(FakeRecon(result_payload=payload))
+    view = finished(app)
+    assert "가로" in view["quality"]["notes"][0]
+    app, _ = scan_app()  # 표본 장면은 가로(518×294)
+    assert not any("세로" in n for n in finished(app)["quality"]["notes"])

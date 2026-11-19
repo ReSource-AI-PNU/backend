@@ -139,6 +139,9 @@ def read_result(payload: Any) -> dict[str, Any]:
         "frames": {
             "received": int(_num(frames.get("received", 0), "frames.received", low=0, high=1000)),
             "used": int(_num(frames.get("used", 0), "frames.used", low=0, high=1000)),
+            # 재구성에 쓴 장면의 크기(가로·세로를 가른다. 세로 촬영은 정확도가 크게 떨어진다)
+            "width": int(_num(frames.get("width", 0), "frames.width", low=0, high=10000)),
+            "height": int(_num(frames.get("height", 0), "frames.height", low=0, high=10000)),
         },
         "scale": {
             "metersPerUnit": _num(scale.get("metersPerUnit", 1.0), "scale", low=0, high=1e6),

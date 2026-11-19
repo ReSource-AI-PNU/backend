@@ -62,7 +62,7 @@ RULE_TEXT = {
 }  # fmt: skip
 FAILURES = {
     "NO_FLOOR": "바닥이 충분히 보이지 않아 더미를 나누지 못했습니다. 바닥이 함께 보이게 조금 떨어져서 다시 찍어 주세요.",
-    "NO_PILES": "쌓인 더미를 찾지 못했습니다. 더미가 화면 가운데 오게 둘레를 천천히 돌며 다시 찍어 주세요.",
+    "NO_PILES": "쌓인 더미를 찾지 못했습니다. 휴대폰을 가로로 들고 더미가 화면 가운데 오게 옆으로 천천히 걸으며 다시 찍어 주세요.",
     "TOO_FEW_FRAMES": "장면이 너무 적습니다. 20초 이상 천천히 걸으며 다시 찍어 주세요.",
     "BAD_IMAGE": "사진을 읽지 못했습니다. 다른 영상으로 다시 올려 주세요.",
     "STALE": "분석을 끝내지 못했습니다. 다시 올려 주세요.",
@@ -73,11 +73,12 @@ CAPTURE_CODES = ("NO_FLOOR", "NO_PILES", "TOO_FEW_FRAMES", "BAD_IMAGE", "RECON_F
 MIN_DENSITY, MAX_DENSITY = 10.0, 1500.0  # 계량으로 맞춘 밀도의 상식 범위(kg/m³)
 _create_lock = threading.Lock()  # 한 회사 한 건 확인과 맡기기를 한 번에 한다(같은 프로세스)
 DEFAULT_FAILURE = (
-    "이 영상으로는 3D 재구성을 하지 못했습니다. 더미 둘레를 천천히 한 바퀴 돌며 다시 찍어 주세요."
+    "이 영상으로는 3D 재구성을 하지 못했습니다. 휴대폰을 가로로 가슴 높이에 들고, 더미 줄에서 "
+    "2~3 m 떨어져 옆으로 천천히 걸으며 다시 찍어 주세요."
 )
 NOTES = {
     "scale-uncertain": "실제 크기를 휴대폰 높이(가슴 높이) 가정으로 맞췄습니다. 휴대폰을 가슴 높이에 들고 찍으면 정확해집니다.",
-    "low-coverage": "일부 더미가 한쪽에서만 찍혀 부피 범위가 넓습니다. 더미 둘레를 한 바퀴 돌며 찍으면 좁아집니다.",
+    "low-coverage": "일부 더미가 한쪽에서만 찍혀 부피 범위가 넓습니다. 더미 옆면도 보이게 옆으로 걸으며 찍으면 좁아집니다.",
     "dark": "어두운 장면이 많아 정확도가 낮을 수 있습니다. 조명을 켜고 찍으면 나아집니다.",
 }
 UNAVAILABLE = ServiceError(
@@ -842,6 +843,11 @@ def view(app: App, scan: dict[str, Any]) -> dict[str, Any]:
             }
         )  # fmt: skip
     notes = [NOTES[w] for w in result["warnings"] if w in NOTES]
+    if result["frames"]["height"] > result["frames"]["width"] > 0:
+        notes.insert(
+            0,
+            "세로로 찍은 영상이라 더미를 놓쳤을 수 있습니다. 휴대폰을 가로로 들고 다시 찍으면 정확해집니다.",
+        )
     spread = result["scale"]["spreadPct"]
     if spread >= 3:
         notes.append(
