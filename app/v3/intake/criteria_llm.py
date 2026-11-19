@@ -880,7 +880,14 @@ def _percent(block: dict[str, Any] | None, label: str, document: str) -> dict[st
     return out
 
 
-def _fee(block: dict[str, Any] | None) -> dict[str, Any]:
+_PER_PICKUP_FEE = re.compile(
+    r"(?:회당|1회|매회|회\s*당)\s*(\d[\d,]*(?:\.\d+)?)\s*(만|천)?\s*원"
+    r"|(\d[\d,]*(?:\.\d+)?)\s*(만|천)?\s*원\s*/\s*회"
+)
+
+
+def _fee(block: dict[str, Any] | None, notes: list[str] = ()) -> dict[str, Any]:
+    """수거비 칸. 1회 금액은 금액 글, 그 칸의 원문, 이 행에 걸린 공통 조건(각주) 순서로 "회당 ○원"을 찾는다."""
     block = block if isinstance(block, dict) else {}
     status = block.get("status")
     out = {
@@ -894,16 +901,19 @@ def _fee(block: dict[str, Any] | None) -> dict[str, Any]:
         out["raw"] = out["feeText"]
     if status == "unclear":
         out["review"].append("수거비를 단가에 넣는지 따로 받는지 분명하지 않습니다")
+    if out["value"] != "separate":
+        return out
     fee_text = str(out["feeText"] or "")
-    if out["value"] == "separate" and fee_text:
-        parsed = parse_number(fee_text)
-        if (
-            re.search(r"회당|1회|매회|회\s*\d|\d\s*원\s*/\s*회", fee_text)
-            and parsed["kind"] == "one"
-        ):
-            out["feePerPickupKrw"] = parsed["value"]
-        else:
-            out["review"].append(f"수거비를 1회 금액으로 읽지 못했습니다(문서 표기 '{fee_text}')")
+    for text in (fee_text, out["raw"], block.get("quote"), *notes):
+        found = _PER_PICKUP_FEE.search(str(text or ""))
+        if found:
+            number, suffix = (
+                (found.group(1), found.group(2)) if found.group(1) else found.group(3, 4)
+            )
+            out["feePerPickupKrw"] = _scaled(number, suffix)
+            break
+    if out["feePerPickupKrw"] is None and fee_text:
+        out["review"].append(f"수거비를 1회 금액으로 읽지 못했습니다(문서 표기 '{fee_text}')")
     return out
 
 
@@ -975,7 +985,10 @@ def normalize(draft: dict[str, Any], document: str = "") -> dict[str, Any]:
             ),
             "maxContaminationPct": _percent(item.get("maxContamination"), "오염도 상한", document),
             "maxMoisturePct": _percent(item.get("maxMoisture"), "수분 상한", document),
-            "collectionFee": _fee(item.get("collectionFee")),
+            "collectionFee": _fee(
+                item.get("collectionFee"),
+                notes_for(index, item, "collectionFee", ("collectionFee",)),
+            ),
         }
         rows.append(row)
     # 같은 재질·등급·형태의 행이 둘이면 어느 단가를 쓸지 사람이 정한다

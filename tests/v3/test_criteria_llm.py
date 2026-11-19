@@ -754,3 +754,26 @@ def test_document_reading_retries_a_dropped_connection_once():
     with pytest.raises(DocumentError):
         DocumentIntelligenceClient("https://di.example", "k", down).begin_analyze(b"%PDF-1")
     assert len(calls) == 2
+
+
+@pytest.mark.parametrize(
+    ("fee", "common"),
+    [
+        (
+            cell("수거비 별도", status="separate", feeText="50,000원"),
+            "※ 수거비 별도(회당 50,000원)",
+        ),
+        (cell("수거비 별도(회당 5만 원)", status="separate", feeText=None), "※ 비고"),
+        (cell("별도", status="separate", feeText="50,000원/회"), "※ 비고"),
+    ],
+)
+def test_per_pickup_fee_is_found_in_the_cell_or_its_footnote(fee, common):
+    """2026-11-19 평가에서 모델이 금액 글에 "회당"을 빼고 옮긴 회차가 있었다. 같은 칸·각주에서 찾는다."""
+    draft = normalize(
+        model_answer(
+            model_row(collectionFee={**fee, "commonRef": 1}),
+            common=[{"number": 1, "field": "collectionFee", "quote": common, "page": 1,
+                     "appliesToRows": [1], "scopeQuote": None}],
+        )
+    )  # fmt: skip
+    assert draft["rows"][0]["collectionFee"]["feePerPickupKrw"] == 50000

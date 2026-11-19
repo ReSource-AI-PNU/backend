@@ -1,0 +1,71 @@
+{
+  "date": "2026-11-19",
+  "model": "gpt-5-mini",
+  "runs": 3,
+  "documents": {
+    "09_ambiguous.pdf": {
+      "title": "범위 단가, 협의가, 단위 미상, 지급 방향 불명, 회당 물량, 수거비 별도",
+      "runs": [
+        {
+          "pass": true,
+          "problems": [],
+          "cells": [
+            20,
+            20
+          ],
+          "wrong": 0,
+          "blank": 0,
+          "rows": null,
+          "seconds": 23.8,
+          "outcome": "needs_review",
+          "input": "page_images",
+          "blocked": false
+        },
+        {
+          "pass": true,
+          "problems": [],
+          "cells": [
+            20,
+            20
+          ],
+          "wrong": 0,
+          "blank": 0,
+          "rows": null,
+          "seconds": 26.4,
+          "outcome": "needs_review",
+          "input": "page_images",
+          "blocked": false
+        },
+        {
+          "pass": true,
+          "problems": [],
+          "cells": [
+            20,
+            20
+          ],
+          "wrong": 0,
+          "blank": 0,
+          "rows": null,
+          "seconds": 21.9,
+          "outcome": "needs_review",
+          "input": "page_images",
+          "blocked": false
+        }
+      ]
+    }
+  },
+  "summary": {
+    "documents": 1,
+    "attempts": 3,
+    "passed": 3,
+    "cellAccuracy": 1.0,
+    "wrongCells": 0,
+    "blankCells": 0,
+    "serviceErrors": 0,
+    "cells": [
+      60,
+      60
+    ],
+    "medianSeconds": 23.8
+  }
+}
