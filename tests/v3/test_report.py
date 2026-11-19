@@ -22,6 +22,7 @@ def confirmed():
         app,
         sid,
         {
+            "requestId": "req-report-0001",
             "threadId": thread["id"],
             "streamId": stream_id,
             "inspectedOn": "2026-11-10",

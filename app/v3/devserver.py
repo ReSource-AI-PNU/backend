@@ -286,6 +286,8 @@ def route(app: service.App, request: Request) -> Any:
             return service.record_correction(app, session_id, request.json(), viewer)
         case ("POST", ["sessions", session_id, "outcomes"]):
             return service.record_outcome(app, session_id, request.json(), viewer)
+        case ("PUT", ["sessions", session_id, "outcomes", inspection_id]):
+            return service.correct_outcome(app, session_id, inspection_id, request.json(), viewer)
         case ("GET", ["evidence"]):
             kinds = [k for raw in request.query.get("kind", []) for k in raw.split(",") if k]
             return service.search_evidence(

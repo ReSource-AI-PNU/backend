@@ -6,12 +6,14 @@
     GET /orgs/{orgId}/report?from=YYYY-MM-DD&to=YYYY-MM-DD   (배출 기업 본인과 운영자만)
 
 - 실적(records): 업체가 확정 뒤 기록한 실제 결과(feedback.outcomes) 가운데 이 배출 기업의 것, 검수일이 기간 안인 것.
+  검수(계량) 한 건이 한 줄이다. 같은 날 같은 폐기물을 두 번 받았으면 두 줄이고, 정정한 건은 최신 판 하나만 센다.
   줄마다 실제 중량·단가·등급은 업체 기록 근거(doc 또는 human)이고, 금액(중량 × 단가)과 탄소 변화(중량 × (재활용 계수
   − 현행 처리 계수))는 calc 근거다. 현행 처리를 입력하지 않았으면 혼합 소각으로 본다(결과 한 장과 같은 가정).
 - 탄소 변화와 처리 방식은 검수를 기록할 때 남긴 계산 기준(feedback.carbon_basis: 현행 처리 방식, 업체 처리 공정,
-  배출계수 ID·판)으로만 계산한다. 나중에 흐름의 현행 처리나 업체 프로필을 고쳐도 지난 실적은 바뀌지 않는다.
-  다시 계산하려면 업체가 같은 검수를 다시 기록해 기준의 새 판을 만든다. 기준을 남기기 전에 기록된 검수는
-  탄소 변화를 내지 않고(지금 설정으로 채우지 않는다) carbonNote에 이유를 적는다.
+  배출계수 ID·판)으로만 계산한다. 기준은 검수 ID마다 하나이고 처음 등록할 때 고정한다. 나중에 흐름의 현행 처리나
+  업체 프로필을 고쳐도, 업체가 무게·단가를 정정해도 지난 실적의 기준은 바뀌지 않는다(정정한 무게 × 그 기준).
+  기준을 남기기 전에 기록된 검수는 탄소 변화를 내지 않고(지금 설정으로 채우지 않는다) carbonNote에 이유를 적는다.
+  그 검수를 업체가 정정하면 그때 기준을 남긴다(같은 검수를 새 반입으로 다시 등록하면 두 건이 되므로 안내하지 않는다).
 - 합계(totals): 실적만 더한다. 반출 무게, 매각 수익, 처리비, 탄소 변화(tCO2e. 줄었으면 음수).
 - 예상(planned): 양쪽이 확정한 합의의 한 달 예상(결과 한 장의 배정). 검수 기록 전에도 보이고, 화면에서 "예상"으로 구분한다.
 - 숫자는 모두 근거가 붙은 claim이다. 배출 기업만 보는 calc 근거로 남긴다.
@@ -33,7 +35,7 @@ _DATE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 DEFAULT_METHOD = feedback.CURRENT_METHOD_ASSUMED
 NO_BASIS_NOTE = (
     "검수 당시의 탄소 계산 기준이 남아 있지 않은 예전 기록이라 탄소 변화를 내지 않았습니다. "
-    "업체가 검수 결과를 다시 기록하면 그때 기준으로 계산합니다."
+    "업체가 그 검수 기록을 정정하면 그때 기준으로 계산합니다."
 )
 PROCESS_LABELS = {
     "재활용": "재활용",
@@ -122,6 +124,21 @@ def _calc(
     }
 
 
+def _history_item(item: dict[str, Any]) -> dict[str, Any]:
+    """정정되기 전 판 하나. 값은 업체가 그때 적은 그대로이고 근거 ID로 원래 기록을 열 수 있다."""
+    return {
+        "revision": item["revision"],
+        "recordedOn": item.get("recordedOn"),
+        "inspectedOn": item.get("inspectedOn"),
+        "grade": item.get("actualGrade"),
+        "kg": item.get("actualKg"),
+        "unitPrice": item.get("actualUnitPriceKrwPerKg"),
+        "weighTicket": item.get("weighTicket"),
+        "reason": item.get("reason"),
+        "evidence": dict(item.get("evidence") or {}),
+    }
+
+
 def build(app: Any, org_id: str, date_from: str | None, date_to: str | None) -> dict[str, Any]:
     """실적 리포트. 기간을 주지 않으면 모든 검수 기록이다."""
     for value in (date_from, date_to):
@@ -148,7 +165,7 @@ def build(app: Any, org_id: str, date_from: str | None, date_to: str | None) -> 
         and (date_from is None or r["inspectedOn"] >= date_from)
         and (date_to is None or r["inspectedOn"] <= date_to)
     ]
-    for record in sorted(found, key=lambda r: (r["inspectedOn"], r["streamId"])):
+    for record in found:  # feedback.outcomes 순서: 검수일 → 처음 기록한 시각 → 검수 ID
         tag = safe_id(record["id"])
         try:
             stream = store.get_stream(record["streamId"], org_id)
@@ -198,6 +215,12 @@ def build(app: Any, org_id: str, date_from: str | None, date_to: str | None) -> 
         records.append(
             {
                 "id": record["id"],
+                "inspectionId": record["inspectionId"],
+                "revision": record["revision"],
+                "weighTicket": record.get("weighTicket"),
+                "legacy": bool(record.get("legacy")),
+                "history": [_history_item(item) for item in record.get("history") or []],
+                "correctionReason": record.get("reason"),
                 "inspectedOn": record["inspectedOn"],
                 "streamId": record["streamId"],
                 "streamLabel": label,

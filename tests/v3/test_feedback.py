@@ -4,6 +4,7 @@ import json
 import threading
 import urllib.error
 import urllib.request
+import uuid
 
 import pytest
 
@@ -50,7 +51,9 @@ def confirmed():
 
 
 def outcome_body(view, vendor=SAEGIL, stream="st_sprue", **over):
+    """새 반입 등록 본문. 요청 번호는 부를 때마다 새로 만든다(새 반입 한 건)."""
     body = {
+        "requestId": f"req-{uuid.uuid4().hex}",
         "threadId": thread_of(view, vendor, "confirmed")["id"],
         "streamId": stream,
         "actualGrade": "A",
@@ -137,6 +140,7 @@ def test_outcome_only_from_the_threads_vendor_after_confirmation():
     sid = waiting["session"]["id"]
     thread = thread_of(waiting, SAEGIL)
     body = {
+        "requestId": "req-permission-0001",
         "threadId": thread["id"],
         "streamId": "st_sprue",
         "actualGrade": "A",
@@ -155,6 +159,9 @@ def test_outcome_only_from_the_threads_vendor_after_confirmation():
         ({"actualGrade": None}, "INVALID_VALUE"),  # 등급도 단가도 없다
         ({"actualKg": -1}, "INVALID_VALUE"),
         ({"actualUnitPriceKrwPerKg": "삼백"}, "INVALID_VALUE"),
+        ({"requestId": None}, "INVALID_REQUEST_ID"),  # 재전송을 한 건으로 묶을 번호가 없다
+        ({"requestId": "짧음"}, "INVALID_REQUEST_ID"),
+        ({"inspectionId": "insp-0"}, "USE_CORRECTION"),  # 이미 있는 건을 고치는 것은 정정이다
     ):
         fails(code, 422, service.record_outcome, app, sid, {**body, **patch}, SAEGIL)
     assert feedback.outcomes(app) == []
@@ -197,10 +204,22 @@ def test_outcome_is_shared_with_the_emitter_and_feeds_grade_labels(confirmed):
     assert checked.ok, checked.to_dict()
     chain = service.get_evidence(app, deviation["evidence"][0], HANBIT)["chain"]
     assert {record["evidence"]["unitPrice"]} <= {c["id"] for c in chain}
-    # 같은 검수를 다시 보내면 새 기록이 아니라 같은 근거의 새 판이다
-    service.record_outcome(app, sid, outcome_body(view, actualGrade="B"), SAEGIL)
+    # 같은 검수를 정정하면 앞 판을 덮지 않고 새 판이 되며, 학습 행은 최신 판 하나다
+    fixed = service.correct_outcome(
+        app,
+        sid,
+        record["inspectionId"],
+        {
+            **outcome_body(view, actualGrade="B"),
+            "baseRevision": 1,
+            "reason": "등급 오기",
+        },
+        SAEGIL,
+    )["outcome"]
+    assert fixed["revision"] == 2 and fixed["history"][0]["actualGrade"] == "A"
     assert [r["grade"] for r in feedback.export_grade_labels(app)] == ["B"]
-    assert app.registry.get(record["evidence"]["grade"]).version == 2
+    assert app.registry.get(record["evidence"]["grade"]).version == 1  # 처음 기록은 그대로
+    assert app.registry.get(fixed["evidence"]["grade"]).value == "B"
     for viewer, count in ((HANBIT, 1), (SAEGIL, 1), (MISO, 0)):
         assert len(service.get_view(app, sid, viewer)["feedback"]["outcomes"]) == count
 

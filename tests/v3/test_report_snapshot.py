@@ -15,6 +15,7 @@ def _setup():
     view = approve_all(app, to_approval(app))
     sid = view["session"]["id"]
     body = {
+        "requestId": "req-snapshot-0001",
         "threadId": thread_of(view, SAEGIL, "confirmed")["id"],
         "streamId": "st_sprue",
         "inspectedOn": "2026-11-10",
@@ -77,7 +78,8 @@ def test_the_basis_keeps_factor_ids_and_versions_for_the_emitter_only():
     assert "carbonBasis" not in record and "currentMethod" not in str(record)
 
 
-def test_recording_the_same_inspection_again_makes_a_new_basis_version():
+def test_resending_or_correcting_keeps_the_inspection_time_basis():
+    """기준은 검수 ID마다 처음 등록할 때 고정한다. 재전송은 기준을 새로 만들지 않고, 정정은 무게만 바꾼다."""
     app, sid, body = _setup()
     before, _ = _row(app)
     service.update_stream(
@@ -87,12 +89,28 @@ def test_recording_the_same_inspection_again_makes_a_new_basis_version():
         {"currentTreatment": {"method": "매립", "unitCostKrwPerKg": 200}},
         HANBIT,
     )
-    service.record_outcome(
-        app, sid, body, SAEGIL
-    )  # 업체가 같은 검수를 다시 기록한다(명시적인 재산정)
+    again = service.record_outcome(app, sid, body, SAEGIL)  # 같은 등록 요청의 재전송
+    assert again["replayed"] is True
+    same, _ = _row(app)
+    assert same["carbonBasis"] == before["carbonBasis"] and same["currentMethod"] == "혼합 소각"
+    inspection = again["outcome"]["inspectionId"]
+    service.correct_outcome(
+        app,
+        sid,
+        inspection,
+        {
+            **body,
+            "requestId": "req-snapshot-fix1",
+            "actualKg": 290,
+            "baseRevision": 1,
+            "reason": "계량 오기",
+        },
+        SAEGIL,
+    )
     after, _ = _row(app)
-    assert after["carbonBasis"]["version"] == 2 and after["currentMethod"] == "매립"
-    assert after["carbon"]["value"] != before["carbon"]["value"]
+    assert after["revision"] == 2 and after["carbonBasis"] == before["carbonBasis"]
+    assert after["currentMethod"] == "혼합 소각"  # 지금 설정(매립)이 아니라 검수 때 기준
+    assert after["carbon"]["value"] == round(before["carbon"]["value"] / 2, 6)  # 580 → 290kg
 
 
 def test_old_records_without_a_basis_show_no_carbon_rather_than_a_guess():

@@ -728,6 +728,14 @@ async def record_outcome(session_id: str, request: Request):
     return await call(service.record_outcome, session_id, body, viewer)
 
 
+@router.put("/sessions/{session_id}/outcomes/{inspection_id}")
+@guarded
+async def correct_outcome(session_id: str, inspection_id: str, request: Request):
+    viewer = await viewer_of(request)
+    body = await json_object(request)
+    return await call(service.correct_outcome, session_id, inspection_id, body, viewer)
+
+
 # ── 근거 ─────────────────────────────────────────────────────────────
 @router.get("/evidence")
 @guarded

@@ -459,6 +459,8 @@ def _demo_history(app: App) -> str | None:
                         {
                             "threadId": thread["id"],
                             "streamId": stream_id,
+                            # 시연 되돌리기를 다시 돌려도 같은 검수 건이 되도록 요청 번호를 고정한다
+                            "requestId": f"demo-{thread['id']}-{stream_id}-{days}",
                             "inspectedOn": (today - timedelta(days=days)).isoformat(),
                             "actualUnitPriceKrwPerKg": float(price),
                             "actualKg": round(float(kg) * (0.94 if n == 0 else 0.98)),
@@ -2168,17 +2170,12 @@ def record_correction(
     return {"correction": record, "evidence": [record["id"]]}
 
 
-def record_outcome(app: App, session_id: str, body: dict[str, Any], viewer: str) -> dict[str, Any]:
-    """업체가 확정 뒤에 기록하는 실제 등급·단가·중량. 그 스레드의 업체만, confirmed일 때만 받는다."""
-    session, _ = _session_for(app, session_id, viewer)
-    if not isinstance(body, dict):
-        raise ServiceError("INVALID_BODY", "실제 결과를 객체로 보내 주세요.", 422)
+def _outcome_thread(
+    app: App, session: dict[str, Any], thread_id: str, viewer: str
+) -> dict[str, Any]:
+    """실제 결과를 기록·정정할 대화. 그 대화의 업체만, 양쪽이 확정한 뒤에만."""
     thread = next(
-        (
-            t
-            for t in _visible_threads(app, session, viewer)
-            if t["id"] == str(body.get("threadId") or "")
-        ),
+        (t for t in _visible_threads(app, session, viewer) if t["id"] == thread_id),
         None,
     )
     if thread is None:
@@ -2191,6 +2188,28 @@ def record_outcome(app: App, session_id: str, body: dict[str, Any], viewer: str)
             "양쪽 승인으로 확정된 대화에만 실제 결과를 기록할 수 있습니다.",
             409,
         )
+    return thread
+
+
+def _outcome_reply(record: dict[str, Any], created: bool) -> dict[str, Any]:
+    """replayed가 참이면 같은 요청이 다시 온 것이라 새로 만들지 않고 이미 있는 기록을 돌려준 것이다."""
+    return {
+        "outcome": record,
+        "evidence": list(record["evidence"].values()),
+        "replayed": not created,
+    }
+
+
+def record_outcome(app: App, session_id: str, body: dict[str, Any], viewer: str) -> dict[str, Any]:
+    """업체가 확정 뒤에 새 반입 검수 한 건을 등록한다. 그 스레드의 업체만, confirmed일 때만 받는다.
+
+    requestId(등록 요청 번호)가 같으면 재전송으로 보고 한 건으로 처리한다. 이미 있는 건을 고치는 것은
+    correct_outcome(PUT /sessions/{id}/outcomes/{inspectionId})이다.
+    """
+    session, _ = _session_for(app, session_id, viewer)
+    if not isinstance(body, dict):
+        raise ServiceError("INVALID_BODY", "실제 결과를 객체로 보내 주세요.", 422)
+    thread = _outcome_thread(app, session, str(body.get("threadId") or ""), viewer)
     stream_id = str(body.get("streamId") or "")
     if stream_id not in (session["work"]["assigned"].get(thread["id"]) or []):
         raise ServiceError("STREAM_NOT_IN_THREAD", "이 대화에서 확정된 폐기물이 아닙니다.", 422)
@@ -2198,8 +2217,42 @@ def record_outcome(app: App, session_id: str, body: dict[str, Any], viewer: str)
         stream = app.store.get_stream(stream_id)
     except NotFound:
         raise ServiceError("STREAM_NOT_FOUND", "그런 폐기물이 없습니다.", 404) from None
-    record = _feedback_call(feedback.record_outcome, app, session, thread, stream, body)
-    return {"outcome": record, "evidence": list(record["evidence"].values())}
+    record, created = _feedback_call(feedback.record_outcome, app, session, thread, stream, body)
+    return _outcome_reply(record, created)
+
+
+def correct_outcome(
+    app: App, session_id: str, inspection_id: str, body: dict[str, Any], viewer: str
+) -> dict[str, Any]:
+    """이미 기록한 검수 한 건을 정정한다. 앞 판은 남기고 새 판을 만든다. 그 검수를 기록한 업체만 고친다."""
+    session, _ = _session_for(app, session_id, viewer)
+    if not isinstance(body, dict):
+        raise ServiceError("INVALID_BODY", "정정 내용을 객체로 보내 주세요.", 422)
+    found = feedback.find_outcome(app, inspection_id)
+    if found is None or found["sessionId"] != session["id"]:
+        raise ServiceError("OUTCOME_NOT_FOUND", "그런 검수 기록이 없습니다.", 404)
+    if viewer not in (found["vendorOrgId"], found["emitterOrgId"]):
+        raise ServiceError("OUTCOME_NOT_FOUND", "그런 검수 기록이 없습니다.", 404)
+    if viewer != found["vendorOrgId"]:
+        raise ServiceError(
+            "FORBIDDEN", "검수 기록은 그 검수를 기록한 업체만 정정할 수 있습니다.", 403
+        )
+    for key in ("threadId", "streamId"):
+        if body.get(key) not in (None, "", found[key]):
+            raise ServiceError(
+                "INVALID_VALUE",
+                "정정으로 대화나 폐기물을 바꿀 수 없습니다. 다른 폐기물이면 새 반입으로 기록해 주세요.",
+                422,
+            )
+    thread = _outcome_thread(app, session, found["threadId"], viewer)
+    try:
+        stream = app.store.get_stream(found["streamId"])
+    except NotFound:
+        raise ServiceError("STREAM_NOT_FOUND", "그런 폐기물이 없습니다.", 404) from None
+    record, created = _feedback_call(
+        feedback.correct_outcome, app, session, thread, stream, inspection_id, body
+    )
+    return _outcome_reply(record, created)
 
 
 def export_retraining(app: App, viewer: str) -> dict[str, Any]:

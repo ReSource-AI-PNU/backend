@@ -478,7 +478,7 @@ VendorProfile {"orgId": "org_saegil",
 
 - `feedback`: `{"corrections": [...], "outcomes": [...]}`. 이 진단에 쌓인 교정과 실제 결과다. 교정은 배출 기업만 보고, 실제 결과는 그 스레드의 업체와 배출 기업만 본다.
   - 교정: `{"type": "correction", "id": 근거 ID, "sessionId", "orgId", "streamId", "field", "before", "after", "note", "seq", "target": "detector | grade", "photoEvidence": [사진 근거 ID], "recordedOn"}`
-  - 실제 결과: `{"type": "outcome", "id", "sessionId", "threadId", "vendorOrgId", "emitterOrgId", "streamId", "inspectedOn", "actualGrade", "actualUnitPriceKrwPerKg", "actualKg", "note", "evidenceKind": "human | doc", "evidence": {"grade", "unitPrice", "kg"}, "features": {"material", "contaminationPct", "moisturePct", "basis"}, "criterionId", "tablePrice": claim, "offeredPrice": claim, "deviation": claim | null, "recordedOn"}`. `deviation`은 실제 단가에서 매입 기준표 단가를 뺀 값이고 calc 근거(`calc:price_deviation:...`)에 연결된다.
+  - 실제 결과: `{"type": "outcome", "id", "inspectionId", "revision", "supersedes", "requestId", "reason", "legacy", "sessionId", "threadId", "vendorOrgId", "emitterOrgId", "streamId", "inspectedOn", "actualGrade", "actualUnitPriceKrwPerKg", "actualKg", "note", "weighTicket", "documentName", "evidenceKind": "human | doc", "evidence": {"grade", "unitPrice", "kg"}, "features": {"material", "contaminationPct", "moisturePct", "basis"}, "criterionId", "tablePrice": claim, "offeredPrice": claim, "deviation": claim | null, "createdOn", "createdAt", "recordedOn", "recordedAt", "history": [앞 판]}`. 검수(계량) 한 건이 한 줄이고 `id`는 `inspectionId`와 같다(정정해도 바뀌지 않는다). 정정한 건은 최신 판이 오고 `history`에 앞 판들(`revision`, `reason`, 그때의 값과 근거 ID)이 실린다. `legacy`가 참이면 검수일 키로 만든 2026-11-19 전 기록이고 `inspectionId`는 그 키(`실제결과-<진단>-<흐름>-<검수일>`)다. `deviation`은 실제 단가에서 매입 기준표 단가를 뺀 값이고 calc 근거(`calc:price_deviation:...`)에 연결된다.
 - `events[].kind`: `feedback`(교정이나 실제 결과를 기록함)을 더했다. 업체가 보는 뷰에는 나가지 않는다.
 - `result.assignments[]`: 모르는 값 때문에 업체를 정하지 못한 흐름은 `status`가 `needs_information`이고 `checks`에 `unresolved`가 붙는다(현행 유지를 "확정"으로 보이지 않게 한다).
 
@@ -534,7 +534,7 @@ VendorProfile {"orgId": "org_saegil",
 | `POST /demo/reset` | 시연 데이터를 처음 상태로 되돌린다. 관리자만(아래 "관리자 조직") |
 | `GET /orgs` | 조직 목록. 조직 레코드의 `order`가 작은 것부터(시연 주인공 `org_hanbit`이 맨 앞, 운영 조직이 맨 뒤). `order`가 없는 조직은 그 뒤에 ID 순. token 모드에서는 자기 조직과 대화 상대만 |
 | `GET /orgs/{orgId}/streams`, `PUT /orgs/{orgId}/streams/{streamId}` | 흐름 조회와 수정(현행 처리, 전처리 작업 시간·시간당 인건비, 공정 재투입 값 포함. 6장). 현행 처리는 `{method, unitCostKrwPerKg}` 대신 `{method, billing: {kind: "per_trip", krwPerTrip, tripsPerMonth} | {kind: "monthly", krwPerMonth}}`로도 받는다(차량·횟수 단위나 월 정액 계약). 지금 팔고 있으면 `{method?, sale: true, salePriceKrwPerKg}`(0 이상, 원/kg. 방법을 비우면 "재활용 업체 판매")로 받는다. 월 발생량으로 kg당 처리비를 계산해 calc 근거로 남기고, 월 발생량이 없으면 422 `INVALID_VALUE`. 질문 답(`currentCost`)도 "회당 30만원, 월 2회", "월 60만원", "1년에 720만원"을 같은 방식으로 읽는다(`app/v3/current_cost.py`) |
-| `GET /orgs/{orgId}/report?from=&to=` | 재활용·탄소 실적 리포트 `{orgId, period, generatedOn, records, totals, planned}`. 배출 기업 본인과 운영자만(업체 403 `WRONG_ROLE`). `records`는 기간(YYYY-MM-DD, 검수일 기준) 안 실제 결과 기록마다 실제 중량·단가(업체 기록 근거)와 금액·탄소 변화(calc), `totals`는 그 합(반출 무게, 매각 수익, 처리비, 탄소), `planned`는 양쪽이 확정한 합의의 한 달 예상(결과 한 장의 배정). 숫자는 모두 claim이다(`app/v3/report.py`) |
+| `GET /orgs/{orgId}/report?from=&to=` | 재활용·탄소 실적 리포트 `{orgId, period, generatedOn, records, totals, planned}`. 배출 기업 본인과 운영자만(업체 403 `WRONG_ROLE`). `records`는 기간(YYYY-MM-DD, 검수일 기준) 안 검수 건마다(정정한 건은 최신 판 하나, `inspectionId`·`revision`·`weighTicket`·`legacy`·`history`·`correctionReason`을 싣는다) 실제 중량·단가(업체 기록 근거)와 금액·탄소 변화(calc), `totals`는 그 합(반출 무게, 매각 수익, 처리비, 탄소), `planned`는 양쪽이 확정한 합의의 한 달 예상(결과 한 장의 배정). 숫자는 모두 claim이다(`app/v3/report.py`) |
 | `GET /vendors/{orgId}`, `PUT /vendors/{orgId}` | 업체 프로필(허가, 매입 기준, 노선·차량, 운반 조건, 가드레일, 모델 선택). 노선·차량(`fleet`)의 모양과 검사는 9장 "노선·차량", 운반 조건(`transport`, 노선 밖 공장 수거 포함)은 9장 "운반 조건" |
 | `POST /sessions` | `{emitterOrgId}`로 진단을 만든다. `emitterOrgId`가 없으면 요청한 조직이다 |
 | `GET /sessions` | 내가 당사자인 진단의 목록(최근 것이 앞). `[{id, emitterOrgId, emitterName, status, createdAt, updatedAt, as}]`. 배출 기업은 자기 진단, 업체는 자기에게 열린 대화가 있는 진단, 운영자는 전부. `as`는 `emitter`·`vendor`·`admin` |
@@ -553,7 +553,8 @@ VendorProfile {"orgId": "org_saegil",
 | `POST /intake/documents/confirm` | `{orgId, documentName, fields}`. 담당자가 확인한 추출값(`confirmed: true`)만 doc 근거로 등록한다. 응답은 `{"evidence": [근거 ID], "profile": 요약 \| null}`. 업체가 확인한 허가증·매입 기준표 값은 업체 프로필의 허가 품목·매입 기준에도 들어간다(추출 항목의 `target`으로 어느 품목·기준의 값인지 안다. 화면은 받은 `fields`를 그대로 돌려보낸다). 폐기물 종류가 같은 허가 품목, 재질·등급·형태가 같은 매입 기준은 고치고 근거를 붙이며 새로 만들지 않는다(다시 확인해도 겹치지 않는다). 단가를 확인하지 않은 새 기준은 만들지 않는다. `profile`은 `{permitsAdded, permitsUpdated, criteriaAdded, criteriaUpdated, permits, criteria, skipped}`이고 업체가 아니면 `null`이다 |
 | `GET /admin/status`, `POST /admin/eval` | 색인·기준값 상태와 재학습 표, 사례 시험 실행(관리자만) |
 | `POST /sessions/{id}/corrections` | `{streamId, field, before, after, note}`. 배출 기업 담당자가 고친 값을 기록한다 |
-| `POST /sessions/{id}/outcomes` | `{threadId, streamId, actualGrade, actualUnitPriceKrwPerKg, actualKg, inspectedOn, note, documentName?}`. 업체가 확정 뒤 실제 결과를 기록한다 |
+| `POST /sessions/{id}/outcomes` | `{requestId, threadId, streamId, actualGrade, actualUnitPriceKrwPerKg, actualKg, inspectedOn, note, weighTicket?, documentName?}`. 업체가 확정 뒤 새 반입 검수 한 건을 등록한다. 같은 `requestId`로 다시 오면 한 건으로 처리한다 |
+| `PUT /sessions/{id}/outcomes/{inspectionId}` | `{baseRevision, requestId, reason, actualGrade, actualUnitPriceKrwPerKg, actualKg, inspectedOn, note, weighTicket?, documentName?}`. 이미 기록한 검수 한 건을 정정한다(새 판) |
 | `GET /admin/retrain/export`, `POST /admin/retrain/runs` | 재학습 행 내보내기, 재학습 실행 결과 등록(관리자만) |
 
 오류는 `{"error": {"code": "...", "message": "한국어 문장"}}`과 맞는 상태 코드로 낸다.
@@ -660,7 +661,7 @@ VendorProfile {"orgId": "org_saegil",
 | `DEMO_READ_ONLY` | 403 | 체험하기(`X-Demo-View: 1`)에서 GET이 아닌 요청을 보냈다. 시연 조직이나 운영 조직의 정보를 고치려 했을 때도(9장 조직 고치기) |
 | `NOT_DEMO_ORG` | 403 | 체험하기의 `X-Org-Id`가 시연 조직이 아니다(실제 조직, 운영 조직, 없는 조직) |
 | `NOT_FOUND` | 404 | 그런 주소가 없다(bff가 아닌 모드에서 9장의 경로를 부른 경우도) |
-| `ORG_NOT_FOUND`, `VENDOR_NOT_FOUND`, `STREAM_NOT_FOUND`, `SESSION_NOT_FOUND`, `THREAD_NOT_FOUND`, `QUESTION_NOT_FOUND`, `EVIDENCE_NOT_FOUND` | 404 | 없거나 볼 수 없다(볼 수 없는 것은 있는지도 알려 주지 않는다) |
+| `ORG_NOT_FOUND`, `VENDOR_NOT_FOUND`, `STREAM_NOT_FOUND`, `SESSION_NOT_FOUND`, `THREAD_NOT_FOUND`, `QUESTION_NOT_FOUND`, `EVIDENCE_NOT_FOUND`, `OUTCOME_NOT_FOUND` | 404 | 없거나 볼 수 없다(볼 수 없는 것은 있는지도 알려 주지 않는다) |
 | `MEMBER_NOT_FOUND` | 404 | 빼거나 소유자로 지정하려는 사용자가 그 조직의 구성원이 아니다(9장) |
 | `NOT_AGREED` | 409 | 합의된 조건이 없는 대화를 승인하려 했다 |
 | `EMAIL_TAKEN` | 409 | 이미 가입한 이메일이다(대소문자와 앞뒤 공백은 가리지 않는다) |
@@ -668,6 +669,9 @@ VendorProfile {"orgId": "org_saegil",
 | `REVIEW_BLOCKED` | 409 | 계약 검토 담당(`app/v3/agents/reviewer.py`)이 막은 항목이 있어 승인할 수 없다. 막은 항목과 이유는 `approvals[].review.items[]`(`status: "block"`)에 있다. 양쪽 모두 같다 |
 | `PERMIT_MISMATCH` | 409 | 승인하려는 대화의 업체 허가 품목이 합의 뒤에 바뀌어 흐름과 맞지 않는다. 승인하지 않는다. 맞는 흐름이 남지 않으면 그 대화를 근거와 함께 `decline`으로 닫고, 일부만 맞지 않으면 그 흐름만 빼고 승인을 지운다(남은 조건으로 다시 승인한다) |
 | `THREAD_NOT_CONFIRMED` | 409 | 확정되지 않은 대화에 실제 결과를 기록하려 했다 |
+| `REQUEST_ID_REUSED` | 409 | 실제 결과 등록·정정의 `requestId`가 이미 다른 내용으로 쓰였다(재전송이면 내용이 같아야 한다. 새 반입이나 새 정정이면 새 번호를 쓴다) |
+| `REVISION_CONFLICT` | 409 | 정정의 `baseRevision`이 그 검수의 최신 판이 아니다(그 사이 다른 정정이 들어왔다). 새로 불러온 뒤 다시 정정한다 |
+| `DUPLICATE_TICKET` | 409 | 같은 업체가 같은 검수일에 같은 계량표 번호(`weighTicket`)로 다른 검수를 이미 기록했다 |
 | `RUN_IN_PROGRESS` | 409 | 그 진단의 진행(run, 답, 승인)이 이미 돌고 있다(위 "실시간 진행"의 실행 자리). 탈퇴로 지울 조직이 들어간 진단이 진행 중일 때도(9장 "탈퇴"). 아무것도 지우지 않는다 |
 | `LAST_OWNER` | 409 | 조직의 마지막 owner를 빼거나 마지막 owner가 나가려 했다. 먼저 다른 구성원을 owner로 지정한다(9장) |
 | `TRANSFER_OWNERSHIP_FIRST` | 409 | 탈퇴하려는 사용자가 다른 구성원이 있는 조직의 유일한 owner다. 먼저 다른 구성원을 owner로 지정한다. 아무것도 지우지 않는다(9장 "탈퇴") |
@@ -682,7 +686,9 @@ VendorProfile {"orgId": "org_saegil",
 | `INVALID_CRITERIA` | 422 | 매입 기준표 검토 화면에서 저장한 행이 틀렸다(재질 코드, 단가 없음·범위 밖, 물량·상한 범위 밖, 재질·등급·형태 중복). 문장에 몇 번째 줄의 무엇인지 적는다 |
 | `INVALID_ANSWER` | 422 | 질문의 답이 그 항목에 맞지 않는다(빈 답 포함) |
 | `INVALID_FIELD` | 422 | 교정할 수 없는 항목이다(`POST /sessions/{id}/corrections`의 `field`) |
-| `NO_CHANGE` | 422 | 교정 전후 값이 같다 |
+| `NO_CHANGE` | 422 | 교정 전후 값이 같다(실제 결과 정정도 같다) |
+| `INVALID_REQUEST_ID` | 422 | 실제 결과 등록·정정에 `requestId`가 없거나 꼴이 틀렸다(영문·숫자·`_.:-` 8~100자) |
+| `USE_CORRECTION` | 422 | 새 반입 등록(`POST /sessions/{id}/outcomes`)에 `inspectionId`를 보냈다. 이미 있는 검수를 고치는 것은 `PUT /sessions/{id}/outcomes/{inspectionId}`다 |
 | `STREAM_NOT_IN_THREAD` | 422 | 그 대화에서 확정된 흐름이 아니다(실제 결과 기록) |
 | `INVALID_MESSAGE` | 422 | 업체 측 에이전트가 받은 메시지를 처리할 수 없다 |
 | `TOO_MANY_ATTEMPTS` | 429 | 같은 이메일로 15분 안에 로그인을 10번 틀렸다(서버 프로세스 메모리에서 센다). 비밀번호 바꾸기·탈퇴에서 지금 비밀번호를 틀린 횟수도 같은 칸에 센다 |
@@ -757,7 +763,12 @@ HTTP 오류 코드가 아니라 `approvals[].blockedCodes`(배열)와 `blockedRe
 재학습 데이터 수집(7단계) 주소의 규칙:
 
 - `POST /sessions/{id}/corrections`: 그 진단의 배출 기업만 부를 수 있다(업체는 403, 당사자가 아니면 404). `field`는 `box | material | origin | form | contaminant | grade | contaminationPct | moisturePct`다. human 근거(`human:<조직>:교정-<흐름>-<항목>-<순번>`)로 등록하고, 앞의 다섯 항목은 탐지 모델 재학습 데이터 후보가 된다. 기록만 남기며 흐름의 값은 바꾸지 않는다(흐름은 `PUT /orgs/{orgId}/streams/{streamId}`로 고친다). 응답은 `{"correction": 기록, "evidence": [근거 ID]}`.
-- `POST /sessions/{id}/outcomes`: 그 스레드의 업체만, 스레드가 `confirmed`일 때만 받는다(아니면 `THREAD_NOT_CONFIRMED` 409). `streamId`는 그 스레드에서 확정된 흐름이어야 하고, 실제 등급이나 실제 단가 가운데 하나는 있어야 한다. `documentName`을 주면 doc 근거, 없으면 human 근거로 등록한다. 소유는 업체이고 배출 기업과 나눈다. 같은 흐름과 검수일로 다시 보내면 같은 근거의 새 판이 된다. 응답은 `{"outcome": 기록, "evidence": [근거 ID]}`.
+- `POST /sessions/{id}/outcomes`(새 반입 등록): 그 스레드의 업체만, 스레드가 `confirmed`일 때만 받는다(아니면 `THREAD_NOT_CONFIRMED` 409). `streamId`는 그 스레드에서 확정된 흐름이어야 하고, 실제 등급이나 실제 단가 가운데 하나는 있어야 한다. `documentName`을 주면 doc 근거, 없으면 human 근거로 등록한다. 소유는 업체이고 배출 기업과 나눈다. 같은 날 같은 흐름을 여러 번 받았으면 건마다 따로 보낸다(검수일로 합치거나 덮지 않는다).
+  - `requestId`(필수, 영문·숫자·`_.:-` 8~100자)는 화면이 등록 한 번마다 만드는 번호다. 검수 ID는 `insp-` + (업체, 진단, `requestId`)의 해시다. 같은 번호와 같은 내용으로 다시 오면(네트워크 재시도, 두 번 누름) 새 건을 만들지 않고 이미 만든 건의 최신 판을 `replayed: true`로 돌려준다. 같은 번호에 다른 내용이면 409 `REQUEST_ID_REUSED`, 번호가 없거나 틀리면 422 `INVALID_REQUEST_ID`, 본문에 `inspectionId`가 있으면 422 `USE_CORRECTION`(정정은 아래 PUT)이다.
+  - `weighTicket`(선택, 40자까지)은 계량표 번호다. 같은 업체가 같은 검수일에 같은 번호로 다른 검수를 이미 기록했으면 409 `DUPLICATE_TICKET`이다(같은 계량표를 손으로 두 번 적은 경우).
+  - 근거 ID는 판마다 따로다: `human:<업체>:검수-<검수 ID>-r<판>-<등급|단가|중량>`(문서면 `doc:<업체>:<문서>:…`). 응답은 `{"outcome": 기록, "evidence": [근거 ID], "replayed": bool}`.
+- `PUT /sessions/{id}/outcomes/{inspectionId}`(정정): 그 검수를 기록한 업체만(배출 기업 403, 당사자가 아니거나 없는 검수면 404 `OUTCOME_NOT_FOUND`), 스레드가 `confirmed`일 때만. 본문은 고친 뒤의 값 전체와 `baseRevision`(담당자가 보고 고친 판), `reason`(정정 사유, 필수, 200자까지), `requestId`다. 앞 판의 근거는 덮지 않고 새 판(`revision` + 1)과 새 근거를 만든다. `baseRevision`이 최신 판이 아니면 409 `REVISION_CONFLICT`, 값이 같으면 422 `NO_CHANGE`, `threadId`·`streamId`를 바꾸려 하면 422다. 같은 `requestId`로 다시 오면 `replayed: true`로 이미 만든 판을 돌려준다. 실적 리포트와 재학습(등급 학습 행, 기준값 보정 후보)은 검수 건마다 최신 판 하나만 센다.
+  - 검수일 키로 만든 이전 기록(`legacy`)도 그 키를 `inspectionId`로 써서 정정한다. 새 판 근거는 `human:<업체>:<이전 키>-r<판>-…`이고 이전 근거 ID는 그대로 열린다.
 - `GET /admin/retrain/export`: `{"gradeLabels": [등급 모델 학습 행, synthetic=false], "detectionCorrections": [탐지 교정], "gate": 게이트}`. 여러 조직의 기록이 섞여 있어 `role`이 `admin`인 조직만 받는다.
 - `POST /admin/retrain/runs`: Azure ML 재학습 작업(`scripts/v3/ml/compare_and_gate.py`)이 낸 `gate.json`을 그대로 받는다. 받은 값을 적을 뿐 점수나 판정을 만들지 않는다. 관리자만.
 - `POST /admin/eval`의 응답: 맨 위(`scenario`, `sessionStatus`, `checked`, `passed`, `validatorPassRate`, `rewritten`, `threads`, `resultStatus`)는 시연 시나리오 한 건의 결과이고, `cases`가 사례 세트(50건)의 결과다: `{"model", "summary": {caseCount, draftCount, reviewCounts, verdictMatched, verdictMatchRate, openCount, openCases, validatorChecked, validatorPassed, validatorPassRate, forbiddenViolationCount, forbiddenClean, ...}, "results": [{id, title, review, open, verdictMatch, mismatches, forbiddenViolations, validator}]}`.

@@ -7,7 +7,12 @@
   탐지 모델 재학습 데이터 후보로 내보낸다. 흐름의 값 자체는 바꾸지 않는다(흐름은
   PUT /orgs/{orgId}/streams/{streamId}로 고친다).
 - 실제 결과(outcome): 확정 뒤에 업체가 기록한 실제 등급·단가·중량. 소유는 업체이고 배출 기업과
-  나눈다. 등급 모델 학습 행과 기준값 보정 후보가 된다.
+  나눈다. 등급 모델 학습 행과 기준값 보정 후보가 된다. 검수(계량) 한 건마다 검수 ID가 있다.
+  새 반입 등록(record_outcome)은 업체가 붙인 요청 번호(requestId)로 검수 ID를 만들어 재전송을
+  한 건으로 묶고, 정정(correct_outcome)은 앞 판을 덮지 않고 새 판과 새 근거를 남긴다. 실적·재학습은
+  검수 건마다 최신 판 하나만 쓴다. 2026-11-19 전에는 흐름과 검수일로 키를 만들어 같은 날 두 번 받은
+  반입이 한 건으로 덮였다. 그때 만든 기록은 그 키를 검수 ID로 읽어 그대로 이어 쓴다(legacy).
+
 
 여기서 만드는 숫자는 실제 단가와 기준표 단가의 차이 하나뿐이고, calc 근거로 남긴다.
 평균을 내거나 기준값을 자동으로 바꾸지 않는다. 모델 버전 표는 등록된 실행만 보여 준다.
@@ -23,6 +28,7 @@ from __future__ import annotations
 import json
 import math
 import re
+from datetime import datetime, timedelta, timezone
 from typing import Any
 
 from app.v3 import ids
@@ -54,6 +60,33 @@ CURRENT_METHOD_ASSUMED = "혼합 소각"  # 현행 처리 방식을 적지 않�
 DEMO_NOTE = "시연(가상) 회사 사이의 기록입니다. 실제 학습·검증·배포 게이트에는 세지 않습니다."
 _DATE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 _MISSING = object()
+SEOUL = timezone(timedelta(hours=9), "Asia/Seoul")
+
+# 실제 결과(검수 한 건)
+_REQUEST_ID = re.compile(r"^[A-Za-z0-9_.:-]{8,100}$")
+TICKET_MAX = 40
+REASON_MAX = 200
+VALUE_KEYS = (
+    "inspectedOn",
+    "actualGrade",
+    "actualUnitPriceKrwPerKg",
+    "actualKg",
+    "note",
+    "weighTicket",
+    "documentName",
+)
+# 처음 기록할 때 고정하고 정정해도 바꾸지 않는 값(검수 때의 품질, 합의 단가, 처음 기록한 때)
+CARRIED_KEYS = ("features", "criterionId", "tablePrice", "offeredPrice", "createdOn", "createdAt")
+HISTORY_KEYS = (
+    "revision",
+    "reason",
+    "recordedOn",
+    "recordedAt",
+    *VALUE_KEYS,
+    "evidenceKind",
+    "evidence",
+    "deviation",
+)
 
 
 class FeedbackError(ValueError):
@@ -291,7 +324,10 @@ def _agreed(session: dict[str, Any], thread_id: str, stream_id: str) -> dict[str
 
 
 def carbon_basis_id(record: dict[str, Any]) -> str:
-    """검수 기록 하나의 탄소 계산 기준 근거 ID. 같은 흐름·검수일로 다시 기록하면 같은 ID의 새 판이 된다."""
+    """검수 한 건의 탄소 계산 기준 근거 ID. record["id"]는 검수 ID라 정정해도 같은 ID다.
+
+    검수일 키로 만든 이전 기록은 그 키(실제결과-…)로 정해져 그때 남긴 기준을 그대로 찾는다.
+    """
     inputs = {"outcome": record["id"], "emitter": record["emitterOrgId"]}
     return ids.calc_id("outcome_carbon_basis", inputs, "carbonBasis")
 
@@ -375,18 +411,20 @@ def carbon_basis(app: Any, record: dict[str, Any]) -> dict[str, Any] | None:
     return {**basis, "evidenceId": found.id, "version": found.version} if basis else None
 
 
-def record_outcome(
-    app: Any,
-    session: dict[str, Any],
-    thread: dict[str, Any],
-    stream: dict[str, Any],
-    body: dict[str, Any],
-) -> dict[str, Any]:
-    """업체가 확정 뒤에 기록한 실제 등급·단가·중량. 권한과 스레드 상태는 service가 확인한다.
+def _request_id(body: dict[str, Any]) -> str:
+    value = body.get("requestId")
+    text = value.strip() if isinstance(value, str) else ""
+    if not _REQUEST_ID.match(text):
+        raise FeedbackError(
+            "INVALID_REQUEST_ID",
+            "등록 요청 번호(requestId)를 영문·숫자·_.:- 8~100자로 보내 주세요. "
+            "같은 요청을 다시 보낼 때는 같은 번호를 씁니다.",
+        )
+    return text
 
-    documentName을 주면 doc 근거(검수 문서), 없으면 human 근거(담당자 입력)로 등록한다.
-    같은 흐름과 검수일로 다시 보내면 같은 근거의 새 판이 된다.
-    """
+
+def _values(app: Any, body: dict[str, Any]) -> dict[str, Any]:
+    """검수 한 건의 값. 새 반입 등록과 정정이 같은 규칙으로 읽는다."""
     inspected = body.get("inspectedOn")
     if not isinstance(inspected, str) or not _DATE.match(inspected):
         raise FeedbackError("INVALID_VALUE", "검수일(inspectedOn)은 YYYY-MM-DD로 보내 주세요.")
@@ -405,21 +443,160 @@ def record_outcome(
         raise FeedbackError("INVALID_VALUE", "실제 중량은 0 이상의 숫자(kg)로 보내 주세요.")
     if grade is None and price is None:
         raise FeedbackError("INVALID_VALUE", "실제 등급이나 실제 단가 가운데 하나는 있어야 합니다.")
+    ticket = body.get("weighTicket")
+    if ticket is not None and not isinstance(ticket, str):
+        raise FeedbackError("INVALID_VALUE", "계량표 번호(weighTicket)는 글자로 보내 주세요.")
+    ticket = (ticket or "").strip()
+    if len(ticket) > TICKET_MAX:
+        raise FeedbackError("INVALID_VALUE", f"계량표 번호는 {TICKET_MAX}자까지 적을 수 있습니다.")
+    document = body.get("documentName")
+    document = document.strip() if isinstance(document, str) else ""
+    return {
+        "inspectedOn": inspected,
+        "actualGrade": grade,
+        "actualUnitPriceKrwPerKg": _number(price),
+        "actualKg": _number(kg),
+        "note": _note(body),
+        "weighTicket": ticket or None,
+        "documentName": document or None,
+    }
 
+
+def _stored(record: dict[str, Any]) -> dict[str, Any]:
+    """저장한 판의 값(_values와 같은 모양). 재전송과 정정 전후를 견줄 때 쓴다."""
+    return {key: record.get(key) for key in VALUE_KEYS}
+
+
+def _now(app: Any) -> str:
+    """기록한 시각. 앱에 주입한 시계(App.wall_clock)만 읽는다(규칙 12, 시험에서 바꿔 끼운다)."""
+    return datetime.fromtimestamp(app.wall_clock(), SEOUL).isoformat(timespec="milliseconds")
+
+
+def inspection_key(vendor: str, session_id: str, request_id: str) -> str:
+    """새 반입 등록의 검수 ID. 같은 업체가 같은 진단에 같은 요청 번호로 보내면 같은 ID다."""
+    return "insp-" + ids.digest({"vendor": vendor, "session": session_id, "request": request_id})
+
+
+def _evidence_key(inspection_id: str, revision: int) -> str:
+    # 검수일로 키를 만든 이전 기록(실제결과-…)은 그 키 뒤에 판 번호를 붙인다
+    base = inspection_id if inspection_id.startswith("실제결과-") else f"검수-{inspection_id}"
+    return f"{base}-r{revision}"
+
+
+def _revisions(app: Any) -> dict[tuple[str, str], dict[int, dict[str, Any]]]:
+    """(업체, 검수 ID) → {판 번호: 기록}. 등급·단가·중량 근거에 같은 기록이 실려 있어 하나로 묶는다."""
+    found: dict[tuple[str, str], dict[int, dict[str, Any]]] = {}
+    for item in _feedback(app, "outcome"):
+        record = {k: v for k, v in item.meta["feedback"].items() if k != "part"}
+        if "inspectionId" not in record:  # 검수일로 키를 만든 이전 기록: 그 키를 검수 ID로 읽는다
+            record.update(
+                inspectionId=record["id"],
+                revision=1,
+                legacy=True,
+                requestId=None,
+                supersedes=None,
+                reason=None,
+                weighTicket=None,
+                documentName=None,
+                createdOn=record.get("recordedOn"),
+                createdAt=None,
+                recordedAt=None,
+            )
+        key = (record["vendorOrgId"], record["inspectionId"])
+        found.setdefault(key, {})[int(record["revision"])] = record
+    return found
+
+
+def _with_history(revisions: dict[int, dict[str, Any]]) -> dict[str, Any]:
+    """최신 판 하나에 앞 판들(정정 이력)을 붙인다."""
+    last = max(revisions)
+    history = [
+        {key: revisions[n].get(key) for key in HISTORY_KEYS} for n in sorted(revisions) if n != last
+    ]
+    return {**revisions[last], "history": history}
+
+
+def _inspection(app: Any, inspection_id: str) -> dict[int, dict[str, Any]] | None:
+    for (_, found), revisions in _revisions(app).items():
+        if found == inspection_id:
+            return revisions
+    return None
+
+
+def find_outcome(app: Any, inspection_id: str) -> dict[str, Any] | None:
+    """검수 ID로 최신 판(정정 이력 포함)을 찾는다. 권한은 service가 확인한다."""
+    revisions = _inspection(app, inspection_id)
+    return _with_history(revisions) if revisions else None
+
+
+def _check_ticket(app: Any, vendor: str, values: dict[str, Any], own: str | None) -> None:
+    """같은 업체가 같은 날 같은 계량표 번호로 다른 검수를 이미 기록했으면 막는다(손으로 두 번 적은 경우)."""
+    ticket = values["weighTicket"]
+    if not ticket:
+        return
+    for (org, inspection_id), revisions in _revisions(app).items():
+        latest = revisions[max(revisions)]
+        if org != vendor or inspection_id == own:
+            continue
+        if latest.get("weighTicket") == ticket and latest["inspectedOn"] == values["inspectedOn"]:
+            raise FeedbackError(
+                "DUPLICATE_TICKET",
+                f"같은 날({values['inspectedOn']}) 같은 계량표 번호({ticket})로 기록한 검수가 "
+                "이미 있습니다. 그 건을 고치려면 표에서 정정을 눌러 주세요.",
+                409,
+            )
+
+
+def _write_revision(
+    app: Any,
+    session: dict[str, Any],
+    thread: dict[str, Any],
+    stream: dict[str, Any],
+    values: dict[str, Any],
+    *,
+    inspection_id: str,
+    revision: int,
+    request_id: str,
+    reason: str | None,
+    previous: dict[str, Any] | None,
+) -> dict[str, Any]:
+    """검수 건의 한 판을 근거로 남긴다. 앞 판의 근거는 그대로 두고 새 ID로 쓴다."""
     vendor, emitter = thread["vendorOrgId"], thread["emitterOrgId"]
     stream_id = stream["id"]
     name = stream.get("name") or stream_id
-    document = body.get("documentName")
-    document = document.strip() if isinstance(document, str) else ""
-    key = f"실제결과-{session['id']}-{stream_id}-{inspected}"
+    document = values["documentName"] or ""
+    inspected = values["inspectedOn"]
+    grade = values["actualGrade"]
+    price = values["actualUnitPriceKrwPerKg"]
+    kg = values["actualKg"]
+    key = _evidence_key(inspection_id, revision)
+    now = _now(app)
 
     def evidence_id(part: str) -> str:
         if document:
             return ids.doc_id(vendor, document, f"{key}-{part}")
         return ids.human_id(vendor, f"{key}-{part}")
 
-    q = quality(stream)
-    agreed = _agreed(session, thread["id"], stream_id)
+    if previous is None:
+        # 검수 때의 품질과 합의 단가는 처음 기록할 때 고정하고, 정정은 값만 바꾼다
+        q = quality(stream)
+        agreed = _agreed(session, thread["id"], stream_id)
+        carried = {
+            "features": {
+                "material": stream.get("material"),
+                "contaminationPct": q["contaminationPct"],
+                "moisturePct": q["moisturePct"],
+                "basis": q["basis"],
+                "evidence": list(q["evidence"]),
+            },
+            "criterionId": agreed["criterionId"],
+            "tablePrice": agreed["table"],
+            "offeredPrice": agreed["offer"],
+            "createdOn": app.today,
+            "createdAt": now,
+        }
+    else:
+        carried = {key_: previous.get(key_) for key_ in CARRIED_KEYS}
     parts = {
         "grade": evidence_id("등급") if grade is not None else None,
         "unitPrice": evidence_id("단가") if price is not None else None,
@@ -427,36 +604,41 @@ def record_outcome(
     }
     record = {
         "type": "outcome",
-        "id": key,
+        "id": inspection_id,
+        "inspectionId": inspection_id,
+        "revision": revision,
+        "supersedes": previous["revision"] if previous else None,
+        "requestId": request_id,
+        "reason": reason,
+        "legacy": bool(previous and previous.get("legacy")),
         "sessionId": session["id"],
         "threadId": thread["id"],
         "vendorOrgId": vendor,
         "emitterOrgId": emitter,
         "streamId": stream_id,
-        "inspectedOn": inspected,
-        "actualGrade": grade,
-        "actualUnitPriceKrwPerKg": _number(price),
-        "actualKg": _number(kg),
-        "note": _note(body),
+        **values,
         "evidenceKind": "doc" if document else "human",
         "evidence": {k: v for k, v in parts.items() if v},
-        "features": {
-            "material": stream.get("material"),
-            "contaminationPct": q["contaminationPct"],
-            "moisturePct": q["moisturePct"],
-            "basis": q["basis"],
-            "evidence": list(q["evidence"]),
-        },
-        "criterionId": agreed["criterionId"],
-        "tablePrice": agreed["table"],
-        "offeredPrice": agreed["offer"],
+        **carried,
         "deviation": None,
         "recordedOn": app.today,
+        "recordedAt": now,
         "dataOrigin": data_origin(app, vendor, emitter),
     }
-    source = (
-        f"검수 문서 {document}(업체 제출)" if document else "업체 담당자 입력(확정 뒤 실제 결과)"
-    )
+    if previous is None:
+        source = (
+            f"검수 문서 {document}(업체 제출)"
+            if document
+            else "업체 담당자 입력(확정 뒤 실제 결과)"
+        )
+        tail = ""
+    else:
+        source = (
+            f"검수 문서 {document}(업체 정정 제출)"
+            if document
+            else "업체 담당자 정정(확정 뒤 실제 결과)"
+        )
+        tail = f" ({previous['revision']}판을 정정한 {revision}판. 사유: {reason})"
 
     def put(part: str, label: str, value: Any, unit: str | None, text: str) -> None:
         app.registry.put(
@@ -466,7 +648,7 @@ def record_outcome(
                 label=f"{name} {label}",
                 value=value,
                 unit=unit,
-                excerpt=f"{inspected} 검수: {name} {text}",
+                excerpt=f"{inspected} 검수: {name} {text}{tail}",
                 source=source,
                 as_of=inspected,
                 access=(vendor, emitter),
@@ -474,7 +656,7 @@ def record_outcome(
             )
         )
 
-    table = agreed["table"]
+    table = record["tablePrice"]
     if price is not None and table is not None:
         # 여기서 만드는 숫자는 이 차이 하나다. calc 근거로 남겨 계산 사슬을 따라갈 수 있게 한다
         difference = round(float(price) - float(table["value"]), 6)
@@ -512,41 +694,168 @@ def record_outcome(
         put("unitPrice", "실제 단가", float(price), "원/kg", f"실제 단가 kg당 {float(price):g}원")
     if kg is not None:
         put("kg", "실제 중량", float(kg), "kg", f"실제 중량 {float(kg):g}kg")
-    # 탄소 계산 기준은 검수를 기록하는 지금의 설정으로 남긴다(실적 리포트가 나중 설정으로 다시 계산하지 않게)
-    _carbon_basis(app, record, stream, _number(price))
+    # 탄소 계산 기준은 검수를 처음 등록할 때의 설정으로 고정한다(정정은 무게·단가만 고치고 기준은 그대로).
+    # 기준을 남기기 전에 기록된 예전 검수는 정정할 때 남긴다(그 전에는 리포트가 탄소를 내지 않는다)
+    if previous is None or carbon_basis(app, record) is None:
+        _carbon_basis(app, record, stream, price)
     app.store.add_event(
         session["id"],
         "system",
         "feedback",
-        f"업체가 {name}의 실제 결과를 기록했습니다.",
+        (
+            f"업체가 {name}의 {inspected} 검수 결과를 기록했습니다."
+            if previous is None
+            else f"업체가 {name}의 {inspected} 검수 기록을 정정했습니다({revision}판)."
+        ),
         thread_id=thread["id"],
         detail={
             "orgId": vendor,
             "type": "outcome",
             "streamId": stream_id,
+            "inspectionId": inspection_id,
+            "revision": revision,
             "evidence": list(record["evidence"].values()),
         },
     )
     return record
 
 
+def record_outcome(
+    app: Any,
+    session: dict[str, Any],
+    thread: dict[str, Any],
+    stream: dict[str, Any],
+    body: dict[str, Any],
+) -> tuple[dict[str, Any], bool]:
+    """새 반입 검수 한 건을 등록한다. 권한과 스레드 상태는 service가 확인한다.
+
+    같은 날 같은 폐기물을 여러 번 받아도 요청 번호(requestId)가 다르면 건마다 따로 남는다. 같은 요청
+    번호로 다시 오면(재시도·두 번 누름) 새로 만들지 않고 이미 만든 건의 최신 판을 돌려준다.
+    (기록, 새로 만들었는지)를 돌려준다. documentName을 주면 doc 근거(검수 문서), 없으면 human 근거다.
+    """
+    if body.get("inspectionId") not in (None, ""):
+        raise FeedbackError(
+            "USE_CORRECTION",
+            "이미 기록한 검수를 고치려면 정정(PUT /sessions/{sessionId}/outcomes/{inspectionId})으로 "
+            "보내 주세요. 새 반입이면 inspectionId 없이 보냅니다.",
+        )
+    request_id = _request_id(body)
+    values = _values(app, body)
+    vendor = thread["vendorOrgId"]
+    inspection_id = inspection_key(vendor, session["id"], request_id)
+    revisions = _inspection(app, inspection_id)
+    if revisions:
+        first = revisions[min(revisions)]
+        same = (
+            first["threadId"] == thread["id"]
+            and first["streamId"] == stream["id"]
+            and _stored(first) == values
+        )
+        if not same:
+            raise FeedbackError(
+                "REQUEST_ID_REUSED",
+                "이 등록 요청 번호로 다른 내용이 이미 기록되어 있습니다. 새 반입이면 새 번호로 보내 주세요.",
+                409,
+            )
+        return _with_history(revisions), False
+    _check_ticket(app, vendor, values, None)
+    record = _write_revision(
+        app,
+        session,
+        thread,
+        stream,
+        values,
+        inspection_id=inspection_id,
+        revision=1,
+        request_id=request_id,
+        reason=None,
+        previous=None,
+    )
+    return {**record, "history": []}, True
+
+
+def correct_outcome(
+    app: Any,
+    session: dict[str, Any],
+    thread: dict[str, Any],
+    stream: dict[str, Any],
+    inspection_id: str,
+    body: dict[str, Any],
+) -> tuple[dict[str, Any], bool]:
+    """이미 기록한 검수 건을 정정한다. 앞 판을 덮지 않고 새 판을 만든다. 권한은 service가 확인한다.
+
+    baseRevision은 담당자가 보고 고친 판 번호다. 그 사이 다른 정정이 들어왔으면 409로 알린다. 같은
+    요청 번호로 다시 오면 이미 만든 판을 돌려준다. (기록, 새로 만들었는지)를 돌려준다.
+    """
+    revisions = _inspection(app, inspection_id)
+    if not revisions:
+        raise FeedbackError("OUTCOME_NOT_FOUND", "그런 검수 기록이 없습니다.", 404)
+    latest = revisions[max(revisions)]
+    request_id = _request_id(body)
+    reason = body.get("reason")
+    reason = reason.strip() if isinstance(reason, str) else ""
+    if not reason:
+        raise FeedbackError("INVALID_VALUE", "정정 사유(reason)를 적어 주세요.")
+    if len(reason) > REASON_MAX:
+        raise FeedbackError("INVALID_VALUE", f"정정 사유는 {REASON_MAX}자까지 적을 수 있습니다.")
+    values = _values(app, body)
+    for record in revisions.values():
+        if record.get("requestId") != request_id:
+            continue
+        if record["revision"] > 1 and _stored(record) == values and record["reason"] == reason:
+            return _with_history(revisions), False
+        raise FeedbackError(
+            "REQUEST_ID_REUSED",
+            "이 요청 번호로 다른 내용이 이미 기록되어 있습니다. 새 정정이면 새 번호로 보내 주세요.",
+            409,
+        )
+    base = body.get("baseRevision")
+    if isinstance(base, bool) or not isinstance(base, int):
+        raise FeedbackError("INVALID_VALUE", "고친 판 번호(baseRevision)를 정수로 보내 주세요.")
+    if base != latest["revision"]:
+        raise FeedbackError(
+            "REVISION_CONFLICT",
+            f"그 사이 이 검수 기록이 정정되었습니다(지금 {latest['revision']}판). "
+            "화면을 새로 불러온 뒤 다시 정정해 주세요.",
+            409,
+        )
+    if _stored(latest) == values:
+        raise FeedbackError("NO_CHANGE", "정정하기 전과 값이 같습니다.")
+    _check_ticket(app, thread["vendorOrgId"], values, inspection_id)
+    _write_revision(
+        app,
+        session,
+        thread,
+        stream,
+        values,
+        inspection_id=inspection_id,
+        revision=latest["revision"] + 1,
+        request_id=request_id,
+        reason=reason,
+        previous=latest,
+    )
+    return _with_history(_inspection(app, inspection_id) or {}), True
+
+
 def outcomes(
     app: Any, session_id: str | None = None, origin: str | None = None
 ) -> list[dict[str, Any]]:
-    """실제 결과 기록(검수 한 건에 하나). 등급·단가·중량 근거에 같은 기록이 실려 있어 하나로 묶는다.
+    """실제 결과 기록. 검수 건마다 최신 판 하나이고 앞 판은 history에 싣는다.
 
-    origin을 주면 그 출처(real | demo)의 것만.
+    검수일 → 처음 기록한 시각 → 검수 ID 순서다. origin을 주면 그 출처(real | demo)의 것만.
     """
-    found: dict[str, dict[str, Any]] = {}
-    for item in _feedback(app, "outcome"):
-        record = {k: v for k, v in item.meta["feedback"].items() if k != "part"}
-        found[f"{record['vendorOrgId']}|{record['id']}"] = _with_origin(app, record)
-    return [
-        record
-        for _, record in sorted(found.items())
-        if (session_id is None or record["sessionId"] == session_id)
-        and (origin is None or record["dataOrigin"] == origin)
-    ]
+    found = []
+    for revisions in _revisions(app).values():
+        record = _with_origin(app, _with_history(revisions))
+        if session_id is not None and record["sessionId"] != session_id:
+            continue
+        if origin is not None and record["dataOrigin"] != origin:
+            continue
+        found.append(record)
+    return sorted(
+        found,
+        key=lambda r: (r["inspectedOn"], r.get("createdAt") or "", r["vendorOrgId"], r["id"]),
+    )
 
 
 def export_grade_labels(app: Any, origin: str = "real") -> list[dict[str, Any]]:
@@ -630,6 +939,7 @@ def calibration_candidates(app: Any, viewer: str | None = None) -> dict[str, Any
         group["count"] += 1
         group["items"].append(
             {
+                "inspectionId": record["inspectionId"],
                 "inspectedOn": record["inspectedOn"],
                 "sessionId": record["sessionId"],
                 "tablePrice": record["tablePrice"],

@@ -5,6 +5,7 @@
 출처(dataOrigin: real | demo)를 기록할 때 남기고, 시연 기록은 따로 세어 실제 기록과 섞지 않는다.
 """
 
+import uuid
 from dataclasses import replace
 
 from app.v3 import feedback, service
@@ -28,6 +29,7 @@ def _as_real(app, *org_ids):
 
 def _record(app, view, **over):
     body = {
+        "requestId": f"req-{uuid.uuid4().hex}",  # 새 반입 한 건
         "threadId": thread_of(view, SAEGIL, "confirmed")["id"],
         "streamId": "st_sprue",
         "actualGrade": "A",

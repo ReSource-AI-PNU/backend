@@ -132,7 +132,8 @@ def test_contract_routes_are_read():
     assert ("GET", "/sessions/{}/quote-request") in routes
     assert ("GET", "/orgs/{}/report") in routes
     assert ("POST", "/intake/criteria/confirm") in routes
-    assert len(routes) == 31
+    assert ("PUT", "/sessions/{}/outcomes/{}") in routes  # 검수 기록 정정(새 반입 등록과 따로)
+    assert len(routes) == 32
 
 
 def test_devserver_routes_equal_the_contract():
