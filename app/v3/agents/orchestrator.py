@@ -3147,6 +3147,24 @@ class Orchestrator:
                             "evidence": list(permit.get("evidence") or []),
                         }
                     )
+            gone = [
+                x for x in optimized["output"].get("pickupExcluded") or [] if x["streamId"] == sid
+            ]
+            if vendor_id is None and gone:
+                # 수거 불가라고 밝힌 업체를 빼서 옮길 곳이 없어졌다. 다른 확인 항목보다 먼저 그 까닭을 적는다
+                who = ", ".join(dict.fromkeys(names.get(x["vendorOrgId"]) or "업체" for x in gone))
+                checks.insert(
+                    0,
+                    {
+                        "key": "pickup_route",
+                        "status": "unmet",
+                        "text": f"{josa(who, '은는')} 이 공장까지 수거하러 올 수 없다고 밝혀 배정에서 "
+                        "뺐습니다. 다른 업체를 찾거나 업체와 수거 방법을 다시 정해야 합니다.",
+                        "evidence": list(
+                            dict.fromkeys(e for x in gone for e in x.get("evidence") or [])
+                        ),
+                    },
+                )
             if vendor_id is None and sid in handed:
                 # 이 흐름을 맡기로 합의한 대화가 담당자에게 넘어갔다. 현행 유지를 "확정"으로 보이지 않게 한다
                 status = "needs_information"

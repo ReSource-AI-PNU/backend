@@ -440,6 +440,12 @@ def test_unavailable_vendor_is_left_out_of_assignment_and_totals():
     assert row["vendorOrgId"] is None and row["route"] == "keep"
     alternative = next(a for a in row["alternatives"] if a["vendorOrgId"] == MISO)
     assert alternative["monthlyAfter"] is None and alternative["note"].startswith("수거 불가")
+    # 옮길 곳이 없어진 까닭(수거 불가)을 다른 확인 항목보다 먼저 적는다
+    first = row["checks"][0]
+    assert first["key"] == "pickup_route" and first["status"] == "unmet"
+    assert (
+        "(주)미소환경은 이 공장까지 수거하러 올 수 없다고 밝혀 배정에서 뺐습니다" in first["text"]
+    )
     totals = view["result"]["totals"]
     assert totals["difference"]["value"] == sum(
         a["difference"]["value"] for a in view["result"]["assignments"] if a["difference"]
