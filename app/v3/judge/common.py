@@ -519,63 +519,60 @@ def labor_cost(rec: Recorder, stream: dict):
 
 
 # ── 탄소 ───────────────────────────────────────────────────────────────
-# 탄소 변화 = 처리 방식이 바뀌어 달라지는 배출 + 업체가 수거하러 오가는 운행 배출.
-# 처리 배출 = (옮긴 뒤 처리의 배출계수 − 현행 처리의 배출계수) × 월 발생량. 계수는 환경성적표지 평가계수(공식값)다.
-# 운행 배출 = 업체 차고지 ↔ 공장 왕복 거리 × 월 수거 횟수 × 화물차 km당 배출계수(가정값). 지금 처리의 수거 운행
-# 배출은 알 수 없어 빼지 않는다(옮기는 쪽을 불리하게 본다). 신재 대체 효과는 넣지 않는다.
+# 탄소 변화 = 처리 방식이 바뀌어 달라지는 배출 + 업체로 실어 가는 운송 배출.
+# 처리 배출 = (옮긴 뒤 처리의 배출계수 − 현행 처리의 배출계수) × 월 발생량.
+# 운송 배출 = 트럭 운송 배출계수(kgCO2e/ton·km) × 월 발생량(t) × 공장 → 업체 거리(km).
+# 계수는 모두 환경성적표지 평가계수(한국환경산업기술원, 공식값)다. 트럭 운송 계수는 국가 LCI의 화물 1톤을 1km
+# 실어 나를 때의 값이라 빈 차로 돌아오는 몫이 들어 있다. 지금 처리의 운송 배출은 알 수 없어 빼지 않는다(옮기는 쪽을
+# 불리하게 본다). 신재 대체 효과는 넣지 않는다.
 _AFTER_PROCESS = {"재활용": "recycle", "물질 재활용": "recycle", "열분해": "pyrolysis"}
 CARBON_FORMULA = "(옮긴 뒤 처리의 배출계수 − 현행 처리의 배출계수) × 월 발생량. 신재 대체 효과는 넣지 않았습니다."
-TRANSPORT_EF_KEY = "emission.transport.truckPerKm"
+TRANSPORT_EF_KEY = "emission.transport.truck"
 TRANSPORT_CARBON_FORMULA = (
-    "업체 차고지 ↔ 공장 왕복 거리 × 월 수거 횟수 × 화물차 km당 배출계수. "
-    "지금 처리의 수거 운행 배출은 빼지 않았습니다."
+    "트럭 운송 배출계수(톤·km당) × 월 발생량(t) × 공장 → 업체 거리. "
+    "지금 처리의 운송 배출은 빼지 않았습니다."
 )
-TOTAL_CARBON_FORMULA = "처리 방식이 바뀌어 달라지는 배출 + 수거 운행 배출(이 폐기물의 몫)"
+TOTAL_CARBON_FORMULA = "처리 방식이 바뀌어 달라지는 배출 + 업체로 실어 가는 운송 배출"
 
 
-def transport_carbon(rec: Recorder, vendor: dict, origin, distance_provider=None, pickups=None):
-    """업체 한 곳이 이 공장에 수거하러 오가는 월 운행 배출(tCO2e/월).
+def vendor_distance(rec: Recorder, vendor: dict, origin, distance_provider=None) -> dict:
+    """공장 → 업체 차고지(처리 시설) 거리. {"known", "km", "assumed", "evidence", "reason"}.
 
-    {"known", "tco2e", "roundTripKm", "monthlyKm", "pickups", "distanceAssumed", "distanceEvidence",
-     "factor", "reason"}. 공장 위치, 업체 차고지, 월 수거 횟수, 배출계수 가운데 하나라도 없으면 known False이고
-    reason에 이유를 적는다(숫자 없는 문장). 거리는 도로 거리 제공자가 있으면 그 값, 없으면 직선 × 우회 계수(가정값).
+    도로 거리 제공자가 있으면 그 값, 없으면 직선 × 우회 계수(가정값). 위치를 모르면 known False이고 reason에
+    이유를 적는다(숫자 없는 문장).
     """
-    out = {
-        "known": False,
-        "tco2e": None,
-        "roundTripKm": None,
-        "monthlyKm": None,
-        "pickups": None,
-        "distanceAssumed": None,
-        "distanceEvidence": [],
-        "factor": None,
-        "reason": None,
-    }
+    out = {"known": False, "km": None, "assumed": None, "evidence": [], "reason": None}
     depot = (vendor.get("fleet") or {}).get("depot")
-    count = pickups_of(vendor, pickups)
-    factor = rec.basis(TRANSPORT_EF_KEY)
     if not origin or not depot:
         out["reason"] = "공장 위치나 업체 차고지를 몰라"
         return out
-    if not count:
-        out["reason"] = "월 수거 횟수를 몰라"
-        return out
-    if factor is None:
-        out["reason"] = "화물차 운행 배출계수가 없어"
-        return out
-    matrix, assumed, dist_ev = distance_matrix(rec, [depot, origin], distance_provider)
+    matrix, assumed, evidence = distance_matrix(rec, [origin, depot], distance_provider)
     if matrix is None:
         out["reason"] = "거리를 계산할 근거가 없어"
         return out
-    round_trip = matrix[0][1] + matrix[1][0]
+    out.update(known=True, km=float(matrix[0][1]), assumed=assumed, evidence=list(evidence))
+    return out
+
+
+def transport_carbon(rec: Recorder, distance: dict, kg) -> dict:
+    """월 발생량 kg을 distance(vendor_distance)만큼 트럭으로 실어 갈 때의 운송 배출(tCO2e/월).
+
+    {"known", "tco2e", "tkm", "km", "factor", "reason"}. 거리나 배출계수가 없으면 known False.
+    """
+    out = {"known": False, "tco2e": None, "tkm": None, "km": None, "factor": None, "reason": None}
+    if not distance.get("known"):
+        out["reason"] = distance.get("reason") or "거리를 몰라"
+        return out
+    factor = rec.basis(TRANSPORT_EF_KEY)
+    if factor is None:
+        out["reason"] = "트럭 운송 배출계수가 없어"
+        return out
+    tkm = float(kg) / 1000 * float(distance["km"])
     out.update(
         known=True,
-        roundTripKm=round_trip,
-        pickups=count,
-        monthlyKm=round_trip * count,
-        tco2e=round_trip * count * float(factor.value) / 1000,
-        distanceAssumed=assumed,
-        distanceEvidence=list(dist_ev),
+        tco2e=tkm * float(factor.value) / 1000,
+        tkm=tkm,
+        km=float(distance["km"]),
         factor=factor.id,
     )
     return out

@@ -155,7 +155,7 @@ def test_can_open_thread_matches_real_match_permit_output(demo):
     film_miso = permit("st_film", "org_miso")
     ok, reason = can_open_thread(film_miso)
     assert ok is False and "허가 품목" in reason
-    assert permit_evidence(film_miso) == ["doc:org_miso:허가증:폐플라스틱"]
+    assert permit_evidence(film_miso) == ["human:org_miso:허가품목-폐플라스틱"]
 
     film_saegil = permit("st_film", "org_saegil")
     assert can_open_thread(film_saegil)[0] is True

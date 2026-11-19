@@ -2521,6 +2521,14 @@ class Orchestrator:
                     and float(other_after["value"]) <= float(now_claim["value"])
                 )
                 other_output = (other_cost or {}).get("output") or {}
+                excluded = next(
+                    (
+                        x
+                        for x in optimized["output"].get("permitExcluded") or []
+                        if x["streamId"] == sid and x["vendorOrgId"] == other_id
+                    ),
+                    None,
+                )
                 alternatives.append(
                     {
                         "vendorOrgId": other_id,
@@ -2537,7 +2545,9 @@ class Orchestrator:
                             "id": f"{tag}_alt_{safe_id(other_id)}_unitPrice",
                         },
                         "monthlyAfter": other_after,
-                        "note": "운반비와 인건비를 넣으면 지금보다 이득이 없어 고르지 않았습니다"
+                        "note": "허가 근거가 맞지 않아 배정하지 않았습니다. " + excluded["text"]
+                        if excluded
+                        else "운반비와 인건비를 넣으면 지금보다 이득이 없어 고르지 않았습니다"
                         if worse
                         else "조건부 제안"
                         if other["type"] == "conditional"
@@ -2686,6 +2696,8 @@ class Orchestrator:
             "carbonPrice": claim_in(
                 optimized, optimized["output"].get("carbonPrice"), "carbonPrice"
             ),
+            # 탄소를 가장 많이 줄이는 배정과의 비교(완전 탐색으로 풀었을 때만)
+            "greenest": self._greenest_view(optimized, names, by_id),
             "evidence": list(optimized.get("evidence") or []),
             # 가입하지 않은 업체 후보(배출 기업만 본다: 업체 뷰는 최상위 키를 싣지 않는다)
             "outsideVendors": work.get("outside"),
@@ -2693,6 +2705,35 @@ class Orchestrator:
             "improvements": self._improvements(org_id, streams, assignments, sorted(threads)),
             # ③ 규정 확인: 폐기물마다 경로 요건 체크리스트와 관련 조항(배출 기업만 본다)
             "regulation": self._regulation(work, streams),
+        }
+
+    def _greenest_view(
+        self, optimized: dict[str, Any], names: dict[str, Any], by_id: dict[str, Any]
+    ) -> dict[str, Any] | None:
+        """최적 배정이 낸 탄소 우선 배정 비교를 화면용으로. 바뀌는 폐기물과 돈·탄소 차이(claim)."""
+        found = optimized["output"].get("greenest")
+        if not found:
+            return None
+        if found.get("same"):
+            return {"same": True, "changes": []}
+        return {
+            "same": False,
+            "changes": [
+                {
+                    "streamId": change["streamId"],
+                    "streamName": (by_id.get(change["streamId"]) or {}).get("name"),
+                    "vendorOrgId": change["vendorOrgId"],
+                    "vendorName": names.get(change["vendorOrgId"])
+                    if change["vendorOrgId"]
+                    else None,
+                    "route": change["route"],
+                }
+                for change in found["changes"]
+            ],
+            "monthlyAfter": claim_in(optimized, found["monthlyAfter"], "green_monthlyAfter"),
+            "carbon": claim_in(optimized, found["carbon"], "green_carbon"),
+            "moneyGap": claim_in(optimized, found["moneyGap"], "green_moneyGap"),
+            "carbonGap": claim_in(optimized, found["carbonGap"], "green_carbonGap"),
         }
 
     def _route_check(self, vendor_id: str, emitter_id: str) -> dict[str, Any] | None:

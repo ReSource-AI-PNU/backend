@@ -2317,10 +2317,15 @@ def _profile_from_document(app: App, org_id: str, found: dict[str, Any]) -> dict
                     "wasteItem": item["wasteItem"],
                     "materials": list(item["materials"]),
                     "evidence": list(dict.fromkeys(item["evidence"])),
+                    # 허가 업종(문서에서 확인한 경우). 처리 방식과 맞는지 판정에 쓴다(judge/permits.py)
+                    **({"business": item["business"]} if item.get("business") else {}),
                 }
             )
             added["permits"] += 1
             continue
+        if item.get("business") and same.get("business") != item["business"]:
+            same["business"] = item["business"]
+            updated["permits"] += 1
         before = (list(same.get("materials") or []), list(same.get("evidence") or []))
         materials = before[0]
         # 재질이 비어 있는 허가 품목은 그 폐기물의 모든 재질이다. 한쪽이라도 비어 있으면 비운다

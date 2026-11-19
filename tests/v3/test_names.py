@@ -54,8 +54,9 @@ def test_describe_names_claims_by_their_key():
     assert names.describe("st_film_carbon") == ("탄소 변화", "carbon")
     # 처리 방식만의 탄소 변화다(결과 한 장의 "탄소 변화"는 수거 운행 배출을 더한 값이다)
     assert names.describe("carbonDifference") == ("처리 방식 탄소 변화", "carbon")
-    assert names.describe("s0CarbonTransport") == ("수거 운행 배출", "carbon")
-    assert names.describe("v0MonthlyKm") == ("월 수거 운행 거리", "distance")
+    assert names.describe("s0CarbonTransport") == ("운송 배출", "carbon")
+    assert names.describe("v0DistanceKm") == ("공장에서 업체까지 거리", "distance")
+    assert names.describe("greenMoneyGap") == ("탄소 우선 배정과의 월 손익 차이", "difference")
     assert names.describe("pc_pp_a_maxMoisturePct") == ("수분 상한", "threshold")
     assert names.describe("load_a_minMonthlyKg") == ("최소 물량", "threshold")
     assert names.describe("capacityM3") == ("차량 적재 부피", "capacity")  # 숫자로 끝나는 키

@@ -231,6 +231,26 @@ def _field(
     }
 
 
+_BUSINESS = re.compile(r"(종합|중간|최종)\s*(재활용|처분)\s*업|수집\s*[·ㆍ.]?\s*운반\s*업")
+
+
+def business_names(text: Any) -> str | None:
+    """허가 업종 글에서 정해 둔 업종 이름만 뽑는다("폐기물 종합재활용업 · 폐기물 중간처분업" 꼴). 없으면 None.
+
+    올린 문서의 글이 판정 문장에 그대로 들어가지 않게 한다(숫자나 지시문이 섞이지 않는다).
+    """
+    found: list[str] = []
+    for match in _BUSINESS.finditer(str(text or "")):
+        name = (
+            "폐기물수집·운반업"
+            if "운반" in match.group(0)
+            else f"폐기물{match.group(1)}{match.group(2)}업"
+        )
+        if name not in found:
+            found.append(name)
+    return " · ".join(found) or None
+
+
 def _first_value(pairs: list[dict[str, Any]], pattern: str) -> dict[str, Any] | None:
     regex = re.compile(pattern)
     for pair in pairs:
@@ -322,7 +342,17 @@ def extract_permit(layout: dict[str, Any]) -> dict[str, Any]:
             "materials": list(entry["materials"]),
         }
         fields.append(field)
-    info = {}
+    # 허가 업종(폐기물 종합재활용업 등). 확인하면 이 문서의 허가 품목에 붙어 처리 방식과 맞는지 판정한다(permits.py)
+    business = _first_value(pairs, r"업종|영업의종류|영업종류|영업구분")
+    if business and entries:
+        named = business_names(_cut_next_key(business["value"]))
+        reasons = ["인식 확신이 낮습니다"] if _low(business["confidence"]) else []
+        if named is None:
+            reasons.append("업종 이름을 알아보지 못했습니다")
+        field = _field("permit-business", "허가 업종", named, None, business["value"], reasons)
+        field["target"] = {"section": "permitInfo", "key": "business"}
+        fields.append(field)
+    info = {"business": business_names(business["value"]) if business else None}
     for key, pattern in (("businessName", r"상호|업체명"), ("permitNumber", r"허가번호")):
         pair = _first_value(pairs, pattern)
         info[key] = pair["value"] if pair else None
@@ -742,6 +772,9 @@ def profile_from_fields(fields: list[dict[str, Any]], evidence: dict[str, str]) 
     매입 기준은 재질·등급·형태가 같은 행끼리 모은다. 단가가 없는 새 기준은 만들지 않는다(skipped).
     """
     permits: dict[tuple[str, tuple[str, ...]], dict[str, Any]] = {}
+    business: tuple[str, str] | None = (
+        None  # (허가 업종, 근거 ID). 이 문서의 허가 품목 모두에 붙인다
+    )
     rows: dict[tuple[str, str | None, str | None], dict[str, Any]] = {}
     shared: list[tuple[str, Any, str]] = []  # 모든 행에 쓰는 값(표 밖 최소 물량)
     skipped: list[str] = []
@@ -751,6 +784,13 @@ def profile_from_fields(fields: list[dict[str, Any]], evidence: dict[str, str]) 
             continue
         target = item.get("target") if isinstance(item.get("target"), dict) else {}
         section = target.get("section")
+        if section == "permitInfo" and target.get("key") == "business":
+            named = business_names(item.get("value"))
+            if named:
+                business = (named, evidence_id)
+            else:
+                skipped.append(f"{item.get('label') or item.get('field')}: 업종 이름을 알 수 없음")
+            continue
         if section == "permit" or (not section and str(item.get("field")).startswith("permit-")):
             found = _permit_target(item)
             if found is None:
@@ -790,4 +830,8 @@ def profile_from_fields(fields: list[dict[str, Any]], evidence: dict[str, str]) 
                 row[key] = value
                 row["evidence"].append(evidence_id)
         criteria.append(row)
+    if business is not None:
+        for entry in permits.values():
+            entry["business"] = business[0]
+            entry["evidence"].append(business[1])
     return {"permits": list(permits.values()), "criteria": criteria, "skipped": skipped}

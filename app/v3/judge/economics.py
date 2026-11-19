@@ -20,6 +20,7 @@ from app.v3.judge.common import (
     quality,
     transport_carbon,
     transport_charge,
+    vendor_distance,
 )
 from app.v3.judge.route import baseline, current_cost
 
@@ -159,16 +160,25 @@ def cost_carbon(
         # 지금 팔고 있으면 방법 이름과 관계없이 재활용으로 견준다
         method = current_costs.SALE_METHOD
     per_kg, carbon_ev, why = carbon_per_kg(rec, stream, vendor, price, method)
-    # 수거 운행 배출: 이 폐기물만 보낼 때 업체가 오가는 거리로 본다(최적 배정은 같은 업체로 가는 폐기물끼리 나눈다)
-    trip = transport_carbon(rec, vendor, origin, distance_provider, pickupsPerMonth)
+    # 운송 배출: 트럭 운송 계수 × 월 발생량(t) × 공장 → 업체 거리(최적 배정과 같은 계산)
+    distance = vendor_distance(rec, vendor, origin, distance_provider)
+    trip = transport_carbon(rec, distance, kg)
     moved = None
     if trip["known"]:
+        far = rec.number(
+            "distanceKm",
+            distance["km"],
+            "km",
+            "공장 → 업체 차고지 거리"
+            + (" (직선 거리 × 우회 계수, 가정값)" if distance["assumed"] else " (도로 거리)"),
+            distance["evidence"],
+        )
         moved = rec.number(
             "transportCarbon",
             trip["tco2e"],
             "tCO2e/월",
             TRANSPORT_CARBON_FORMULA,
-            [*trip["distanceEvidence"], trip["factor"]],
+            [far["evidence"][0], trip["factor"]],
             private=True,
         )
         output["transportCarbon"] = moved["id"]
@@ -176,7 +186,7 @@ def cost_carbon(
         rec.check(
             "transport_carbon",
             "conditional",
-            f"{trip['reason']} 수거 운행 배출을 계산하지 못했습니다. 확인 필요.",
+            f"{trip['reason']} 운송 배출을 계산하지 못했습니다. 확인 필요.",
         )
     # 탄소 변화와 그 환산액은 배출 기업의 현행 처리 방법에 견준 값이라 부른 조직만 본다
     if per_kg is None:
@@ -205,7 +215,7 @@ def cost_carbon(
                 "kauValue",
                 -delta * float(kau.value),
                 "원/월",
-                "감축량(수거 운행 포함) × KAU 단가" if moved is not None else "감축량 × KAU 단가",
+                "감축량(운송 포함) × KAU 단가" if moved is not None else "감축량 × KAU 단가",
                 [kau.id],
                 private=True,
             )["id"]

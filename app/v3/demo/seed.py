@@ -255,14 +255,39 @@ class _Seeder:
         return {"method": "혼합 소각", "unitCostKrwPerKg": cost, "evidence": [eid]}
 
     # ── 업체 프로필 ───────────────────────────────────────────────────
-    def permit(self, org: str, waste_item: str, materials: list[str]) -> dict:
+    def permit(
+        self,
+        org: str,
+        waste_item: str,
+        materials: list[str],
+        business: str = "폐기물종합재활용업",
+    ) -> dict:
+        """허가증 문서에서 읽고 담당자가 확인한 허가 품목과 업종(가상)."""
         eid = ids.doc_id(org, "허가증", waste_item)
         self.put(
             eid,
             org,
             f"허가 품목: {waste_item}",
+            f"업종: {business} | 영업대상 폐기물: {waste_item} ({', '.join(materials)})",
+            f"{business} 허가증",
+            DOC_DATE,
+        )
+        return {
+            "wasteItem": waste_item,
+            "materials": materials,
+            "business": business,
+            "evidence": [eid],
+        }
+
+    def typed_permit(self, org: str, waste_item: str, materials: list[str]) -> dict:
+        """업체가 화면에 입력만 한 허가 품목(허가증을 아직 올리지 않음). 업종은 모른다."""
+        eid = ids.human_id(org, f"허가품목-{waste_item}")
+        self.put(
+            eid,
+            org,
+            f"허가 품목(업체 입력): {waste_item}",
             f"영업대상 폐기물: {waste_item} ({', '.join(materials)})",
-            "폐기물 종합재활용업 허가증",
+            "업체 담당자 입력(허가증 원본 확인 전)",
             DOC_DATE,
         )
         return {"wasteItem": waste_item, "materials": materials, "evidence": [eid]}
@@ -609,8 +634,9 @@ def _vendors(s: _Seeder) -> list[dict[str, Any]]:
         },
         {
             "orgId": ms,
-            # 필름(포장재·LDPE) 허가 품목이 없다: 필름 흐름으로는 대화를 열지 않아야 한다
-            "permits": [s.permit(ms, "폐플라스틱", ["PP", "ABS"])],
+            # 필름(포장재·LDPE) 허가 품목이 없다: 필름 흐름으로는 대화를 열지 않아야 한다.
+            # 허가증을 아직 올리지 않고 허가 품목만 입력한 업체다: 배정되면 허가 근거가 "업체 입력"이라 조건부가 된다
+            "permits": [s.typed_permit(ms, "폐플라스틱", ["PP", "ABS"])],
             "criteria": [
                 s.criterion(
                     ms,

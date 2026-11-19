@@ -74,7 +74,7 @@ def test_film_does_not_open_with_miso_and_says_why(demo):
     closed = thread_of(waiting, MISO, "not_opened")
     assert closed["status"] == "not_opened" and "st_film" in closed["streamIds"]
     assert "허가 품목" in closed["statusReason"] and "포장 필름" in closed["statusReason"]
-    assert closed["reasonEvidence"] == ["doc:org_miso:허가증:폐플라스틱"]
+    assert closed["reasonEvidence"] == ["human:org_miso:허가품목-폐플라스틱"]
     assert closed["messages"] == [] and closed["turns"] == 0
     # 필름을 받는 업체는 새길자원뿐이고, 남해열분해도 필름으로는 열리지 않는다
     assert "st_film" in thread_of(waiting, SAEGIL)["streamIds"]
@@ -236,8 +236,9 @@ def test_stage_bar_and_graph(demo):
     ]
     status = {s["stage"]: s["status"] for s in waiting["stages"]}
     assert status[1] == "needs_check"  # 모른다고 답한 수분이 남아 있다
-    # 허가 요건은 대화를 연 업체의 허가 품목 대조로 충족되고, 나머지 요건은 담당자 할 일이라 막지 않는다
-    assert status[3] == "done"
+    # 허가 요건은 대화를 연 업체의 허가 품목과 허가 근거 수준으로 판정한다. 시연의 (주)미소환경은 허가 품목을
+    # 입력만 하고 허가증을 올리지 않아(업체 입력) 그 업체와 대화한 폐기물의 허가 요건이 조건부다
+    assert status[3] == "needs_check"
     assert status[2] == status[4] == status[5] == status[6] == "done"
     graph = waiting["graph"]
     kinds = {n["type"] for n in graph["nodes"]}

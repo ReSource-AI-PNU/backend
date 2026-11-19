@@ -1180,7 +1180,7 @@ def test_rule7_no_thread_opens_and_no_agent_hears_about_unpermitted_streams():
     assert set(closed["streamIds"]) == {"st_film", "st_purge"}
     assert closed["messages"] == [] and closed["turns"] == 0
     assert "허가 품목" in closed["statusReason"]
-    assert closed["reasonEvidence"] == ["doc:org_miso:허가증:폐플라스틱"]
+    assert closed["reasonEvidence"] == ["human:org_miso:허가품목-폐플라스틱"]
     # 업체 측 에이전트는 허가가 없는 흐름에 대해 아무 말도 듣지 못했다
     assert seen
     for briefing in seen:

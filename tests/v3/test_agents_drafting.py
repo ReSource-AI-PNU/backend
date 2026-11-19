@@ -325,7 +325,7 @@ def test_permit_mismatch_found_after_opening_closes_with_decline_and_evidence():
     decline = thread["messages"][-1]
     assert decline["from"] == MISO and "받을 수 없습니다" in decline["text"]
     assert "허가 품목" in thread["statusReason"]
-    assert thread["reasonEvidence"] == ["doc:org_miso:허가증:폐플라스틱"]
+    assert thread["reasonEvidence"] == ["human:org_miso:허가품목-폐플라스틱"]
     assert {x["streamId"] for x in decline["meta"]["excluded"]} == {"st_defect", "st_sprue"}
     assert all(a["vendorOrgId"] != MISO for a in view["result"]["assignments"])
     assert (

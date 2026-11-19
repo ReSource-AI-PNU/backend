@@ -116,7 +116,7 @@ def test_counter_after_agreement_resets_approvals():
 
 def test_refuse_open_blocks_thread():
     t = thread()
-    t.refuse_open("허가 품목에 필름이 없습니다.", ["doc:org_miso:허가증:폐플라스틱"])
+    t.refuse_open("허가 품목에 필름이 없습니다.", ["human:org_miso:허가품목-폐플라스틱"])
     assert t.status == "not_opened" and t.blocked and t.allowed_types(E) == ()
     with pytest.raises(InvalidTransition):
         t.append(msg(E, "inquiry"))

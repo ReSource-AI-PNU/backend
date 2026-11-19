@@ -59,7 +59,7 @@ def test_reset_seeds_everything():
         raises("FORBIDDEN", 403, service.admin_status, app, viewer)
         raises("FORBIDDEN", 403, service.run_eval, app, viewer)
     status = service.admin_status(app, ADMIN)
-    assert status["laws"]["count"] == 374 and status["evidence"]["byKind"]["ref"] == 12
+    assert status["laws"]["count"] == 374 and status["evidence"]["byKind"]["ref"] == 13
     assert status["models"]["company"] == {"provider": "rule", "name": "규칙 정책(모델 미연결)"}
     assert status["promptShields"] == {"configured": False}
     # 열분해 배출계수는 2026-11-19부터 문헌값(Petrík 외 2025)으로 채웠다
