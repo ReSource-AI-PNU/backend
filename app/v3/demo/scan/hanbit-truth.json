@@ -1,0 +1,58 @@
+{
+ "assign": {
+  "p1": "st_purge",
+  "p2": "st_defect",
+  "p3": "st_film",
+  "p4": "st_sprue",
+  "p5": "st_film"
+ },
+ "weighed": {},
+ "note": "합성 장면 정답과 바닥 자국 IoU로 짝지은 결과",
+ "matches": [
+  {
+   "pred": "p1",
+   "truth": "g4",
+   "kind": "drums",
+   "streamId": "st_purge",
+   "iou": 0.48,
+   "volumePred": 0.485,
+   "volumeTrue": 0.4633
+  },
+  {
+   "pred": "p2",
+   "truth": "g3",
+   "kind": "pallet",
+   "streamId": "st_defect",
+   "iou": 0.775,
+   "volumePred": 0.756,
+   "volumeTrue": 0.7596
+  },
+  {
+   "pred": "p3",
+   "truth": "g2",
+   "kind": "film",
+   "streamId": "st_film",
+   "iou": 0.536,
+   "volumePred": 0.231,
+   "volumeTrue": 0.3272
+  },
+  {
+   "pred": "p4",
+   "truth": "g1",
+   "kind": "tonbag",
+   "streamId": "st_sprue",
+   "iou": 0.649,
+   "volumePred": 1.222,
+   "volumeTrue": 2.0677
+  },
+  {
+   "pred": "p5",
+   "truth": "g5",
+   "kind": "film",
+   "streamId": "st_film",
+   "iou": 0.527,
+   "volumePred": 0.124,
+   "volumeTrue": 0.2043
+  }
+ ]
+}
