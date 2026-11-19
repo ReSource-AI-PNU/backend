@@ -626,3 +626,23 @@ def test_evidence_dates_are_korean_days():
     assert views._kst_day("2026-11-19T17:30:00+00:00") == "2026-11-20"
     assert views._shot({"createdAt": "2026-11-19T17:30:00+00:00"}) == "2026-11-20 촬영"
     assert views._kst_day("2026-11-19") == "2026-11-19"
+
+
+def test_a_pile_with_no_room_stays_and_the_rest_still_move():
+    floor = [(-4, -3), (4, -3), (4, 3), (-4, 3)]
+    spec = [
+        ("big", (0.0, 0.5), (9.0, 1.0), 0),  # 바닥보다 긴 더미: 옮길 자리가 없다
+        ("p2", (-3.0, -2.0), (0.8, 0.8), 0),
+        ("p3", (-2.0, -2.0), (0.8, 0.8), 0),
+        ("p4", (3.0, -2.2), (0.8, 0.8), 0),
+    ]
+    piles = _piles(spec)
+    zones = {"big": "a", "p2": "b", "p3": "a", "p4": "b"}
+    out = layout.propose(floor, piles, zones, {"a": "A", "b": "B"}, (0, -3.2))
+    proposal = out["proposal"]
+    assert proposal is not None and proposal["kept"] == ["big"]
+    placed = {p["id"]: p for p in proposal["piles"]}
+    assert placed["big"]["zone"] == "a"
+    assert placed["big"]["center"] == pytest.approx([0.0, 0.5])
+    assert proposal["moved"] >= 1
+    assert proposal["metrics"]["mixedPairs"] <= out["current"]["mixedPairs"]

@@ -281,6 +281,75 @@ def _local_box(grid: _Grid, footprint: Sequence[Point]) -> tuple[float, float, f
             (max(vs) - min(vs)) / 2)  # fmt: skip
 
 
+def _place(
+    piles: Sequence[dict[str, Any]],
+    zone_of: dict[str, str | None],
+    order_zones: list[str],
+    volume: dict[str, float],
+    footprints: dict[str, list[Point]],
+    kept: list[str],
+    grid: _Grid,
+    pick: Point,
+    gap: float,
+    wall: float,
+    clear: float,
+) -> tuple[dict[str, tuple[float, float, float, float, float]], str | None]:
+    """폐기물별 탐욕 배치. (옮긴 자리, 자리를 못 찾은 첫 더미 ID 또는 None)."""
+    placed: list[tuple[str, str | None, tuple[float, float, float, float]]] = []
+    for p in piles:  # 지정하지 않은 더미와 제자리에 두기로 한 더미는 장애물
+        if zone_of.get(p["id"]) is None or p["id"] in kept:
+            placed.append((p["id"], zone_of.get(p["id"]), _local_box(grid, footprints[p["id"]])))
+    moved_boxes: dict[str, tuple[float, float, float, float, float]] = {}
+    for zone in order_zones:
+        members = sorted(
+            (p for p in piles if zone_of.get(p["id"]) == zone and p["id"] not in kept),
+            key=lambda p: (-volume[p["id"]], p["id"]),
+        )
+        mates = [b for pid, _, b in placed if pid in kept and zone_of.get(pid) == zone]
+        anchor: Point | None = (
+            (sum(b[0] for b in mates) / len(mates), sum(b[1] for b in mates) / len(mates))
+            if mates
+            else None
+        )
+        for p in members:
+            length, width = float(p["sizeM"][0]), float(p["sizeM"][1])
+            # 비용(상차 거리 + 같은 폐기물 구역의 중심까지 거리)이 낮은 자리부터 보고 처음 되는 자리를 쓴다
+            candidates = []
+            for turn in (0.0, 90.0):
+                hu, hv = (length / 2, width / 2) if turn == 0.0 else (width / 2, length / 2)
+                for i in range(grid.nu):
+                    for j in range(grid.nv):
+                        u, v = grid.center(i, j)
+                        cost = math.dist((u, v), pick)
+                        if anchor is not None:
+                            cost += 0.6 * math.dist((u, v), anchor)
+                        candidates.append((round(cost, 9), turn, i, j, u, v, hu, hv))
+            candidates.sort()
+            best: tuple[float, float, float, float, float] | None = None
+            for _, turn, _, _, u, v, hu, hv in candidates:
+                if not grid.free(u, v, hu, hv):
+                    continue
+                corners = [(u - hu, v - hv), (u + hu, v - hv), (u + hu, v + hv), (u - hu, v + hv)]
+                if not _inside_with_margin(corners, grid.floor_local, wall):
+                    continue
+                box = (u, v, hu, hv)
+                if _box_gap(box, (pick[0], pick[1], 0.0, 0.0)) < clear:
+                    continue
+                if all(
+                    _box_gap(box, other) >= (SAME_GAP_M if other_zone == zone else gap) - 1e-9
+                    for _, other_zone, other in placed
+                ):
+                    best = (u, v, hu, hv, turn)
+                    break
+            if best is None:
+                return moved_boxes, p["id"]
+            placed.append((p["id"], zone, best[:4]))
+            moved_boxes[p["id"]] = best
+            group = [(b[0], b[1]) for pid, _, b in placed if zone_of.get(pid) == zone]
+            anchor = (sum(m[0] for m in group) / len(group), sum(m[1] for m in group) / len(group))
+    return moved_boxes, None
+
+
 def propose(
     floor: Sequence[Point] | None,
     piles: Sequence[dict[str, Any]],
@@ -314,62 +383,24 @@ def propose(
     grid = _Grid(floor, axis, wall)
     pick = grid.to_local(pickup)
     volume = {p["id"]: float(p["volumeM3"]) for p in piles}
-    placed: list[tuple[str, str | None, tuple[float, float, float, float]]] = []
-    # 지정하지 않은 더미는 제자리(장애물)
-    for p in piles:
-        if zone_of.get(p["id"]) is None:
-            placed.append((p["id"], None, _local_box(grid, footprints[p["id"]])))
     order_zones = sorted(
         zones, key=lambda z: (-sum(volume[i] for i, zz in zone_of.items() if zz == z), z)
     )
-    moved_boxes: dict[str, tuple[float, float, float, float, float]] = {}
-    for zone in order_zones:
-        members = sorted(
-            (p for p in piles if zone_of.get(p["id"]) == zone),
-            key=lambda p: (-volume[p["id"]], p["id"]),
+    # 옮길 자리가 없는 더미는 제자리에 두고(장애물) 처음부터 다시 놓는다. 지정한 더미가 모두 남으면 정리안이 없다
+    kept: list[str] = []
+    while True:
+        moved_boxes, stuck = _place(
+            piles, zone_of, order_zones, volume, footprints, kept, grid, pick, gap, wall, clear
         )
-        anchor: Point | None = None
-        for p in members:
-            length, width = float(p["sizeM"][0]), float(p["sizeM"][1])
-            # 비용(상차 거리 + 같은 폐기물 구역의 중심까지 거리)이 낮은 자리부터 보고 처음 되는 자리를 쓴다
-            candidates = []
-            for turn in (0.0, 90.0):
-                hu, hv = (length / 2, width / 2) if turn == 0.0 else (width / 2, length / 2)
-                for i in range(grid.nu):
-                    for j in range(grid.nv):
-                        u, v = grid.center(i, j)
-                        cost = math.dist((u, v), pick)
-                        if anchor is not None:
-                            cost += 0.6 * math.dist((u, v), anchor)
-                        candidates.append((round(cost, 9), turn, i, j, u, v, hu, hv))
-            candidates.sort()
-            best: tuple[float, float, float, float, float] | None = None
-            for _, turn, _, _, u, v, hu, hv in candidates:
-                if not grid.free(u, v, hu, hv):
-                    continue
-                corners = [(u - hu, v - hv), (u + hu, v - hv), (u + hu, v + hv), (u - hu, v + hv)]
-                if not _inside_with_margin(corners, grid.floor_local, wall):
-                    continue
-                box = (u, v, hu, hv)
-                if _box_gap(box, (pick[0], pick[1], 0.0, 0.0)) < clear:
-                    continue
-                if all(
-                    _box_gap(box, other) >= (SAME_GAP_M if other_zone == zone else gap) - 1e-9
-                    for _, other_zone, other in placed
-                ):
-                    best = (u, v, hu, hv, turn)
-                    break
-            if best is None:
-                return {
-                    "current": current,
-                    "proposal": None,
-                    "unavailable": "바닥이 좁아 모든 더미를 옮길 자리를 찾지 못했습니다. 지정하지 않은 더미를 줄이거나 상차 지점을 바꿔 보세요.",
-                }
-            u, v, hu, hv, turn = best
-            placed.append((p["id"], zone, (u, v, hu, hv)))
-            moved_boxes[p["id"]] = best
-            mates = [(b[0], b[1]) for pid, b in moved_boxes.items() if zone_of.get(pid) == zone]
-            anchor = (sum(m[0] for m in mates) / len(mates), sum(m[1] for m in mates) / len(mates))
+        if stuck is None:
+            break
+        kept.append(stuck)
+        if all(zone_of.get(p["id"]) is None or p["id"] in kept for p in piles):
+            return {
+                "current": current,
+                "proposal": None,
+                "unavailable": "바닥이 좁아 더미를 옮길 자리를 찾지 못했습니다. 상차 지점을 바꾸거나 바닥이 더 보이게 다시 찍어 보세요.",
+            }
     out_piles, new_footprints = [], dict(footprints)
     moved = 0
     for p in piles:
@@ -380,7 +411,7 @@ def propose(
                 "center": list(_centroid(footprints[pid])),
                 "footprint": [list(v) for v in footprints[pid]],
                 "yawDeg": float(p.get("yawDeg") or 0.0),
-                "zone": None,
+                "zone": zone_of.get(pid) if pid in kept else None,
             }
             out_piles.append(still)
             continue
@@ -404,6 +435,8 @@ def propose(
     for zone in order_zones:
         pts = [v for pid in moved_boxes if zone_of.get(pid) == zone for v in new_footprints[pid]]
         hull = convex_hull(pts)
+        if len(hull) < 3:  # 그 폐기물의 더미가 모두 제자리면 구역을 그리지 않는다
+            continue
         zone_polys.append(
             {
                 "streamId": zone,
@@ -414,6 +447,12 @@ def propose(
     after = metrics(piles, new_footprints, zone_of, pickup, gap)
     return {
         "current": current,
-        "proposal": {"piles": out_piles, "zones": zone_polys, "metrics": after, "moved": moved},
+        "proposal": {
+            "piles": out_piles,
+            "zones": zone_polys,
+            "metrics": after,
+            "moved": moved,
+            "kept": kept,  # 폐기물을 지정했지만 옮길 자리가 없어 제자리에 둔 더미
+        },
         "unavailable": None,
     }

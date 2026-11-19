@@ -36,6 +36,12 @@ STALE_MINUTES = 20  # 이만큼 끝나지 않으면 멈춘 것으로 본다
 LIST_LIMIT = 5
 STAGES = ("geometry", "scale", "floor", "piles")
 LOW_COVERAGE = 0.6
+CAMERA_HEIGHT_M = 1.4  # 재구성 서버가 실제 크기를 맞출 때 쓰는 휴대폰 높이 가정(infra/h100/recon)
+SCALE_TEXT = {
+    "metric-depth": "실제 크기는 깊이 추정으로 맞춤",
+    "metric-depth+camera-height": "실제 크기는 깊이 추정과 휴대폰 높이 1.4 m 가정을 합쳐 맞춤",
+    "camera-height": "실제 크기는 휴대폰 높이 1.4 m 가정으로 맞춤(깊이 추정과 어긋나 이 가정만 씀)",
+}
 
 # EPA, Volume-to-Weight Conversion Factors (2016-04) · Plastic · Film · LDPE.
 # 35 lb/yd³(loose), 150 lb/yd³(compacted). 1 lb/yd³ = 0.45359237 kg / 0.764554858 m³
@@ -70,6 +76,7 @@ DEFAULT_FAILURE = (
     "이 영상으로는 3D 재구성을 하지 못했습니다. 더미 둘레를 천천히 한 바퀴 돌며 다시 찍어 주세요."
 )
 NOTES = {
+    "scale-uncertain": "실제 크기를 휴대폰 높이(가슴 높이) 가정으로 맞췄습니다. 휴대폰을 가슴 높이에 들고 찍으면 정확해집니다.",
     "low-coverage": "일부 더미가 한쪽에서만 찍혀 부피 범위가 넓습니다. 더미 둘레를 한 바퀴 돌며 찍으면 좁아집니다.",
     "dark": "어두운 장면이 많아 정확도가 낮을 수 있습니다. 조명을 켜고 찍으면 나아집니다.",
 }
@@ -322,6 +329,31 @@ def _register_volumes(app: App, scan: dict[str, Any]) -> None:
             meta={"scanId": scan["id"], "planeRmsM": result["floor"]["planeRmsM"]},
         ),
     )
+    method = result["scale"]["method"]
+    scale_inputs: list[str] = []
+    if "camera-height" in method:
+        # 실제 크기(m)를 휴대폰 높이 가정으로 맞췄다: 가정값 근거로 밝히고 부피 근거에 잇는다
+        scale_inputs.append(
+            _put(
+                app,
+                Evidence(
+                    id=ids.assumption_id("보관장스캔-휴대폰높이", "v1"),
+                    kind="assumption",
+                    label="휴대폰 높이 1.4 m(가슴 높이 촬영)",
+                    value=CAMERA_HEIGHT_M,
+                    unit="m",
+                    excerpt=(
+                        "보관장 영상은 휴대폰을 가슴 높이(바닥에서 약 1.4 m)에 들고 찍는다고 보고, "
+                        "재구성한 카메라 높이를 이 값에 맞춰 실제 크기를 정한다. 다르게 찍으면 "
+                        "부피가 높이 비율의 세제곱만큼 달라진다"
+                    ),
+                    source="Re:Source AI 보관장 3D 스캔 촬영 안내 v1",
+                    as_of="2026-11-20",
+                    access=(PUBLIC,),
+                ),
+            )
+        )
+    scale_text = SCALE_TEXT.get(method, "실제 크기는 깊이 추정으로 맞춤")
     for index, pile in enumerate(result["piles"], start=1):
         lo, hi = pile["volumeRangeM3"]
         _put(
@@ -335,7 +367,8 @@ def _register_volumes(app: App, scan: dict[str, Any]) -> None:
                 excerpt=(
                     f"보관장 영상의 장면 {result['frames']['used']}장으로 3D 재구성해 잰 더미 {index}의 부피 "
                     f"{_fmt(pile['volumeM3'])} m³ (범위 {_fmt(lo)}~{_fmt(hi)} m³, 바닥 자국의 "
-                    f"{round(pile['coverage'] * 100)}%가 보임, 실제 크기 추정 퍼짐 ±{_fmt(result['scale']['spreadPct'], 1)}%)"
+                    f"{round(pile['coverage'] * 100)}%가 보임, {scale_text}, 실제 크기 추정 퍼짐 "
+                    f"±{_fmt(result['scale']['spreadPct'], 1)}%)"
                 ),
                 source=f"보관장 3D 스캔({_shot(scan)})",
                 as_of=day,
@@ -348,6 +381,7 @@ def _register_volumes(app: App, scan: dict[str, Any]) -> None:
                     "heightM": pile["heightM"],
                     "sizeM": pile["sizeM"],
                     "scale": result["scale"],
+                    "inputEvidence": scale_inputs,
                 },
             ),
         )
