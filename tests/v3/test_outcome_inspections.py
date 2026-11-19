@@ -11,7 +11,7 @@ import urllib.request
 
 import pytest
 
-from app.v3 import devserver, feedback, ids, service
+from app.v3 import devserver, feedback, ids, outcome_carbon, service
 from app.v3.evidence.model import Evidence
 from app.v3.evidence.validator import validate_text
 from tests.v3.runtime_fixtures import (
@@ -244,7 +244,8 @@ def test_each_inspection_has_its_own_carbon_basis_kept_through_corrections(confi
     sid = view["session"]["id"]
     a = service.record_outcome(app, sid, body(view, "req-first-0001", 580), SAEGIL)["outcome"]
     b = service.record_outcome(app, sid, body(view, "req-second-0001", 200), SAEGIL)["outcome"]
-    basis_a, basis_b = feedback.carbon_basis(app, a), feedback.carbon_basis(app, b)
+    basis_a = outcome_carbon.latest(app.registry, a)
+    basis_b = outcome_carbon.latest(app.registry, b)
     assert basis_a["evidenceId"] != basis_b["evidenceId"]
     assert basis_a["outcomeId"] == a["inspectionId"] and basis_b["outcomeId"] == b["inspectionId"]
     # 같은 날 들어온 두 번째 반입 뒤에 현행 처리를 고쳐도, 정정해도 각 검수의 기준은 그대로다
@@ -261,10 +262,10 @@ def test_each_inspection_has_its_own_carbon_basis_kept_through_corrections(confi
     for inspection, basis in ((a["inspectionId"], basis_a), (b["inspectionId"], basis_b)):
         row = rows[inspection]
         assert row["carbonBasis"]["evidenceId"] == basis["evidenceId"]
-        assert row["carbonBasis"]["version"] == 1 and row["currentMethod"] == "혼합 소각"
+        assert row["carbonBasis"]["revision"] == 1 and row["currentMethod"] == "혼합 소각"
         assert basis["evidenceId"] in row["carbon"]["evidence"] and ok(app, row["carbon"])
-    per_kg = basis_b["perKg"]
-    assert rows[b["inspectionId"]]["carbon"]["value"] == round(per_kg * 180, 6)
+    per_kg = basis_b["perKg"]  # kg당 배출 차이(kgCO2e/kg)
+    assert rows[b["inspectionId"]]["carbon"]["value"] == round(per_kg * 180 / 1000, 6)
     # 기준은 배출 기업만 연다(업체와 나누는 기록에는 현행 처리를 싣지 않는다)
     fails("EVIDENCE_NOT_FOUND", 404, service.get_evidence, app, basis_b["evidenceId"], SAEGIL)
 
@@ -365,12 +366,22 @@ def test_legacy_date_keyed_record_is_still_read_once_and_kept(confirmed):
     assert totals(app)[:3] == (2, 680, 204000)
 
 
-def test_legacy_record_without_a_basis_gets_one_when_corrected(confirmed):
+def test_legacy_record_is_rebuilt_from_the_agreement_and_correction_keeps_it(confirmed):
+    """기준이 없는 이전 기록은 확정한 합의의 계산으로 기준을 되살리고(지금 설정이 아니다), 정정해도 그 기준을 잇는다."""
     app, view = confirmed
     sid = view["session"]["id"]
     key, _ = _legacy_outcome(app, view, "2026-11-15", 500, 300)
+    service.update_stream(  # 지금 설정을 바꿔 두어도 이전 기록의 기준은 합의 당시의 것이다
+        app,
+        HANBIT,
+        "st_sprue",
+        {"currentTreatment": {"method": "매립", "unitCostKrwPerKg": 200}},
+        HANBIT,
+    )
     (row,) = service.get_report(app, HANBIT, HANBIT)["records"]
-    assert row["carbon"] is None and "정정하면" in row["carbonNote"]  # 다시 등록하라고 하지 않는다
+    assert row["carbonBasis"]["status"] == "reconstructed" and row["currentMethod"] == "혼합 소각"
+    assert row["carbon"] is not None and ok(app, row["carbon"])
+    before = row["carbon"]["value"]
     service.correct_outcome(
         app,
         sid,
@@ -383,7 +394,9 @@ def test_legacy_record_without_a_basis_gets_one_when_corrected(confirmed):
         SAEGIL,
     )
     (row,) = service.get_report(app, HANBIT, HANBIT)["records"]
-    assert row["revision"] == 2 and row["carbon"] is not None and row["carbonBasis"]["version"] == 1
+    assert row["revision"] == 2 and row["carbonBasis"]["status"] == "reconstructed"
+    assert row["currentMethod"] == "혼합 소각"
+    assert abs(row["carbon"]["value"] - before * 480 / 500) <= 1e-6
 
 
 def test_demo_history_still_records_its_inspections():

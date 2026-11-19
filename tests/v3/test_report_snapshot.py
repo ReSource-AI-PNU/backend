@@ -4,9 +4,7 @@
 소각에서 재활용으로 고치자 같은 지난 검수의 탄소 변화가 null이 됐다(리포트가 지금의 흐름·업체 설정을 읽었다).
 """
 
-from dataclasses import replace
-
-from app.v3 import feedback, service
+from app.v3 import feedback, outcome_carbon, service
 from tests.v3.runtime_fixtures import HANBIT, SAEGIL, approve_all, make_app, thread_of, to_approval
 
 
@@ -65,10 +63,11 @@ def test_changing_the_vendor_process_later_does_not_change_past_carbon():
 def test_the_basis_keeps_factor_ids_and_versions_for_the_emitter_only():
     app, _, _ = _setup()
     record = feedback.outcomes(app)[0]
-    basis = feedback.carbon_basis(app, record)
-    assert basis["currentMethod"] == "혼합 소각" and basis["currentMethodAssumed"] is False
-    assert basis["capturedOn"] == app.today and basis["version"] == 1
-    assert len(basis["factors"]) == 2 and all(f["version"] >= 1 for f in basis["factors"])
+    basis = outcome_carbon.latest(app.registry, record)
+    assert basis["baseline"]["method"] == "혼합 소각" and basis["baseline"]["assumed"] is False
+    assert basis["capturedOn"] == app.today and basis["revision"] == 1
+    factors = basis["factors"].values()
+    assert len(factors) == 2 and all(f["version"] >= 1 and f["value"] is not None for f in factors)
     row, _ = _row(app)
     assert row["carbonBasis"]["evidenceId"] == basis["evidenceId"]
     assert basis["evidenceId"] in row["carbon"]["evidence"]
@@ -110,19 +109,20 @@ def test_resending_or_correcting_keeps_the_inspection_time_basis():
     after, _ = _row(app)
     assert after["revision"] == 2 and after["carbonBasis"] == before["carbonBasis"]
     assert after["currentMethod"] == "혼합 소각"  # 지금 설정(매립)이 아니라 검수 때 기준
-    assert after["carbon"]["value"] == round(before["carbon"]["value"] / 2, 6)  # 580 → 290kg
+    assert abs(after["carbon"]["value"] - before["carbon"]["value"] / 2) <= 1e-6  # 580 → 290kg
 
 
-def test_old_records_without_a_basis_show_no_carbon_rather_than_a_guess():
-    app, _, _ = _setup()
+def test_old_records_whose_basis_cannot_be_confirmed_show_no_carbon_rather_than_a_guess():
+    """기록할 때의 기준이 없고 합의 계산으로도 확인할 수 없는 예전 기록은 오늘 설정으로 채우지 않는다."""
+    app, sid, _ = _setup()
     record = feedback.outcomes(app)[0]
-    found = app.registry.get(feedback.carbon_basis_id(record))
-    # 기준을 남기기 전에 기록된 검수를 흉내 낸다(기준 근거를 숨긴다)
-    app.registry.put(
-        replace(found, meta={k: v for k, v in found.meta.items() if k != "carbonBasis"})
-    )
+    # 기준을 남기기 전에 기록된 검수를 흉내 낸다
+    app.registry.delete([outcome_carbon.snapshot_id(record)])
+    session = app.store.get_session(sid)
+    session["work"]["result"]["assignments"] = []  # 합의 계산도 남아 있지 않다
+    app.store.put_session(session)
     row, totals = _row(app)
-    assert row["carbon"] is None and row["carbonBasis"] is None
-    assert "남아 있지 않은" in row["carbonNote"]
+    assert row["carbon"] is None and row["carbonBasis"]["status"] == "unverified"
+    assert "당시 기준을 확인할 수 없어" in row["carbonNote"]
     assert row["amount"]["value"] == 174000  # 금액은 업체가 적은 값 그대로 계산한다
     assert totals["carbon"] is None

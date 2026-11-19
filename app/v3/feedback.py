@@ -31,10 +31,10 @@ import re
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
-from app.v3 import ids
+from app.v3 import ids, outcome_carbon
 from app.v3.evidence.model import Evidence
 from app.v3.intake import grade_model
-from app.v3.judge.common import Recorder, carbon_per_kg, quality
+from app.v3.judge.common import quality
 from app.v3.store import NotFound
 from app.v3.textutil import josa
 
@@ -56,7 +56,6 @@ RETRAIN_MODELS = (grade_model.MODEL_NAME, DETECTOR_MODEL)
 CALIBRATION_NOTE = (
     "건별 목록입니다. 평균을 내지 않고, 적은 표본으로 기준값을 자동으로 바꾸지 않습니다."
 )
-CURRENT_METHOD_ASSUMED = "혼합 소각"  # 현행 처리 방식을 적지 않았을 때(결과 한 장과 같은 가정)
 DEMO_NOTE = "시연(가상) 회사 사이의 기록입니다. 실제 학습·검증·배포 게이트에는 세지 않습니다."
 _DATE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 _MISSING = object()
@@ -74,6 +73,8 @@ VALUE_KEYS = (
     "note",
     "weighTicket",
     "documentName",
+    # 업체가 검수 기록에 적은 실제 처리 방식(재활용·열분해·소각·매립). 적지 않았으면 None
+    "actualProcess",
 )
 # 처음 기록할 때 고정하고 정정해도 바꾸지 않는 값(검수 때의 품질, 합의 단가, 처음 기록한 때)
 CARRIED_KEYS = ("features", "criterionId", "tablePrice", "offeredPrice", "createdOn", "createdAt")
@@ -86,6 +87,7 @@ HISTORY_KEYS = (
     "evidenceKind",
     "evidence",
     "deviation",
+    "appliedProcess",
 )
 
 
@@ -323,94 +325,6 @@ def _agreed(session: dict[str, Any], thread_id: str, stream_id: str) -> dict[str
     return {"table": table, "criterionId": criterion_id, "offer": offer.get("claim")}
 
 
-def carbon_basis_id(record: dict[str, Any]) -> str:
-    """검수 한 건의 탄소 계산 기준 근거 ID. record["id"]는 검수 ID라 정정해도 같은 ID다.
-
-    검수일 키로 만든 이전 기록은 그 키(실제결과-…)로 정해져 그때 남긴 기준을 그대로 찾는다.
-    """
-    inputs = {"outcome": record["id"], "emitter": record["emitterOrgId"]}
-    return ids.calc_id("outcome_carbon_basis", inputs, "carbonBasis")
-
-
-def _carbon_basis(
-    app: Any, record: dict[str, Any], stream: dict[str, Any], unit_price: float | None
-) -> Evidence:
-    """검수를 기록할 때의 탄소 계산 기준(스냅샷)을 배출 기업만 보는 calc 근거로 남긴다.
-
-    현행 처리 방식, 업체 처리 공정, 폐기물 품목, 쓴 배출계수의 ID·판·값을 담는다. 실적 리포트는 이 기준만
-    쓰고 지금의 흐름·업체 설정을 다시 읽지 않는다. 현행 처리 방식은 배출 기업만의 값이라 업체와 나누는
-    검수 기록(meta.feedback)에는 싣지 않는다.
-    """
-    vendor, emitter = record["vendorOrgId"], record["emitterOrgId"]
-    try:
-        profile = app.store.get_vendor_profile(vendor)
-    except NotFound:
-        profile = {}
-    current = stream.get("currentTreatment") or {}
-    method = current.get("method") or CURRENT_METHOD_ASSUMED
-    rec = Recorder("outcome_carbon_basis", app.registry, emitter, app.today, {})
-    per_kg, factor_ids, reason = carbon_per_kg(rec, stream, profile, unit_price, method)
-    factors = []
-    for evidence_id in factor_ids:
-        found = app.registry.get(evidence_id)
-        factors.append(
-            {
-                "id": found.id,
-                "version": found.version,
-                "value": found.value,
-                "unit": found.unit,
-                "asOf": found.as_of,
-            }
-        )
-    basis = {
-        "outcomeId": record["id"],
-        "capturedOn": app.today,
-        "wasteItem": stream.get("wasteItem"),
-        "currentMethod": method,
-        "currentMethodAssumed": not current.get("method"),
-        "vendorProcess": profile.get("process"),
-        "unitPrice": unit_price,
-        "perKg": per_kg,
-        "reason": reason,
-        "factors": factors,
-    }
-    used = ", ".join(f"{f['id']}(판 {f['version']})" for f in factors) or "없음"
-    name = stream.get("name") or stream["id"]
-    return app.registry.put(
-        Evidence(
-            id=carbon_basis_id(record),
-            kind="calc",
-            label=f"{name} 검수 {record['inspectedOn']} 탄소 계산 기준",
-            value=per_kg,
-            unit="tCO2e/kg" if per_kg is not None else None,
-            excerpt=(
-                f"검수 기록 당시({app.today}) 기준: 현행 처리 {method}, "
-                f"업체 처리 공정 {profile.get('process') or '미확인'}, 배출계수 {used}"
-            ),
-            source="검수 기록 당시의 탄소 계산 기준",
-            as_of=app.today,
-            access=(emitter,),
-            meta={
-                "tool": "outcome_carbon_basis",
-                "formula": "보낸 곳 처리 계수 − 현행 처리 계수(tCO2e/kg)",
-                "inputEvidence": list(factor_ids),
-                "ownerOrgId": emitter,
-                "carbonBasis": basis,
-            },
-        )
-    )
-
-
-def carbon_basis(app: Any, record: dict[str, Any]) -> dict[str, Any] | None:
-    """검수 기록에 남은 탄소 계산 기준. 기준을 남기기 전에 기록된 검수면 None(지금 설정으로 채우지 않는다)."""
-    try:
-        found = app.registry.get(carbon_basis_id(record))
-    except KeyError:
-        return None
-    basis = found.meta.get("carbonBasis")
-    return {**basis, "evidenceId": found.id, "version": found.version} if basis else None
-
-
 def _request_id(body: dict[str, Any]) -> str:
     value = body.get("requestId")
     text = value.strip() if isinstance(value, str) else ""
@@ -451,6 +365,14 @@ def _values(app: Any, body: dict[str, Any]) -> dict[str, Any]:
         raise FeedbackError("INVALID_VALUE", f"계량표 번호는 {TICKET_MAX}자까지 적을 수 있습니다.")
     document = body.get("documentName")
     document = document.strip() if isinstance(document, str) else ""
+    process = body.get("actualProcess")
+    if process in ("", None):
+        process = None
+    elif process not in outcome_carbon.PROCESS_CHOICES:
+        raise FeedbackError(
+            "INVALID_VALUE",
+            f"실제 처리 방식은 {', '.join(outcome_carbon.PROCESS_CHOICES)} 가운데 하나입니다.",
+        )
     return {
         "inspectedOn": inspected,
         "actualGrade": grade,
@@ -459,6 +381,7 @@ def _values(app: Any, body: dict[str, Any]) -> dict[str, Any]:
         "note": _note(body),
         "weighTicket": ticket or None,
         "documentName": document or None,
+        "actualProcess": process,
     }
 
 
@@ -597,6 +520,17 @@ def _write_revision(
         }
     else:
         carried = {key_: previous.get(key_) for key_ in CARRIED_KEYS}
+    if values["actualProcess"] is None and previous is not None:
+        # 정정에서 처리 방식을 적지 않으면 앞 판의 것을 잇는다(오늘의 업체 정보로 바꾸지 않는다)
+        applied = dict(
+            previous.get("appliedProcess") or {"value": None, "source": "unknown", "assumed": False}
+        )
+    else:
+        try:
+            profile = app.store.get_vendor_profile(vendor)
+        except NotFound:  # 업체 정보가 없으면 처리 방식을 모르는 것으로 둔다
+            profile = {}
+        applied = outcome_carbon.applied_process(values["actualProcess"], profile, price)
     parts = {
         "grade": evidence_id("등급") if grade is not None else None,
         "unitPrice": evidence_id("단가") if price is not None else None,
@@ -619,6 +553,8 @@ def _write_revision(
         **values,
         "evidenceKind": "doc" if document else "human",
         "evidence": {k: v for k, v in parts.items() if v},
+        # 탄소 계산에 쓴 처리 방식과 그 출처(검수 기록에 적음, 기록 당시 업체 정보 등)
+        "appliedProcess": applied,
         **carried,
         "deviation": None,
         "recordedOn": app.today,
@@ -694,10 +630,9 @@ def _write_revision(
         put("unitPrice", "실제 단가", float(price), "원/kg", f"실제 단가 kg당 {float(price):g}원")
     if kg is not None:
         put("kg", "실제 중량", float(kg), "kg", f"실제 중량 {float(kg):g}kg")
-    # 탄소 계산 기준은 검수를 처음 등록할 때의 설정으로 고정한다(정정은 무게·단가만 고치고 기준은 그대로).
-    # 기준을 남기기 전에 기록된 예전 검수는 정정할 때 남긴다(그 전에는 리포트가 탄소를 내지 않는다)
-    if previous is None or carbon_basis(app, record) is None:
-        _carbon_basis(app, record, stream, price)
+    # 탄소 계산 기준(현행 처리·처리 방식·배출계수)을 고정한다. 처음 기록이면 지금 고정하고, 정정이면 처리 방식이
+    # 바뀐 판만 새로 고정한다. 배출 기업만 보는 근거라 이 기록에는 싣지 않는다
+    outcome_carbon.on_write(app, record, stream, previous)
     app.store.add_event(
         session["id"],
         "system",

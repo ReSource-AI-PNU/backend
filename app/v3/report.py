@@ -7,14 +7,13 @@
 
 - 실적(records): 업체가 확정 뒤 기록한 실제 결과(feedback.outcomes) 가운데 이 배출 기업의 것, 검수일이 기간 안인 것.
   검수(계량) 한 건이 한 줄이다. 같은 날 같은 폐기물을 두 번 받았으면 두 줄이고, 정정한 건은 최신 판 하나만 센다.
-  줄마다 실제 중량·단가·등급은 업체 기록 근거(doc 또는 human)이고, 금액(중량 × 단가)과 탄소 변화(중량 × (재활용 계수
-  − 현행 처리 계수))는 calc 근거다. 현행 처리를 입력하지 않았으면 혼합 소각으로 본다(결과 한 장과 같은 가정).
-- 탄소 변화와 처리 방식은 검수를 기록할 때 남긴 계산 기준(feedback.carbon_basis: 현행 처리 방식, 업체 처리 공정,
-  배출계수 ID·판)으로만 계산한다. 기준은 검수 ID마다 하나이고 처음 등록할 때 고정한다. 나중에 흐름의 현행 처리나
-  업체 프로필을 고쳐도, 업체가 무게·단가를 정정해도 지난 실적의 기준은 바뀌지 않는다(정정한 무게 × 그 기준).
-  기준을 남기기 전에 기록된 검수는 탄소 변화를 내지 않고(지금 설정으로 채우지 않는다) carbonNote에 이유를 적는다.
-  그 검수를 업체가 정정하면 그때 기준을 남긴다(같은 검수를 새 반입으로 다시 등록하면 두 건이 되므로 안내하지 않는다).
-- 합계(totals): 실적만 더한다. 반출 무게, 매각 수익, 처리비, 탄소 변화(tCO2e. 줄었으면 음수).
+  줄마다 실제 중량·단가·등급은 업체가 계량·검수해 기록한 근거(doc 또는 human)이고, 금액(중량 × 단가)은 calc 근거다.
+- 탄소 변화는 배출계수를 적용한 추정값이다. 검수를 기록할 때 고정한 기준(outcome_carbon: 비교한 현행 처리, 업체가
+  적용한 처리 방식, 배출계수 값·판, 계산 범위)의 kg당 배출 차이 × 실제 중량이고, 지금의 폐기물 자료·업체 정보·
+  배출계수는 읽지 않는다. 그래서 자료를 고쳐도 지난 검수의 값은 그대로이고, 새로 기록하는 검수부터 바뀐다.
+  기준을 확인할 수 없는 지난 기록은 탄소를 계산하지 않고 합계에서 뺀다(carbonBasis.status). 범위는 처리 방식 배출
+  차이만이다(수거 운송 배출과 신재 대체 효과는 넣지 않는다. carbonScope).
+- 합계(totals): 실적만 더한다. 반출 무게, 매각 수익, 처리비, 탄소 변화(tCO2e. 줄었으면 음수), 탄소 기준 상태별 건수.
 - 예상(planned): 양쪽이 확정한 합의의 한 달 예상(결과 한 장의 배정). 검수 기록 전에도 보이고, 화면에서 "예상"으로 구분한다.
 - 숫자는 모두 근거가 붙은 claim이다. 배출 기업만 보는 calc 근거로 남긴다.
 """
@@ -24,7 +23,7 @@ from __future__ import annotations
 import re
 from typing import Any
 
-from app.v3 import feedback, ids
+from app.v3 import feedback, ids, outcome_carbon
 from app.v3.agents.pool import safe_id
 from app.v3.evidence.model import Evidence
 from app.v3.evidence.registry import EvidenceForbidden, EvidenceNotFound
@@ -32,17 +31,11 @@ from app.v3.store import NotFound
 from app.v3.untrusted import org_label, stream_label
 
 _DATE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
-DEFAULT_METHOD = feedback.CURRENT_METHOD_ASSUMED
-NO_BASIS_NOTE = (
-    "검수 당시의 탄소 계산 기준이 남아 있지 않은 예전 기록이라 탄소 변화를 내지 않았습니다. "
-    "업체가 그 검수 기록을 정정하면 그때 기준으로 계산합니다."
+DEFAULT_METHOD = outcome_carbon.DEFAULT_METHOD
+CARBON_FORMULA = (
+    "실제 중량 × kg당 배출 차이(검수를 기록할 때 고정한 기준) ÷ 1000. "
+    "처리 방식 배출 차이만 넣었습니다(수거 운송 배출과 신재 대체 효과는 넣지 않았습니다)."
 )
-PROCESS_LABELS = {
-    "재활용": "재활용",
-    "열분해": "열분해(화학적 재활용)",
-    "소각": "소각",
-    "매립": "매립",
-}
 
 
 def _claim(
@@ -72,6 +65,9 @@ class _ReadThrough:
 
     def __init__(self, registry: Any, org_id: str) -> None:
         self.registry, self.org_id = registry, org_id
+
+    def get(self, evidence_id: str, org_id: str | None = None) -> Evidence:
+        return self.registry.get(evidence_id, org_id)
 
     def put(self, evidence: Evidence) -> Evidence:
         try:
@@ -171,7 +167,6 @@ def build(app: Any, org_id: str, date_from: str | None, date_to: str | None) -> 
             stream = store.get_stream(record["streamId"], org_id)
         except NotFound:
             continue
-        basis = feedback.carbon_basis(app, record)
         parts = record.get("evidence") or {}
         kg = _claim(parts.get("kg"), registry, org_id, f"{tag}_kg", "실제 중량")
         price = _claim(parts.get("unitPrice"), registry, org_id, f"{tag}_unitPrice", "실제 단가")
@@ -190,28 +185,25 @@ def build(app: Any, org_id: str, date_from: str | None, date_to: str | None) -> 
                 today,
             )
             (sums["revenue"] if price["value"] >= 0 else sums["fee"]).append(amount)
-        method = basis["currentMethod"] if basis else None
-        note = None if basis else NO_BASIS_NOTE
+        # 탄소: 검수를 기록할 때 고정한 기준만 쓴다(지금의 폐기물 자료·업체 정보·배출계수를 읽지 않는다)
+        snapshot = outcome_carbon.basis_for(app, record, writer)
         if kg:
-            per_kg = basis["perKg"] if basis else None
-            if per_kg is not None:
-                factors = [f["id"] for f in basis["factors"]]
+            value = outcome_carbon.carbon(snapshot, kg["value"])
+            if value is not None:
                 carbon = _calc(
                     writer,
                     org_id,
                     f"{tag}_carbon",
-                    per_kg * kg["value"],
+                    value,
                     "tCO2e",
-                    f"실제 중량 × (보낸 곳 처리 계수 − 현행 처리({method}) 계수), "
-                    f"검수 기록 당시({basis['capturedOn']}) 기준",
-                    [basis["evidenceId"], *factors, *kg["evidence"]],
-                    f"{label} 검수 {record['inspectedOn']} 탄소 변화 계산",
+                    CARBON_FORMULA,
+                    [snapshot["evidenceId"], *kg["evidence"]],
+                    f"{label} 검수 {record['inspectedOn']} 탄소 변화(추정) 계산",
                     today,
                 )
                 sums["carbon"].append(carbon)
-            elif basis:
-                note = basis.get("reason")
             sums["kg"].append(kg)
+        shown = outcome_carbon.view(snapshot)
         records.append(
             {
                 "id": record["id"],
@@ -227,27 +219,24 @@ def build(app: Any, org_id: str, date_from: str | None, date_to: str | None) -> 
                 "streamName": stream.get("name"),
                 "vendorOrgId": record["vendorOrgId"],
                 "vendorName": name_of(record["vendorOrgId"]),
-                # 검수 기록 당시 업체의 처리 공정(기준이 없는 예전 기록은 null)
-                "process": PROCESS_LABELS.get(
-                    str((basis or {}).get("vendorProcess") or ""),
-                    (basis or {}).get("vendorProcess"),
-                ),
+                # 처리 방식과 비교한 현행 처리는 기록할 때 고정한 값이다(지금 업체 정보·폐기물 자료가 아니다)
+                "process": shown["applied"]["process"],
                 "grade": record.get("actualGrade"),
                 "kg": kg,
                 "unitPrice": price,
                 "amount": amount,
                 "carbon": carbon,
-                "carbonNote": note,
-                "currentMethod": method,
-                "currentMethodAssumed": bool(basis and basis["currentMethodAssumed"]),
-                "carbonBasis": {
-                    "capturedOn": basis["capturedOn"],
-                    "version": basis["version"],
-                    "evidenceId": basis["evidenceId"],
-                    "factors": [{"id": f["id"], "version": f["version"]} for f in basis["factors"]],
-                }
-                if basis
-                else None,
+                # 탄소를 내지 않은 이유(계수 없음, 당시 기준 확인 불가 등). 계산했으면 None
+                "carbonNote": None
+                if carbon
+                else (
+                    shown["reason"]
+                    or ("실제 중량이 없어 탄소를 계산하지 않았습니다." if not kg else None)
+                ),
+                "currentMethod": shown["baseline"]["method"],
+                "currentMethodAssumed": bool(shown["baseline"]["assumed"]),
+                "carbonBasis": shown,
+                "measuredBy": record.get("evidenceKind"),
             }
         )
 
@@ -280,6 +269,11 @@ def build(app: Any, org_id: str, date_from: str | None, date_to: str | None) -> 
                 "기간 탄소 변화 합계 계산",
             ),
             "count": len(records),
+            # 탄소 기준 상태별 건수. 합계에는 기록 당시 기준과 합의 당시 기준으로 재구성한 것만 넣는다
+            "carbonStatus": {
+                status: sum(1 for r in records if r["carbonBasis"]["status"] == status)
+                for status in outcome_carbon.STATUS_LABELS
+            },
         }
 
     planned = []
@@ -319,5 +313,7 @@ def build(app: Any, org_id: str, date_from: str | None, date_to: str | None) -> 
         "generatedOn": today,
         "records": records,
         "totals": totals,
+        # 탄소 변화의 계산 범위: 처리 방식 배출 차이만(수거 운송 배출과 신재 대체 효과는 넣지 않는다)
+        "carbonScope": dict(outcome_carbon.SCOPE),
         "planned": planned,
     }
