@@ -406,6 +406,7 @@ def _inputs(app: App, scan: dict[str, Any]) -> dict[str, Any]:
         "assign": scan.get("assign", {}),
         "weighed": scan.get("weighed", {}),
         "pickup": scan.get("pickup"),
+        "excluded": sorted(scan.get("excluded") or []),
         "streams": {
             sid: [
                 streams[sid].get("name"),
@@ -531,7 +532,19 @@ def _claim(cid: str, value: float, unit: str, evidence: list[str]) -> dict[str, 
 
 
 def derive(app: App, scan: dict[str, Any]) -> dict[str, Any]:
-    """더미별 무게 기준·무게, 합계, 정리안과 그 근거를 계산해 등록한다(쓰는 경로에서만 부른다)."""
+    """더미별 무게 기준·무게, 합계, 정리안과 그 근거를 계산해 등록한다(쓰는 경로에서만 부른다).
+
+    담당자가 "더미 아님"으로 뺀 더미는 합계·무게·정리안에서 빠진다(벽 자국이나 합쳐진 더미를 사람이 거른다).
+    """
+    number = {p["id"]: i for i, p in enumerate(scan["result"]["piles"], start=1)}
+    excluded = set(scan.get("excluded") or [])
+    scan = {
+        **scan,
+        "result": {
+            **scan["result"],
+            "piles": [p for p in scan["result"]["piles"] if p["id"] not in excluded],
+        },
+    }
     result = scan["result"]
     org = scan["orgId"]
     day = str(app.today)
@@ -545,8 +558,9 @@ def derive(app: App, scan: dict[str, Any]) -> dict[str, Any]:
     }
     out_piles: dict[str, Any] = {}
     weights: list[tuple[str, float, float, list[str]]] = []
-    for index, pile in enumerate(result["piles"], start=1):
+    for pile in result["piles"]:
         pid = pile["id"]
+        index = number[pid]
         sid = assign.get(pid)
         entry: dict[str, Any] = {"density": None, "weight": None, "weighedKg": None}
         kg = scan.get("weighed", {}).get(pid)
@@ -626,6 +640,7 @@ def derive(app: App, scan: dict[str, Any]) -> dict[str, Any]:
     )  # fmt: skip
     summary: dict[str, Any] = {
         "pileCount": len(result["piles"]),
+        "excludedCount": len(excluded),
         "volume": _claim(f"{scan['id']}_volume", total_volume, "m³", [volume_id]),
         "weight": None,
         "weightPending": len(result["piles"]) - len(weights),
@@ -664,7 +679,7 @@ def derive(app: App, scan: dict[str, Any]) -> dict[str, Any]:
             "high": _claim(f"{scan['id']}_weightHigh", highs, "kg", [sums[1]]),
         }
     return {
-        "inputs": _inputs(app, scan),
+        "inputs": _inputs(app, {**scan, "excluded": sorted(excluded)}),
         "piles": out_piles,
         "summary": summary,
         "layout": _layout(app, scan, streams, assign, day),
@@ -825,6 +840,7 @@ def view(app: App, scan: dict[str, Any]) -> dict[str, Any]:
         return base
     streams = {s["id"]: s for s in app.store.list_streams(scan["orgId"])}
     assign = scan.get("assign", {})
+    excluded = set(scan.get("excluded") or [])
     piles = []
     for index, pile in enumerate(result["piles"], start=1):
         pid = pile["id"]
@@ -849,6 +865,7 @@ def view(app: App, scan: dict[str, Any]) -> dict[str, Any]:
                 "weight": extra.get("weight"),
                 "weighedKg": extra.get("weighedKg"),
                 "note": "바닥 자국의 일부만 찍혀 부피 범위가 넓습니다." if pile["coverage"] < LOW_COVERAGE else None,
+                "excluded": pid in excluded,
             }
         )  # fmt: skip
     notes = [NOTES[w] for w in result["warnings"] if w in NOTES]
@@ -928,15 +945,36 @@ def _done(app: App, org_id: str, scan_id: str, viewer: str) -> dict[str, Any]:
 def update_pile(
     app: App, org_id: str, scan_id: str, pile_id: str, patch: dict[str, Any], viewer: str
 ) -> dict[str, Any]:
-    """더미의 폐기물(streamId)과 계량한 무게(weighedKg)를 고친다. null이면 지운다."""
-    if not isinstance(patch, dict) or not ({"streamId", "weighedKg"} & set(patch)):
+    """더미의 폐기물(streamId)과 계량한 무게(weighedKg)를 고친다. null이면 지운다.
+
+    excluded가 참이면 "더미 아님"(벽 자국, 합쳐지거나 잘못 잡힌 더미)으로 합계·무게·정리안에서 뺀다.
+    빼면 그 더미의 폐기물과 계량값도 지운다. 거짓이면 다시 넣는다.
+    """
+    if not isinstance(patch, dict) or not ({"streamId", "weighedKg", "excluded"} & set(patch)):
         raise ServiceError("INVALID_BODY", "고칠 내용(폐기물이나 계량한 무게)을 보내 주세요.", 422)
+    if "excluded" in patch and not isinstance(patch["excluded"], bool):
+        raise ServiceError("INVALID_VALUE", "더미 아님 여부는 참·거짓이어야 합니다.", 422)
     scan = _done(app, org_id, scan_id, viewer)
     piles = {p["id"]: p for p in scan["result"]["piles"]}
     if pile_id not in piles:
         raise ServiceError("PILE_NOT_FOUND", "그런 더미가 없습니다.", 404)
     index = list(piles).index(pile_id) + 1
     assign, weighed = dict(scan.get("assign") or {}), dict(scan.get("weighed") or {})
+    excluded = set(scan.get("excluded") or [])
+    if patch.get("excluded") is True:
+        if {"streamId", "weighedKg"} & set(patch):
+            raise ServiceError(
+                "INVALID_BODY", "더미 아님으로 뺄 때는 다른 내용을 함께 보내지 마세요.", 422
+            )
+        excluded.add(pile_id)
+        assign.pop(pile_id, None)
+        weighed.pop(pile_id, None)
+    elif patch.get("excluded") is False:
+        excluded.discard(pile_id)
+    if pile_id in excluded and {"streamId", "weighedKg"} & set(patch):
+        raise ServiceError(
+            "PILE_EXCLUDED", "더미 아님으로 뺀 더미입니다. 다시 넣은 뒤 고쳐 주세요.", 409
+        )
     if "streamId" in patch:
         sid = patch["streamId"]
         if sid is None:
@@ -984,7 +1022,7 @@ def update_pile(
                     access=(org_id,),
                 ),
             )
-    scan.update(assign=assign, weighed=weighed)
+    scan.update(assign=assign, weighed=weighed, excluded=sorted(excluded))
     scan["derived"] = derive(app, scan)
     return view(app, app.store.put_scan(scan))
 

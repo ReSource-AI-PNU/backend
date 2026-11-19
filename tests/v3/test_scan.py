@@ -665,3 +665,28 @@ def test_portrait_frames_get_a_landscape_note():
     assert "가로" in view["quality"]["notes"][0]
     app, _ = scan_app()  # 표본 장면은 가로(518×294)
     assert not any("세로" in n for n in finished(app)["quality"]["notes"])
+
+
+def test_a_wrong_pile_can_be_left_out():
+    app, _ = scan_app()
+    sid = finished(app)["id"]
+    for pid, stream in (("p1", "st_sprue"), ("p2", "st_film"), ("p3", "st_defect")):
+        views.update_pile(app, HANBIT, sid, pid, {"streamId": stream}, HANBIT)
+    before = views.get_scan(app, HANBIT, sid, HANBIT)
+    view = views.update_pile(app, HANBIT, sid, "p3", {"excluded": True}, HANBIT)
+    piles = {p["id"]: p for p in view["piles"]}
+    assert piles["p3"]["excluded"] is True and piles["p3"]["streamId"] is None
+    assert view["summary"]["pileCount"] == 4 and view["summary"]["excludedCount"] == 1
+    lost = piles["p3"]["volume"]["value"]
+    assert view["summary"]["volume"]["value"] == pytest.approx(
+        before["summary"]["volume"]["value"] - lost, abs=1e-3
+    )
+    proposal = view["layout"]["proposal"]
+    assert proposal is not None and "p3" not in {p["id"] for p in proposal["piles"]}
+    assert _code(views.update_pile, app, HANBIT, sid, "p3", {"streamId": "st_sprue"}, HANBIT) == (
+        "PILE_EXCLUDED",
+        409,
+    )
+    back = views.update_pile(app, HANBIT, sid, "p3", {"excluded": False}, HANBIT)
+    assert back["summary"]["pileCount"] == 5 and back["summary"]["excludedCount"] == 0
+    assert _code(views.update_pile, app, HANBIT, sid, "p3", {"excluded": "yes"}, HANBIT)[1] == 422
