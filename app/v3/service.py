@@ -19,7 +19,7 @@ from dataclasses import replace
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
-from app.v3 import current_cost, feedback, ids, live, outreach, report
+from app.v3 import current_cost, feedback, ids, live, outreach, public_vendors, report
 from app.v3 import fleet as fleet_input
 from app.v3 import names as naming
 from app.v3.a2a.message import STAGES
@@ -1630,21 +1630,29 @@ def get_report(
         raise ServiceError("INVALID_VALUE", str(error), 422) from error
 
 
+def _outside_of(session: dict[str, Any]) -> dict[str, Any]:
+    return (
+        ((session["work"].get("result") or {}).get("outsideVendors"))
+        or session["work"].get("outside")
+        or {}
+    )
+
+
 def quote_request(
     app: App, session_id: str, viewer: str, stream_id: str, vendor_id: str
 ) -> dict[str, Any]:
     """가입하지 않은 업체(결과 한 장의 outsideVendors 후보)에 보낼 견적 요청서 초안. 배출 기업만 만든다.
 
-    저장하지 않고 그때그때 만든다(읽기만 하므로 체험하기에서도 열린다). 후보 목록에 없는 업체·흐름은 404다.
+    저장하지 않고 그때그때 만든다(읽기만 하므로 체험하기에서도 열린다). 업체에 연락하거나 견적을 확정하거나
+    한 달 손익을 고치지 않는다. 후보 목록에 없는 업체·흐름은 404다.
+    후보는 찾은 때의 자료로 고른 것이므로, 지금 자료로 그 업체가 여전히 후보인지 다시 본다
+    (public_vendors.recheck). 흐름이 지워졌거나 바뀐 자료로는 후보가 아니면 요청서를 만들지 않고
+    409 OUTSIDE_STALE로 무엇이 바뀌었는지와 다시 찾으라는 문장을 돌려준다.
     """
     session, owner = _session_for(app, session_id, viewer)
     if not owner:
         raise ServiceError("FORBIDDEN", "배출 기업만 견적 요청서를 만들 수 있습니다.", 403)
-    outside = (
-        ((session["work"].get("result") or {}).get("outsideVendors"))
-        or session["work"].get("outside")
-        or {}
-    )
+    outside = _outside_of(session)
     listed = {
         (s["streamId"], c["id"])
         for s in outside.get("streams") or []
@@ -1653,11 +1661,61 @@ def quote_request(
     if (stream_id, vendor_id) not in listed:
         raise ServiceError("NOT_FOUND", "그 업체는 이 폐기물의 후보가 아닙니다.", 404)
     emitter = app.store.get_org(session["emitterOrgId"])
-    stream = app.store.get_stream(stream_id, session["emitterOrgId"])
-    letter = outreach.quote_request(app.registry, emitter, stream, vendor_id, app.today)
+    try:
+        stream = app.store.get_stream(stream_id, session["emitterOrgId"])
+    except NotFound:
+        raise ServiceError(
+            "OUTSIDE_STALE",
+            outreach.stale_message([], "deleted"),
+            409,
+            detail={"reason": "deleted", "changes": []},
+        ) from None
+    before = (session["work"].get("outsideBasis") or {}).get(stream_id)
+    changes = outreach.basis_changes(before, stream)
+    location = emitter.get("location")
+    fit = public_vendors.recheck(
+        stream,
+        vendor_id,
+        (float(location[0]), float(location[1])) if location else None,
+        exclude_names=outreach._registered_names(app.store),
+    )
+    if not fit["ok"]:
+        raise ServiceError(
+            "OUTSIDE_STALE",
+            outreach.stale_message(changes, fit["reason"]),
+            409,
+            detail={"reason": fit["reason"], "changes": changes},
+        )
+    demo = bool(app.read_only or emitter.get("synthetic") or stream.get("synthetic"))
+    letter = outreach.quote_request(
+        app.registry, emitter, stream, vendor_id, app.today, demo=demo, changes=changes
+    )
     if letter is None:
         raise ServiceError("NOT_FOUND", "그 업체는 허가 명부에 없습니다.", 404)
     return letter
+
+
+def _outside_view(app: App, session: dict[str, Any], result: dict[str, Any]) -> dict[str, Any]:
+    """배출 기업이 보는 결과 한 장의 outsideVendors에, 후보를 찾은 뒤 바뀐 흐름 칸(changed)을 붙인다.
+
+    찾을 때 남긴 칸이 없으면(이전 진단) 붙이지 않는다. 지워진 흐름은 removed로 적는다. 저장한 결과는 고치지 않는다.
+    """
+    outside = result.get("outsideVendors")
+    basis = session["work"].get("outsideBasis")
+    if not outside or not basis:
+        return result
+    streams = {s["id"]: s for s in app.store.list_streams(session["emitterOrgId"])}
+    entries = []
+    for entry in outside.get("streams") or []:
+        current = streams.get(entry["streamId"])
+        if entry["streamId"] not in basis:
+            entries.append(entry)
+        elif current is None:
+            entries.append({**entry, "changed": [], "removed": True})
+        else:
+            changed = outreach.basis_changes(basis[entry["streamId"]], current)
+            entries.append({**entry, "changed": changed, "removed": False})
+    return {**result, "outsideVendors": {**outside, "streams": entries}}
 
 
 def get_view(app: App, session_id: str, viewer: str) -> dict[str, Any]:
@@ -1704,7 +1762,9 @@ def get_view(app: App, session_id: str, viewer: str) -> dict[str, Any]:
         "streams": [_stream_view(app, s, session, viewer, owner) for s in streams],
         "threads": [_thread_view(app, t, session, viewer) for t in threads],
         "graph": _graph(app, session, threads, streams, viewer),
-        "result": _result_view(session, viewer, owner),
+        "result": _outside_view(app, session, _result_view(session, viewer, owner))
+        if owner and session["work"].get("result")
+        else _result_view(session, viewer, owner),
         "questions": [
             _question_view(q) for q in (app.store.list_questions(session_id) if owner else [])
         ],

@@ -771,7 +771,10 @@ class Orchestrator:
     def _find_outside(
         self, session, emitter: dict[str, Any], streams: list[dict[str, Any]]
     ) -> None:
-        """가입하지 않은 업체 후보(공공데이터 허가 명부). 대화는 열지 않고 결과 한 장에만 싣는다."""
+        """가입하지 않은 업체 후보(공공데이터 허가 명부). 대화는 열지 않고 결과 한 장에만 싣는다.
+
+        찾을 때 본 흐름 칸은 work.outsideBasis에 남긴다. 견적 요청서를 만들 때 지금 자료와 견준다.
+        """
         try:
             session["work"]["outside"] = outreach.find_outside(
                 self.registry, self.store, emitter, streams, self.today
@@ -779,7 +782,9 @@ class Orchestrator:
         except Exception:  # 명부 문제로 진단이 멈추면 안 된다(후보 없이 진행)
             logger.warning("가입하지 않은 업체 후보를 찾지 못했다", exc_info=True)
             session["work"]["outside"] = None
+            session["work"]["outsideBasis"] = None
             return
+        session["work"]["outsideBasis"] = {s["id"]: outreach.stream_basis(s) for s in streams}
         found = sum(len(s["candidates"]) for s in session["work"]["outside"]["streams"])
         self.feed.activity(
             session["id"],

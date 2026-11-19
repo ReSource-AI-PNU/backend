@@ -35,6 +35,25 @@ PLASTIC_NAME = re.compile(
 )
 _FOAM_WORDS = ("발포", "EPS", "스티로폼")
 _PACKAGING_WORDS = ("포장", "필름", "비닐", "랩")
+# 플라스틱이 아닌 재질 낱말과 품목. 이 명부 검색(폐합성고분자화합물 분류번호)으로 찾지 않는다
+_NON_PLASTIC_WORDS = (
+    "알루미늄",
+    "구리",
+    "스테인리스",
+    "황동",
+    "금속",
+    "고철",
+    "비철",
+    "철",
+    "목재",
+    "종이",
+    "유리",
+)
+_NON_PLASTIC_ITEMS = ("금속 스크랩", "폐목재")
+UNKNOWN_REASON = "재질이 확인되지 않아 찾지 않았습니다."
+NON_PLASTIC_REASON = (
+    "플라스틱이 아니어서 찾지 않았습니다. 이 명부 검색은 폐합성수지를 처리하는 재활용업만 다룹니다."
+)
 
 
 @lru_cache(maxsize=1)
@@ -57,11 +76,19 @@ def code_name(code: str) -> str | None:
     return None
 
 
+def non_plastic(stream: dict) -> bool:
+    """재질이나 품목이 플라스틱이 아니다(알루미늄, 금속 스크랩, 폐목재 등)."""
+    material = str(stream.get("material") or "")
+    return str(stream.get("wasteItem") or "") in _NON_PLASTIC_ITEMS or any(
+        word in material for word in _NON_PLASTIC_WORDS
+    )
+
+
 def stream_codes(stream: dict) -> list[str]:
     """흐름이 해당하는 분류번호(우선순위 순). 플라스틱이 아니거나 재질을 모르면 빈 목록이다."""
     material = str(stream.get("material") or "").upper()
     text = " ".join(str(stream.get(k) or "") for k in ("form", "name", "item", "detail"))
-    if not material:
+    if not material or non_plastic(stream):
         return []
     if "PVC" in material:
         return [PVC, PLASTIC_ALL]
@@ -75,6 +102,15 @@ def stream_codes(stream: dict) -> list[str]:
 
 def _norm(name: str) -> str:
     return re.sub(r"\(주\)|（주）|주식회사|유한회사|[\s()（）㈜]", "", name or "")
+
+
+def _vendor_match(vendor: dict, codes: list[str]) -> list[str] | None:
+    """업체가 이 분류번호의 후보인지. 맞는 번호 목록(빈 목록이면 상호로 고른 "확인 필요" 후보), 아니면 None."""
+    reliable = vendor.get("codesReliable", True)
+    matched = [c for c in codes if c in vendor["codes"]] if reliable else []
+    if not matched and (reliable or not PLASTIC_NAME.search(vendor["name"])):
+        return None
+    return matched
 
 
 def search(
@@ -102,7 +138,7 @@ def search(
             **meta,
             "codes": [],
             "candidates": [],
-            "reason": "재질이 확인되지 않아 찾지 않았습니다.",
+            "reason": NON_PLASTIC_REASON if non_plastic(stream) else UNKNOWN_REASON,
         }
     if origin is None:
         return {
@@ -116,9 +152,8 @@ def search(
     for vendor in data["vendors"]:
         if _norm(vendor["name"]) in taken:
             continue
-        reliable = vendor.get("codesReliable", True)
-        matched = [c for c in codes if c in vendor["codes"]] if reliable else []
-        if not matched and (reliable or not PLASTIC_NAME.search(vendor["name"])):
+        matched = _vendor_match(vendor, codes)
+        if matched is None:
             continue
         km = haversine_km(origin, (vendor["lon"], vendor["lat"]))
         if km > radius_km:
@@ -166,6 +201,47 @@ def search(
         "candidates": candidates,
         "total": len(found),
         "confirmedTotal": sum(1 for item in found if item[0] == 0),
+    }
+
+
+def recheck(
+    stream: dict,
+    vendor_id: str,
+    origin: tuple[float, float] | None,
+    *,
+    exclude_names: tuple[str, ...] = (),
+    radius_km: float = RADIUS_KM,
+) -> dict[str, Any]:
+    """후보 하나가 지금 흐름 자료로도 후보인지(견적 요청서를 만들기 전에 다시 본다).
+
+    search와 같은 조건(분류번호, 상호, 가입 여부, 반경)으로 본다. 순위(상위 몇 곳)는 보지 않는다.
+    {"ok": bool, "reason": None | "not_listed" | "non_plastic" | "unknown_material" | "codes" | "registered"
+    | "no_origin" | "too_far", "match": "confirmed" | "check" | None, "matchedCodes": [...]}
+    """
+    vendor = get(vendor_id)
+
+    def fail(reason: str) -> dict[str, Any]:
+        return {"ok": False, "reason": reason, "match": None, "matchedCodes": []}
+
+    if vendor is None:
+        return fail("not_listed")
+    codes = stream_codes(stream)
+    if not codes:
+        return fail("non_plastic" if non_plastic(stream) else "unknown_material")
+    matched = _vendor_match(vendor, codes)
+    if matched is None:
+        return fail("codes")
+    if _norm(vendor["name"]) in {_norm(n) for n in exclude_names if n}:
+        return fail("registered")
+    if origin is None:
+        return fail("no_origin")
+    if haversine_km(origin, (vendor["lon"], vendor["lat"])) > radius_km:
+        return fail("too_far")
+    return {
+        "ok": True,
+        "reason": None,
+        "match": "confirmed" if matched else "check",
+        "matchedCodes": [{"code": c, "name": code_name(c)} for c in matched],
     }
 
 

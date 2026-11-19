@@ -7,6 +7,11 @@
 - 후보마다 공공데이터 한 줄을 ref 근거(누구나 볼 수 있음)로, 직선거리를 calc 근거(배출 기업만 봄)로 남긴다.
 - 견적 요청서는 코드 템플릿이다. 숫자는 흐름의 근거가 붙은 값(claim)만 쓰고 근거 검증기를 거친다.
   주소·전화번호는 본문이 아니라 받는 곳 칸(recipient)에 둔다(검증기는 본문의 맨 숫자를 거부한다).
+- 후보는 찾은 때의 흐름 자료로 고른 것이다. 진행기는 그때 본 칸(stream_basis)을 work.outsideBasis에 남기고,
+  요청서를 만들기 전에 service가 지금 자료로 후보가 맞는지 다시 본다(public_vendors.recheck). 맞지 않으면
+  요청서를 만들지 않고 stale_message로 다시 찾으라고 알린다.
+- 요청서는 값마다 출처(계량값·담당자 입력·사진 추정·미확인)를 적고, 거래 방식·단가·방문 수거·최소 수거량·
+  운반비와 그 부담·공장이 낼 비용을 넣은 예상 정산을 묻는다. 만들기만 하고 저장·발송·손익 갱신은 하지 않는다.
 """
 
 from __future__ import annotations
@@ -17,17 +22,67 @@ from app.v3 import ids, public_vendors
 from app.v3.agents.pool import ClaimPool
 from app.v3.evidence.model import Evidence
 from app.v3.evidence.registry import EvidenceNotFound
-from app.v3.evidence.render import render_text
+from app.v3.evidence.render import render_text, split_text
 from app.v3.evidence.validator import ALLOWED_TOKENS, name_tokens, validate_text
 from app.v3.judge.common import Recorder, quality
 from app.v3.store import NotFound
 from app.v3.textutil import josa
-from app.v3.untrusted import org_label, stream_label
+from app.v3.untrusted import (
+    contaminant_labels,
+    form_key,
+    material_word,
+    org_label,
+    safe_text,
+    stream_label,
+)
 
 TOOL = "find_outside_vendors"
 ORIGIN_WORDS = {"PIR": "공정에서 나온 것", "PCR": "쓰고 난 뒤 나온 것(포장재 등)"}
 BASIS_WORDS = {"measured": "측정값", "photo_estimate": "사진 추정", "answered": "담당자 답"}
 CHECK_NOTE = "공공데이터에 적힌 처리 폐기물을 믿기 어려워 상호로 고른 곳입니다. 처리 품목을 먼저 확인해 주세요."
+# 시연 회사(가상 자료)의 요청서 첫 줄. 복사한 글에도 남는다
+DEMO_MARK = "※ 시연용 가상 자료입니다. 실제 업체에 보내지 마세요."
+INQUIRY_ONLY = "이 글은 조건을 여쭙는 문의이며, 거래나 수거를 정하는 요청이 아닙니다."
+BASIS_NOTE = (
+    "괄호 안은 값의 출처입니다. 계량값·측정값은 저희가 잰 값이고, 담당자 입력·담당자 답은 담당자가 적은 "
+    "값입니다. 사진 추정은 사진으로 어림한 값이라 실제와 다를 수 있습니다. 사진 추정과 미확인 값은 시료나 "
+    "반입 검수로 정해 주세요."
+)
+# 공장이 되레 내야 하는 돈(운반비·상하차비 등)까지 넣은 한 달 정산을 업체가 직접 적게 한다
+SETTLEMENT_ASK = (
+    "귀사가 주는 금액 ____원 − 저희가 내는 비용 ____원 = 한 달에 저희가 □ 받는 돈 □ 내는 돈 ____원"
+)
+# 값 출처 -> 묶음. known: 잰 값·담당자가 적은 값, estimated: 사진 추정·추정, unknown: 미확인
+FACT_STATUS = {
+    "계량값": "known",
+    "측정값": "known",
+    "담당자 입력": "known",
+    "담당자 답": "known",
+    "사진 추정": "estimated",
+    "추정": "estimated",
+    "미확인": "unknown",
+}
+# 후보를 찾을 때 본 흐름 칸과 보이는 이름. 이 칸이 바뀌면 후보가 맞는지 다시 본다
+BASIS_FIELDS = (
+    ("material", "재질"),
+    ("wasteItem", "품목"),
+    ("form", "형태"),
+    ("origin", "출처"),
+    ("process", "공정"),
+    ("name", "이름"),
+)
+_ORIGIN_SHORT = {"PIR": "공정에서 나온 것", "PCR": "쓰고 난 뒤 나온 것"}
+# public_vendors.recheck의 이유 -> 담당자에게 보일 문장
+STALE_REASONS = {
+    "non_plastic": "지금 자료는 플라스틱이 아니어서, 폐합성수지 허가로 찾은 이 업체와 맞지 않습니다.",
+    "unknown_material": "지금 자료에 재질이 없어 이 업체의 허가 품목과 맞는지 알 수 없습니다.",
+    "codes": "이 업체의 허가 품목에 지금 재질의 분류가 없습니다.",
+    "registered": "이 업체가 가입해 이제 AI가 직접 문의할 수 있습니다.",
+    "no_origin": "회사 위치가 없어 업체까지의 거리를 확인할 수 없습니다.",
+    "too_far": "지금 회사 위치에서 찾는 반경 밖에 있습니다.",
+    "not_listed": "허가 명부에서 이 업체를 찾을 수 없습니다.",
+    "deleted": "이 폐기물이 지워졌습니다.",
+}
 
 
 def _ref_id(vendor: dict[str, Any]) -> str:
@@ -141,25 +196,99 @@ def find_outside(
     }
 
 
+def stream_basis(stream: dict[str, Any]) -> dict[str, Any]:
+    """후보를 찾을 때 본 흐름 칸(BASIS_FIELDS)."""
+    return {key: stream.get(key) for key, _ in BASIS_FIELDS}
+
+
+def _shown(key: str, value: Any) -> str:
+    if value in (None, ""):
+        return "빈칸"
+    if key == "origin":
+        return _ORIGIN_SHORT.get(str(value), str(value))
+    return safe_text(value) or str(value)
+
+
+def basis_changes(before: dict[str, Any] | None, stream: dict[str, Any]) -> list[dict[str, Any]]:
+    """후보를 찾은 뒤 바뀐 칸. 찾을 때 남긴 칸이 없으면(이전 진단) 빈 목록이다."""
+    if not before:
+        return []
+    out = []
+    for key, label in BASIS_FIELDS:
+        old, new = before.get(key) or None, stream.get(key) or None
+        if old != new:
+            out.append(
+                {
+                    "field": key,
+                    "label": label,
+                    "before": _shown(key, old),
+                    "after": _shown(key, new),
+                }
+            )
+    return out
+
+
+def changes_sentence(changes: list[dict[str, Any]]) -> str:
+    """ "재질이 PP에서 알루미늄으로, 품목이 폐플라스틱에서 금속 스크랩으로 바뀌었습니다." """
+    if not changes:
+        return ""
+    parts = [
+        f"{josa(c['label'], '이가')} {c['before']}에서 {josa(c['after'], '으로')}" for c in changes
+    ]
+    return ", ".join(parts) + " 바뀌었습니다."
+
+
+def stale_message(changes: list[dict[str, Any]], reason: str) -> str:
+    """지금 자료로는 후보가 아니어서 요청서를 만들지 않을 때 담당자에게 보일 문장."""
+    head = f"후보를 찾은 뒤 {changes_sentence(changes)} " if changes else ""
+    why = STALE_REASONS.get(reason, "지금 자료로는 이 업체가 후보가 아닙니다.")
+    return f"{head}{why} 그래서 견적 요청서를 만들지 않았습니다. 바뀐 자료로 받아 줄 곳을 다시 찾아 주세요."
+
+
 def quote_request(
-    registry: Any, emitter: dict[str, Any], stream: dict[str, Any], vendor_id: str, today: str
+    registry: Any,
+    emitter: dict[str, Any],
+    stream: dict[str, Any],
+    vendor_id: str,
+    today: str,
+    *,
+    demo: bool = False,
+    changes: list[dict[str, Any]] | None = None,
 ) -> dict[str, Any] | None:
-    """가입하지 않은 업체 하나에 보낼 견적 요청서 초안. 그 업체가 명부에 없으면 None."""
+    """가입하지 않은 업체 하나에 보낼 견적 요청서 초안. 그 업체가 명부에 없으면 None.
+
+    stream은 지금 자료다(후보가 맞는지는 부르는 쪽이 먼저 본다). demo면 첫 줄에 DEMO_MARK를 둔다.
+    """
     vendor = public_vendors.get(vendor_id)
     if vendor is None:
         return None
     ref = _ensure_ref(registry, vendor, emitter["id"])
     pool = ClaimPool(registry, emitter["id"])
-    facts = pool.add_stream(stream, private=True)
+    pooled = pool.add_stream(stream, private=True)
     q = quality(stream)
     claims: list[dict[str, Any]] = []
 
     def use(field: str, claim_id: str) -> str | None:
-        entry = pool.get(facts.get(field)) if facts.get(field) else None
+        entry = pool.get(pooled.get(field)) if pooled.get(field) else None
         if entry is None:
             return None
         claims.append({**entry.claim.to_dict(), "id": claim_id})
         return "{{" + claim_id + "}}"
+
+    facts: list[dict[str, Any]] = []
+
+    def fact(key: str, name: str, value: str | None, basis: str) -> None:
+        if value is None:
+            basis = "미확인"
+        facts.append(
+            {
+                "key": key,
+                "label": name,
+                "value": value,
+                "basis": basis,
+                "status": FACT_STATUS[basis],
+            }
+        )
 
     label = stream_label(stream)
     sender = org_label(emitter.get("name"), "배출 기업")
@@ -173,44 +302,95 @@ def quote_request(
         why = f"귀사가 {josa(waste, '을를')} 처리하는 {business} 올라 있어"
     else:
         why = f"귀사가 {business} 올라 있어"
+
+    # 값과 그 출처. 담당자가 적은 칸은 상대에게 보일 낱말로 정리한다(untrusted)
+    material = material_word(stream.get("material"))
+    estimate = (stream.get("photo") or {}).get("materialEstimate") or {}
+    if material:
+        estimated = stream.get("materialBasis") == "estimated"
+        fact("material", "재질", material, "추정" if estimated else "담당자 입력")
+    else:
+        fact("material", "재질", safe_text(estimate.get("label")) or None, "사진 추정")
+    form = form_key(stream.get("form"))
+    fact("form", "형태", form, "담당자 입력")
+    fact("origin", "출처", ORIGIN_WORDS.get(str(stream.get("origin"))), "담당자 입력")
     kg = use("monthlyKg", "monthlyKg")
-    cont_field = "contaminationPct" if facts.get("contaminationPct") else "photoContaminationPct"
+    if stream.get("monthlyKg") is None:
+        kg_basis = "담당자 답"
+    else:
+        kg_basis = "계량값" if stream.get("monthlyKgBasis") == "measured" else "추정"
+    fact("monthlyKg", "한 달 발생량", kg, kg_basis)
+    mixed = contaminant_labels(stream)
+    fact("contaminants", "섞인 것", ", ".join(mixed) if mixed else "적힌 것 없음", "담당자 입력")
+    cont_field = "contaminationPct" if pooled.get("contaminationPct") else "photoContaminationPct"
     cont = use(cont_field, "contaminationPct")
+    fact(
+        "contaminationPct",
+        "오염도",
+        cont,
+        BASIS_WORDS.get(str(q.get("contaminationBasis")), "미확인"),
+    )
     moist = use("moisturePct", "moisturePct")
-    cont_basis = BASIS_WORDS.get(str(q.get("contaminationBasis")), "")
-    moist_basis = BASIS_WORDS.get(str(q.get("moistureBasis")), "")
+    fact("moisturePct", "수분", moist, BASIS_WORDS.get(str(q.get("moistureBasis")), "미확인"))
+
+    def fact_line(item: dict[str, Any]) -> str:
+        if item["value"] is None:
+            return f"- {item['label']}: 미확인"
+        return f"- {item['label']}: {item['value']} ({item['basis']})"
+
+    basis_kg = f"한 달 발생량 {kg} 기준" if kg else "귀사가 정한 기준 물량으로"
     lines = [
+        *([DEMO_MARK, ""] if demo else []),
         "견적 요청서",
         f"받는 곳: {org_label(vendor['name'], '처리 업체')} 담당자님",
         f"보내는 곳: {sender}",
         f"작성일: {today}",
         "",
-        f"공공데이터포털에 공개된 폐기물처리업 허가 정보에서 {why} 견적을 여쭙니다.",
+        f"공공데이터포털에 공개된 폐기물처리업 허가 정보에서 {why} 견적을 여쭙니다. {INQUIRY_ONLY}",
         "",
-        "폐기물",
-        f"- 이름: {label}",
-        f"- 재질과 형태: {stream.get('material') or '재질 확인 필요'}, {stream.get('form') or '형태 확인 필요'}",
-        f"- 출처: {ORIGIN_WORDS.get(str(stream.get('origin')), '확인 필요')}",
-        f"- 한 달 발생량: {kg}" if kg else "- 한 달 발생량: 확인 필요",
-        f"- 오염도: {cont}({cont_basis})" if cont else "- 오염도: 확인 필요",
-        f"- 수분: {moist}({moist_basis})" if moist else "- 수분: 확인 필요",
+        "문의할 폐기물",
+        f"- 품목: {label}",
+        *[fact_line(item) for item in facts],
         "",
-        "여쭙는 것",
-        "1. kg당 매입 단가 또는 처리비",
-        "2. 수거 가능 요일과 한 번에 받는 최소 물량",
-        "3. 반입 검수 기준(오염도·수분 상한)과 필요한 서류",
+        BASIS_NOTE,
+        "",
+        "여쭙는 것 (해당하는 곳에 표시하고 빈칸을 채워 주세요)",
+        "1. 거래 방식: □ 매입(귀사가 값을 치름) □ 무상 인수 □ 유상 처리(저희가 처리비를 냄)",
+        "2. 단가: kg당 ____원 (매입이면 귀사가 주는 값, 유상 처리면 저희가 내는 값)",
+        "3. 방문 수거: □ 가능(요일·주기: ____) □ 불가(저희가 직접 반입)",
+        "4. 최소 수거량: 한 번에 ____kg 이상",
+        "5. 운반비: □ 단가에 포함 □ 별도(한 번에 ____원, 부담: □ 귀사 □ 저희)",
+        "6. 그 밖에 저희가 낼 비용: 상하차·계근·선별·잔재물 처리비 등 ____ (없으면 없음)",
+        f"7. 예상 정산({basis_kg}): {SETTLEMENT_ASK}",
+        "8. 반입 검수 기준(오염도·수분 상한, 섞인 것을 받는지)과 계약에 필요한 서류",
         "",
         "회신은 아래 연락처로 부탁드립니다.",
     ]
     text = "\n".join(lines)
-    allowed = (*ALLOWED_TOKENS, *name_tokens([vendor["name"], emitter.get("name"), label]))
+    allowed = (
+        *ALLOWED_TOKENS,
+        *name_tokens([vendor["name"], emitter.get("name"), label, material, form, *mixed]),
+    )
     result = validate_text(
         text, claims, registry, org_id=emitter["id"], today=today, allowed_tokens=allowed
     )
+    monthly = next((c for c in claims if c["id"] == "monthlyKg"), None)
     return {
         "kind": "quote_request",
         "title": f"견적 요청서 · {org_label(vendor['name'], '처리 업체')}",
         "streamId": stream["id"],
+        "vendorId": vendor["id"],
+        # 시연 회사의 가상 자료면 true. 본문 첫 줄(DEMO_MARK)에도 적혀 복사한 글에 남는다
+        "demo": demo,
+        "item": {
+            "name": label,
+            "material": next(f["value"] for f in facts if f["key"] == "material"),
+            "form": form,
+            "monthlyKg": monthly,
+        },
+        "facts": facts,
+        # 후보를 찾은 뒤 바뀌었지만 지금 자료로도 후보가 맞는 칸(요청서는 지금 자료로 만든다)
+        "changes": list(changes or []),
         "recipient": {
             "id": vendor["id"],
             "name": vendor["name"],
@@ -224,5 +404,7 @@ def quote_request(
         "text": text,
         "claims": claims,
         "rendered": render_text(text, claims),
+        # 화면 미리보기용 조각. 글자 조각과 claim의 display를 이으면 rendered와 같다
+        "parts": split_text(text, claims),
         "validation": {"ok": result.ok, "rejections": [r.to_dict() for r in result.rejections]},
     }

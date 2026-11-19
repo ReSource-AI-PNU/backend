@@ -64,3 +64,51 @@ def test_search_skips_registered_vendors_and_explains_missing_inputs():
     assert first["id"] not in {c["id"] for c in again["candidates"]}
     assert pv.search({"material": "PP"}, None)["reason"] == "회사 위치가 없어 찾지 않았습니다."
     assert pv.search({}, CHANGWON)["reason"] == "재질이 확인되지 않아 찾지 않았습니다."
+
+
+def test_non_plastic_streams_get_no_plastic_recyclers():
+    """알루미늄·금속 스크랩·폐목재는 폐합성수지 분류번호로 찾지 않는다(전에는 재질이 있으면 모두 플라스틱으로 봤다)."""
+    for stream in (
+        {"material": "알루미늄", "wasteItem": "금속 스크랩"},
+        {"material": "알루미늄"},
+        {"material": "철", "wasteItem": "금속 스크랩"},
+        {"material": "PP", "wasteItem": "금속 스크랩"},
+        {"material": "목재", "wasteItem": "폐목재"},
+    ):
+        assert pv.stream_codes(stream) == [], stream
+        result = pv.search(stream, NOKSAN)
+        assert result["candidates"] == [] and result["reason"] == pv.NON_PLASTIC_REASON
+    assert pv.stream_codes({"material": "PP", "wasteItem": "폐플라스틱"}) == [
+        "51-03-01",
+        "51-03-00",
+    ]
+
+
+def test_recheck_says_whether_a_candidate_still_fits_the_current_stream():
+    pp = {"material": "PP", "origin": "PIR"}
+    found = pv.search(pp, NOKSAN)["candidates"]
+    confirmed = next(c for c in found if c["match"] == "confirmed")
+    check = next(c for c in found if c["match"] == "check")
+    assert pv.recheck(pp, confirmed["id"], NOKSAN) == {
+        "ok": True,
+        "reason": None,
+        "match": "confirmed",
+        "matchedCodes": confirmed["matchedCodes"],
+    }
+    assert pv.recheck(pp, check["id"], NOKSAN)["match"] == "check"
+    # 같은 플라스틱이면 재질이 바뀌어도(PP -> PE) 후보다
+    assert pv.recheck({"material": "PE"}, confirmed["id"], NOKSAN)["ok"]
+    aluminum = {"material": "알루미늄", "wasteItem": "금속 스크랩"}
+    for candidate in found:
+        assert pv.recheck(aluminum, candidate["id"], NOKSAN) == {
+            "ok": False,
+            "reason": "non_plastic",
+            "match": None,
+            "matchedCodes": [],
+        }
+    assert pv.recheck({}, confirmed["id"], NOKSAN)["reason"] == "unknown_material"
+    assert pv.recheck(pp, "pv_none", NOKSAN)["reason"] == "not_listed"
+    assert pv.recheck(pp, confirmed["id"], None)["reason"] == "no_origin"
+    assert pv.recheck(pp, confirmed["id"], (126.9780, 37.5665))["reason"] == "too_far"  # 서울
+    named = pv.recheck(pp, confirmed["id"], NOKSAN, exclude_names=(f"(주) {confirmed['name']}",))
+    assert named["reason"] == "registered"

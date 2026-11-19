@@ -83,3 +83,149 @@ def test_quote_request_opens_in_the_read_only_demo_app(waiting):
         demo_app(app), view["session"]["id"], HANBIT, stream["streamId"], candidate["id"]
     )
     assert letter["validation"]["ok"] and letter["recipient"]["evidence"] == candidate["evidence"]
+
+
+def _shared_candidate(view):
+    """불량 사출품(400kg)과 스프루·러너(600kg) 모두의 후보인 업체."""
+    streams = {s["streamId"]: s for s in view["result"]["outsideVendors"]["streams"]}
+    sprue = {c["id"] for c in streams["st_sprue"]["candidates"]}
+    return next(c for c in streams["st_defect"]["candidates"] if c["id"] in sprue)
+
+
+def _joined(parts):
+    return "".join(p["text"] if p["type"] == "text" else p["display"] for p in parts)
+
+
+def test_quote_request_follows_the_chosen_stream_for_the_same_vendor(waiting):
+    """같은 업체에 불량 사출품 400kg과 스프루·러너 600kg을 번갈아 물어도 요청서가 각각 그 폐기물이다."""
+    app, view = waiting
+    sid, vendor = view["session"]["id"], _shared_candidate(view)
+    letters = {}
+    for stream_id in ("st_defect", "st_sprue", "st_defect"):
+        letter = service.quote_request(app, sid, HANBIT, stream_id, vendor["id"])
+        assert letter["validation"]["ok"], letter["validation"]
+        assert (letter["streamId"], letter["vendorId"]) == (stream_id, vendor["id"])
+        # 미리보기 조각을 이으면 복사할 글이다
+        assert _joined(letter["parts"]) == letter["rendered"]
+        if stream_id in letters:
+            assert letter["rendered"] == letters[stream_id]["rendered"]  # 다시 골라도 같은 글
+        letters[stream_id] = letter
+    defect, sprue = letters["st_defect"]["rendered"], letters["st_sprue"]["rendered"]
+    assert "- 품목: PP 사출 불량품" in defect and "- 한 달 발생량: 400 kg/월 (계량값)" in defect
+    assert "- 품목: PP 스프루·러너" in sprue and "- 한 달 발생량: 600 kg/월 (계량값)" in sprue
+    assert "600" not in defect and "400" not in sprue
+    assert letters["st_defect"]["item"]["name"] == "PP 사출 불량품"
+    assert letters["st_sprue"]["item"]["monthlyKg"]["value"] == 600
+
+
+def test_quote_request_asks_settlement_terms_and_marks_where_each_value_came_from(waiting):
+    app, view = waiting
+    vendor = _shared_candidate(view)
+    letter = service.quote_request(app, view["session"]["id"], HANBIT, "st_defect", vendor["id"])
+    text = letter["rendered"]
+    for ask in (
+        "□ 매입(귀사가 값을 치름) □ 무상 인수 □ 유상 처리(저희가 처리비를 냄)",
+        "단가: kg당 ____원",
+        "방문 수거: □ 가능",
+        "최소 수거량: 한 번에 ____kg 이상",
+        "운반비: □ 단가에 포함 □ 별도(한 번에 ____원, 부담: □ 귀사 □ 저희)",
+        "그 밖에 저희가 낼 비용",
+        "예상 정산(한 달 발생량 400 kg/월 기준)",
+        "□ 받는 돈 □ 내는 돈",
+    ):
+        assert ask in text, ask
+    # 알린 값, 사진 추정, 미확인을 가른다
+    assert "- 오염도: 6% (사진 추정)" in text and "- 수분: 미확인" in text
+    assert "- 섞인 것: 종이 라벨, 금속 인서트 (담당자 입력)" in text
+    status = {f["key"]: f["status"] for f in letter["facts"]}
+    assert status["monthlyKg"] == "known" and status["contaminationPct"] == "estimated"
+    assert status["moisturePct"] == "unknown"
+    assert "거래나 수거를 정하는 요청이 아닙니다" in text
+
+
+def test_demo_letters_keep_the_demo_mark_and_real_ones_do_not(waiting):
+    from app.v3 import outreach
+
+    app, view = waiting
+    vendor = _shared_candidate(view)
+    letter = service.quote_request(app, view["session"]["id"], HANBIT, "st_sprue", vendor["id"])
+    assert letter["demo"] is True
+    assert letter["rendered"].startswith(outreach.DEMO_MARK)
+    assert letter["parts"][0]["text"].startswith(outreach.DEMO_MARK)
+    emitter = app.store.get_org(HANBIT)
+    stream = app.store.get_stream("st_sprue")
+    real = outreach.quote_request(app.registry, emitter, stream, vendor["id"], app.today)
+    assert real["demo"] is False and outreach.DEMO_MARK not in real["rendered"]
+    assert real["rendered"].startswith("견적 요청서")
+
+
+def test_making_a_quote_request_writes_nothing(waiting):
+    """초안은 업체에 연락하지 않고, 견적을 확정하지 않고, 한 달 손익을 고치지 않는다(저장소가 그대로다)."""
+    import copy
+
+    app, view = waiting
+    sid, vendor = view["session"]["id"], _shared_candidate(view)
+    before = copy.deepcopy(app.store._data)
+    evidence = {e.id for e in app.registry.list(org_id=None)}
+    result = copy.deepcopy(service.get_view(app, sid, HANBIT)["result"]["totals"])
+    for stream_id in ("st_defect", "st_sprue"):
+        service.quote_request(app, sid, HANBIT, stream_id, vendor["id"])
+    assert app.store._data == before
+    assert {e.id for e in app.registry.list(org_id=None)} == evidence
+    assert service.get_view(app, sid, HANBIT)["result"]["totals"] == result
+
+
+def test_material_change_after_search_blocks_letters_to_the_plastic_candidates():
+    """탐색 뒤 불량 사출품을 PP에서 알루미늄·금속 스크랩으로 고치면 플라스틱 후보에게 요청서를 만들지 않는다."""
+    app = make_app()
+    view = answer_all(app, start(app))
+    if view["session"]["status"] == "awaiting_answers":
+        view = answer_all(app, view)
+    sid = view["session"]["id"]
+    candidates = next(
+        s for s in view["result"]["outsideVendors"]["streams"] if s["streamId"] == "st_defect"
+    )["candidates"]
+    assert candidates
+    service.update_stream(
+        app, HANBIT, "st_defect", {"material": "알루미늄", "wasteItem": "금속 스크랩"}, HANBIT
+    )
+    for candidate in candidates:
+        with pytest.raises(service.ServiceError) as err:
+            service.quote_request(app, sid, HANBIT, "st_defect", candidate["id"])
+        assert (err.value.code, err.value.status) == ("OUTSIDE_STALE", 409)
+        assert err.value.detail["reason"] == "non_plastic"
+        assert "재질이 PP에서 알루미늄으로" in err.value.message
+        assert "다시 찾아 주세요" in err.value.message
+    # 화면의 후보 목록에도 바뀐 칸이 붙는다(저장한 결과는 그대로다)
+    entry = next(
+        s
+        for s in service.get_view(app, sid, HANBIT)["result"]["outsideVendors"]["streams"]
+        if s["streamId"] == "st_defect"
+    )
+    assert [c["field"] for c in entry["changed"]] == ["material", "wasteItem"]
+    assert "changed" not in app.store.get_session(sid)["work"]["outside"]["streams"][0]
+    # 바뀌지 않은 폐기물은 그대로 만든다
+    sprue = service.quote_request(app, sid, HANBIT, "st_sprue", candidates[0]["id"])
+    assert sprue["validation"]["ok"] and sprue["changes"] == []
+
+
+def test_plastic_to_plastic_change_still_fits_and_the_letter_uses_the_current_data():
+    app = make_app()
+    view = answer_all(app, start(app))
+    if view["session"]["status"] == "awaiting_answers":
+        view = answer_all(app, view)
+    sid = view["session"]["id"]
+    candidate = next(
+        c
+        for s in view["result"]["outsideVendors"]["streams"]
+        if s["streamId"] == "st_defect"
+        for c in s["candidates"]
+        if c["match"] == "confirmed"
+    )
+    service.update_stream(app, HANBIT, "st_defect", {"material": "PE"}, HANBIT)
+    letter = service.quote_request(app, sid, HANBIT, "st_defect", candidate["id"])
+    assert letter["validation"]["ok"]
+    assert "- 재질: PE (담당자 입력)" in letter["rendered"]
+    assert letter["changes"] == [
+        {"field": "material", "label": "재질", "before": "PP", "after": "PE"}
+    ]

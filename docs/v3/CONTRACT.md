@@ -250,6 +250,7 @@ VendorProfile {"orgId": "org_saegil",
              "assumptions": [{"id": "assumption:...", "label": "현행 혼합 소각 처리비 (폐플라스틱)", "value": 250, "unit": "원/kg"}], "sensitivity": [{"label": "현행이 위탁 재활용일 때", "difference": {"claim"}}],
              "outsideVendors": {"source": {"name", "url", "asOfRange", "note", "radiusKm"},
                                 "streams": [{"streamId", "codes": [{"code": "51-03-01", "name": "폐합성수지류(…)"}], "total", "confirmedTotal", "reason",
+                                             "changed": [{"field": "material", "label": "재질", "before": "PP", "after": "알루미늄"}], "removed": false,
                                              "candidates": [{"id": "pv_…", "name", "address", "business", "match": "confirmed | check", "distance": {"claim"},
                                                              "matchedCodes": [], "codes": [], "permitDate", "phone", "agency", "asOf", "evidence": ["ref:허가업체명부:…"], "note"}]}]} | null},
   "questions": [{"id": "q_1", "batch": 1, "streamId": "st_film", "field": "moisturePct", "text": "...", "answered": false}],
@@ -521,7 +522,7 @@ VendorProfile {"orgId": "org_saegil",
 | `POST /sessions` | `{emitterOrgId}`로 진단을 만든다. `emitterOrgId`가 없으면 요청한 조직이다 |
 | `GET /sessions` | 내가 당사자인 진단의 목록(최근 것이 앞). `[{id, emitterOrgId, emitterName, status, createdAt, updatedAt, as}]`. 배출 기업은 자기 진단, 업체는 자기에게 열린 대화가 있는 진단, 운영자는 전부. `as`는 `emitter`·`vendor`·`admin` |
 | `GET /sessions/{id}` | 진단 뷰 |
-| `GET /sessions/{id}/quote-request?streamId=&vendorId=` | 가입하지 않은 업체(결과 한 장 `outsideVendors`의 후보)에 보낼 견적 요청서 초안 `{kind: "quote_request", title, streamId, recipient: {id, name, business, address, phone, agency, asOf, evidence}, text, claims, rendered, validation}`. 배출 기업만(업체 403 `FORBIDDEN`), 후보가 아니면 404 `NOT_FOUND`. 저장하지 않고 그때 만들며, 읽기라서 체험하기에서도 열린다. 본문의 숫자는 흐름의 claim이고 근거 검증기를 거친다. 주소·전화는 본문이 아니라 `recipient`에 있다 |
+| `GET /sessions/{id}/quote-request?streamId=&vendorId=` | 가입하지 않은 업체(결과 한 장 `outsideVendors`의 후보)에 보낼 견적 요청서 초안 `{kind: "quote_request", title, streamId, vendorId, demo, item: {name, material, form, monthlyKg}, facts: [{key, label, value, basis, status: known | estimated | unknown}], changes: [{field, label, before, after}], recipient: {id, name, business, address, phone, agency, asOf, evidence}, text, claims, rendered, parts, validation}`. 배출 기업만(업체 403 `FORBIDDEN`), 후보가 아니면 404 `NOT_FOUND`. 저장하지 않고 그때 만들며, 읽기라서 체험하기에서도 열린다. 업체에 연락하거나 견적을 확정하거나 한 달 손익을 바꾸지 않는다. 후보는 찾은 때의 흐름 자료로 고른 것이라, 만들기 전에 지금 자료로 그 업체가 여전히 후보인지 다시 본다(분류번호·상호·가입 여부·반경. `public_vendors.recheck`). 흐름이 지워졌거나 바뀐 자료로는 후보가 아니면(예: PP를 알루미늄·금속 스크랩으로 고침) 초안을 만들지 않고 409 `OUTSIDE_STALE`로 바뀐 칸과 다시 찾으라는 문장을 돌려준다. 바뀌었어도 후보가 맞으면 지금 자료로 만들고 `changes`에 적는다. 결과 한 장의 `outsideVendors.streams[]`에도 찾은 뒤 바뀐 칸(`changed`)과 지운 흐름(`removed`)이 붙는다(배출 기업만, 저장한 결과는 그대로). 본문의 숫자는 흐름의 claim이고 근거 검증기를 거친다. 값마다 출처(계량값·측정값·담당자 입력·담당자 답·사진 추정·추정·미확인)를 괄호로 적고, 거래 방식(매입·무상 인수·유상 처리), kg당 단가, 방문 수거, 최소 수거량, 운반비 포함·별도와 부담 주체, 공장이 낼 비용을 넣은 예상 정산을 묻는다. 시연 조직(`synthetic`)이나 체험하기면 `demo: true`이고 본문 첫 줄이 "※ 시연용 가상 자료입니다. 실제 업체에 보내지 마세요."다. `parts`는 화면 미리보기 조각이고 이으면 `rendered`와 같다. 주소·전화는 본문이 아니라 `recipient`에 있다 |
 | `POST /sessions/{id}/run` | 에이전트를 다음 멈춤 지점까지 돌린다. 진단 뷰를 돌려준다. `?mode=async`면 뒤에서 돌리고 202 `{sessionId, status: "running", runId, after}`를 곧바로 준다(아래 "실시간 진행") |
 | `GET /sessions/{id}/stream` | 진행 기록을 SSE(`text/event-stream`)로 보낸다. 두 에이전트의 작성 중·근거 확인·거부·다시 쓰기·보냄, 진단 상태, 담당자 질문(아래 "실시간 진행") |
 | `POST /sessions/{id}/answers` | `{questionId, value | "unknown"}`. 수치 항목은 숫자나 글("2 퍼센트", "2프로 정도", "650 킬로", "0.65톤", "약 2%", "kg당 250원", "톤당 25만원")로 받아 항목의 단위로 바꾼다(톤→kg, 1년→한 달, 원/톤→원/kg). 숫자가 둘 이상("1~2%"), 범위를 뜻하는 말("이하", "넘게"), 다른 단위(% 자리에 kg), 한 달로 바꿀 수 없는 기간(주, 하루)은 `INVALID_ANSWER`이고 메시지가 고쳐 쓸 꼴을 알려 준다. "모름", "몰라요", "모르겠어요"는 `unknown`이다(`agents/amounts.py`) |
@@ -651,6 +652,7 @@ VendorProfile {"orgId": "org_saegil",
 | `RUN_IN_PROGRESS` | 409 | 그 진단의 진행(run, 답, 승인)이 이미 돌고 있다(위 "실시간 진행"의 실행 자리). 탈퇴로 지울 조직이 들어간 진단이 진행 중일 때도(9장 "탈퇴"). 아무것도 지우지 않는다 |
 | `LAST_OWNER` | 409 | 조직의 마지막 owner를 빼거나 마지막 owner가 나가려 했다. 먼저 다른 구성원을 owner로 지정한다(9장) |
 | `TRANSFER_OWNERSHIP_FIRST` | 409 | 탈퇴하려는 사용자가 다른 구성원이 있는 조직의 유일한 owner다. 먼저 다른 구성원을 owner로 지정한다. 아무것도 지우지 않는다(9장 "탈퇴") |
+| `OUTSIDE_STALE` | 409 | 견적 요청서를 만들려는 가입하지 않은 업체가 지금 흐름 자료로는 후보가 아니다(후보를 찾은 뒤 재질·품목을 바꿨거나 흐름을 지웠다, 업체가 가입했다 등). 초안을 만들지 않는다. 문장에 바뀐 칸과 다시 찾으라는 말이 있다 |
 | `INVITE_INVALID` | 410 | 초대가 없거나, 만료되었거나(7일), 이미 쓰였다 |
 | `TOO_LARGE` | 413 | 본문이 20MB를 넘는다 |
 | `UNSUPPORTED_MEDIA` | 415 | 사진·영상이 아닌 파일이다. 탐지 모델이 연결되지 않았어도 형식 검사가 먼저다 |
