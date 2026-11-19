@@ -66,10 +66,19 @@ FAILURES = {
     "TOO_FEW_FRAMES": "장면이 너무 적습니다. 20초 이상 천천히 걸으며 다시 찍어 주세요.",
     "BAD_IMAGE": "사진을 읽지 못했습니다. 다른 영상으로 다시 올려 주세요.",
     "STALE": "분석을 끝내지 못했습니다. 다시 올려 주세요.",
+    # 재구성 서버가 장면끼리 맞지 않는다고 본 경우(일관된 점 비율이 낮거나 카메라 높이가 크게 흔들림)
+    "UNRELIABLE": "장면을 3D로 맞추지 못했습니다. 휴대폰을 가로로 가슴 높이에 들고, 더미 줄에서 2~3 m 떨어져 마주 본 채 옆으로 천천히 걸으며 다시 찍어 주세요.",
     # 영상이 아니라 분석 쪽 문제다. 다시 찍게 하지 않는다
     "SERVER": "분석 중에 문제가 생겨 끝내지 못했습니다. 같은 영상을 잠시 뒤 다시 올려 주세요.",
 }
-CAPTURE_CODES = ("NO_FLOOR", "NO_PILES", "TOO_FEW_FRAMES", "BAD_IMAGE", "RECON_FAILED")
+CAPTURE_CODES = (
+    "NO_FLOOR",
+    "NO_PILES",
+    "TOO_FEW_FRAMES",
+    "BAD_IMAGE",
+    "RECON_FAILED",
+    "UNRELIABLE",
+)
 MIN_DENSITY, MAX_DENSITY = 10.0, 1500.0  # 계량으로 맞춘 밀도의 상식 범위(kg/m³)
 _create_lock = threading.Lock()  # 한 회사 한 건 확인과 맡기기를 한 번에 한다(같은 프로세스)
 DEFAULT_FAILURE = (

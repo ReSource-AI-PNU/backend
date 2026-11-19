@@ -17,6 +17,8 @@ dependencies = [
     # 매입 기준표 PDF를 쪽 그림으로 그려 모델에 보인다(app/v3/intake/criteria_llm.py)
     "pypdfium2>=4.30,<6",
     "pillow>=10",
+    # 보관장 정리안의 바닥 격자(app/v3/scan/layout.py). ortools가 이미 함께 설치한다
+    "numpy>=1.26",
 ]
 
 [project.optional-dependencies]

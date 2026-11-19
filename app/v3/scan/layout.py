@@ -16,6 +16,8 @@ import math
 from collections.abc import Sequence
 from typing import Any
 
+import numpy as np
+
 Point = tuple[float, float]
 
 GRID_M = 0.1  # 후보 자리 간격
@@ -178,6 +180,34 @@ def _centroid(poly: Sequence[Point]) -> Point:
 
 
 # ── 배치 ─────────────────────────────────────────────────────────────
+def _np_inside(poly: Sequence[Point], pu: Any, pv: Any) -> Any:
+    """격자 점마다 다각형 안인지(짝홀 규칙)."""
+    inside = np.zeros(pu.shape, dtype=bool)
+    n = len(poly)
+    for k in range(n):
+        (x1, y1), (x2, y2) = poly[k], poly[(k + 1) % n]
+        if y1 == y2:
+            continue
+        crosses = (y1 > pv) != (y2 > pv)
+        x_at = x1 + (pv - y1) * (x2 - x1) / (y2 - y1)
+        inside ^= crosses & (pu < x_at)
+    return inside
+
+
+def _np_boundary_distance(poly: Sequence[Point], pu: Any, pv: Any) -> Any:
+    """격자 점마다 다각형 경계(변)까지의 최소 거리."""
+    best = np.full(pu.shape, np.inf)
+    n = len(poly)
+    for k in range(n):
+        (ax, ay), (bx, by) = poly[k], poly[(k + 1) % n]
+        dx, dy = bx - ax, by - ay
+        length2 = dx * dx + dy * dy
+        t = np.zeros(pu.shape) if length2 == 0 else ((pu - ax) * dx + (pv - ay) * dy) / length2
+        t = np.clip(t, 0.0, 1.0)
+        best = np.minimum(best, np.hypot(pu - (ax + t * dx), pv - (ay + t * dy)))
+    return best
+
+
 class _Grid:
     """바닥을 주 방향으로 돌린 좌표(u, v)의 격자. 벽 여유만큼 깎은 칸을 쓸 수 있는 칸으로 둔다."""
 
@@ -191,26 +221,17 @@ class _Grid:
         self.u0, self.v0 = min(us), min(vs)
         self.nu = max(1, math.ceil((max(us) - self.u0) / self.cell))
         self.nv = max(1, math.ceil((max(vs) - self.v0) / self.cell))
-        inside = [
-            [contains(local, self.center(i, j)) for j in range(self.nv)] for i in range(self.nu)
-        ]
-        # 벽 여유: 바닥 밖 칸에서 wall_m 안의 칸을 지운다(4이웃 침식을 k번)
-        for _ in range(math.ceil(wall_m / self.cell)):
-            inside = [
-                [
-                    inside[i][j]
-                    and i > 0
-                    and j > 0
-                    and i < self.nu - 1
-                    and j < self.nv - 1
-                    and inside[i - 1][j]
-                    and inside[i + 1][j]
-                    and inside[i][j - 1]
-                    and inside[i][j + 1]
-                    for j in range(self.nv)
-                ]
-                for i in range(self.nu)
-            ]
+        # 쓸 수 있는 칸: 칸 가운데가 바닥 안이고, 칸 전체가 벽(바닥 경계)에서 wall_m 이상 떨어져 있다.
+        # 경계까지 거리를 유클리드로 재므로 비스듬한 벽에서도 여유가 지켜진다(아래 정확한 검사가 거의 실패하지 않는다)
+        uu = self.u0 + (np.arange(self.nu) + 0.5) * self.cell
+        vv = self.v0 + (np.arange(self.nv) + 0.5) * self.cell
+        pu, pv = np.meshgrid(uu, vv, indexing="ij")
+        usable = _np_inside(local, pu, pv) & (_np_boundary_distance(local, pu, pv) >= wall_m)
+        self.pu, self.pv = pu, pv
+        blocked = (~usable).astype(np.int64)
+        self.sat_np = np.zeros((self.nu + 1, self.nv + 1), dtype=np.int64)
+        self.sat_np[1:, 1:] = blocked.cumsum(axis=0).cumsum(axis=1)
+        inside = usable.tolist()
         # 넓이 합 표: 사각형 안의 칸이 모두 쓸 수 있는지를 한 번에 본다
         self.sat = [[0] * (self.nv + 1) for _ in range(self.nu + 1)]
         for i in range(self.nu):
@@ -229,6 +250,26 @@ class _Grid:
 
     def center(self, i: int, j: int) -> Point:
         return (self.u0 + (i + 0.5) * self.cell, self.v0 + (j + 0.5) * self.cell)
+
+    def free_mask(self, hu: float, hv: float) -> Any:
+        """모든 격자 가운데마다, 반폭 hu·hv 사각형이 쓸 수 있는 칸만 덮는지(free와 같은 규칙, 배열로)."""
+        a = math.floor(0.5 - hu / self.cell)
+        b = math.ceil(0.5 + hu / self.cell)
+        c = math.floor(0.5 - hv / self.cell)
+        d = math.ceil(0.5 + hv / self.cell)
+        mask = np.zeros((self.nu, self.nv), dtype=bool)
+        i_lo, i_hi = max(0, -a), min(self.nu, self.nu - b)
+        j_lo, j_hi = max(0, -c), min(self.nv, self.nv - d)
+        if i_lo >= i_hi or j_lo >= j_hi:
+            return mask
+        sat = self.sat_np
+        ii = np.arange(i_lo, i_hi)[:, None]
+        jj = np.arange(j_lo, j_hi)[None, :]
+        blocked = (
+            sat[ii + b, jj + d] - sat[ii + a, jj + d] - sat[ii + b, jj + c] + sat[ii + a, jj + c]
+        )
+        mask[i_lo:i_hi, j_lo:j_hi] = blocked == 0
+        return mask
 
     def free(self, u: float, v: float, hu: float, hv: float) -> bool:
         """(u, v)를 가운데로 반폭 hu·hv인 사각형이 쓸 수 있는 칸만 덮는가."""
@@ -313,32 +354,35 @@ def _place(
         )
         for p in members:
             length, width = float(p["sizeM"][0]), float(p["sizeM"][1])
-            # 비용(상차 거리 + 같은 폐기물 구역의 중심까지 거리)이 낮은 자리부터 보고 처음 되는 자리를 쓴다
-            candidates = []
+            # 비용(상차 거리 + 같은 폐기물 구역의 중심까지 거리)이 낮은 자리부터 보고 처음 되는 자리를 쓴다.
+            # 격자 칸·상차 지점 여유·다른 더미와의 간격은 배열로 한 번에 거르고, 벽 여유는 고른 자리만 정확히 잰다
+            pu, pv = grid.pu, grid.pv
+            rows = []
             for turn in (0.0, 90.0):
                 hu, hv = (length / 2, width / 2) if turn == 0.0 else (width / 2, length / 2)
-                for i in range(grid.nu):
-                    for j in range(grid.nv):
-                        u, v = grid.center(i, j)
-                        cost = math.dist((u, v), pick)
-                        if anchor is not None:
-                            cost += 0.6 * math.dist((u, v), anchor)
-                        candidates.append((round(cost, 9), turn, i, j, u, v, hu, hv))
-            candidates.sort()
-            best: tuple[float, float, float, float, float] | None = None
-            for _, turn, _, _, u, v, hu, hv in candidates:
-                if not grid.free(u, v, hu, hv):
-                    continue
-                corners = [(u - hu, v - hv), (u + hu, v - hv), (u + hu, v + hv), (u - hu, v + hv)]
-                if not _inside_with_margin(corners, grid.floor_local, wall):
-                    continue
-                box = (u, v, hu, hv)
-                if _box_gap(box, (pick[0], pick[1], 0.0, 0.0)) < clear:
-                    continue
-                if all(
-                    _box_gap(box, other) >= (SAME_GAP_M if other_zone == zone else gap) - 1e-9
-                    for _, other_zone, other in placed
+                ok = grid.free_mask(hu, hv)
+                du = np.maximum(0.0, np.abs(pu - pick[0]) - hu)
+                dv = np.maximum(0.0, np.abs(pv - pick[1]) - hv)
+                ok &= np.hypot(du, dv) >= clear
+                for _, other_zone, (ou, ov, ohu, ohv) in placed:
+                    need = (SAME_GAP_M if other_zone == zone else gap) - 1e-9
+                    du = np.maximum(0.0, np.abs(pu - ou) - hu - ohu)
+                    dv = np.maximum(0.0, np.abs(pv - ov) - hv - ohv)
+                    ok &= np.hypot(du, dv) >= need
+                cost = np.hypot(pu - pick[0], pv - pick[1])
+                if anchor is not None:
+                    cost = cost + 0.6 * np.hypot(pu - anchor[0], pv - anchor[1])
+                found = np.argwhere(ok)
+                for (i, j), value in zip(
+                    found.tolist(), np.round(cost[ok], 9).tolist(), strict=True
                 ):
+                    rows.append((value, turn, i, j, hu, hv))
+            rows.sort()
+            best: tuple[float, float, float, float, float] | None = None
+            for _, turn, i, j, hu, hv in rows[:400]:
+                u, v = grid.center(i, j)
+                corners = [(u - hu, v - hv), (u + hu, v - hv), (u + hu, v + hv), (u - hu, v + hv)]
+                if _inside_with_margin(corners, grid.floor_local, wall):
                     best = (u, v, hu, hv, turn)
                     break
             if best is None:

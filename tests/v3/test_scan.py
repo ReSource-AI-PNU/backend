@@ -14,6 +14,15 @@ from app.v3.scan import layout, result, views
 from scripts.v3.scan_fake_recon import sample_points, sample_result
 from tests.v3.runtime_fixtures import ADMIN, DAON, HANBIT, SAEGIL, make_app
 
+
+@pytest.fixture(autouse=True)
+def _no_demo_scan(tmp_path_factory, monkeypatch):
+    """이 파일의 시험은 시연 스캔 없이 시작한다(시연 스캔은 아래 두 시험과 test_scan_demo가 따로 본다)."""
+    from app.v3.scan import demo as scan_demo
+
+    monkeypatch.setattr(scan_demo, "ASSETS", tmp_path_factory.mktemp("no-demo-scan"))
+
+
 JPEG = b"\xff\xd8\xff\xe0" + b"0" * 200
 FRAMES = [(f"f{i:03d}.jpg", JPEG + bytes([i])) for i in range(24)]
 
