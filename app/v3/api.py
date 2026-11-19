@@ -42,6 +42,7 @@ from app.core.config import settings
 from app.v3 import accounts, httpio, live, service
 from app.v3.agents.factory import build_llm_factory
 from app.v3.demo.scope import demo_app
+from app.v3.scan import views as scans
 
 logger = logging.getLogger(__name__)
 
@@ -264,7 +265,26 @@ def build_app() -> service.App:
         documents=document_client,
         shields=shield_client,
         criteria_reader=criteria_reader,
+        recon=_recon_client(),
     )
+
+
+def _recon_client() -> Any:
+    """보관장 3D 스캔 재구성 서버. 주소가 없거나 쓸 수 없는 주소면 None(경고만 남긴다)."""
+    import os
+
+    from app.v3.scan import client as recon
+
+    try:
+        return recon.client_from_env(
+            {
+                recon.ENV_URL: settings.v3_recon_url,
+                "V3_INTERNAL_HTTP_HOSTS": os.environ.get("V3_INTERNAL_HTTP_HOSTS", ""),
+            }
+        )
+    except ValueError as error:
+        logger.warning("보관장 3D 스캔 재구성 서버 주소를 쓸 수 없다: %s", error)
+        return None
 
 
 def search_settings() -> dict[str, str]:
@@ -823,6 +843,88 @@ async def upload_media(request: Request):
     org_id = fields.get("orgId") or viewer
     stream_id = fields.get("streamId") or ""
     return await call(service.upload_media, org_id, stream_id, filename, data, viewer)
+
+
+# ── 보관장 3D 스캔 ───────────────────────────────────────────────────
+async def read_frames(request: Request) -> tuple[dict[str, str], list[tuple[str, bytes]]]:
+    """multipart의 frames 파일들(브라우저가 영상에서 고른 장면). 합계는 운영 본문 상한을 넘지 못한다."""
+    if not request.headers.get("content-type", "").lower().startswith("multipart/form-data"):
+        raise service.ServiceError("INVALID_MULTIPART", "multipart/form-data로 보내 주세요.", 400)
+    try:
+        form = await request.form(max_files=200)
+    except HTTPException:
+        raise service.ServiceError(
+            "INVALID_MULTIPART", "multipart/form-data 본문을 읽을 수 없습니다.", 400
+        ) from None
+    fields = {key: value for key, value in form.items() if isinstance(value, str)}
+    frames: list[tuple[str, bytes]] = []
+    total = 0
+    for value in form.getlist("frames"):
+        if isinstance(value, str):
+            continue
+        data = await value.read()
+        total += len(data)
+        if total > httpio.MAX_BODY_BYTES:
+            raise httpio.too_large()
+        frames.append((value.filename or f"f{len(frames):03d}.jpg", data))
+    if not frames:
+        raise httpio.file_required()
+    return fields, frames
+
+
+@router.post("/intake/scan")
+@guarded
+async def upload_scan(request: Request):
+    viewer = await viewer_of(request)
+    fields, frames = await read_frames(request)
+    org_id = fields.get("orgId") or viewer
+    try:
+        duration = float(fields.get("durationSec") or 0) or None
+    except ValueError:
+        duration = None
+    view = await call(
+        scans.create_scan, org_id, frames, fields.get("source") or "", duration, viewer
+    )
+    return JSONResponse(view, status_code=202)
+
+
+@router.get("/orgs/{org_id}/scans")
+@guarded
+async def scan_list(org_id: str, request: Request):
+    return await call(scans.list_scans, org_id, await viewer_of(request))
+
+
+@router.get("/orgs/{org_id}/scans/{scan_id}")
+@guarded
+async def scan_view(org_id: str, scan_id: str, request: Request):
+    return await call(scans.get_scan, org_id, scan_id, await viewer_of(request))
+
+
+@router.get("/orgs/{org_id}/scans/{scan_id}/points")
+@guarded
+async def scan_points(org_id: str, scan_id: str, request: Request):
+    data = await call(scans.scan_points, org_id, scan_id, await viewer_of(request))
+    return Response(
+        data,
+        media_type="application/octet-stream",
+        headers={"Cache-Control": "private, max-age=3600"},
+    )
+
+
+@router.put("/orgs/{org_id}/scans/{scan_id}/piles/{pile_id}")
+@guarded
+async def scan_pile(org_id: str, scan_id: str, pile_id: str, request: Request):
+    viewer = await viewer_of(request)
+    patch = await json_object(request)
+    return await call(scans.update_pile, org_id, scan_id, pile_id, patch, viewer)
+
+
+@router.put("/orgs/{org_id}/scans/{scan_id}/layout")
+@guarded
+async def scan_layout(org_id: str, scan_id: str, request: Request):
+    viewer = await viewer_of(request)
+    patch = await json_object(request)
+    return await call(scans.update_layout, org_id, scan_id, patch, viewer)
 
 
 @router.post("/intake/criteria/confirm")

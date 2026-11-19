@@ -143,8 +143,11 @@ class App:
         accounts: Any = None,
         negotiate: bool = True,
         criteria_reader: Any = None,
+        recon: Any = None,
     ) -> None:
         self.store = store
+        # 보관장 3D 스캔의 재구성 서버(scan/client.ReconClient). 없으면 스캔 올리기는 503 SCAN_UNAVAILABLE
+        self.recon = recon
         # 매입 기준표를 모델로 읽는 판독기(intake/criteria_llm.CriteriaReader). 없으면 예전 머리글 규칙으로 읽는다
         self.criteria_reader = criteria_reader
         # ⑥ 합의 전 단가 협상 한 번(orchestrator._negotiate). 고정 평가셋(test-v1)과 협상 전 흐름을 보는
@@ -3100,6 +3103,11 @@ def admin_status(app: App, viewer: str) -> dict[str, Any]:
         },
         "gradeEndpoint": {"configured": bool(app.grade_client and app.grade_client.configured)},
         "detector": {"configured": bool(app.detector and app.detector.configured)},
+        # 보관장 3D 스캔 재구성 서버: 마지막 실패만 싣는다(상태 확인은 스캔 목록의 canScan이 한다)
+        "recon": {
+            "configured": bool(getattr(app, "recon", None) and app.recon.configured),
+            "lastError": getattr(getattr(app, "recon", None), "last_error", None),
+        },
         "distance": {
             "provider": app.distance_provider is not None,
             # 어떤 제공자인지와 마지막 실패 이유(키는 싣지 않는다). 없으면 직선 거리 × 우회 계수(가정값)다

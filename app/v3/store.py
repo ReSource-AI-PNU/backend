@@ -34,6 +34,8 @@ _TABLES = (
     "activity",
     "runs",
     "criteria_drafts",
+    "scans",
+    "scan_points",
 )
 
 
@@ -70,6 +72,12 @@ class Store(Protocol):
 
     def put_criteria_draft(self, draft: dict[str, Any]) -> dict[str, Any]: ...
     def get_criteria_draft(self, draft_id: str) -> dict[str, Any]: ...
+
+    def put_scan(self, scan: dict[str, Any]) -> dict[str, Any]: ...
+    def get_scan(self, scan_id: str) -> dict[str, Any]: ...
+    def list_scans(self, org_id: str) -> list[dict[str, Any]]: ...
+    def put_scan_points(self, points: dict[str, Any]) -> dict[str, Any]: ...
+    def get_scan_points(self, scan_id: str) -> dict[str, Any]: ...
 
     def put_session(
         self, session: dict[str, Any], expected_version: int | None = None
@@ -170,6 +178,8 @@ class InMemoryStore:
             "criteria_drafts": {
                 k for k, d in data["criteria_drafts"].items() if d.get("orgId") in wanted
             },
+            "scans": {k for k, d in data["scans"].items() if d.get("orgId") in wanted},
+            "scan_points": {k for k, d in data["scan_points"].items() if d.get("orgId") in wanted},
         }
         for table, keys in doomed.items():
             for key in keys:
@@ -278,6 +288,28 @@ class InMemoryStore:
 
     def get_criteria_draft(self, draft_id: str) -> dict[str, Any]:
         return self._get("criteria_drafts", draft_id)
+
+    # ── 보관장 3D 스캔 (scan/views.py). 점군은 무거워서 따로 둔다 ──────────
+    def put_scan(self, scan: dict[str, Any]) -> dict[str, Any]:
+        return self._put("scans", scan["id"], scan)
+
+    def get_scan(self, scan_id: str) -> dict[str, Any]:
+        return self._get("scans", scan_id)
+
+    def list_scans(self, org_id: str) -> list[dict[str, Any]]:
+        return [
+            copy.deepcopy(s)
+            for _, s in sorted(self._data["scans"].items())
+            if s.get("orgId") == org_id
+        ]
+
+    def put_scan_points(self, points: dict[str, Any]) -> dict[str, Any]:
+        """{"id": 스캔 ID, "orgId", "data": 점군 바이트의 base64}. 돌려줄 때 data는 싣지 않는다."""
+        self._put("scan_points", points["id"], points)
+        return {k: v for k, v in points.items() if k != "data"}
+
+    def get_scan_points(self, scan_id: str) -> dict[str, Any]:
+        return self._get("scan_points", scan_id)
 
     # ── 세션 ──────────────────────────────────────────────────────────
     def put_session(

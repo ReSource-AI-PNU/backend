@@ -233,6 +233,7 @@ ORGS, STREAMS, VENDORS, SESSIONS, THREADS = (
 QUESTIONS, APPROVALS, DOCUMENTS, COUNTERS = "questions", "approvals", "documents", "counters"
 RUNS = "runs"  # 진단마다 실행 자리 하나(id는 진단 ID)
 CRITERIA_DRAFTS = "criteria_drafts"  # 매입 기준표 판독 초안(저장할 때 서버가 대조한다)
+SCANS, SCAN_POINTS = "scans", "scan_points"  # 보관장 3D 스캔과 그 점군(base64, 따로 둔다)
 
 
 class SqlStore:
@@ -289,6 +290,12 @@ class SqlStore:
                 for row in self._rows(db, CRITERIA_DRAFTS)
                 if row.payload.get("orgId") in wanted
             }
+            scans = {
+                row.id
+                for kind in (SCANS, SCAN_POINTS)
+                for row in self._rows(db, kind)
+                if row.payload.get("orgId") in wanted
+            }
             doomed = {
                 ORGS: wanted,
                 STREAMS: streams,
@@ -300,6 +307,8 @@ class SqlStore:
                 DOCUMENTS: sessions,
                 RUNS: sessions,
                 CRITERIA_DRAFTS: drafts,
+                SCANS: scans,
+                SCAN_POINTS: scans,
             }
             for kind, keys in doomed.items():
                 if keys:
@@ -418,6 +427,28 @@ class SqlStore:
 
     def get_criteria_draft(self, draft_id: str) -> dict[str, Any]:
         return self._get(CRITERIA_DRAFTS, draft_id)
+
+    # ── 보관장 3D 스캔 ────────────────────────────────────────────────
+    def put_scan(self, scan: dict[str, Any]) -> dict[str, Any]:
+        return self._put(SCANS, scan["id"], scan)
+
+    def get_scan(self, scan_id: str) -> dict[str, Any]:
+        return self._get(SCANS, scan_id)
+
+    def list_scans(self, org_id: str) -> list[dict[str, Any]]:
+        with _transaction(self._engine) as db:
+            return [
+                copy.deepcopy(row.payload)
+                for row in self._rows(db, SCANS)
+                if row.payload.get("orgId") == org_id
+            ]
+
+    def put_scan_points(self, points: dict[str, Any]) -> dict[str, Any]:
+        self._put(SCAN_POINTS, points["id"], points)
+        return {k: v for k, v in points.items() if k != "data"}
+
+    def get_scan_points(self, scan_id: str) -> dict[str, Any]:
+        return self._get(SCAN_POINTS, scan_id)
 
     # ── 세션 ──────────────────────────────────────────────────────────
     def put_session(

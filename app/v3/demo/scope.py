@@ -97,6 +97,22 @@ class DemoStore:
     def list_vendor_profiles(self) -> list[dict[str, Any]]:
         return [p for p in self._store.list_vendor_profiles() if p.get("orgId") in self._demo]
 
+    # ── 보관장 3D 스캔 ────────────────────────────────────────────────
+    def get_scan(self, scan_id: str) -> dict[str, Any]:
+        scan = self._store.get_scan(scan_id)
+        if scan.get("orgId") not in self._demo:
+            raise NotFound(f"scans: {scan_id}")
+        return scan
+
+    def list_scans(self, org_id: str) -> list[dict[str, Any]]:
+        return self._store.list_scans(org_id) if org_id in self._demo else []
+
+    def get_scan_points(self, scan_id: str) -> dict[str, Any]:
+        points = self._store.get_scan_points(scan_id)
+        if points.get("orgId") not in self._demo:
+            raise NotFound(f"scan_points: {scan_id}")
+        return points
+
     # ── 진단 ──────────────────────────────────────────────────────────
     def get_session(self, session_id: str) -> dict[str, Any]:
         session = self._store.get_session(session_id)

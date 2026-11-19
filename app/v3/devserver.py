@@ -68,6 +68,8 @@ from app.v3.agents.factory import (
 from app.v3.evidence.registry import InMemoryRegistry, JsonFileRegistry
 from app.v3.intake import criteria_llm, detector, documents, shields
 from app.v3.judge.distance import distance_provider_from_env
+from app.v3.scan import client as scan_client
+from app.v3.scan import views as scans
 from app.v3.store import InMemoryStore, JsonFileStore
 
 PREFIX = "/api/v3"
@@ -111,6 +113,20 @@ class Request:
             self._form = parse_multipart(self.headers.get("Content-Type") or "", self.body)
         return self._form
 
+    def frames(self) -> tuple[dict[str, str], list[tuple[str, bytes]]]:
+        """보관장 3D 스캔: multipart의 frames 파일들(api.read_frames와 같다)."""
+        content_type = self.headers.get("Content-Type") or ""
+        if not content_type.lower().startswith("multipart/form-data"):
+            raise service.ServiceError(
+                "INVALID_MULTIPART", "multipart/form-data로 보내 주세요.", 400
+            )
+        every: list[tuple[str, str, bytes]] = []
+        fields, _ = parse_multipart(content_type, self.body, every)
+        frames = [(name, data) for field, name, data in every if field == "frames"]
+        if not frames:
+            raise httpio.file_required()
+        return fields, frames
+
     def upload(self, default_name: str) -> tuple[dict[str, str], str, bytes]:
         """(글 항목, 파일 이름, 파일 내용). multipart가 아니면 본문 전체를 파일로 본다."""
         content_type = (self.headers.get("Content-Type") or "").lower()
@@ -152,9 +168,12 @@ def _disposition(value: str) -> dict[str, str]:
 
 
 def parse_multipart(
-    content_type: str, body: bytes
+    content_type: str, body: bytes, every: list[tuple[str, str, bytes]] | None = None
 ) -> tuple[dict[str, str], dict[str, tuple[str, bytes]]]:
-    """multipart/form-data를 (글 항목, 파일)로 나눈다. 파일은 {항목 이름: (파일 이름, 내용)}."""
+    """multipart/form-data를 (글 항목, 파일)로 나눈다. 파일은 {항목 이름: (파일 이름, 내용)}.
+
+    every를 주면 같은 이름으로 여러 번 온 파일까지 (항목 이름, 파일 이름, 내용)으로 차례대로 담는다.
+    """
     boundary = ""
     for part in content_type.split(";")[1:]:
         key, _, value = part.strip().partition("=")
@@ -185,6 +204,8 @@ def parse_multipart(
             continue
         if "filename" in info:
             files[info["name"]] = (info["filename"], data)
+            if every is not None:
+                every.append((info["name"], info["filename"], data))
         else:
             fields[info["name"]] = data.decode("utf-8", "replace")
     return fields, files
@@ -317,6 +338,30 @@ def route(app: service.App, request: Request) -> Any:
                 data,
                 viewer,
             )
+        case ("POST", ["intake", "scan"]):
+            fields, frames = request.frames()
+            try:
+                duration = float(fields.get("durationSec") or 0) or None
+            except ValueError:
+                duration = None
+            return scans.create_scan(
+                app,
+                fields.get("orgId") or viewer,
+                frames,
+                fields.get("source") or "",
+                duration,
+                viewer,
+            )
+        case ("GET", ["orgs", org_id, "scans"]):
+            return scans.list_scans(app, org_id, viewer)
+        case ("GET", ["orgs", org_id, "scans", scan_id]):
+            return scans.get_scan(app, org_id, scan_id, viewer)
+        case ("GET", ["orgs", org_id, "scans", scan_id, "points"]):
+            return Raw(scans.scan_points(app, org_id, scan_id, viewer), "application/octet-stream")
+        case ("PUT", ["orgs", org_id, "scans", scan_id, "piles", pile_id]):
+            return scans.update_pile(app, org_id, scan_id, pile_id, request.json(), viewer)
+        case ("PUT", ["orgs", org_id, "scans", scan_id, "layout"]):
+            return scans.update_layout(app, org_id, scan_id, request.json(), viewer)
         case ("POST", ["intake", "documents", "confirm"]):
             body = request.json()
             fields = body.get("fields") or []
@@ -548,11 +593,17 @@ def build_app(
         distance_provider = distance_provider_from_env(settings, strict=True)
     except ValueError as error:
         raise SystemExit(str(error)) from None
+    try:
+        # V3_RECON_URL(보관장 3D 스캔 재구성 서버). 비면 None이고 스캔 올리기는 503이다
+        recon = scan_client.client_from_env(settings)
+    except ValueError as error:
+        raise SystemExit(str(error)) from None
     app = service.App(
         store,
         registry,
         llm_factory=factory,
         today=today,
+        recon=recon,
         demo_open=demo_open,
         distance_provider=distance_provider,
         # V3_DETECTOR_ENDPOINT가 없으면 None이고, 사진·영상 업로드는 "미연결"이라고 답한다
