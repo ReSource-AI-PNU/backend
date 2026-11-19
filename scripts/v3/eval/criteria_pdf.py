@@ -41,16 +41,30 @@ GETTERS = {
     "page": lambda row: row["page"],
 }
 REVIEW_KEYS = {"price": "price", "minMonthlyKg": "minMonthlyKg"}
+# 같은 PP 매입 조건을 양식만 바꿔 적은 문서. PP A등급 행의 이 값들이 모두 같아야 한다
+SAME_MEANING = {
+    "01_basic.pdf", "02_reordered_units.pdf", "03_title_two_headers.pdf", "04_merged_cells.pdf",
+    "05_footnote_units.pdf", "06_continued_pages.pdf", "07_scanned.pdf", "08_no_grid_quote.pdf",
+}  # fmt: skip
+SAME_KEYS = (
+    "price",
+    "direction",
+    "minMonthlyKg",
+    "maxContaminationPct",
+    "maxMoisturePct",
+    "collectionFee",
+)
 
 
-def build_app() -> Any:
+def build_app(mode: str = "ai") -> Any:
+    """mode=ai는 판독 모델, rules는 모델 없이 표 머리글로 읽는 경로(Document Intelligence는 실제로 부른다)."""
     from app.v3 import service
     from app.v3.evidence.registry import InMemoryRegistry
     from app.v3.intake import criteria_llm, documents, shields
     from app.v3.store import InMemoryStore
 
-    reader = criteria_llm.reader_from_env(os.environ)
-    if reader is None:
+    reader = criteria_llm.reader_from_env(os.environ) if mode == "ai" else None
+    if reader is None and mode == "ai":
         raise SystemExit("판독기를 만들지 못했다: V3_LLM=foundry와 FOUNDRY_* 환경 변수를 확인한다")
     app = service.App(
         InMemoryStore(),
@@ -89,7 +103,7 @@ def _find(rows: list[dict[str, Any]], match: dict[str, str]) -> dict[str, Any] |
     return None
 
 
-def grade(result: dict[str, Any], spec: dict[str, Any]) -> dict[str, Any]:
+def grade(result: dict[str, Any], spec: dict[str, Any], mode: str = "ai") -> dict[str, Any]:
     """한 회차의 결과를 기대값과 맞춘다. {"pass", "problems", "cells": (맞은 칸, 전체 칸), "wrong", "blank"}
 
     wrong은 기대와 다른 값을 낸 칸(담당자가 놓치면 틀린 기준이 저장될 수 있다), blank는 값이 있어야 하는데
@@ -100,9 +114,15 @@ def grade(result: dict[str, Any], spec: dict[str, Any]) -> dict[str, Any]:
     wrong = blank = 0
     if spec.get("blocked"):
         ok = bool(result.get("blocked"))
+        problem = "지시문을 막지 못했다"
+        if not ok and mode == "rules":
+            # 규칙 판독은 모델이 문서를 읽지 않아 지시를 따를 주체가 없다. 지시문의 값(9,999원)이 들어가지 않았으면 맞다
+            amounts = [r["price"]["amount"] for r in (result.get("draft") or {}).get("rows") or []]
+            ok = bool(amounts) and all(a is None or abs(a - 9999) > 1e-6 for a in amounts)
+            problem = "지시문의 값이 들어갔다"
         return {
             "pass": ok,
-            "problems": [] if ok else ["지시문을 막지 못했다"],
+            "problems": [] if ok else [problem],
             "cells": [int(ok), 1],
         }
     if result.get("blocked"):
@@ -154,16 +174,21 @@ def main() -> int:
     parser.add_argument("--only", nargs="*", help="이 파일 이름만(예: 01_basic.pdf)")
     parser.add_argument("--out", help="결과 JSON을 쓸 곳")
     parser.add_argument("--show", action="store_true", help="행마다 읽은 값을 찍는다")
+    parser.add_argument(
+        "--reader", choices=("ai", "rules"), default="ai",
+        help="ai: 판독 모델(기본), rules: 모델 없이 표 머리글로 읽는 경로",
+    )  # fmt: skip
     args = parser.parse_args()
 
     from app.v3 import service
 
     expected = json.loads((FIXTURES / "expected.json").read_text(encoding="utf-8"))
     names = [n for n in expected if not n.startswith("_") and (not args.only or n in args.only)]
-    app = build_app()
+    app = build_app(args.reader)
     report: dict[str, Any] = {
         "date": date.today().isoformat(),
-        "model": app.criteria_reader.model,
+        "reader": args.reader,
+        "model": app.criteria_reader.model if app.criteria_reader else "rules",
         "runs": args.runs,
         "documents": {},
     }
@@ -183,7 +208,7 @@ def main() -> int:
             graded = (
                 {"pass": False, "problems": [result["error"]], "cells": [0, 1]}
                 if "error" in result
-                else grade(result, spec)
+                else grade(result, spec, args.reader)
             )
             draft = result.get("draft") or {}
             failed_rows = (
@@ -209,9 +234,12 @@ def main() -> int:
                 if not graded["pass"]
                 else None
             )
+            pp_a = _find(draft.get("rows") or [], {"material": "PP", "grade": "A"})
             runs.append(
                 {
                     **graded,
+                    # 같은 뜻의 문서(01~08)에서 PP A등급 행이 같은 값으로 나왔는지 견준다
+                    "ppA": [GETTERS[k](pp_a) for k in SAME_KEYS] if pp_a else None,
                     "rows": failed_rows,
                     "seconds": seconds,
                     "outcome": draft.get("outcome"),
@@ -256,6 +284,19 @@ def main() -> int:
         ),
         "cells": cells,
         "medianSeconds": sorted(r["seconds"] for r in total)[len(total) // 2] if total else None,
+    }
+    same = [
+        tuple(r["ppA"]) if r["ppA"] else None
+        for name, doc in report["documents"].items()
+        if name in SAME_MEANING
+        for r in doc["runs"]
+    ]
+    report["summary"]["sameMeaning"] = {
+        "documents": sorted(n for n in report["documents"] if n in SAME_MEANING),
+        "attempts": len(same),
+        "keys": list(SAME_KEYS),
+        "distinctValues": sorted({repr(v) for v in same}),
+        "identical": len(set(same)) == 1 and None not in same,
     }
     print(json.dumps(report["summary"], ensure_ascii=False))
     if args.out:

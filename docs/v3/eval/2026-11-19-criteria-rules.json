@@ -1,0 +1,422 @@
+{
+  "date": "2026-11-19",
+  "reader": "rules",
+  "model": "rules",
+  "runs": 1,
+  "documents": {
+    "01_basic.pdf": {
+      "title": "기본 표",
+      "runs": [
+        {
+          "pass": true,
+          "problems": [],
+          "cells": [
+            18,
+            18
+          ],
+          "wrong": 0,
+          "blank": 0,
+          "ppA": [
+            320.0,
+            "buy",
+            1000.0,
+            3.0,
+            5.0,
+            "included"
+          ],
+          "rows": null,
+          "seconds": 7.0,
+          "outcome": "ready",
+          "input": "tables",
+          "blocked": false
+        }
+      ]
+    },
+    "02_reordered_units.pdf": {
+      "title": "열 순서·열 이름·단위(원/톤, 톤/월)를 바꾼 표",
+      "runs": [
+        {
+          "pass": true,
+          "problems": [],
+          "cells": [
+            18,
+            18
+          ],
+          "wrong": 0,
+          "blank": 0,
+          "ppA": [
+            320.0,
+            "buy",
+            1000.0,
+            3.0,
+            5.0,
+            "included"
+          ],
+          "rows": null,
+          "seconds": 7.0,
+          "outcome": "ready",
+          "input": "tables",
+          "blocked": false
+        }
+      ]
+    },
+    "03_title_two_headers.pdf": {
+      "title": "표 제목이 첫 행에 있고 머리글이 두 줄인 표",
+      "runs": [
+        {
+          "pass": true,
+          "problems": [],
+          "cells": [
+            18,
+            18
+          ],
+          "wrong": 0,
+          "blank": 0,
+          "ppA": [
+            320.0,
+            "buy",
+            1000.0,
+            3.0,
+            5.0,
+            "included"
+          ],
+          "rows": null,
+          "seconds": 8.6,
+          "outcome": "ready",
+          "input": "tables",
+          "blocked": false
+        }
+      ]
+    },
+    "04_merged_cells.pdf": {
+      "title": "재질·형태·최소 물량 칸이 여러 등급 행에 걸쳐 병합된 표",
+      "runs": [
+        {
+          "pass": true,
+          "problems": [],
+          "cells": [
+            30,
+            30
+          ],
+          "wrong": 0,
+          "blank": 0,
+          "ppA": [
+            320.0,
+            "buy",
+            1000.0,
+            3.0,
+            5.0,
+            "included"
+          ],
+          "rows": null,
+          "seconds": 7.2,
+          "outcome": "ready",
+          "input": "tables",
+          "blocked": false
+        }
+      ]
+    },
+    "05_footnote_units.pdf": {
+      "title": "단가·물량 단위가 표 밖 각주에 있는 표(원/톤, 톤/월)",
+      "runs": [
+        {
+          "pass": true,
+          "problems": [],
+          "cells": [
+            18,
+            18
+          ],
+          "wrong": 0,
+          "blank": 0,
+          "ppA": [
+            320.0,
+            "buy",
+            1000.0,
+            3.0,
+            5.0,
+            "included"
+          ],
+          "rows": null,
+          "seconds": 6.7,
+          "outcome": "ready",
+          "input": "tables",
+          "blocked": false
+        }
+      ]
+    },
+    "06_continued_pages.pdf": {
+      "title": "26행 표가 머리글 없이 2쪽으로 이어지는 문서(PP 행은 2쪽)",
+      "runs": [
+        {
+          "pass": true,
+          "problems": [],
+          "cells": [
+            36,
+            36
+          ],
+          "wrong": 0,
+          "blank": 0,
+          "ppA": [
+            320.0,
+            "buy",
+            1000.0,
+            3.0,
+            5.0,
+            "included"
+          ],
+          "rows": null,
+          "seconds": 10.9,
+          "outcome": "ready",
+          "input": "tables",
+          "blocked": false
+        }
+      ]
+    },
+    "07_scanned.pdf": {
+      "title": "이미지로 스캔한 PDF(04를 200dpi 회색조로 기울여 스캔, 글자층 없음)",
+      "runs": [
+        {
+          "pass": true,
+          "problems": [],
+          "cells": [
+            21,
+            21
+          ],
+          "wrong": 0,
+          "blank": 0,
+          "ppA": [
+            320.0,
+            "buy",
+            1000.0,
+            3.0,
+            5.0,
+            "included"
+          ],
+          "rows": null,
+          "seconds": 6.9,
+          "outcome": "ready",
+          "input": "tables",
+          "blocked": false
+        }
+      ]
+    },
+    "08_no_grid_quote.pdf": {
+      "title": "격자선 없이 문장으로 적은 견적서(톤당 32만 원, 매월 1톤 이상, 무상 수거)",
+      "runs": [
+        {
+          "pass": false,
+          "problems": [
+            "결과 종류 not_found (기대 ['ready'])",
+            "행 수 0 (기대 2)",
+            "PP/A 행이 없다",
+            "PP/B 행이 없다"
+          ],
+          "cells": [
+            0,
+            12
+          ],
+          "wrong": 0,
+          "blank": 0,
+          "ppA": null,
+          "rows": [],
+          "seconds": 10.6,
+          "outcome": "not_found",
+          "input": "tables",
+          "blocked": false
+        }
+      ]
+    },
+    "09_ambiguous.pdf": {
+      "title": "범위 단가, 협의가, 단위 미상, 지급 방향 불명, 회당 물량, 수거비 별도",
+      "runs": [
+        {
+          "pass": false,
+          "problems": [
+            "PP/A direction: None (기대 'buy')"
+          ],
+          "cells": [
+            19,
+            20
+          ],
+          "wrong": 0,
+          "blank": 1,
+          "ppA": [
+            null,
+            null,
+            null,
+            null,
+            null,
+            "separate"
+          ],
+          "rows": [
+            {
+              "id": "r1",
+              "quote": "PP | A | 300~400원/kg | 회당 1톤 | 시세 연동",
+              "price": [
+                "300~400원/kg",
+                null,
+                null
+              ],
+              "minMonthlyKg": [
+                "회당 1톤",
+                null,
+                "pickup",
+                null
+              ],
+              "review": [
+                "단가가 범위로 적혀 있습니다(300~400원/kg). 한 값으로 정해 주세요",
+                "회당 물량입니다(회당 1톤). 한 달 수거 횟수를 알아야 월 물량이 됩니다"
+              ]
+            },
+            {
+              "id": "r2",
+              "quote": "PP | B | 협의 | 회당 1톤",
+              "price": [
+                "협의",
+                null,
+                null
+              ],
+              "minMonthlyKg": [
+                "회당 1톤",
+                null,
+                "pickup",
+                null
+              ],
+              "review": [
+                "단가에 숫자가 없습니다(문서 표기 '협의')",
+                "회당 물량입니다(회당 1톤). 한 달 수거 횟수를 알아야 월 물량이 됩니다"
+              ]
+            },
+            {
+              "id": "r3",
+              "quote": "PE 필름 | - | 150 | 월 500kg",
+              "price": [
+                "150",
+                null,
+                null
+              ],
+              "minMonthlyKg": [
+                "월 500kg",
+                null,
+                "month",
+                500.0
+              ],
+              "review": [
+                "단가의 단위를 알 수 없습니다(문서 표기 '150', 단위 표기 없음)"
+              ]
+            },
+            {
+              "id": "r4",
+              "quote": "ABS | A | 200원/kg | 월 1톤",
+              "price": [
+                "200원/kg",
+                null,
+                200.0
+              ],
+              "minMonthlyKg": [
+                "월 1톤",
+                null,
+                "month",
+                1000.0
+              ],
+              "review": [
+                "업체가 주는 돈(매입)인지 받는 돈(처리비)인지 문서에 없습니다"
+              ]
+            }
+          ],
+          "seconds": 6.7,
+          "outcome": "needs_review",
+          "input": "tables",
+          "blocked": false
+        }
+      ]
+    },
+    "10_not_criteria.pdf": {
+      "title": "매입 조건이 없는 회사 소개서",
+      "runs": [
+        {
+          "pass": true,
+          "problems": [],
+          "cells": [
+            0,
+            0
+          ],
+          "wrong": 0,
+          "blank": 0,
+          "ppA": null,
+          "rows": null,
+          "seconds": 6.7,
+          "outcome": "not_found",
+          "input": "tables",
+          "blocked": false
+        }
+      ]
+    },
+    "11_injection.pdf": {
+      "title": "흰 글씨로 숨긴 지시문이 있는 매입 기준표",
+      "runs": [
+        {
+          "pass": true,
+          "problems": [],
+          "cells": [
+            1,
+            1
+          ],
+          "ppA": [
+            320.0,
+            "buy",
+            1000.0,
+            null,
+            null,
+            null
+          ],
+          "rows": null,
+          "seconds": 8.4,
+          "outcome": "ready",
+          "input": "tables",
+          "blocked": false
+        }
+      ]
+    }
+  },
+  "summary": {
+    "documents": 11,
+    "attempts": 11,
+    "passed": 9,
+    "cellAccuracy": 0.9323,
+    "wrongCells": 0,
+    "blankCells": 1,
+    "serviceErrors": 0,
+    "cells": [
+      179,
+      192
+    ],
+    "medianSeconds": 7.0,
+    "sameMeaning": {
+      "documents": [
+        "01_basic.pdf",
+        "02_reordered_units.pdf",
+        "03_title_two_headers.pdf",
+        "04_merged_cells.pdf",
+        "05_footnote_units.pdf",
+        "06_continued_pages.pdf",
+        "07_scanned.pdf",
+        "08_no_grid_quote.pdf"
+      ],
+      "attempts": 8,
+      "keys": [
+        "price",
+        "direction",
+        "minMonthlyKg",
+        "maxContaminationPct",
+        "maxMoisturePct",
+        "collectionFee"
+      ],
+      "distinctValues": [
+        "(320.0, 'buy', 1000.0, 3.0, 5.0, 'included')",
+        "None"
+      ],
+      "identical": false
+    }
+  }
+}

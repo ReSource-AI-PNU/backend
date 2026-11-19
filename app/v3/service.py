@@ -2447,9 +2447,10 @@ def upload_document(
     표시(shieldUnavailable)를 그대로 돌려준다.
 
     매입 기준표는 판독기(app.criteria_reader)가 있으면 모델이 문서를 읽어 행 단위 초안(draft)을 만든다.
+    판독기가 없으면 표 머리글로 읽되(criteria_llm.read_by_rules) 숫자 읽기·단위 환산·확인 필요 판정은 같은 코드다.
     draft.outcome은 ready | needs_review(일부 값이 애매함) | not_found(매입 조건 없음) | model_failed(모델을
-    부르지 못함, failure에 화면 문장)다. 초안은 confirm_criteria로 담당자가 확인·저장한 행만 업체 프로필이 된다.
-    판독기가 없으면 예전처럼 머리글 규칙으로 읽은 fields를 돌려준다.
+    부르지 못함, failure에 화면 문장)다. 읽은 행이 있으면 초안을 서버에 보관하고 draft.id를 준다. 초안은
+    confirm_criteria로 담당자가 확인·저장한 행만 업체 프로필이 된다.
     """
     org = _owner(app, org_id, viewer)
     if kind not in documents.EXTRACTORS:
@@ -2465,7 +2466,7 @@ def upload_document(
         try:
             layout = client.analyze(data)
         except documents.DocumentError as error:
-            raise ServiceError("DOCUMENT_FAILED", str(error), 502) from error
+            raise _document_error(error) from error
         extraction = "document_intelligence"
     else:
         try:
@@ -2491,15 +2492,20 @@ def upload_document(
     if shield["attackDetected"]:
         closed = Orchestrator(app).handoff_for_injection(org_id, filename)
         return {**base, "blocked": True, "handoff": True, "threadIds": closed, "fields": []}
-    if kind == "purchase_criteria" and app.criteria_reader is not None:
-        read = _read_criteria(app, data, filename, layout)
-        found = read["draft"].pop("instructions", None)
-        if found:
+    if kind == "purchase_criteria":
+        if app.criteria_reader is not None:
+            read = _read_criteria(app, data, filename, layout)
+        else:
+            # 판독 모델이 없으면 표 머리글로 읽는다. 숫자·단위·확인 필요 판정은 모델 경로와 같은 코드가 한다
+            read = _criteria_result(criteria_llm.read_by_rules(layout))
+        instructions = read["draft"].pop("instructions", None)
+        if instructions:
             # Prompt Shields가 놓친 지시문을 판독기가 찾았다. 같은 절차로 문서를 쓰지 않고 대화를 넘긴다
             logger.warning("매입 기준표 판독기가 문서 안 지시문을 찾았다: %s", filename)
             closed = Orchestrator(app).handoff_for_injection(org_id, filename)
             base["shield"] = {**shield, "attackDetected": True, "detectedBy": "reader"}
             return {**base, "blocked": True, "handoff": True, "threadIds": closed, "fields": []}
+        _keep_draft(app, org_id, filename, read["draft"])
         return {**base, **read}
     extracted = documents.EXTRACTORS[kind](layout)
     fields = extracted.pop("fields", [])
@@ -2565,6 +2571,20 @@ def _remember_permit(
     return document
 
 
+def _document_error(error: Exception) -> ServiceError:
+    """Document Intelligence 실패를 둘로 가른다. 파일 자체를 열지 못함(422, 다른 파일로) | 서비스에 닿지 못함(502, 다시)."""
+    text = str(error)
+    if any(
+        mark in text for mark in ("거부됐습니다(400)", "거부됐습니다(415)", "분석이 실패했습니다")
+    ):
+        return ServiceError(
+            "DOCUMENT_UNREADABLE",
+            "파일을 열지 못했습니다. 손상되지 않은 PDF나 사진(JPG·PNG)으로 다시 올리거나 값을 직접 적어 주세요.",
+            422,
+        )
+    return ServiceError("DOCUMENT_FAILED", text, 502)
+
+
 def _read_criteria(app: App, data: bytes, filename: str, layout: dict[str, Any]) -> dict[str, Any]:
     """매입 기준표를 모델로 읽은 초안. 모델을 부르지 못하면 outcome model_failed와 화면 문장을 준다."""
     try:
@@ -2581,6 +2601,24 @@ def _read_criteria(app: App, data: bytes, filename: str, layout: dict[str, Any])
             "reviewCount": 0,
             "reader": {"by": "ai"},
         }
+    return _criteria_result(draft)
+
+
+def _keep_draft(app: App, org_id: str, filename: str, draft: dict[str, Any]) -> None:
+    """읽은 행이 있으면 초안의 값·원문·쪽을 서버에 보관하고 draft.id를 붙인다(confirm_criteria가 대조한다)."""
+    if not draft.get("rows"):
+        return
+    # 저장소 순번(난수를 쓰지 않는다). 다른 조직의 초안은 confirm_criteria가 조직을 대조해 막는다
+    draft_id = app.store.next_id("cd")
+    app.store.put_criteria_draft(
+        criteria_llm.draft_record(
+            draft, draft_id=draft_id, org_id=org_id, document=filename, created_at=app.store.now()
+        )
+    )
+    draft["id"] = draft_id
+
+
+def _criteria_result(draft: dict[str, Any]) -> dict[str, Any]:
     return {
         "blocked": False,
         "handoff": False,
@@ -2726,6 +2764,12 @@ def _criterion_evidence(
     key = "-".join(str(x or "x") for x in (row["material"], row["grade"], row["form"]))
     page = row["source"]["page"]
     quote = row["source"]["quotes"].get(field) or row["source"]["quote"] or ""
+    # 서버가 보관한 초안과 대조한 결과(verify_row). 읽은 값·확인 사유를 근거 meta에 남긴다
+    trail = {
+        "draftId": row.get("draftId"),
+        "aiValue": (row.get("aiValues") or {}).get(field),
+        "reviewReasons": list((row.get("review") or {}).get(field) or []),
+    }
     if row["manual"] or field in row["edited"]:
         shown = f"{value:,g}{unit or ''}" if isinstance(value, float) else str(value)
         excerpt = f"담당자가 적은 값: {shown}"
@@ -2743,7 +2787,17 @@ def _criterion_evidence(
             else f"{name} · 담당자가 고쳐 적은 값",
             as_of=app.today,
             access=(org_id,),
-            meta={"ownerOrgId": org_id, "document": name, "field": field, "page": page},
+            meta={
+                "ownerOrgId": org_id,
+                "document": name,
+                "field": field,
+                "page": page,
+                **(
+                    {**trail, "identityEdited": bool(row.get("identityEdited"))}
+                    if not row["manual"]
+                    else {}
+                ),
+            },
         )
     else:
         evidence = Evidence(
@@ -2761,19 +2815,30 @@ def _criterion_evidence(
                 "field": field,
                 "page": page,
                 "confirmedBy": viewer,
-                "readBy": "ai",
+                "readBy": row.get("readBy") or "ai",
+                **trail,
+                "neededReview": bool(trail["reviewReasons"]),
             },
         )
     return app.registry.put(evidence).id
 
 
 def confirm_criteria(
-    app: App, org_id: str, document_name: str, rows: Any, viewer: str
+    app: App,
+    org_id: str,
+    document_name: str,
+    rows: Any,
+    viewer: str,
+    draft_id: str | None = None,
 ) -> dict[str, Any]:
     """담당자가 검토 화면에서 확인·고친 매입 기준 행을 저장한다. 저장한 행만 업체 탐색에 쓰인다.
 
     - 행은 criteria_llm.clean_rows가 검사한다(재질 코드, 단가 필수·범위, 물량·상한 범위, 중복). 틀리면 422.
-    - 값마다 근거를 등록한다. 문서에서 읽은 그대로면 doc 근거(문서 원문·쪽), 담당자가 고쳤거나 직접 더한 행이면
+    - draft_id(올릴 때 받은 draft.id)가 있으면 서버가 보관한 초안과 행(draftRow)을 대조한다(verify_row).
+      어느 값을 고쳤는지, 근거 발췌(문서 원문·쪽)는 보관한 초안으로 정하고 화면이 보낸 source·edited는 쓰지 않는다.
+      초안이 비워 둔 값(범위·협의·단위 미상·회당 물량)을 채웠으면 담당자 입력이다. 초안을 가리키지 않는 행은
+      직접 적은 줄로 본다.
+    - 값마다 근거를 등록한다. 초안과 같은 값이면 doc 근거(문서 원문·쪽), 다르거나 직접 적은 값이면
       human 근거(담당자 입력, 문서 원문이 있으면 함께)다.
     - 업체 프로필의 매입 기준을 재질·등급·형태로 맞춰 고치거나 더한다(_profile_from_document).
     - 수거비 조건이 모든 행에서 같으면 업체의 운반 조건(transport)으로 쓴다(포함이면 업체 부담, 따로면 1회 수거비).
@@ -2783,7 +2848,33 @@ def confirm_criteria(
         clean = criteria_llm.clean_rows(rows)
     except criteria_llm.RowError as error:
         raise ServiceError("INVALID_CRITERIA", str(error), 422) from None
-    name = str(document_name or "매입 기준표")[:120]
+    draft = None
+    if draft_id:
+        try:
+            draft = app.store.get_criteria_draft(str(draft_id))
+        except NotFound:
+            draft = None
+        if draft is None or draft.get("orgId") != org_id:
+            raise ServiceError(
+                "DRAFT_NOT_FOUND",
+                "이 문서를 읽은 기록을 찾지 못했습니다. 문서를 다시 올려 주세요.",
+                404,
+            )
+    facts = {row["id"]: row for row in (draft or {}).get("rows") or []}
+    for number, row in enumerate(clean, 1):
+        if row["draftRow"] is not None and row["draftRow"] not in facts:
+            raise ServiceError(
+                "INVALID_CRITERIA", f"{number}번째 줄이 가리키는 읽은 줄을 찾지 못했습니다.", 422
+            )
+    clean = [
+        {
+            **criteria_llm.verify_row(row, facts.get(row["draftRow"] or "")),
+            "draftId": draft["id"] if draft else None,
+            "readBy": (draft or {}).get("readBy"),
+        }
+        for row in clean
+    ]
+    name = str((draft or {}).get("document") or document_name or "매입 기준표")[:120]
     found: dict[str, Any] = {"permits": [], "criteria": [], "skipped": []}
     registered: list[str] = []
     fee_evidence: dict[tuple, list[str]] = {}

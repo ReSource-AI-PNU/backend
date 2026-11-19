@@ -1,0 +1,347 @@
+{
+ "date": "2026-11-19",
+ "how": "로컬 백엔드(uvicorn, V3_AUTH=bff, 메모리 저장소)와 프런트(next start)를 운영과 같은 Azure 리소스(Document Intelligence, Prompt Shields, Foundry gpt-5-mini)에 붙이고 Playwright로 실제 화면을 눌렀다. 계정·회사는 시험용(example.com)이다.",
+ "vendorUpload": {
+  "pdf": "02_reordered_units.pdf",
+  "seconds": 22,
+  "outcome": "ready",
+  "draftId": "cd_bc36dd99774fba72",
+  "rows": [
+   "A | 폴리프로필렌 사출 스크랩 | 1톤 | 3% 이하 | 5% 이하 | 320,000원 | 당사 부담",
+   "B | 폴리프로필렌 사출 스크랩 | 1톤 | 8% 이하 | 10% 이하 | 250,000원 | 당사 부담",
+   "A | 고밀도 폴리에틸렌 분쇄품 | 0.5톤 | 3% 이하 | 5% 이하 | 280,000 원 | 당사 부담"
+  ],
+  "saveButton": {
+   "text": "고른 3줄 저장",
+   "disabled": false
+  },
+  "evidence": [
+   {
+    "kind": "doc",
+    "value": 320,
+    "unit": "원/kg",
+    "excerpt": "320,000원 → kg당 320원 · “톤당 매입 가” · 1쪽"
+   },
+   {
+    "kind": "doc",
+    "value": 1000,
+    "unit": "kg/월",
+    "excerpt": "1톤 → 월 1,000kg · 1쪽"
+   },
+   {
+    "kind": "doc",
+    "value": 3,
+    "unit": "%",
+    "excerpt": "3% 이하 · 1쪽"
+   },
+   {
+    "kind": "doc",
+    "value": 5,
+    "unit": "%",
+    "excerpt": "5% 이하 · 1쪽"
+   },
+   {
+    "kind": "doc",
+    "value": "수거비 단가에 포함",
+    "unit": null,
+    "excerpt": "당사 부담 · 1쪽"
+   },
+   {
+    "kind": "doc",
+    "value": 250,
+    "unit": "원/kg",
+    "excerpt": "250,000원 → kg당 250원 · “톤당 매입 가” · 1쪽"
+   },
+   {
+    "kind": "doc",
+    "value": 1000,
+    "unit": "kg/월",
+    "excerpt": "1톤 → 월 1,000kg · 1쪽"
+   },
+   {
+    "kind": "doc",
+    "value": 8,
+    "unit": "%",
+    "excerpt": "8% 이하 · 1쪽"
+   },
+   {
+    "kind": "doc",
+    "value": 10,
+    "unit": "%",
+    "excerpt": "10% 이하 · 1쪽"
+   },
+   {
+    "kind": "doc",
+    "value": "수거비 단가에 포함",
+    "unit": null,
+    "excerpt": "당사 부담 · 1쪽"
+   },
+   {
+    "kind": "doc",
+    "value": 280,
+    "unit": "원/kg",
+    "excerpt": "280,000 원 → kg당 280원 · “톤당 매입 가” · 1쪽"
+   },
+   {
+    "kind": "doc",
+    "value": 500,
+    "unit": "kg/월",
+    "excerpt": "0.5톤 → 월 500kg · 1쪽"
+   },
+   {
+    "kind": "doc",
+    "value": 3,
+    "unit": "%",
+    "excerpt": "3% 이하 · 1쪽"
+   },
+   {
+    "kind": "doc",
+    "value": 5,
+    "unit": "%",
+    "excerpt": "5% 이하 · 1쪽"
+   },
+   {
+    "kind": "doc",
+    "value": "수거비 단가에 포함",
+    "unit": null,
+    "excerpt": "당사 부담 · 1쪽"
+   }
+  ],
+  "mobileOverflowPx": 0,
+  "consoleErrors": []
+ },
+ "search": [
+  {
+   "monthlyKg": 999,
+   "threadStatus": "open",
+   "unitPrice": [
+    {
+     "value": 320,
+     "unit": "원/kg",
+     "evidence": [
+      "calc:judge_route:cea789daf20c:unitPrice",
+      "doc:org_02e7bab9fd74:02_reordered_units.pdf:PP-A-사출-스크랩-unitPriceKrwPerKg"
+     ]
+    }
+   ],
+   "loadingChecks": [
+    {
+     "calledBy": "model:foundry",
+     "checks": [
+      {
+       "key": "min_volume",
+       "status": "conditional"
+      },
+      {
+       "key": "loading",
+       "status": "conditional"
+      }
+     ],
+     "values": [
+      {
+       "label": "합친 월 물량 계산",
+       "value": 999,
+       "unit": "kg/월"
+      },
+      {
+       "label": "최소 물량 계산",
+       "value": 1000,
+       "unit": "kg/월"
+      }
+     ]
+    },
+    {
+     "calledBy": "model:foundry",
+     "checks": [
+      {
+       "key": "min_volume",
+       "status": "conditional"
+      },
+      {
+       "key": "loading",
+       "status": "conditional"
+      }
+     ],
+     "values": [
+      {
+       "label": "합친 월 물량 계산",
+       "value": 999,
+       "unit": "kg/월"
+      },
+      {
+       "label": "최소 물량 계산",
+       "value": 1000,
+       "unit": "kg/월"
+      }
+     ]
+    }
+   ],
+   "assigned": [
+    {
+     "vendor": null,
+     "checks": []
+    }
+   ]
+  },
+  {
+   "monthlyKg": 1000,
+   "threadStatus": "agreed",
+   "unitPrice": [
+    {
+     "value": 320,
+     "unit": "원/kg",
+     "evidence": [
+      "calc:judge_route:f11674cf6f9f:unitPrice",
+      "doc:org_02e7bab9fd74:02_reordered_units.pdf:PP-A-사출-스크랩-unitPriceKrwPerKg"
+     ]
+    }
+   ],
+   "loadingChecks": [
+    {
+     "calledBy": "model:foundry",
+     "checks": [
+      {
+       "key": "min_volume",
+       "status": "met"
+      },
+      {
+       "key": "loading",
+       "status": "conditional"
+      }
+     ],
+     "values": [
+      {
+       "label": "합친 월 물량 계산",
+       "value": 1000,
+       "unit": "kg/월"
+      },
+      {
+       "label": "최소 물량 계산",
+       "value": 1000,
+       "unit": "kg/월"
+      }
+     ]
+    },
+    {
+     "calledBy": "model:foundry",
+     "checks": [
+      {
+       "key": "min_volume",
+       "status": "met"
+      },
+      {
+       "key": "loading",
+       "status": "conditional"
+      }
+     ],
+     "values": [
+      {
+       "label": "합친 월 물량 계산",
+       "value": 1000,
+       "unit": "kg/월"
+      },
+      {
+       "label": "최소 물량 계산",
+       "value": 1000,
+       "unit": "kg/월"
+      }
+     ]
+    }
+   ],
+   "assigned": [
+    {
+     "vendor": "새길리사이클 QA",
+     "checks": [
+      "met"
+     ]
+    }
+   ]
+  }
+ ],
+ "rangeDocument": {
+  "pdf": "09_ambiguous.pdf",
+  "outcome": "needs_review",
+  "saveButtonBeforeAnyChoice": {
+   "text": "고른 0줄 저장",
+   "disabled": true
+  },
+  "rangeRowCheckboxBefore": {
+   "checked": false,
+   "disabled": true
+  },
+  "afterPicking300AndMonthly1000": {
+   "checked": false,
+   "disabled": false
+  },
+  "evidence": [
+   {
+    "kind": "human",
+    "value": 300,
+    "unit": "원/kg",
+    "excerpt": "담당자가 적은 값: 300원/kg (문서 원문: 300~400원/kg · “※ PP 품목은 당사가 매입합니다. 그 밖의 품목의 단가 적용 방식은 별도로 안내합니다.” · 1쪽)",
+    "aiValue": null,
+    "reviewReasons": [
+     "단가가 범위로 적혀 있습니다(300~400원/kg). 한 값으로 정해 주세요"
+    ]
+   },
+   {
+    "kind": "human",
+    "value": 1000,
+    "unit": "kg/월",
+    "excerpt": "담당자가 적은 값: 1,000kg/월 (문서 원문: 회당 1톤 · 1쪽)",
+    "aiValue": null,
+    "reviewReasons": [
+     "회당 물량입니다(회당 1톤). 한 달 수거 횟수를 알아야 월 물량이 됩니다"
+    ]
+   },
+   {
+    "kind": "doc",
+    "value": 50000,
+    "unit": "원/회",
+    "excerpt": "회당 50,000원 · 1쪽",
+    "aiValue": 50000,
+    "reviewReasons": []
+   },
+   {
+    "kind": "doc",
+    "value": "수거비 따로 받음",
+    "unit": null,
+    "excerpt": "회당 50,000원 · 1쪽",
+    "aiValue": "separate",
+    "reviewReasons": []
+   }
+  ]
+ },
+ "failureKinds": {
+  "file_failure": {
+   "seconds": 0.8,
+   "http": 422,
+   "code": "DOCUMENT_UNREADABLE",
+   "message": "파일을 열지 못했습니다. 손상되지 않은 PDF나 사진(JPG·PNG)으로 다시 올리거나 값을 직접 적어 주세요."
+  },
+  "model_failure": {
+   "seconds": 9.3,
+   "http": 200,
+   "outcome": "model_failed",
+   "failure": {
+    "code": "unavailable",
+    "message": "AI가 지금 문서를 읽을 수 없는 상태입니다.",
+    "action": "운영 담당자에게 알려 주세요. 그동안 아래에 매입 기준을 직접 적어 저장할 수 있습니다."
+   },
+   "rows": 0,
+   "draftId": null
+  },
+  "read_but_not_found": {
+   "seconds": 15.6,
+   "http": 200,
+   "outcome": "not_found",
+   "failure": null,
+   "rows": 0,
+   "draftId": null
+  }
+ },
+ "screens": {
+  "notFound": "10_not_criteria.pdf에서 매입 단가나 처리비 조건을 찾지 못했습니다. / 매입 기준표가 맞는지 확인하거나, 원본을 보고 직접 적어 주세요. / 직접 적기",
+  "brokenFile": "이 파일을 열지 못했습니다. 손상되지 않은 PDF나 사진(JPG·PNG)으로 다시 올리거나 값을 직접 적어 주세요."
+ }
+}

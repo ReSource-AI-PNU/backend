@@ -7,6 +7,8 @@
 
 from __future__ import annotations
 
+import pytest
+
 from app.v3 import service
 from app.v3.agents.orchestrator import discoverable_profiles
 from app.v3.intake.documents import extract_permit
@@ -89,6 +91,39 @@ def _upload_and_confirm(app, kind, filename, data):
     return result, service.confirm_document(app, VENDOR, filename, fields, VENDOR)
 
 
+def _criteria_rows(draft):
+    """매입 기준표 검토 화면이 보내는 행(읽은 그대로, 초안의 행 ID를 가리킴)."""
+    rows = []
+    for row in draft["rows"]:
+        price = row["price"]
+        rows.append(
+            {
+                "draftRow": row["id"],
+                "material": row["material"]["value"],
+                "grade": row["grade"]["value"],
+                "form": row["form"]["value"],
+                "unitPriceKrwPerKg": price["amount"]
+                if price["direction"] == "buy"
+                else -price["amount"],
+                "minMonthlyKg": row["minMonthlyKg"]["value"],
+                "maxContaminationPct": row["maxContaminationPct"]["value"],
+                "maxMoisturePct": row["maxMoisturePct"]["value"],
+                "collectionFee": row["collectionFee"]["value"],
+            }
+        )
+    return rows
+
+
+def _upload_and_save_criteria(app, filename, data):
+    """판독 모델이 없으면 표 머리글로 읽은 초안(rules)이 나오고, 검토 화면처럼 저장한다."""
+    result = service.upload_document(app, VENDOR, "purchase_criteria", filename, data, VENDOR)
+    draft = result["draft"]
+    saved = service.confirm_criteria(
+        app, VENDOR, filename, _criteria_rows(draft), VENDOR, draft["id"]
+    )
+    return result, saved
+
+
 def test_permit_items_are_not_listed_twice():
     fields = extract_permit(PERMIT)["fields"]
     assert [f["value"] for f in fields] == ["폐플라스틱 (PP, PE, LDPE)", "포장재"]
@@ -106,9 +141,10 @@ def test_confirmed_documents_fill_the_vendor_profile_once():
     assert VENDOR not in discoverable_profiles(app.store, app.store.get_org(EMITTER))
     _, permit = _upload_and_confirm(app, "permit", "permit.pdf", b"%PDF-permit")
     assert permit["profile"]["permitsAdded"] == 2
-    upload, price = _upload_and_confirm(app, "purchase_criteria", "price-table.pdf", b"%PDF-price")
-    # 표 밖의 최소 물량도 뽑아 모든 행에 쓴다
-    assert any(f["field"] == "criteria-minMonthlyKg" for f in upload["fields"])
+    upload, price = _upload_and_save_criteria(app, "price-table.pdf", b"%PDF-price")
+    # 표 밖의 최소 물량("1회 계약 최소 물량 월 300kg")도 읽어 모든 행에 쓴다
+    assert upload["draft"]["reader"]["by"] == "rules" and upload["draft"]["outcome"] == "ready"
+    assert {r["minMonthlyKg"]["value"] for r in upload["draft"]["rows"]} == {300}
     assert price["profile"]["criteriaAdded"] == 3
 
     profile = service.get_vendor(app, VENDOR, VENDOR)  # 다시 읽어도(새로 고침) 남아 있다
@@ -130,7 +166,7 @@ def test_confirmed_documents_fill_the_vendor_profile_once():
 
     # 같은 문서를 다시 확인해도 품목과 기준이 겹쳐 생기지 않는다
     _, again = _upload_and_confirm(app, "permit", "permit.pdf", b"%PDF-permit")
-    _, again_price = _upload_and_confirm(app, "purchase_criteria", "price-table.pdf", b"%PDF-price")
+    _, again_price = _upload_and_save_criteria(app, "price-table.pdf", b"%PDF-price")
     assert again["profile"]["permitsAdded"] == again["profile"]["permitsUpdated"] == 0
     assert again_price["profile"]["criteriaAdded"] == again_price["profile"]["criteriaUpdated"] == 0
     profile = service.get_vendor(app, VENDOR, VENDOR)
@@ -143,22 +179,23 @@ def test_unconfirmed_values_do_not_change_the_profile():
     done = service.confirm_document(app, VENDOR, "permit.pdf", result["fields"], VENDOR)
     assert done["evidence"] == [] and done["profile"] is None
     assert service.get_vendor(app, VENDOR, VENDOR)["permits"] == []
-    # 단가를 확인하지 않은 새 매입 기준은 만들지 않는다
+    # 매입 기준표를 올리기만 하면 초안이고 프로필은 그대로다. 단가 없는 줄은 저장하지 못한다
     price = service.upload_document(
         app, VENDOR, "purchase_criteria", "price.pdf", b"%PDF-price", VENDOR
     )
-    limits_only = [
-        {**f, "confirmed": f["field"].endswith("maxContaminationPct")} for f in price["fields"]
-    ]
-    done = service.confirm_document(app, VENDOR, "price.pdf", limits_only, VENDOR)
-    assert done["profile"]["criteriaAdded"] == 0 and len(done["profile"]["skipped"]) == 3
+    assert len(price["draft"]["rows"]) == 3
+    assert service.get_vendor(app, VENDOR, VENDOR)["criteria"] == []
+    no_price = [{**_criteria_rows(price["draft"])[0], "unitPriceKrwPerKg": None}]
+    with pytest.raises(service.ServiceError) as caught:
+        service.confirm_criteria(app, VENDOR, "price.pdf", no_price, VENDOR, price["draft"]["id"])
+    assert caught.value.code == "INVALID_CRITERIA"
     assert service.get_vendor(app, VENDOR, VENDOR)["criteria"] == []
 
 
 def test_a_real_emitter_finds_the_vendor_after_confirmation():
     app = _world()
     _upload_and_confirm(app, "permit", "permit.pdf", b"%PDF-permit")
-    _upload_and_confirm(app, "purchase_criteria", "price-table.pdf", b"%PDF-price")
+    _upload_and_save_criteria(app, "price-table.pdf", b"%PDF-price")
     assert VENDOR in discoverable_profiles(app.store, app.store.get_org(EMITTER))
     service.update_stream(
         app,

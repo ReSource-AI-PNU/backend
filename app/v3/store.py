@@ -33,6 +33,7 @@ _TABLES = (
     "counters",
     "activity",
     "runs",
+    "criteria_drafts",
 )
 
 
@@ -66,6 +67,9 @@ class Store(Protocol):
     def put_vendor_profile(self, profile: dict[str, Any]) -> dict[str, Any]: ...
     def get_vendor_profile(self, org_id: str) -> dict[str, Any]: ...
     def list_vendor_profiles(self) -> list[dict[str, Any]]: ...
+
+    def put_criteria_draft(self, draft: dict[str, Any]) -> dict[str, Any]: ...
+    def get_criteria_draft(self, draft_id: str) -> dict[str, Any]: ...
 
     def put_session(
         self, session: dict[str, Any], expected_version: int | None = None
@@ -163,6 +167,9 @@ class InMemoryStore:
             "events": sessions,
             "activity": sessions,
             "runs": sessions,
+            "criteria_drafts": {
+                k for k, d in data["criteria_drafts"].items() if d.get("orgId") in wanted
+            },
         }
         for table, keys in doomed.items():
             for key in keys:
@@ -264,6 +271,13 @@ class InMemoryStore:
 
     def list_vendor_profiles(self) -> list[dict[str, Any]]:
         return [copy.deepcopy(p) for _, p in sorted(self._data["vendors"].items())]
+
+    # ── 매입 기준표 판독 초안 (저장할 때 서버가 대조한다) ─────────────────
+    def put_criteria_draft(self, draft: dict[str, Any]) -> dict[str, Any]:
+        return self._put("criteria_drafts", draft["id"], draft)
+
+    def get_criteria_draft(self, draft_id: str) -> dict[str, Any]:
+        return self._get("criteria_drafts", draft_id)
 
     # ── 세션 ──────────────────────────────────────────────────────────
     def put_session(

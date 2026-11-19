@@ -337,6 +337,7 @@ def route(app: service.App, request: Request) -> Any:
                 str(body.get("documentName") or ""),
                 body.get("rows"),
                 viewer,
+                str(body.get("draftId") or "") or None,
             )
         case ("GET", ["admin", "status"]):
             return service.admin_status(app, viewer)

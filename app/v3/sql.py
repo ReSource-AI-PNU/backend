@@ -232,6 +232,7 @@ ORGS, STREAMS, VENDORS, SESSIONS, THREADS = (
 )
 QUESTIONS, APPROVALS, DOCUMENTS, COUNTERS = "questions", "approvals", "documents", "counters"
 RUNS = "runs"  # 진단마다 실행 자리 하나(id는 진단 ID)
+CRITERIA_DRAFTS = "criteria_drafts"  # 매입 기준표 판독 초안(저장할 때 서버가 대조한다)
 
 
 class SqlStore:
@@ -283,6 +284,11 @@ class SqlStore:
             streams = {
                 row.id for row in self._rows(db, STREAMS) if row.payload.get("orgId") in wanted
             }
+            drafts = {
+                row.id
+                for row in self._rows(db, CRITERIA_DRAFTS)
+                if row.payload.get("orgId") in wanted
+            }
             doomed = {
                 ORGS: wanted,
                 STREAMS: streams,
@@ -293,6 +299,7 @@ class SqlStore:
                 APPROVALS: sessions,
                 DOCUMENTS: sessions,
                 RUNS: sessions,
+                CRITERIA_DRAFTS: drafts,
             }
             for kind, keys in doomed.items():
                 if keys:
@@ -404,6 +411,13 @@ class SqlStore:
 
     def list_vendor_profiles(self) -> list[dict[str, Any]]:
         return self._all(VENDORS)
+
+    # ── 매입 기준표 판독 초안 ─────────────────────────────────────────
+    def put_criteria_draft(self, draft: dict[str, Any]) -> dict[str, Any]:
+        return self._put(CRITERIA_DRAFTS, draft["id"], draft)
+
+    def get_criteria_draft(self, draft_id: str) -> dict[str, Any]:
+        return self._get(CRITERIA_DRAFTS, draft_id)
 
     # ── 세션 ──────────────────────────────────────────────────────────
     def put_session(

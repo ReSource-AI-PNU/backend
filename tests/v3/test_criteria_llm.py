@@ -487,12 +487,13 @@ TON_ROW = model_row(
 
 
 def _rows_from(draft):
-    """검토 화면이 저장할 때 보내는 행(읽은 값을 고치지 않고 그대로)."""
+    """검토 화면이 저장할 때 보내는 행(읽은 값을 고치지 않고 그대로). 초안의 행 ID를 가리킨다."""
     out = []
     for row in draft["rows"]:
         price = row["price"]
         out.append(
             {
+                "draftRow": row["id"],
                 "material": row["material"]["value"],
                 "grade": row["grade"]["value"],
                 "form": row["form"]["value"],
@@ -557,13 +558,69 @@ def test_instructions_found_by_the_reader_block_the_document():
     assert "draft" not in result and result["fields"] == []
 
 
-def test_text_files_still_use_the_rule_extractor_without_a_reader():
+def test_without_a_reader_rules_use_the_same_unit_and_range_checks():
+    """재현 문제: 예전 머리글 규칙은 300~400원/kg을 300원/kg으로, 1톤/월을 1kg/월로 경고 없이 읽었다.
+    판독 모델이 없어도 이제 같은 코드(normalize)가 범위는 확인 대기, 톤은 kg으로 바꾼다."""
     app = _world(None)
-    table = "재질\t단가\nPP\t320"
+    table = "재질\t매입 단가(원/kg)\t최소 물량(톤/월)\nPP\t300~400\t1\nHDPE\t280\t1"
     result = service.upload_document(
         app, VENDOR, "purchase_criteria", "price.txt", table.encode(), VENDOR
     )
-    assert "draft" not in result
+    draft = result["draft"]
+    assert draft["reader"]["by"] == "rules" and draft["id"] == "cd_1"
+    pp, hdpe = draft["rows"]
+    assert pp["price"]["amount"] is None and pp["price"]["candidates"] == [300, 400]
+    assert any("범위" in reason for reason in pp["price"]["review"])
+    assert pp["minMonthlyKg"]["value"] == 1000 and hdpe["minMonthlyKg"]["value"] == 1000
+    assert hdpe["price"]["amount"] == 280 and hdpe["price"]["direction"] == "buy"
+    assert draft["outcome"] == "needs_review" and pp["needsReview"] and not pp["ready"]
+    assert service.get_vendor(app, VENDOR, VENDOR)["criteria"] == []
+
+
+def _di_cell(r, c, text, *, kind=None, rows=1, cols=1, page=1):
+    return {"rowIndex": r, "columnIndex": c, "content": text, "kind": kind, "rowSpan": rows,
+            "columnSpan": cols, "boundingRegions": [{"pageNumber": page}]}  # fmt: skip
+
+
+def test_rules_read_title_row_two_headers_merged_cells_and_a_footnote_unit():
+    """제목 행, 두 줄 머리글, 세로 병합 칸, 각주에만 있는 단위(원/톤·톤/월)를 규칙 판독도 읽는다."""
+    cells = [
+        _di_cell(0, 0, "2026년 11월 플라스틱 매입 기준", kind="columnHeader", cols=5),
+        _di_cell(1, 0, "품목", kind="columnHeader", rows=2),
+        _di_cell(1, 1, "등급", kind="columnHeader", rows=2),
+        _di_cell(1, 2, "품질 기준", kind="columnHeader"),
+        _di_cell(1, 3, "거래 조건", kind="columnHeader", cols=2),
+        _di_cell(2, 2, "이물(%)", kind="columnHeader"),
+        _di_cell(2, 3, "매입가", kind="columnHeader"),
+        _di_cell(2, 4, "최소 물량", kind="columnHeader"),
+        _di_cell(3, 0, "PP 사출 스크랩", rows=2),
+        _di_cell(3, 1, "A"), _di_cell(3, 2, "3"), _di_cell(3, 3, "320,000"),
+        _di_cell(3, 4, "1", rows=2),
+        _di_cell(4, 1, "B"), _di_cell(4, 2, "5"), _di_cell(4, 3, "250,000"),
+    ]  # fmt: skip
+    layout = {
+        "content": "매입 기준 ※ 단가 단위: 원/톤, 최소 물량 단위: 톤/월",
+        "tables": [{"rowCount": 5, "columnCount": 5, "cells": cells,
+                    "spans": [{"offset": 0, "length": 5}]}],
+        "paragraphs": [{"content": "※ 단가 단위: 원/톤, 최소 물량 단위: 톤/월",
+                        "spans": [{"offset": 10, "length": 20}],
+                        "boundingRegions": [{"pageNumber": 1}]}],
+    }  # fmt: skip
+    draft = criteria_llm.read_by_rules(layout)
+    a, b = draft["rows"]
+    assert (a["material"]["value"], a["grade"]["value"], b["grade"]["value"]) == ("PP", "A", "B")
+    assert a["price"]["amount"] == 320 and b["price"]["amount"] == 250
+    assert a["price"]["direction"] == "buy"
+    # 최소 물량 칸 "1"은 두 행에 병합돼 있고, 단위와 월 기준은 각주("최소 물량 단위: 톤/월")에 있다
+    assert a["minMonthlyKg"]["value"] == 1000 and b["minMonthlyKg"]["value"] == 1000
+    assert a["maxContaminationPct"]["value"] == 3 and a["page"] == 1
+    assert draft["common"][0]["quote"].startswith("※ 단가 단위")
+
+
+def test_rules_find_nothing_in_a_prose_quote_and_say_not_found():
+    layout = {"content": "견적서\n귀사의 PP 스크랩을 톤당 32만 원에 매입하겠습니다."}
+    draft = criteria_llm.read_by_rules(layout)
+    assert draft["outcome"] == "not_found" and draft["rows"] == []
 
 
 def test_confirm_criteria_saves_rows_with_evidence_and_transport():
@@ -576,7 +633,7 @@ def test_confirm_criteria_saves_rows_with_evidence_and_transport():
         {"material": "HDPE", "grade": "A", "unitPriceKrwPerKg": 280, "minMonthlyKg": 500,
          "collectionFee": "included", "manual": True}
     )  # fmt: skip
-    done = service.confirm_criteria(app, VENDOR, "price.pdf", rows, VENDOR)
+    done = service.confirm_criteria(app, VENDOR, "price.pdf", rows, VENDOR, draft["id"])
     assert done["profile"]["criteriaAdded"] == 2 and done["profile"]["transportUpdated"] is True
     profile = service.get_vendor(app, VENDOR, VENDOR)
     pp = next(c for c in profile["criteria"] if c["material"] == "PP")
@@ -587,7 +644,9 @@ def test_confirm_criteria_saves_rows_with_evidence_and_transport():
         next(e for e in pp["evidence"] if e.endswith("unitPriceKrwPerKg")), VENDOR
     )
     assert price.kind == "doc" and price.value == 320 and price.unit == "원/kg"
-    assert price.excerpt == "320,000 (톤당 매입가) → kg당 320원 · 1쪽"
+    # 발췌는 서버가 보관한 초안의 원문·환산·쪽이다(화면이 보낸 quotes는 쓰지 않는다)
+    assert price.excerpt == "320,000 원/톤 → kg당 320원 · 1쪽"
+    assert price.meta["draftId"] == draft["id"] and price.meta["aiValue"] == 320
     assert price.meta["page"] == 1 and price.meta["confirmedBy"] == VENDOR
     # 담당자가 직접 더한 행은 사람 근거다
     hdpe = next(c for c in profile["criteria"] if c["material"] == "HDPE")
@@ -601,12 +660,96 @@ def test_edited_value_becomes_human_evidence_with_the_document_quote():
     )["draft"]
     rows = _rows_from(draft)
     rows[0].update(unitPriceKrwPerKg=330, edited=["unitPriceKrwPerKg"])
-    done = service.confirm_criteria(app, VENDOR, "price.pdf", rows, VENDOR)
+    done = service.confirm_criteria(app, VENDOR, "price.pdf", rows, VENDOR, draft["id"])
     evidence = [app.registry.get(e, VENDOR) for e in done["evidence"]]
     edited = next(e for e in evidence if e.meta["field"] == "unitPriceKrwPerKg")
     assert edited.kind == "human" and edited.value == 330
-    assert "문서 원문: 320,000 (톤당 매입가)" in edited.excerpt
+    assert "문서 원문: 320,000 원/톤 → kg당 320원 · 1쪽" in edited.excerpt
+    assert edited.meta["aiValue"] == 320
     assert next(e for e in evidence if e.meta["field"] == "minMonthlyKg").kind == "doc"
+
+
+RANGE_ROW = model_row(price=cell("300~400", unit="원/kg", direction="vendor_pays", page=1))
+
+
+def test_a_range_price_is_never_saved_as_a_document_value():
+    """300~400원/kg 행에 화면(또는 직접 부른 API)이 300을 넣고 '고치지 않음'·가짜 원문을 보내도
+    서버가 보관한 초안과 대조해 담당자 입력(human)으로 남긴다. 문서 근거(doc) 300은 생기지 않는다."""
+    app = _world(FakeReader(model_answer(RANGE_ROW)))
+    draft = service.upload_document(
+        app, VENDOR, "purchase_criteria", "range.pdf", b"%PDF-1", VENDOR
+    )["draft"]
+    assert draft["rows"][0]["price"]["amount"] is None
+    forged = {
+        "draftRow": "r1", "material": "PP", "grade": "A", "form": "사출 스크랩",
+        "unitPriceKrwPerKg": 300, "minMonthlyKg": 1000, "edited": [],
+        "source": {"quote": "PP | A | 300", "page": 1, "quotes": {"unitPriceKrwPerKg": "300 · 1쪽"}},
+    }  # fmt: skip
+    done = service.confirm_criteria(app, VENDOR, "range.pdf", [forged], VENDOR, draft["id"])
+    evidence = {e.meta["field"]: e for e in (app.registry.get(i, VENDOR) for i in done["evidence"])}
+    price = evidence["unitPriceKrwPerKg"]
+    assert price.kind == "human" and price.value == 300
+    assert "문서 원문: 300~400 원/kg" in price.excerpt and "300 · 1쪽" not in price.excerpt
+    assert price.meta["aiValue"] is None and any("범위" in r for r in price.meta["reviewReasons"])
+    # 범위가 아닌 값(최소 물량)은 읽은 그대로라 문서 근거다
+    assert evidence["minMonthlyKg"].kind == "doc"
+
+
+def test_rows_without_a_stored_draft_are_hand_entered():
+    """초안 ID 없이 보낸 행은 화면이 '읽은 그대로'라고 해도 직접 적은 값(human)이다."""
+    app = _world(FakeReader(model_answer(TON_ROW)))
+    draft = service.upload_document(
+        app, VENDOR, "purchase_criteria", "price.pdf", b"%PDF-1", VENDOR
+    )["draft"]
+    rows = [{k: v for k, v in row.items() if k != "draftRow"} for row in _rows_from(draft)]
+    done = service.confirm_criteria(app, VENDOR, "price.pdf", rows, VENDOR)
+    assert {app.registry.get(e, VENDOR).kind for e in done["evidence"]} == {"human"}
+    # 읽은 줄을 가리키면서 초안 ID를 빼면 대조할 수 없어 막는다
+    with pytest.raises(service.ServiceError) as caught:
+        service.confirm_criteria(app, VENDOR, "price.pdf", _rows_from(draft), VENDOR)
+    assert caught.value.status == 422
+
+
+def test_changing_material_or_grade_makes_every_value_hand_entered():
+    app = _world(FakeReader(model_answer(TON_ROW)))
+    draft = service.upload_document(
+        app, VENDOR, "purchase_criteria", "price.pdf", b"%PDF-1", VENDOR
+    )["draft"]
+    rows = _rows_from(draft)
+    rows[0]["grade"] = "B"  # 값은 그대로지만 어느 등급의 값인지는 담당자가 정했다
+    done = service.confirm_criteria(app, VENDOR, "price.pdf", rows, VENDOR, draft["id"])
+    evidence = [app.registry.get(e, VENDOR) for e in done["evidence"]]
+    assert {e.kind for e in evidence} == {"human"}
+    assert all(e.meta["identityEdited"] for e in evidence)
+
+
+def test_drafts_belong_to_the_org_that_uploaded_them():
+    app = _world(FakeReader(model_answer(TON_ROW)))
+    draft = service.upload_document(
+        app, VENDOR, "purchase_criteria", "price.pdf", b"%PDF-1", VENDOR
+    )["draft"]
+    other = "org_qa_vendor2"
+    app.store.put_org({"id": other, "name": "(주)다른자원", "role": "vendor", "demo": False})
+    with pytest.raises(service.ServiceError) as caught:
+        service.confirm_criteria(app, other, "price.pdf", _rows_from(draft), other, draft["id"])
+    assert caught.value.status == 404 and caught.value.code == "DRAFT_NOT_FOUND"
+    rows = _rows_from(draft)
+    rows[0]["draftRow"] = "r9"
+    with pytest.raises(service.ServiceError) as caught:
+        service.confirm_criteria(app, VENDOR, "price.pdf", rows, VENDOR, draft["id"])
+    assert caught.value.status == 422 and "읽은 줄" in caught.value.message
+    # 조직을 지우면 그 조직의 초안도 지운다
+    app.store.purge_orgs([VENDOR])
+    with pytest.raises(KeyError):
+        app.store.get_criteria_draft(draft["id"])
+
+
+def test_not_found_and_failed_reads_keep_no_draft():
+    app = _world(FakeReader(model_answer(terms=False)))
+    result = service.upload_document(
+        app, VENDOR, "purchase_criteria", "intro.pdf", b"%PDF-1", VENDOR
+    )
+    assert result["draft"]["outcome"] == "not_found" and "id" not in result["draft"]
 
 
 def test_separate_fee_sets_the_per_pickup_transport_and_mixed_fees_do_not():
@@ -675,7 +818,7 @@ def test_saved_criteria_apply_to_a_new_search(monthly_kg, met):
     draft = service.upload_document(
         app, VENDOR, "purchase_criteria", "price.pdf", b"%PDF-1", VENDOR
     )["draft"]
-    service.confirm_criteria(app, VENDOR, "price.pdf", _rows_from(draft), VENDOR)
+    service.confirm_criteria(app, VENDOR, "price.pdf", _rows_from(draft), VENDOR, draft["id"])
     view, claims, text = _search(app, monthly_kg)
     assert claims["unitPrice"]["value"] == 320
     assert any(e.startswith(f"doc:{VENDOR}:price.pdf:") for e in claims["unitPrice"]["evidence"])
@@ -777,3 +920,29 @@ def test_per_pickup_fee_is_found_in_the_cell_or_its_footnote(fee, common):
         )
     )  # fmt: skip
     assert draft["rows"][0]["collectionFee"]["feePerPickupKrw"] == 50000
+
+
+@pytest.mark.parametrize(
+    ("message", "code", "status"),
+    [
+        ("문서 분석 요청이 거부됐습니다(400).", "DOCUMENT_UNREADABLE", 422),
+        ("문서 분석이 실패했습니다. InvalidContent", "DOCUMENT_UNREADABLE", 422),
+        ("Document Intelligence에 연결하지 못했습니다: timed out", "DOCUMENT_FAILED", 502),
+    ],
+)
+def test_broken_files_and_unreachable_reading_are_told_apart(message, code, status):
+    """깨진 파일(다른 파일로 다시)과 문서 읽기 서비스 실패(같은 파일로 다시)를 다른 코드로 돌려준다.
+    둘 다 AI 판독 실패(model_failed)나 매입 조건 없음(not_found)과도 다르다."""
+    from app.v3.intake.documents import DocumentError
+
+    class Broken:
+        configured = True
+
+        def analyze(self, data):
+            raise DocumentError(message)
+
+    app = make_app(documents=Broken(), criteria_reader=FakeReader(model_answer(TON_ROW)))
+    app.store.put_org({"id": VENDOR, "name": "(주)QA자원", "role": "vendor", "demo": False})
+    with pytest.raises(service.ServiceError) as caught:
+        service.upload_document(app, VENDOR, "purchase_criteria", "x.pdf", b"%PDF-1", VENDOR)
+    assert (caught.value.code, caught.value.status) == (code, status)

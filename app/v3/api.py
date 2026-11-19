@@ -833,7 +833,8 @@ async def confirm_criteria(request: Request):
     body = await json_object(request)
     org_id = str(body.get("orgId") or viewer)
     name = str(body.get("documentName") or "")
-    return await call(service.confirm_criteria, org_id, name, body.get("rows"), viewer)
+    draft_id = str(body.get("draftId") or "") or None
+    return await call(service.confirm_criteria, org_id, name, body.get("rows"), viewer, draft_id)
 
 
 @router.post("/intake/documents/confirm")

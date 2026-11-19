@@ -1056,6 +1056,494 @@ def normalize(draft: dict[str, Any], document: str = "") -> dict[str, Any]:
     }
 
 
+# ── 규칙 판독 (판독 모델이 연결되지 않았을 때) ────────────────────────
+#
+# 표 머리글로 열의 뜻을 짐작해 모델 답과 같은 모양을 만들고, 숫자 읽기·단위 환산·확인 필요 판정은 위의
+# normalize가 똑같이 한다. 그래서 규칙으로 읽어도 "300~400"은 범위(확인 대기)이고 "1톤/월"은 1,000kg/월이다.
+# 머리글로 열을 찾지 못한 표, 문장으로 적힌 견적서는 읽지 못하고 not_found가 된다(담당자가 직접 적는다).
+# 확신이 없는 것(돈의 방향, 월 기준인지)은 정하지 않고 확인 대상으로 남긴다.
+
+_RULE_HEADERS: dict[str, tuple[str, ...]] = {
+    "material": ("재질", "품목", "수지", "품종"),
+    "price": ("단가", "매입가", "가격", "처리비", "유가", "매입금액"),
+    "grade": ("등급",),
+    "form": ("형태", "성상", "규격", "품명"),
+    "maxContamination": ("오염", "이물"),
+    "maxMoisture": ("수분", "함수"),
+    "minQuantity": ("최소물량", "최소반입", "최소", "물량", "반입량"),
+    "collectionFee": ("수거", "운반"),
+}
+_FEE_WORDS = re.compile(r"처리비|처리단가|위탁|수수료|역유가")
+_BUY_WORDS = re.compile(r"매입|구매|유가")
+_FOOTNOTE = re.compile(r"^\s*(?:※|\*|주\s*\)|비고|참고|단위\s*[:：])")
+_MIN_IN_TEXT = re.compile(
+    r"최소\s*(?:수거\s*|반입\s*)?물량[^0-9\n]{0,12}(\d[\d,]*(?:\.\d+)?\s*(?:kg|킬로그램|톤|t|T)(?![A-Za-z]))"
+)
+# 한글 수지 이름 → 재질 코드(긴 이름부터 본다)
+_RESIN_NAMES = (
+    ("고밀도폴리에틸렌", "HDPE"),
+    ("저밀도폴리에틸렌", "LDPE"),
+    ("선형저밀도폴리에틸렌", "LLDPE"),
+    ("폴리에틸렌테레프탈레이트", "PET"),
+    ("폴리프로필렌", "PP"),
+    ("폴리에틸렌", "PE"),
+    ("폴리스티렌", "PS"),
+    ("폴리염화비닐", "PVC"),
+    ("폴리카보네이트", "PC"),
+)
+
+
+def _material_codes(text: str) -> list[str]:
+    found = _materials(text)
+    compact = _compact(text)
+    for name, code in sorted(_RESIN_NAMES, key=lambda pair: -len(pair[0])):
+        if name in compact and code not in found:
+            found.append(code)
+            compact = compact.replace(name, "")
+    return found
+
+
+def _per(text: str) -> str:
+    compact = _compact(text)
+    if re.search(r"회당|1회|매회|수거시", compact):
+        return "pickup"
+    if re.search(r"/월|월간|매월|^월\d|월\d|\(월\)|월기준", compact):
+        return "month"
+    if re.search(r"/주|주간|매주", compact):
+        return "week"
+    if re.search(r"/년|연간|매년", compact):
+        return "year"
+    return "unclear"
+
+
+def _header_unit(header: str, kind: str) -> str | None:
+    """머리글의 단위. 괄호 안("단가(원/톤)" → "원/톤")을 먼저 보고, 없으면 "톤당 매입가"처럼 글 속에서 찾는다."""
+    found = re.search(r"[(\[（]([^)\]）]*)[)\]）]", header or "")
+    if found and found.group(1).strip():
+        return found.group(1).strip()
+    hit = unit_in_text(header, kind)
+    return hit[1] if hit else None
+
+
+def _direction(*texts: str) -> tuple[str, str | None]:
+    """단가 머리글·표 제목·문서 제목에서 돈의 방향. 둘 다 있거나 없으면 unclear(확인 대상)."""
+    for text in texts:
+        compact = _compact(text)
+        fee, buy = _FEE_WORDS.search(compact), _BUY_WORDS.search(compact)
+        if fee and not buy:
+            return "emitter_pays", text
+        if buy and not fee:
+            return "vendor_pays", text
+    return "unclear", None
+
+
+def _rule_grid(table: dict[str, Any], *, with_header: bool = True) -> dict[str, Any]:
+    """표를 {headers, body, pages, title}로 편다. 병합 칸은 걸친 칸마다 같은 글을 채운다.
+
+    맨 위 행이 칸 하나로 표 너비를 덮으면 제목으로 보고 머리글로 쓰지 않는다. columnHeader로 표시된 위쪽 행이
+    여럿이면 열마다 이어 붙인다("거래 조건" 아래 "단가(원/kg)" → "거래 조건 단가(원/kg)").
+    with_header=False면 모든 행이 본문이다(머리글 없이 앞 쪽에서 이어지는 표).
+    """
+    rows = int(table.get("rowCount") or 0)
+    cols = int(table.get("columnCount") or 0)
+    grid = [["" for _ in range(cols)] for _ in range(rows)]
+    pages: list[int | None] = [None] * rows
+    headers_at: set[int] = set()
+    title = None
+    for item in table.get("cells") or []:
+        r, c = int(item.get("rowIndex", 0)), int(item.get("columnIndex", 0))
+        row_span = max(1, int(item.get("rowSpan") or 1))
+        col_span = max(1, int(item.get("columnSpan") or 1))
+        text = re.sub(r"\s+", " ", str(item.get("content", ""))).strip()
+        if r == 0 and c == 0 and cols > 1 and col_span >= cols:
+            title = text
+        for rr in range(r, min(r + row_span, rows)):
+            pages[rr] = pages[rr] or _page_of(item)
+            if item.get("kind") == "columnHeader":
+                headers_at.add(rr)
+            for cc in range(c, min(c + col_span, cols)):
+                grid[rr][cc] = text
+    if not with_header:
+        return {"headers": [], "body": grid, "pages": pages, "title": None, "width": cols}
+    start = 1 if title is not None else 0
+    count = 1
+    while start + count in headers_at:
+        count += 1
+    headers = []
+    for c in range(cols):
+        parts: list[str] = []
+        for row in grid[start : start + count]:
+            if row[c] and row[c] not in parts:
+                parts.append(row[c])
+        headers.append(" ".join(parts))
+    return {
+        "headers": headers,
+        "body": grid[start + count :],
+        "pages": pages[start + count :],
+        "title": title,
+        "width": cols,
+    }
+
+
+def _columns(headers: list[str], body: list[list[str]]) -> dict[str, int | None]:
+    """머리글 낱말로 열을 고른다. 재질 열을 못 찾으면 칸에 수지 이름이 가장 많이 적힌 열이다."""
+    compact = [_compact(h) for h in headers]
+    taken: set[int] = set()
+    cols: dict[str, int | None] = {}
+    order = ("price", "material", "grade", "maxContamination", "maxMoisture", "minQuantity")
+    for key in (*order, "collectionFee", "form"):
+        cols[key] = next(
+            (
+                i
+                for i, name in enumerate(compact)
+                if i not in taken and any(word in name for word in _RULE_HEADERS[key])
+            ),
+            None,
+        )
+        if cols[key] is not None:
+            taken.add(cols[key])
+    if cols["material"] is None:
+        hits = {
+            i: sum(1 for row in body if i < len(row) and _material_codes(row[i]))
+            for i in range(len(headers))
+            if i not in taken
+        }
+        best = max(hits, key=hits.get, default=None)
+        cols["material"] = best if best is not None and hits[best] > 0 else None
+    return cols
+
+
+def rules_answer(layout: dict[str, Any] | None) -> dict[str, Any]:
+    """Document Intelligence 결과(표·글)에서 머리글 규칙으로 모델 답과 같은 모양을 만든다."""
+    layout = layout or {}
+    text = str(layout.get("content") or "")
+    raw_tables = list(layout.get("tables") or []) or _text_tables(text)
+    table_spans = [span for table in raw_tables for span in _spans(table)]
+    notes: list[tuple[str, int | None]] = []
+    titles: list[str] = []
+    for paragraph in layout.get("paragraphs") or []:
+        spans = _spans(paragraph)
+        inside = any(s >= a and e <= b for s, e in spans for a, b in table_spans)
+        content = re.sub(r"\s+", " ", str(paragraph.get("content", ""))).strip()
+        if not content or inside:
+            continue
+        if paragraph.get("role") in ("title", "sectionHeading"):
+            titles.append(content)
+        if _FOOTNOTE.search(content) or _MIN_IN_TEXT.search(content):
+            notes.append((content, _page_of(paragraph)))
+    if not layout.get("paragraphs"):
+        lines = [line.strip() for line in text.splitlines() if line.strip()]
+        notes = [
+            (line, None) for line in lines if _FOOTNOTE.search(line) or _MIN_IN_TEXT.search(line)
+        ]
+        titles = lines[:1] if lines and not _text_tables(lines[0]) else []
+    rows: list[dict[str, Any]] = []
+    previous: dict[str, Any] | None = None
+    for table in raw_tables:
+        grid = _rule_grid(table)
+        cols = _columns(grid["headers"], grid["body"])
+        unknown = cols["material"] is None or cols["price"] is None
+        if unknown and previous is not None and grid["width"] == previous["width"]:
+            # 머리글 없이 앞 쪽에서 이어지는 표: 앞 표의 머리글을 쓰고 모든 행을 본문으로 본다
+            grid = {**_rule_grid(table, with_header=False), "headers": previous["headers"],
+                    "title": previous["title"]}  # fmt: skip
+            cols = previous["cols"]
+        if cols["material"] is None or cols["price"] is None:
+            continue
+        previous = {**grid, "cols": cols}
+        headers = grid["headers"]
+        price_head = headers[cols["price"]]
+        direction, why = _direction(price_head, grid["title"] or "", *titles)
+        quantity_notes = [n for n, _ in notes if "물량" in n or _per(n) == "month"]
+        for row, page in zip(grid["body"], grid["pages"], strict=False):
+            if not any(row) or (not row[cols["price"]] and not row[cols["material"]]):
+                continue
+            if row[cols["price"]] == price_head:  # 다음 쪽에서 머리글을 되풀이한 행
+                continue
+
+            def at(key: str, row=row, cols=cols) -> str | None:
+                index = cols.get(key)
+                return (row[index] or None) if index is not None and index < len(row) else None
+
+            material_text = at("material") or ""
+            codes = _material_codes(material_text)
+            price_unit = _header_unit(price_head, "price")
+            item: dict[str, Any] = {
+                "rowQuote": " | ".join(cell for cell in row if cell),
+                "page": page,
+                "material": {"text": material_text or None, "code": codes[0] if codes else None},
+                "form": at("form"),
+                "grade": at("grade"),
+                "price": {
+                    "text": at("price"),
+                    "page": page,
+                    "unit": price_unit,
+                    "unitQuote": price_head if price_unit else None,
+                    "direction": direction,
+                    "directionQuote": why,
+                },
+            }
+            if len(codes) > 1:  # 한 칸에 재질이 여럿이면 normalize가 확인 대상으로 둔다
+                item["material"]["text"] = " ".join(codes)
+            if cols["minQuantity"] is not None and at("minQuantity"):
+                head = headers[cols["minQuantity"]]
+                per = _per(f"{head} {at('minQuantity')}")
+                if per == "unclear" and any(_per(n) == "month" for n in quantity_notes):
+                    per = "month"  # 각주가 "최소 물량 단위: 톤/월"처럼 월 기준을 밝혔다
+                unit = _header_unit(head, "quantity")
+                item["minQuantity"] = {
+                    "text": at("minQuantity"),
+                    "page": page,
+                    "unit": unit,
+                    "unitQuote": head if unit else None,
+                    "per": per,
+                }
+            for key in ("maxContamination", "maxMoisture"):
+                if at(key):
+                    item[key] = {"text": at(key), "page": page}
+            fee = at("collectionFee")
+            if fee:
+                item["collectionFee"] = {"text": fee, "page": page, "status": _fee_status(fee),
+                                         "feeText": fee}  # fmt: skip
+            rows.append(item)
+    commons = []
+    applies = list(range(1, len(rows) + 1))
+    for number, (note, page) in enumerate(notes, 1):
+        fee_note = re.search(r"수거|운반", note)
+        found_min = _MIN_IN_TEXT.search(note)
+        field = (
+            "unit" if "단위" in note
+            else "minQuantity" if found_min
+            else "collectionFee" if fee_note
+            else "other"
+        )  # fmt: skip
+        commons.append(
+            {"number": number, "field": field, "quote": note, "page": page,
+             "appliesToRows": applies, "scopeQuote": None}
+        )  # fmt: skip
+        for item in rows:
+            if found_min and not item.get("minQuantity"):
+                # 표에 최소 물량 열이 없고 각주에 "최소 물량 월 1톤"이 있으면 모든 행에 쓴다(원문은 그 각주)
+                # 기준은 물량 바로 앞의 글로 정한다("1회 계약 최소 물량 월 300kg"은 월 기준이다)
+                per = _per(found_min.group(0))
+                item["minQuantity"] = {
+                    "text": found_min.group(1), "quote": note, "page": page,
+                    "per": per if per != "unclear" else _per(note), "commonRef": number,
+                }  # fmt: skip
+            status = _fee_status(note) if fee_note else None
+            if status in ("included", "separate") and not item.get("collectionFee"):
+                # "※ 수거 운반비는 단가에 포함" · "※ 수거비 별도(회당 50,000원)"는 모든 행의 수거비다
+                item["collectionFee"] = {"text": note, "quote": note, "page": page,
+                                         "status": status, "feeText": note, "commonRef": number}  # fmt: skip
+    return {
+        "isPurchaseTerms": bool(rows),
+        "documentDescription": None,
+        "rows": rows,
+        "commonConditions": commons,
+        "unreadable": [],
+        "instructionsFound": [],
+    }
+
+
+def _fee_status(text: str) -> str:
+    compact = _compact(text)
+    if re.search(r"포함|무상|무료|당사부담|업체부담", compact):
+        return "included"
+    if re.search(r"별도|따로|회당|청구|배출자부담|귀사부담", compact):
+        return "separate"
+    return "unclear"
+
+
+def _text_tables(text: str) -> list[dict[str, Any]]:
+    """글 파일의 탭·세로줄(|)로 나눈 표를 Document Intelligence 표 모양으로."""
+    lines = [line for line in str(text or "").splitlines() if line.strip()]
+    for sep in ("\t", "|"):
+        split = [[part.strip() for part in line.strip().strip("|").split(sep)] for line in lines]
+        table = [row for row in split if len(row) >= 2]
+        if len(table) >= 2:
+            width = max(len(row) for row in table)
+            cells = [
+                {"rowIndex": r, "columnIndex": c, "content": text_}
+                for r, row in enumerate(table)
+                for c, text_ in enumerate(row)
+            ]
+            return [{"rowCount": len(table), "columnCount": width, "cells": cells}]
+    return []
+
+
+def read_by_rules(layout: dict[str, Any] | None) -> dict[str, Any]:
+    """판독 모델 없이 표 머리글로 읽은 초안. 값 처리는 normalize가 모델 답과 똑같이 한다."""
+    layout = layout or {}
+    # 값은 표 칸에서 바로 가져오므로 대조할 글에 칸 글도 넣는다(Document Intelligence의 content에는 보통 들어 있다)
+    cells = " ".join(
+        str(cell.get("content", ""))
+        for table in layout.get("tables") or []
+        for cell in table.get("cells") or []
+    )
+    result = normalize(rules_answer(layout), f"{layout.get('content') or ''}\n{cells}")
+    result.pop("instructions", None)
+    result["reader"] = {"by": "rules", "input": "tables"}
+    if result["rows"]:
+        result["notes"].append(
+            "표의 머리글로 읽었습니다. 표 밖의 각주나 문장으로 적힌 조건은 놓칠 수 있으니 원본과 대조해 주세요."
+        )
+    return result
+
+
+# ── 초안 보관과 저장 때 대조 ─────────────────────────────────────
+#
+# 판독한 초안의 값·원문·쪽은 서버가 보관한다(store.put_criteria_draft). 저장 요청은 초안 ID와 행 ID만 가리키고,
+# 어느 값을 담당자가 고쳤는지, 근거 발췌가 무엇인지는 서버가 보관한 초안과 대조해 정한다. 그래서 화면이나
+# 직접 부른 API가 "범위 300~400"인 행에 300을 넣어 보내도 문서 근거(doc)가 아니라 담당자 입력(human)이 된다.
+
+VALUE_FIELDS = (
+    "unitPriceKrwPerKg",
+    "minMonthlyKg",
+    "maxContaminationPct",
+    "maxMoisturePct",
+    "collectionFee",
+    "collectionFeePerPickupKrw",
+)
+
+
+def _line(parts: list[Any], page: Any) -> str | None:
+    text = " · ".join(str(p).strip() for p in parts if p and str(p).strip())
+    if not text:
+        return None
+    return (f"{text} · {page}쪽" if page else text)[:300]
+
+
+def draft_facts(row: dict[str, Any]) -> dict[str, Any]:
+    """초안의 행 하나에서 서버가 보관할 값(저장 모양)·칸별 원문·확인 사유."""
+    price, quantity, fee = row["price"], row["minMonthlyKg"], row["collectionFee"]
+    signed = None
+    if price["amount"] is not None and price["direction"] in ("buy", "fee"):
+        signed = price["amount"] if price["direction"] == "buy" else -price["amount"]
+    page = row.get("page")
+    raw = price["raw"]
+    shown = f"{raw} {price['unitRaw']}" if raw and price["unitRaw"] and not _has_unit(raw) else raw
+
+    def quoted(block: dict[str, Any]) -> str | None:
+        quote = block.get("quote")
+        return f"“{quote}”" if quote and quote != block.get("raw") else None
+
+    quotes = {
+        "unitPriceKrwPerKg": _line(
+            [
+                price["note"] or shown,
+                f"단위 “{price['unitQuote']}”" if price.get("unitQuote") else None,
+                f"“{price['directionQuote']}”" if price.get("directionQuote") else None,
+                quoted(price),
+            ],
+            price["page"] or page,
+        ),
+        "minMonthlyKg": _line(
+            [quantity["note"] or quantity["raw"], quoted(quantity)], quantity["page"] or page
+        ),
+        "maxContaminationPct": _line(
+            [row["maxContaminationPct"]["raw"], quoted(row["maxContaminationPct"])],
+            row["maxContaminationPct"]["page"] or page,
+        ),
+        "maxMoisturePct": _line(
+            [row["maxMoisturePct"]["raw"], quoted(row["maxMoisturePct"])],
+            row["maxMoisturePct"]["page"] or page,
+        ),
+        "collectionFee": _line(
+            [fee["raw"], fee["feeText"] if fee["feeText"] != fee["raw"] else None, quoted(fee)],
+            fee["page"] or page,
+        ),
+    }
+    quotes["collectionFeePerPickupKrw"] = quotes["collectionFee"]
+    return {
+        "id": row["id"],
+        "page": page,
+        "quote": (row.get("quote") or None) and str(row["quote"])[:500],
+        "material": row["material"]["value"],
+        "grade": row["grade"]["value"],
+        "form": row["form"]["value"],
+        "values": {
+            "unitPriceKrwPerKg": signed,
+            "minMonthlyKg": quantity["value"],
+            "maxContaminationPct": row["maxContaminationPct"]["value"],
+            "maxMoisturePct": row["maxMoisturePct"]["value"],
+            "collectionFee": fee["value"],
+            "collectionFeePerPickupKrw": fee["feePerPickupKrw"]
+            if fee["value"] == "separate"
+            else None,
+        },
+        "quotes": {k: v for k, v in quotes.items() if v},
+        "review": {
+            "unitPriceKrwPerKg": list(price["review"]),
+            "minMonthlyKg": list(quantity["review"]),
+            "maxContaminationPct": list(row["maxContaminationPct"]["review"]),
+            "maxMoisturePct": list(row["maxMoisturePct"]["review"]),
+            "collectionFee": list(fee["review"]),
+            "identity": [*row["material"]["review"], *row["grade"]["review"]],
+        },
+    }
+
+
+def draft_record(
+    draft: dict[str, Any], *, draft_id: str, org_id: str, document: str, created_at: str
+) -> dict[str, Any]:
+    """store.put_criteria_draft에 넣는 기록."""
+    return {
+        "id": draft_id,
+        "orgId": org_id,
+        "document": str(document or "매입 기준표")[:120],
+        "createdAt": created_at,
+        "readBy": (draft.get("reader") or {}).get("by"),
+        "rows": [draft_facts(row) for row in draft.get("rows") or []],
+    }
+
+
+def _same_value(a: Any, b: Any) -> bool:
+    if a is None or b is None:
+        return a is None and b is None
+    if isinstance(a, (int, float)) and isinstance(b, (int, float)):
+        return math.isclose(float(a), float(b), rel_tol=0, abs_tol=1e-6)
+    return a == b
+
+
+def verify_row(row: dict[str, Any], facts: dict[str, Any] | None) -> dict[str, Any]:
+    """clean_rows가 검사한 행을 서버가 보관한 초안 행과 대조한다. 화면이 보낸 source·edited는 쓰지 않는다.
+
+    - 초안 행이 없으면(직접 더한 줄) 모든 값이 담당자 입력이다.
+    - 재질·등급·형태를 고쳤으면 그 행의 값이 어느 품목의 값인지를 담당자가 정한 것이라 모든 값이 담당자 입력이다.
+    - 값이 초안과 같으면 문서 근거, 다르면(초안이 비워 둔 범위·협의·단위 미상 값을 채운 것 포함) 담당자 입력이다.
+    """
+    out = dict(row)
+    if facts is None:
+        out.update(
+            manual=True,
+            edited=[f for f in VALUE_FIELDS if row.get(f) is not None],
+            source={"quote": None, "page": None, "quotes": {}},
+            aiValues={},
+            review={},
+        )
+        return out
+    identity_changed = not (
+        row["material"] == facts["material"]
+        and _same_value(row["grade"] or None, facts["grade"] or None)
+        and _compact(row["form"]) == _compact(facts["form"])
+    )
+    edited = [
+        field
+        for field in VALUE_FIELDS
+        if row.get(field) is not None
+        and (identity_changed or not _same_value(row[field], facts["values"].get(field)))
+    ]
+    out.update(
+        manual=False,
+        edited=edited,
+        identityEdited=identity_changed,
+        source={"quote": facts["quote"], "page": facts["page"], "quotes": dict(facts["quotes"])},
+        aiValues=dict(facts["values"]),
+        review={k: v for k, v in (facts.get("review") or {}).items() if v},
+    )
+    return out
+
+
 # ── 저장 검증 (담당자가 확인한 행) ────────────────────────────────
 
 
@@ -1157,5 +1645,8 @@ def clean_rows(rows: Any) -> list[dict[str, Any]]:
         }
         clean["edited"] = [str(k) for k in edited][:20]
         clean["manual"] = bool(row.get("manual"))
+        # 초안의 행 ID(r1…). 서버가 보관한 초안과 대조할 때 쓴다(verify_row). 직접 더한 줄은 없다
+        draft_row = row.get("draftRow")
+        clean["draftRow"] = str(draft_row)[:20] if draft_row not in (None, "") else None
         out.append(clean)
     return out
