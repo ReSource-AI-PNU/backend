@@ -341,7 +341,11 @@ def _seed(app: App, registry: Any, *, wipe: bool) -> dict[str, Any]:
     register_defaults(registry, app.today)
     loaded = load_seed_dir(registry)
     summary = seed_demo(app.store, registry, app.today, wipe=wipe)
-    return {**summary, "seedEvidence": loaded}
+    # 체험하기의 시연 보관장 3D 스캔(자산이 있을 때만). scan.views가 이 모듈을 부르므로 여기서 불러온다
+    from app.v3.scan import demo as scan_demo
+
+    scan_id = scan_demo.seed_scan(app.store, registry, app.today, summary["emitterOrgId"])
+    return {**summary, "seedEvidence": loaded, **({"scanId": scan_id} if scan_id else {})}
 
 
 def reset_demo(app: App, viewer: str | None = None) -> dict[str, Any]:

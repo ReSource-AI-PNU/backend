@@ -12,7 +12,7 @@ from app.v3.evidence.registry import EvidenceForbidden
 from app.v3.scan import client as recon
 from app.v3.scan import layout, result, views
 from scripts.v3.scan_fake_recon import sample_points, sample_result
-from tests.v3.runtime_fixtures import DAON, HANBIT, SAEGIL, make_app
+from tests.v3.runtime_fixtures import ADMIN, DAON, HANBIT, SAEGIL, make_app
 
 JPEG = b"\xff\xd8\xff\xe0" + b"0" * 200
 FRAMES = [(f"f{i:03d}.jpg", JPEG + bytes([i])) for i in range(24)]
@@ -485,7 +485,7 @@ def test_http_routes_upload_view_points_and_edit(monkeypatch):
 def test_devserver_reads_every_frame():
     from app.v3 import devserver
 
-    app, fake = scan_app()
+    app, _ = scan_app()
     content_type, body = recon.multipart(FRAMES)
     request = devserver.Request(
         "POST",
@@ -496,3 +496,39 @@ def test_devserver_reads_every_frame():
     )
     view = devserver.route(app, request)
     assert view["status"] == "processing" and view["frameCount"] == 24
+
+
+def test_demo_seed_puts_a_finished_scan_when_assets_exist(tmp_path, monkeypatch):
+    from app.v3.scan import demo as scan_demo
+
+    payload = sample_result()
+    points = sample_points()
+    payload["pointsCount"] = struct.unpack_from("<4sIII", points)[2]
+    (tmp_path / "hanbit-result.json").write_text(json.dumps(payload), encoding="utf-8")
+    (tmp_path / "hanbit-points.bin").write_bytes(points)
+    truth = {
+        "assign": {"p1": "st_sprue", "p5": "st_film", "p9": "st_sprue"},
+        "weighed": {"p1": 240},
+    }
+    (tmp_path / "hanbit-truth.json").write_text(json.dumps(truth), encoding="utf-8")
+    monkeypatch.setattr(scan_demo, "ASSETS", tmp_path)
+    app = make_app()
+    view = views.get_scan(demo_app(app), HANBIT, scan_demo.SCAN_ID, HANBIT)
+    assert view["status"] == "done"
+    piles = {p["id"]: p for p in view["piles"]}
+    assert piles["p1"]["streamId"] == "st_sprue" and piles["p5"]["streamId"] == "st_film"
+    assert piles["p1"]["weighedKg"]["value"] == 240 and piles["p1"]["density"]["basis"] == "weighed"
+    assert view["layout"]["proposal"] is not None
+    for pile in view["piles"]:
+        for claim in (pile["volume"], *(pile["weight"] or {}).values()):
+            evidence_ok(app, claim)
+    again = service.reset_demo(app, ADMIN)  # 되돌려도 같은 ID로 다시 들어간다
+    assert again["scanId"] == scan_demo.SCAN_ID
+
+
+def test_demo_seed_skips_without_assets(tmp_path, monkeypatch):
+    from app.v3.scan import demo as scan_demo
+
+    monkeypatch.setattr(scan_demo, "ASSETS", tmp_path)
+    app = make_app()
+    assert app.store.list_scans(HANBIT) == []
