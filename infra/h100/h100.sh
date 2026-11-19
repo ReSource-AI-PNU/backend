@@ -31,6 +31,7 @@ private_ip() { get "properties.properties.connectivityEndpoints.privateIpAddress
 
 ssh_cmd() {
   # 계산 인스턴스의 공용 SSH(50000)는 닿지 않아서 앱 VM을 거쳐 사설 주소로 들어간다(NSG AllowSshFromApp)
+  app true  # 앱 VM SSH 허용 주소를 먼저 맞춘다
   local port user
   port="$(get properties.properties.sshSettings.sshPort)"
   user="$(get properties.properties.sshSettings.adminUserName)"
@@ -39,7 +40,18 @@ ssh_cmd() {
     "$user@$(private_ip)")
 }
 
+# 앱 VM SSH는 관리자 공용 IP 하나에만 열려 있다. 이 컴퓨터의 공용 IP가 바뀌었으면 맞춘다(한 번만)
+app_ready=""
 app() {
+  if [ -z "$app_ready" ]; then
+    local mine rule
+    mine="$(curl -fsS -m 10 https://api.ipify.org)"
+    rule="$(az network nsg rule show -g "$RG" --nsg-name nsg-rsai-demo-app -n AllowSshFromAdmin --query sourceAddressPrefix -o tsv)"
+    if [ "$rule" != "$mine/32" ]; then
+      az network nsg rule update -g "$RG" --nsg-name nsg-rsai-demo-app -n AllowSshFromAdmin --source-address-prefixes "$mine/32" -o none
+    fi
+    app_ready=1
+  fi
   ssh -i "$APP_KEY" -o StrictHostKeyChecking=accept-new -o ConnectTimeout=15 -o BatchMode=yes "rsai@$APP_HOST" "$@"
 }
 
