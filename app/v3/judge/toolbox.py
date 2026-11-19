@@ -119,8 +119,12 @@ _SPECS = [
     ToolSpec(
         "optimize_assignment",
         6,
-        "폐기물을 업체나 현행 유지에 배정해 회사 측 월 순비용을 최소화한다.",
-        _schema({"streams": ARR, "vendors": ARR}, {"carbonWeight": NUM, "exclude": ARR}),
+        "폐기물을 업체나 현행 유지에 배정해 회사 측 월 순비용을 최소화한다. 탄소(처리 방식과 수거 운행)는 "
+        "배출권 시세로 환산해 함께 본다.",
+        _schema(
+            {"streams": ARR, "vendors": ARR},
+            {"carbonWeight": NUM, "exclude": ARR, "origin": POINT},
+        ),
         optimize_assignment,
     ),
 ]

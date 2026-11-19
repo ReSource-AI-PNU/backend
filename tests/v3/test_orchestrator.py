@@ -157,14 +157,21 @@ def test_result_sheet_assigns_every_stream(demo):
         totals["monthlyNow"]
     )
     # 탄소는 공식 배출계수(환경성적표지)로 낸다. 열분해는 그 표에 없어 문헌값(크레딧 전, 화학 원료 용도)을 쓴다
-    purge = by_stream["st_purge"]["carbon"]
+    purge = by_stream["st_purge"]["carbonProcess"]
     assert value(purge) < 0 and any("Petrik2025" in e for e in purge["evidence"])
     assert value(totals["carbon"]) == pytest.approx(
         sum(value(by_stream[s]["carbon"]) for s in ("st_sprue", "st_film", "st_defect", "st_purge"))
     )
-    assert value(by_stream["st_sprue"]["carbon"]) == pytest.approx(
+    # 탄소 변화 = 처리 방식 탄소 변화 + 수거 운행 배출(이 폐기물의 몫)
+    sprue_carbon = by_stream["st_sprue"]
+    assert value(sprue_carbon["carbonProcess"]) == pytest.approx(
         (0.0186 - 3.412554039) * 600 / 1000, abs=1e-6
     )
+    assert value(sprue_carbon["carbonTransport"]) > 0
+    assert value(sprue_carbon["carbon"]) == pytest.approx(
+        value(sprue_carbon["carbonProcess"]) + value(sprue_carbon["carbonTransport"]), abs=2e-6
+    )
+    assert sprue_carbon["permit"]["level"] == "document"
     # 순비용의 내역: 매각 수익(처리비면 음수) − 운반비 − 전처리 인건비
     assert sprue["transportPaidBy"] == "vendor" and value(sprue["transport"]) == 0
     assert value(sprue["revenue"]) == 320 * 600 and sprue["labor"] is None

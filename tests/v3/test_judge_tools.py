@@ -396,7 +396,12 @@ def test_kau_reference_feeds_cost_carbon_when_seeded():
     r = run(reg, "cost_carbon", stream=stream(), vendor=vendor(), origin=ORIGIN)
     value = claim(r, "kauValue")
     assert r["output"]["kau"] == "kauValue" and value["unit"] == "원/월"
-    assert value["value"] == pytest.approx(-claim(r, "carbonDifference")["value"] * kau.value)
+    # 환산액은 처리 방식 탄소 변화에 수거 운행 배출을 더한 값(carbonTotal)으로 낸다
+    total = claim(r, "carbonTotal")["value"]
+    moved = claim(r, "transportCarbon")["value"]
+    assert total == pytest.approx(claim(r, "carbonDifference")["value"] + moved)
+    assert moved > 0
+    assert value["value"] == pytest.approx(-total * kau.value)
     assert kau.id in value["evidence"] and not any(c["key"] == "kau" for c in r["checks"])
 
 

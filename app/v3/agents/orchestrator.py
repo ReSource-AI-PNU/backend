@@ -1393,10 +1393,11 @@ class Orchestrator:
                     or (thread.status == "confirmed" and not keeps)  # 확정한 대화에는 더하지 않는다
                 ):
                     exclude.append({"streamId": sid, "vendorOrgId": thread.vendor_org})
-        vendors = [self._public(session, profiles[t.vendor_org]) for t in live]
+        vendors = [self._assign_vendor(session, profiles[t.vendor_org]) for t in live]
         arguments: dict[str, Any] = {"streams": streams, "vendors": vendors}
         if exclude:
             arguments["exclude"] = exclude
+        self._with_origin(session, arguments)
         optimized = self._tool(
             session,
             "optimize_assignment",
@@ -1865,6 +1866,24 @@ class Orchestrator:
         self._send(session, thread, outcome, trace, stage=5)
 
     # ── ⑤⑥ 비용·탄소 비교와 최적안 ────────────────────────────────────
+    def _assign_vendor(self, session: dict[str, Any], profile: dict[str, Any]) -> dict[str, Any]:
+        """최적 배정에 넘기는 업체 프로필. 공공 허가 명부와 대조하도록 업체 이름을 더한다."""
+        shown = self._public(session, profile)
+        try:
+            name = org_label(self.store.get_org(str(profile.get("orgId"))).get("name"))
+        except NotFound:
+            return shown
+        return {**shown, "name": name} if name else shown
+
+    def _with_origin(self, session: dict[str, Any], arguments: dict[str, Any]) -> None:
+        """공장 좌표가 있으면 최적 배정에 넘긴다(수거 운행 배출을 계산한다)."""
+        try:
+            location = self.store.get_org(session["emitterOrgId"]).get("location")
+        except NotFound:
+            return
+        if location:
+            arguments["origin"] = list(location)
+
     def _public(self, session: dict[str, Any], profile: dict[str, Any]) -> dict[str, Any]:
         """판단 도구에 넘기는 업체 프로필. 이 진단에서 협상한 단가가 있으면 그 매입 기준의 단가와 근거를 바꾼다.
 
@@ -2038,7 +2057,7 @@ class Orchestrator:
             return False
 
         def optimize(threads: list[Thread]) -> tuple[dict[str, Any], dict[str, list[str]]]:
-            vendors = [self._public(session, profiles[t.vendor_org]) for t in threads]
+            vendors = [self._assign_vendor(session, profiles[t.vendor_org]) for t in threads]
             exclude = [
                 {"streamId": s["id"], "vendorOrgId": t.vendor_org}
                 for t in threads
@@ -2048,6 +2067,7 @@ class Orchestrator:
             arguments: dict[str, Any] = {"streams": streams, "vendors": vendors}
             if exclude:
                 arguments["exclude"] = exclude
+            self._with_origin(session, arguments)
             optimized = self._tool(
                 session,
                 "optimize_assignment",
@@ -2438,6 +2458,16 @@ class Orchestrator:
                 pickup = self._route_check(vendor_id, session["emitterOrgId"])
                 if pickup is not None:
                     checks.append(pickup)
+                permit = item.get("permit")
+                if permit:
+                    checks.append(
+                        {
+                            "key": "permit_level",
+                            "status": permit["status"],
+                            "text": permit["text"],
+                            "evidence": list(permit.get("evidence") or []),
+                        }
+                    )
             if vendor_id is None and sid in handed:
                 # 이 흐름을 맡기로 합의한 대화가 담당자에게 넘어갔다. 현행 유지를 "확정"으로 보이지 않게 한다
                 status = "needs_information"
@@ -2490,11 +2520,18 @@ class Orchestrator:
                     and now_claim
                     and float(other_after["value"]) <= float(now_claim["value"])
                 )
+                other_output = (other_cost or {}).get("output") or {}
                 alternatives.append(
                     {
                         "vendorOrgId": other_id,
                         "vendorName": names.get(other_id),
                         "route": (other_route or {}).get("output", {}).get("route"),
+                        # 이 업체에만 보낼 때의 탄소 변화(처리 방식 + 수거 운행). 거리가 먼 업체는 운행 배출이 크다
+                        "carbon": claim_in(
+                            other_cost,
+                            other_output.get("carbonTotal") or other_output.get("carbon"),
+                            f"{tag}_alt_{safe_id(other_id)}_carbon",
+                        ),
                         "unitPrice": {
                             **other["claim"],
                             "id": f"{tag}_alt_{safe_id(other_id)}_unitPrice",
@@ -2528,10 +2565,20 @@ class Orchestrator:
                 "labor": claim_in(optimized, item.get("labor"), f"{tag}_labor"),
                 "transportPaidBy": item.get("transportPaidBy"),
                 "reuse": reuse_view((work.get("reuse") or {}).get(sid), tag),
+                # 탄소 변화 = 처리 방식이 바뀌어 달라지는 배출 + 수거 운행 배출(같은 업체로 가는 폐기물끼리 나눈 몫)
                 "carbon": claim_in(optimized, item.get("carbon"), f"{tag}_carbon"),
-                "carbonValue": claim_in(
-                    cost, (cost or {}).get("output", {}).get("kau"), f"{tag}_carbonValue"
+                "carbonProcess": claim_in(
+                    optimized, item.get("carbonProcess"), f"{tag}_carbonProcess"
                 ),
+                "carbonTransport": claim_in(
+                    optimized, item.get("carbonTransport"), f"{tag}_carbonTransport"
+                ),
+                "transportKm": claim_in(optimized, item.get("transportKm"), f"{tag}_transportKm"),
+                # 배정과 같은 탄소(운행 몫 포함)로 환산한 값이 있으면 그것을, 없으면 업체 하나만 볼 때의 환산
+                "carbonValue": claim_in(optimized, item.get("carbonValue"), f"{tag}_carbonValue")
+                or claim_in(cost, (cost or {}).get("output", {}).get("kau"), f"{tag}_carbonValue"),
+                # 허가 근거의 수준(허가증·공공 명부 확인, 허가증 문서, 업체 입력, 공공 명부와 다름)
+                "permit": item.get("permit"),
                 "currentAssumed": bool(item.get("currentAssumed")),
                 "checks": checks,
                 "alternatives": alternatives,
@@ -2635,6 +2682,10 @@ class Orchestrator:
             "sensitivity": sensitivity,
             "referencePrices": reference,
             "carbonInObjective": bool(optimized["output"].get("carbonInObjective")),
+            # 탄소를 배정에 넣을 때 쓴 내부 탄소 가격(배출권 시세, 원/tCO2e)
+            "carbonPrice": claim_in(
+                optimized, optimized["output"].get("carbonPrice"), "carbonPrice"
+            ),
             "evidence": list(optimized.get("evidence") or []),
             # 가입하지 않은 업체 후보(배출 기업만 본다: 업체 뷰는 최상위 키를 싣지 않는다)
             "outsideVendors": work.get("outside"),

@@ -19,6 +19,7 @@ from app.v3.evidence import lexical, search
 from app.v3.evidence.registry import EvidenceForbidden, EvidenceNotFound
 from app.v3.evidence.validator import MIN_QUOTE_CHARS
 from app.v3.judge.common import Recorder, permit_match
+from app.v3.judge.permits import permit_level
 
 _SPLIT = re.compile(r"(?<=[.。다])\s+|\n+")
 QUOTE_MAX = 300  # 인용은 문장 하나, 길면 앞부분만(원문의 부분 문자열이라 검증기를 그대로 통과한다)
@@ -100,8 +101,12 @@ def requirements() -> tuple[dict[str, Any], ...]:
     return tuple(json.loads(REQUIREMENTS_FILE.read_text(encoding="utf-8")))
 
 
-def _permit_status(stream, vendors) -> tuple[str, str, list[str]]:
-    """허가 요건: 대화를 연 업체 가운데 허가 품목이 맞는 곳이 있는가."""
+def _permit_status(registry, stream, vendors) -> tuple[str, str, list[str]]:
+    """허가 요건: 대화를 연 업체 가운데 허가 품목이 맞는 곳이 있는가, 그 허가를 무엇으로 확인했는가.
+
+    허가 근거 수준(permits.permit_level)이 업체 입력뿐이거나 공공 명부와 다른 업체가 있으면 조건부다.
+    그 업체로 보내기 전에 허가증 사본이나 공공 명부로 확인해야 하기 때문이다.
+    """
     if not vendors:
         return (
             "conditional",
@@ -111,11 +116,29 @@ def _permit_status(stream, vendors) -> tuple[str, str, list[str]]:
     results = [(vendor, *permit_match(stream, vendor)) for vendor in vendors]
     matched = [r for r in results if r[1] is True]
     if matched:
-        evidence = [e for r in matched for e in r[2]]
-        names = [str(r[0]["name"]) for r in matched if r[0].get("name")]
-        if len(names) == len(matched):
-            return "met", f"허가 품목이 맞는 업체({', '.join(names)})와만 대화했습니다.", evidence
-        return "met", "허가 품목이 맞는 업체와만 대화했습니다.", evidence
+        levels = [(r[0], permit_level(registry, stream, r[0])) for r in matched]
+        evidence = list(dict.fromkeys(e for _, level in levels for e in level["evidence"]))
+        named = all(vendor.get("name") for vendor, _ in levels)
+        how = ", ".join(f"{vendor['name']}: {level['label']}" for vendor, level in levels)
+        head = (
+            f"허가 품목이 맞는 업체({', '.join(str(v['name']) for v, _ in levels)})와만 대화했습니다."
+            if named
+            else "허가 품목이 맞는 업체와만 대화했습니다."
+        )
+        weak = [(vendor, level) for vendor, level in levels if level["status"] != "met"]
+        if weak:
+            short = {"self": "업체 입력뿐", "mismatch": "공공 명부와 다름"}
+            who = ", ".join(
+                f"{v.get('name') or '업체'}({short.get(level['level'], level['label'])})"
+                for v, level in weak
+            )
+            note = (
+                f"{head} 다만 허가 근거가 약한 업체가 있습니다: {who}. 그 업체로 보내기 전에 "
+                "허가증 사본이나 공공 허가 명부로 확인해야 합니다."
+            )
+            return "conditional", note, evidence
+        tail = f" 허가 근거: {how}." if named else ""
+        return "met", head + tail, evidence
     if any(r[1] is None for r in results):
         return "needs_information", "업체 허가 품목이 올라와 있지 않아 확인하지 못했습니다.", []
     return "unmet", "허가 품목이 맞는 업체가 없습니다. 이 폐기물은 넘기지 않습니다.", []
@@ -155,7 +178,7 @@ def check_requirements(registry, *, org_id, today, stream, route, topics=None, v
             laws.append(law.id)
             cited.add(law.id)
         if req["decidedBy"] == "permit_match":
-            status, note, permit_evidence = _permit_status(stream, vendors)
+            status, note, permit_evidence = _permit_status(registry, stream, vendors)
             decided.append(status)
         else:
             status, note, permit_evidence = "conditional", "담당자가 확인할 일입니다.", []

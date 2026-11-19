@@ -171,6 +171,14 @@
       "label": "합의 전에 한 번 더 요청하는 단가 폭",
       "excerpt": "팀 가정값입니다. 회사 측 AI가 합의하기 전에 업체가 낸 단가보다 이만큼 나은 단가(매입이면 더 받고 처리비면 덜 내는 쪽)를 한 번 요청합니다. 업체 측 AI는 업체가 정한 단가 범위 안에서만 답합니다.",
       "internalNote": "⑥ 단가 협상(2026-11-19). 업체 가드레일 상한이 있으면 그 안에서 받아들이고, 없으면 처음 제안을 그대로 둔다."
+    },
+    {
+      "key": "emission.transport.truckPerKm",
+      "value": 0.5,
+      "unit": "kgCO2e/km",
+      "label": "수거 화물차 운행 배출계수 (경유, 3.5~7.5톤급)",
+      "excerpt": "팀 가정값이며 한국 공식 계수가 아닙니다. 영국 에너지안보·탄소중립부(DESNZ) 2024 온실가스 환산계수의 경유 화물차(3.5~7.5톤, 평균 적재) 값 0.487 kgCO2e/km를 참고해, 운행 배출을 작게 보이지 않도록 0.5로 올려 잡았습니다.",
+      "internalNote": "공식 표(gov.uk Conversion Factors 2024 flat file)는 열어 보지 못했고 Climatiq 사본의 0.48733 kgCO2e/km(HGV all diesel, Rigid >3.5-7.5t, Average laden)로 확인했다. 원문이나 한국 공식 계수를 확인하면 ref로 바꾼다."
     }
   ],
   "referenceNote": "reference.price.* 는 가격조사 참고 시세다. 업체 매입 단가가 아니므로 손익 계산에는 쓰지 않는다.",

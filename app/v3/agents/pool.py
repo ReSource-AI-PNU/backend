@@ -22,7 +22,15 @@ _UNSAFE = re.compile(r"[^A-Za-z0-9_]+")
 # 배출 기업의 현행 처리 단가에서 나온 값. 업체와 나누는 대화의 풀에는 넣지 않는다.
 # 배출 기업의 현행 처리(단가, 방법)에서 나온 값. 상대 조직에 인용하지 않는다. 탄소 변화와 그 환산액은
 # 현행 처리 방법(입력이 없으면 혼합 소각 가정)에 견준 값이라 여기에 든다
-PRIVATE_KEYS = ("currentUnitCost", "monthlyNow", "difference", "carbonDifference", "kauValue")
+PRIVATE_KEYS = (
+    "currentUnitCost",
+    "monthlyNow",
+    "difference",
+    "carbonDifference",
+    "kauValue",
+    "transportCarbon",
+    "carbonTotal",
+)
 CRITERION_FIELDS = (
     ("unitPrice", "unitPriceKrwPerKg", "원/kg", "단가"),
     ("minMonthlyKg", "minMonthlyKg", "kg/월", "최소 물량"),

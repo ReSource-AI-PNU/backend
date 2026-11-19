@@ -8,6 +8,8 @@ import math
 
 from app.v3.judge.common import (
     CARBON_FORMULA,
+    TOTAL_CARBON_FORMULA,
+    TRANSPORT_CARBON_FORMULA,
     Recorder,
     best_criterion,
     carbon_per_kg,
@@ -15,6 +17,7 @@ from app.v3.judge.common import (
     labor_cost,
     num,
     quality,
+    transport_carbon,
     transport_charge,
 )
 from app.v3.judge.route import baseline, current_cost
@@ -59,6 +62,8 @@ def cost_carbon(
         "vendorOrgId": vendor.get("orgId"),
         "transportAssumed": None,
         "carbon": None,
+        "transportCarbon": None,
+        "carbonTotal": None,
         "kau": None,
         "current": None,
     }
@@ -150,6 +155,25 @@ def cost_carbon(
 
     method = current_cost(rec, stream)[3]
     per_kg, carbon_ev, why = carbon_per_kg(rec, stream, vendor, price, method)
+    # 수거 운행 배출: 이 폐기물만 보낼 때 업체가 오가는 거리로 본다(최적 배정은 같은 업체로 가는 폐기물끼리 나눈다)
+    trip = transport_carbon(rec, vendor, origin, distance_provider, pickupsPerMonth)
+    moved = None
+    if trip["known"]:
+        moved = rec.number(
+            "transportCarbon",
+            trip["tco2e"],
+            "tCO2e/월",
+            TRANSPORT_CARBON_FORMULA,
+            [*trip["distanceEvidence"], trip["factor"]],
+            private=True,
+        )
+        output["transportCarbon"] = moved["id"]
+    else:
+        rec.check(
+            "transport_carbon",
+            "conditional",
+            f"{trip['reason']} 수거 운행 배출을 계산하지 못했습니다. 확인 필요.",
+        )
     # 탄소 변화와 그 환산액은 배출 기업의 현행 처리 방법에 견준 값이라 부른 조직만 본다
     if per_kg is None:
         rec.check("carbon", "conditional", why)
@@ -159,6 +183,16 @@ def cost_carbon(
             "carbonDifference", delta, "tCO2e/월", CARBON_FORMULA, carbon_ev, private=True
         )
         output["carbon"] = claim["id"]
+        if moved is not None:
+            delta += float(moved["value"])
+            output["carbonTotal"] = rec.number(
+                "carbonTotal",
+                delta,
+                "tCO2e/월",
+                TOTAL_CARBON_FORMULA,
+                [claim["evidence"][0], moved["evidence"][0]],
+                private=True,
+            )["id"]
         kau = rec.basis("kau.price")
         if kau is None:
             rec.check("kau", "conditional", "KAU 시세 근거가 없어 환산하지 않았습니다. 확인 필요.")
@@ -167,7 +201,7 @@ def cost_carbon(
                 "kauValue",
                 -delta * float(kau.value),
                 "원/월",
-                "감축량 × KAU 단가",
+                "감축량(수거 운행 포함) × KAU 단가" if moved is not None else "감축량 × KAU 단가",
                 [kau.id],
                 private=True,
             )["id"]
