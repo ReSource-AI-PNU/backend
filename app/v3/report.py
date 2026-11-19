@@ -8,6 +8,10 @@
 - 실적(records): 업체가 확정 뒤 기록한 실제 결과(feedback.outcomes) 가운데 이 배출 기업의 것, 검수일이 기간 안인 것.
   줄마다 실제 중량·단가·등급은 업체 기록 근거(doc 또는 human)이고, 금액(중량 × 단가)과 탄소 변화(중량 × (재활용 계수
   − 현행 처리 계수))는 calc 근거다. 현행 처리를 입력하지 않았으면 혼합 소각으로 본다(결과 한 장과 같은 가정).
+- 탄소 변화와 처리 방식은 검수를 기록할 때 남긴 계산 기준(feedback.carbon_basis: 현행 처리 방식, 업체 처리 공정,
+  배출계수 ID·판)으로만 계산한다. 나중에 흐름의 현행 처리나 업체 프로필을 고쳐도 지난 실적은 바뀌지 않는다.
+  다시 계산하려면 업체가 같은 검수를 다시 기록해 기준의 새 판을 만든다. 기준을 남기기 전에 기록된 검수는
+  탄소 변화를 내지 않고(지금 설정으로 채우지 않는다) carbonNote에 이유를 적는다.
 - 합계(totals): 실적만 더한다. 반출 무게, 매각 수익, 처리비, 탄소 변화(tCO2e. 줄었으면 음수).
 - 예상(planned): 양쪽이 확정한 합의의 한 달 예상(결과 한 장의 배정). 검수 기록 전에도 보이고, 화면에서 "예상"으로 구분한다.
 - 숫자는 모두 근거가 붙은 claim이다. 배출 기업만 보는 calc 근거로 남긴다.
@@ -22,12 +26,15 @@ from app.v3 import feedback, ids
 from app.v3.agents.pool import safe_id
 from app.v3.evidence.model import Evidence
 from app.v3.evidence.registry import EvidenceForbidden, EvidenceNotFound
-from app.v3.judge.common import Recorder, carbon_per_kg
 from app.v3.store import NotFound
 from app.v3.untrusted import org_label, stream_label
 
 _DATE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
-DEFAULT_METHOD = "혼합 소각"
+DEFAULT_METHOD = feedback.CURRENT_METHOD_ASSUMED
+NO_BASIS_NOTE = (
+    "검수 당시의 탄소 계산 기준이 남아 있지 않은 예전 기록이라 탄소 변화를 내지 않았습니다. "
+    "업체가 검수 결과를 다시 기록하면 그때 기준으로 계산합니다."
+)
 PROCESS_LABELS = {
     "재활용": "재활용",
     "열분해": "열분해(화학적 재활용)",
@@ -121,7 +128,6 @@ def build(app: Any, org_id: str, date_from: str | None, date_to: str | None) -> 
         if value is not None and not _DATE.match(value):
             raise ValueError("기간은 YYYY-MM-DD로 보내 주세요.")
     registry, store, today = app.registry, app.store, app.today
-    rec = Recorder("outcome_report", registry, org_id, today, {})  # 배출계수 찾기에만 쓴다
     writer = _ReadThrough(registry, org_id)
     names: dict[str, str] = {}
 
@@ -148,10 +154,7 @@ def build(app: Any, org_id: str, date_from: str | None, date_to: str | None) -> 
             stream = store.get_stream(record["streamId"], org_id)
         except NotFound:
             continue
-        try:
-            profile = store.get_vendor_profile(record["vendorOrgId"])
-        except NotFound:
-            profile = {}
+        basis = feedback.carbon_basis(app, record)
         parts = record.get("evidence") or {}
         kg = _claim(parts.get("kg"), registry, org_id, f"{tag}_kg", "실제 중량")
         price = _claim(parts.get("unitPrice"), registry, org_id, f"{tag}_unitPrice", "실제 단가")
@@ -170,24 +173,27 @@ def build(app: Any, org_id: str, date_from: str | None, date_to: str | None) -> 
                 today,
             )
             (sums["revenue"] if price["value"] >= 0 else sums["fee"]).append(amount)
-        method = (stream.get("currentTreatment") or {}).get("method") or DEFAULT_METHOD
+        method = basis["currentMethod"] if basis else None
+        note = None if basis else NO_BASIS_NOTE
         if kg:
-            per_kg, factors, _ = carbon_per_kg(
-                rec, stream, profile, price["value"] if price else None, method
-            )
+            per_kg = basis["perKg"] if basis else None
             if per_kg is not None:
+                factors = [f["id"] for f in basis["factors"]]
                 carbon = _calc(
                     writer,
                     org_id,
                     f"{tag}_carbon",
                     per_kg * kg["value"],
                     "tCO2e",
-                    f"실제 중량 × (보낸 곳 처리 계수 − 현행 처리({method}) 계수)",
-                    [*factors, *kg["evidence"]],
+                    f"실제 중량 × (보낸 곳 처리 계수 − 현행 처리({method}) 계수), "
+                    f"검수 기록 당시({basis['capturedOn']}) 기준",
+                    [basis["evidenceId"], *factors, *kg["evidence"]],
                     f"{label} 검수 {record['inspectedOn']} 탄소 변화 계산",
                     today,
                 )
                 sums["carbon"].append(carbon)
+            elif basis:
+                note = basis.get("reason")
             sums["kg"].append(kg)
         records.append(
             {
@@ -198,16 +204,27 @@ def build(app: Any, org_id: str, date_from: str | None, date_to: str | None) -> 
                 "streamName": stream.get("name"),
                 "vendorOrgId": record["vendorOrgId"],
                 "vendorName": name_of(record["vendorOrgId"]),
+                # 검수 기록 당시 업체의 처리 공정(기준이 없는 예전 기록은 null)
                 "process": PROCESS_LABELS.get(
-                    str(profile.get("process") or ""), profile.get("process")
+                    str((basis or {}).get("vendorProcess") or ""),
+                    (basis or {}).get("vendorProcess"),
                 ),
                 "grade": record.get("actualGrade"),
                 "kg": kg,
                 "unitPrice": price,
                 "amount": amount,
                 "carbon": carbon,
+                "carbonNote": note,
                 "currentMethod": method,
-                "currentMethodAssumed": not (stream.get("currentTreatment") or {}).get("method"),
+                "currentMethodAssumed": bool(basis and basis["currentMethodAssumed"]),
+                "carbonBasis": {
+                    "capturedOn": basis["capturedOn"],
+                    "version": basis["version"],
+                    "evidenceId": basis["evidenceId"],
+                    "factors": [{"id": f["id"], "version": f["version"]} for f in basis["factors"]],
+                }
+                if basis
+                else None,
             }
         )
 

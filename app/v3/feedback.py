@@ -11,6 +11,11 @@
 
 여기서 만드는 숫자는 실제 단가와 기준표 단가의 차이 하나뿐이고, calc 근거로 남긴다.
 평균을 내거나 기준값을 자동으로 바꾸지 않는다. 모델 버전 표는 등록된 실행만 보여 준다.
+
+기록마다 출처(dataOrigin)를 남긴다. 당사자 조직 가운데 하나라도 시연(가상) 회사면 demo, 모두 실제 회사면
+real이다(기록할 때 정한다). demo 기록은 시연 데이터 수집을 보이는 데에만 쓰고, 실제 학습 행·검증·배포
+게이트·기준값 보정 후보에는 넣지 않는다. 출처 표시가 생기기 전의 기록은 당사자 조직으로 다시 정하고, 조직을
+찾지 못하면 unknown으로 두어 실제로 세지 않는다.
 """
 
 from __future__ import annotations
@@ -23,7 +28,8 @@ from typing import Any
 from app.v3 import ids
 from app.v3.evidence.model import Evidence
 from app.v3.intake import grade_model
-from app.v3.judge.common import quality
+from app.v3.judge.common import Recorder, carbon_per_kg, quality
+from app.v3.store import NotFound
 from app.v3.textutil import josa
 
 DETECTOR_MODEL = "resource-ai-detector"
@@ -44,6 +50,8 @@ RETRAIN_MODELS = (grade_model.MODEL_NAME, DETECTOR_MODEL)
 CALIBRATION_NOTE = (
     "건별 목록입니다. 평균을 내지 않고, 적은 표본으로 기준값을 자동으로 바꾸지 않습니다."
 )
+CURRENT_METHOD_ASSUMED = "혼합 소각"  # 현행 처리 방식을 적지 않았을 때(결과 한 장과 같은 가정)
+DEMO_NOTE = "시연(가상) 회사 사이의 기록입니다. 실제 학습·검증·배포 게이트에는 세지 않습니다."
 _DATE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 _MISSING = object()
 
@@ -75,6 +83,36 @@ def _show(value: Any) -> str:
 def _note(body: dict[str, Any]) -> str:
     note = body.get("note")
     return note.strip() if isinstance(note, str) else ""
+
+
+def _demo_org(app: Any, org_id: str) -> bool | None:
+    """시연(가상) 회사인지. 조직을 찾지 못하면 None."""
+    try:
+        org = app.store.get_org(org_id)
+    except NotFound:
+        return None
+    return org.get("demo") is True or org.get("synthetic") is True
+
+
+def data_origin(app: Any, *org_ids: str | None) -> str:
+    """기록 당사자 조직으로 정한 출처: demo(하나라도 시연 회사) | real(모두 실제 회사) | unknown."""
+    flags = [_demo_org(app, org_id) for org_id in org_ids if org_id]
+    if any(flag is True for flag in flags):
+        return "demo"
+    if not flags or any(flag is None for flag in flags):
+        return "unknown"
+    return "real"
+
+
+def _with_origin(app: Any, record: dict[str, Any]) -> dict[str, Any]:
+    """기록에 남은 출처. 출처 표시가 생기기 전의 기록은 당사자 조직으로 정한다(값은 바꾸지 않는다)."""
+    if record.get("dataOrigin") in ("real", "demo"):
+        return record
+    if record.get("type") == "outcome":
+        parties = (record.get("vendorOrgId"), record.get("emitterOrgId"))
+    else:
+        parties = (record.get("orgId"),)
+    return {**record, "dataOrigin": data_origin(app, *parties)}
 
 
 def _feedback(app: Any, kind: str) -> list[Evidence]:
@@ -159,6 +197,7 @@ def record_correction(
         "target": "detector" if field in DETECTOR_FIELDS else "grade",
         "photoEvidence": photo,
         "recordedOn": app.today,
+        "dataOrigin": data_origin(app, org_id),
     }
     scalar = isinstance(after, (str, float))
     app.registry.put(
@@ -191,16 +230,26 @@ def record_correction(
     return record
 
 
-def corrections(app: Any, session_id: str | None = None) -> list[dict[str, Any]]:
-    found = [dict(item.meta["feedback"]) for item in _feedback(app, "correction")]
-    return [r for r in found if session_id is None or r["sessionId"] == session_id]
+def corrections(
+    app: Any, session_id: str | None = None, origin: str | None = None
+) -> list[dict[str, Any]]:
+    """교정 기록. origin을 주면 그 출처(real | demo)의 것만."""
+    found = [
+        _with_origin(app, dict(item.meta["feedback"])) for item in _feedback(app, "correction")
+    ]
+    return [
+        r
+        for r in found
+        if (session_id is None or r["sessionId"] == session_id)
+        and (origin is None or r["dataOrigin"] == origin)
+    ]
 
 
-def export_detection_corrections(app: Any) -> list[dict[str, Any]]:
+def export_detection_corrections(app: Any, origin: str = "real") -> list[dict[str, Any]]:
     """탐지 모델 재학습 데이터 후보. 박스·재질·출처·형태·혼입물을 사람이 고친 기록이다.
 
     사진 근거 ID(photoEvidence)로 원본 이미지를 찾는다. 사진이 없는 흐름의 교정도 그대로 싣고
-    hasPhoto로 표시한다(학습 작업이 걸러 쓴다).
+    hasPhoto로 표시한다(학습 작업이 걸러 쓴다). 기본은 실제 회사의 교정만이고, origin="demo"면 시연 교정이다.
     """
     return [
         {
@@ -214,8 +263,9 @@ def export_detection_corrections(app: Any) -> list[dict[str, Any]]:
             "hasPhoto": bool(record["photoEvidence"]),
             "recordedOn": record["recordedOn"],
             "note": record["note"],
+            "dataOrigin": record["dataOrigin"],
         }
-        for record in corrections(app)
+        for record in corrections(app, origin=origin)
         if record["target"] == "detector"
     ]
 
@@ -238,6 +288,91 @@ def _agreed(session: dict[str, Any], thread_id: str, stream_id: str) -> dict[str
         table = next((c for c in result.get("claims") or [] if c["id"] == "unitPrice"), None)
     offer = ((work.get("offers") or {}).get(thread_id) or {}).get(stream_id) or {}
     return {"table": table, "criterionId": criterion_id, "offer": offer.get("claim")}
+
+
+def carbon_basis_id(record: dict[str, Any]) -> str:
+    """검수 기록 하나의 탄소 계산 기준 근거 ID. 같은 흐름·검수일로 다시 기록하면 같은 ID의 새 판이 된다."""
+    inputs = {"outcome": record["id"], "emitter": record["emitterOrgId"]}
+    return ids.calc_id("outcome_carbon_basis", inputs, "carbonBasis")
+
+
+def _carbon_basis(
+    app: Any, record: dict[str, Any], stream: dict[str, Any], unit_price: float | None
+) -> Evidence:
+    """검수를 기록할 때의 탄소 계산 기준(스냅샷)을 배출 기업만 보는 calc 근거로 남긴다.
+
+    현행 처리 방식, 업체 처리 공정, 폐기물 품목, 쓴 배출계수의 ID·판·값을 담는다. 실적 리포트는 이 기준만
+    쓰고 지금의 흐름·업체 설정을 다시 읽지 않는다. 현행 처리 방식은 배출 기업만의 값이라 업체와 나누는
+    검수 기록(meta.feedback)에는 싣지 않는다.
+    """
+    vendor, emitter = record["vendorOrgId"], record["emitterOrgId"]
+    try:
+        profile = app.store.get_vendor_profile(vendor)
+    except NotFound:
+        profile = {}
+    current = stream.get("currentTreatment") or {}
+    method = current.get("method") or CURRENT_METHOD_ASSUMED
+    rec = Recorder("outcome_carbon_basis", app.registry, emitter, app.today, {})
+    per_kg, factor_ids, reason = carbon_per_kg(rec, stream, profile, unit_price, method)
+    factors = []
+    for evidence_id in factor_ids:
+        found = app.registry.get(evidence_id)
+        factors.append(
+            {
+                "id": found.id,
+                "version": found.version,
+                "value": found.value,
+                "unit": found.unit,
+                "asOf": found.as_of,
+            }
+        )
+    basis = {
+        "outcomeId": record["id"],
+        "capturedOn": app.today,
+        "wasteItem": stream.get("wasteItem"),
+        "currentMethod": method,
+        "currentMethodAssumed": not current.get("method"),
+        "vendorProcess": profile.get("process"),
+        "unitPrice": unit_price,
+        "perKg": per_kg,
+        "reason": reason,
+        "factors": factors,
+    }
+    used = ", ".join(f"{f['id']}(판 {f['version']})" for f in factors) or "없음"
+    name = stream.get("name") or stream["id"]
+    return app.registry.put(
+        Evidence(
+            id=carbon_basis_id(record),
+            kind="calc",
+            label=f"{name} 검수 {record['inspectedOn']} 탄소 계산 기준",
+            value=per_kg,
+            unit="tCO2e/kg" if per_kg is not None else None,
+            excerpt=(
+                f"검수 기록 당시({app.today}) 기준: 현행 처리 {method}, "
+                f"업체 처리 공정 {profile.get('process') or '미확인'}, 배출계수 {used}"
+            ),
+            source="검수 기록 당시의 탄소 계산 기준",
+            as_of=app.today,
+            access=(emitter,),
+            meta={
+                "tool": "outcome_carbon_basis",
+                "formula": "보낸 곳 처리 계수 − 현행 처리 계수(tCO2e/kg)",
+                "inputEvidence": list(factor_ids),
+                "ownerOrgId": emitter,
+                "carbonBasis": basis,
+            },
+        )
+    )
+
+
+def carbon_basis(app: Any, record: dict[str, Any]) -> dict[str, Any] | None:
+    """검수 기록에 남은 탄소 계산 기준. 기준을 남기기 전에 기록된 검수면 None(지금 설정으로 채우지 않는다)."""
+    try:
+        found = app.registry.get(carbon_basis_id(record))
+    except KeyError:
+        return None
+    basis = found.meta.get("carbonBasis")
+    return {**basis, "evidenceId": found.id, "version": found.version} if basis else None
 
 
 def record_outcome(
@@ -317,6 +452,7 @@ def record_outcome(
         "offeredPrice": agreed["offer"],
         "deviation": None,
         "recordedOn": app.today,
+        "dataOrigin": data_origin(app, vendor, emitter),
     }
     source = (
         f"검수 문서 {document}(업체 제출)" if document else "업체 담당자 입력(확정 뒤 실제 결과)"
@@ -376,6 +512,8 @@ def record_outcome(
         put("unitPrice", "실제 단가", float(price), "원/kg", f"실제 단가 kg당 {float(price):g}원")
     if kg is not None:
         put("kg", "실제 중량", float(kg), "kg", f"실제 중량 {float(kg):g}kg")
+    # 탄소 계산 기준은 검수를 기록하는 지금의 설정으로 남긴다(실적 리포트가 나중 설정으로 다시 계산하지 않게)
+    _carbon_basis(app, record, stream, _number(price))
     app.store.add_event(
         session["id"],
         "system",
@@ -392,27 +530,34 @@ def record_outcome(
     return record
 
 
-def outcomes(app: Any, session_id: str | None = None) -> list[dict[str, Any]]:
-    """실제 결과 기록(검수 한 건에 하나). 등급·단가·중량 근거에 같은 기록이 실려 있어 하나로 묶는다."""
+def outcomes(
+    app: Any, session_id: str | None = None, origin: str | None = None
+) -> list[dict[str, Any]]:
+    """실제 결과 기록(검수 한 건에 하나). 등급·단가·중량 근거에 같은 기록이 실려 있어 하나로 묶는다.
+
+    origin을 주면 그 출처(real | demo)의 것만.
+    """
     found: dict[str, dict[str, Any]] = {}
     for item in _feedback(app, "outcome"):
         record = {k: v for k, v in item.meta["feedback"].items() if k != "part"}
-        found[f"{record['vendorOrgId']}|{record['id']}"] = record
+        found[f"{record['vendorOrgId']}|{record['id']}"] = _with_origin(app, record)
     return [
         record
         for _, record in sorted(found.items())
-        if session_id is None or record["sessionId"] == session_id
+        if (session_id is None or record["sessionId"] == session_id)
+        and (origin is None or record["dataOrigin"] == origin)
     ]
 
 
-def export_grade_labels(app: Any) -> list[dict[str, Any]]:
+def export_grade_labels(app: Any, origin: str = "real") -> list[dict[str, Any]]:
     """등급 모델 학습 행. 실제 등급이 있고 재질·오염도·수분이 모두 있는 기록만 행이 된다.
 
-    합성 데이터(make_synthetic_dataset)와 같은 열 이름을 쓰고 synthetic은 항상 False다.
+    합성 데이터(make_synthetic_dataset)와 같은 열 이름을 쓴다. 기본은 실제 회사의 기록(synthetic=False)만이고,
+    origin="demo"면 시연(가상) 회사의 기록을 synthetic=True, data_origin="demo"로 낸다(학습에 쓰지 않는다).
     """
     version = grade_model.thresholds()["version"]
     rows = []
-    for record in outcomes(app):
+    for record in outcomes(app, origin=origin):
         features = record["features"]
         if record["actualGrade"] is None or not features.get("material"):
             continue
@@ -424,7 +569,8 @@ def export_grade_labels(app: Any) -> list[dict[str, Any]]:
                 "contamination_pct": features["contaminationPct"],
                 "moisture_pct": features["moisturePct"],
                 "grade": record["actualGrade"],
-                "synthetic": False,
+                "synthetic": origin != "real",
+                "data_origin": origin,
                 "thresholds_version": version,
                 "quality_basis": features.get("basis"),
                 "source": record["evidence"]["grade"],
@@ -448,6 +594,8 @@ def gate_status(app: Any) -> dict[str, Any]:
     return {
         **gate,
         "realLabelCount": len(rows),
+        # 시연(가상) 회사 사이의 등급 행. 게이트 판정과 평가에는 넣지 않고 따로 센다
+        "demoLabelCount": len(export_grade_labels(app, "demo")),
         "evaluated": {
             "model": f"등급 기준값 규칙 {grade_model.thresholds()['version']}",
             "n": metrics["n"],
@@ -460,10 +608,10 @@ def gate_status(app: Any) -> dict[str, Any]:
 def calibration_candidates(app: Any, viewer: str | None = None) -> dict[str, Any]:
     """기준값 보정 후보. 실제 단가와 매입 기준표 단가의 차이를 흐름·업체별로 건별로 늘어놓는다.
 
-    viewer를 주면 그 조직이 당사자인 기록만 준다(None이면 전부).
+    viewer를 주면 그 조직이 당사자인 기록만 준다(None이면 전부). 실제 회사의 기록만 쓴다(시연 기록은 보정 후보가 아니다).
     """
     groups: dict[tuple[str, str], dict[str, Any]] = {}
-    for record in outcomes(app):
+    for record in outcomes(app, origin="real"):
         if record["deviation"] is None:
             continue
         if viewer is not None and viewer not in (record["vendorOrgId"], record["emitterOrgId"]):
@@ -571,10 +719,10 @@ def model_versions(app: Any) -> list[dict[str, Any]]:
 
 def retrain_table(app: Any, viewer: str | None = None) -> dict[str, Any]:
     """관리자 화면의 재학습 표. 건수는 전체, 건별 목록은 viewer가 당사자인 것만 싣는다."""
-    recorded = outcomes(app)
+    recorded = outcomes(app, origin="real")
     labelled = [r for r in recorded if r["actualGrade"] is not None]
     usable = export_grade_labels(app)
-    fixed = corrections(app)
+    fixed = corrections(app, origin="real")
     by_field = {field: 0 for field in CORRECTION_FIELDS}
     for record in fixed:
         by_field[record["field"]] += 1
@@ -594,4 +742,11 @@ def retrain_table(app: Any, viewer: str | None = None) -> dict[str, Any]:
         "gate": gate_status(app),
         "calibration": calibration_candidates(app, viewer),
         "modelVersions": model_versions(app),
+        # 시연(가상) 회사 사이에서 쌓인 기록. 수집 과정을 보이려고 세기만 하고 위 표와 게이트에는 넣지 않는다
+        "demo": {
+            "outcomes": len(outcomes(app, origin="demo")),
+            "gradeLabels": len(export_grade_labels(app, "demo")),
+            "corrections": len(corrections(app, origin="demo")),
+            "note": DEMO_NOTE,
+        },
     }

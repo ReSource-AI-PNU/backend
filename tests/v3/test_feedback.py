@@ -32,9 +32,18 @@ def fails(code, status, call, *args):
     return error.value
 
 
+def as_real(app):
+    """시연 회사를 실제 회사로 둔다. 시연(가상) 회사 사이의 기록은 실제 학습·게이트에 세지 않으므로
+    (test_feedback_origin.py) 실제 기록 경로는 이렇게 시험한다."""
+    for org in app.store.list_orgs():
+        if org["role"] != "admin":
+            app.store.put_org({**org, "synthetic": False, "demo": False})
+    return app
+
+
 @pytest.fixture
 def confirmed():
-    app = make_app()
+    app = as_real(make_app())
     view = approve_all(app, to_approval(app))
     assert view["session"]["status"] == "confirmed"
     return app, view
@@ -171,6 +180,7 @@ def test_outcome_is_shared_with_the_emitter_and_feeds_grade_labels(confirmed):
             "moisture_pct": 0.3,
             "grade": "A",
             "synthetic": False,
+            "data_origin": "real",
             "thresholds_version": grade_model.thresholds()["version"],
             "quality_basis": "measured",
             "source": record["evidence"]["grade"],
@@ -323,7 +333,7 @@ def test_model_runs_and_export_are_admin_only(confirmed):
 
 
 def test_devserver_routes_for_feedback():
-    app = make_app()
+    app = as_real(make_app())
     view = approve_all(app, to_approval(app))
     server = devserver.make_server(app, port=0)
     worker = threading.Thread(target=server.serve_forever, daemon=True)

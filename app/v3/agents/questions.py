@@ -171,7 +171,9 @@ def known(stream: dict[str, Any], field: str) -> bool:
     if field == "lotSame":
         return False
     if field == "currentCost":
-        return current_cost.signed_cost(stream.get("currentTreatment")) is not None
+        # 계약을 받았는데 월 발생량이 없어 kg당으로 못 바꾼 경우도 답은 받은 것이다(월 발생량을 물으면 된다)
+        current = stream.get("currentTreatment") or {}
+        return current_cost.signed_cost(current) is not None or bool(current.get("billing"))
     return stream.get(field) is not None
 
 
@@ -305,6 +307,8 @@ def apply_answer(
             stream["monthlyKg"] = float(value)
             stream["monthlyKgBasis"] = "estimated"
             stream["monthlyKgEvidence"] = [evidence.id]
+            # 계약(월 정액·회당)으로 받은 현행 처리비는 새 월 발생량으로 kg당 환산을 다시 한다
+            current_cost.refresh(registry, stream, today)
         if field == "currentCost":
             # 처리 방법은 묻지 않았다. 자료 화면에서 넣기 전까지는 혼합 소각으로 본다
             current = dict(stream.get("currentTreatment") or {})

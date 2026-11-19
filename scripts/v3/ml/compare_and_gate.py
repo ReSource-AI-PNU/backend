@@ -63,7 +63,10 @@ def load_rows(path: Path) -> list[dict[str, Any]]:
 
 
 def is_synthetic(row: dict[str, Any]) -> bool:
-    return str(row.get("synthetic")).strip().lower() == "true"
+    """합성 행이거나 시연(가상) 회사의 행(data_origin이 real이 아님). 실제 등급 행이 아니다."""
+    if str(row.get("synthetic")).strip().lower() == "true":
+        return True
+    return row.get("data_origin") not in (None, "", "real")
 
 
 def merge_rows(synthetic: list[dict[str, Any]], real: list[dict[str, Any]]) -> list[dict[str, Any]]:

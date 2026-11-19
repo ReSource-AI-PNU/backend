@@ -31,6 +31,9 @@ def current_cost(rec: Recorder, stream: dict):
         else:
             method = current.get("method") or "현행"
         return cost, list(current.get("evidence") or []), False, method
+    if current.get("billing"):
+        # 계약(월 정액·회당)은 받았는데 월 발생량이 없어 kg당으로 못 바꿨다. 혼합 소각 가정값으로 바꾸지 않는다
+        return None, list(current.get("evidence") or []), False, current.get("method") or "현행"
     assumed = rec.basis(f"current.cost.{stream.get('wasteItem')}")
     if assumed is None:
         return None, [], True, "혼합 소각"
@@ -49,9 +52,13 @@ def baseline(rec: Recorder, stream: dict, kg: float, after: float | None, prefix
     cost, cost_ev, assumed, method = current_cost(rec, stream)
     info = {"method": method, "assumed": assumed, "sensitivity": []}
     if cost is None:
-        rec.check(
-            "current_cost", "conditional", "현행 처리 단가가 없어 현행 대비를 내지 못했습니다."
-        )
+        if (stream.get("currentTreatment") or {}).get("billing"):
+            text = (
+                "월 발생량을 몰라 계약 처리비를 kg당으로 바꾸지 못해 현행 대비를 내지 못했습니다."
+            )
+        else:
+            text = "현행 처리 단가가 없어 현행 대비를 내지 못했습니다."
+        rec.check("current_cost", "conditional", text, None, cost_ev)
         return info, None
     # 현행 처리 단가와 거기서 나온 값은 상대 업체에 열지 않는다
     if current_costs.is_sale(stream.get("currentTreatment")):

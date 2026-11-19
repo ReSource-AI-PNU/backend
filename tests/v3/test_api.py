@@ -294,7 +294,9 @@ def test_feedback_routes(client):
     assert_error(client.get("/api/v3/admin/retrain/export", headers=org(EMITTER)), 403)
     assert_error(client.post("/api/v3/admin/retrain/runs", headers=org(EMITTER), json={}), 403)
     status = client.get("/api/v3/admin/status", headers=org(ADMIN)).json()
-    assert status["retrain"]["corrections"]["count"] == 1
+    # 시연 회사 사이의 교정이라 실제 건수가 아니라 시연 기록으로 센다(test_feedback_origin.py)
+    retrain = status["retrain"]
+    assert retrain["corrections"]["count"] == 0 and retrain["demo"]["corrections"] == 1
     assert status["retrain"]["modelVersions"] == []
 
 

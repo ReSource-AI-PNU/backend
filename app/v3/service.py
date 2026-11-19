@@ -618,6 +618,9 @@ def update_stream(
                 if evidence in old
                 else str(patch.get("monthlyKgBasis") or "estimated"),
             )
+        if "currentTreatment" not in patch:
+            # 계약(월 정액·회당)으로 받은 현행 처리비는 새 월 발생량으로 kg당 환산을 다시 한다
+            current_cost.refresh(app.registry, stream, app.today)
     if "currentTreatment" in patch:
         current = patch["currentTreatment"]
         if current is None:
@@ -1190,7 +1193,9 @@ def _stream_view(
         sale = bool(current.get("sale"))
         price = _claim(pool, facts.get("currentUnitPrice")) if sale else None
         cost = None if sale else _claim(pool, facts.get("currentUnitCost"))
-        assumed = cost is None and price is None
+        # 계약은 받았지만 월 발생량이 없어 kg당 환산이 비었다: 가정값이 아니라 계약을 그대로 보인다
+        pending = not sale and bool(current.get("billing"))
+        assumed = cost is None and price is None and not pending
         if assumed:
             found = basis.resolve(app.registry, viewer, f"current.cost.{stream.get('wasteItem')}")
             if found is not None:
@@ -2072,12 +2077,21 @@ def record_outcome(app: App, session_id: str, body: dict[str, Any], viewer: str)
 
 
 def export_retraining(app: App, viewer: str) -> dict[str, Any]:
-    """재학습 작업이 가져갈 행. 여러 조직의 기록이 섞여 있어 관리자만 받는다."""
+    """재학습 작업이 가져갈 행. 여러 조직의 기록이 섞여 있어 관리자만 받는다.
+
+    gradeLabels·detectionCorrections는 실제 회사의 기록만이다(재학습 작업은 이 둘만 읽는다). 시연(가상) 회사
+    사이의 기록은 demo에 따로 싣고 synthetic=True, data_origin="demo"로 표시한다.
+    """
     _admin(app, viewer)
     return {
         "gradeLabels": feedback.export_grade_labels(app),
         "detectionCorrections": feedback.export_detection_corrections(app),
         "gate": feedback.gate_status(app),
+        "demo": {
+            "gradeLabels": feedback.export_grade_labels(app, "demo"),
+            "detectionCorrections": feedback.export_detection_corrections(app, "demo"),
+            "note": feedback.DEMO_NOTE,
+        },
     }
 
 
@@ -2158,6 +2172,7 @@ def upload_csv(app: App, org_id: str, filename: str, data: bytes, viewer: str) -
                 monthlyKgBasis="measured",
                 monthlyKgEvidence=[ids.measure_id(org_id, sid, "월발생량", row["measuredOn"])],
             )
+            current_cost.refresh(app.registry, stream, app.today)
         for key in ("origin", "form", "lot"):
             if row.get(key) and not stream.get(key):
                 stream[key] = row[key]

@@ -179,7 +179,7 @@ def to_treatment(
     monthly = monthly_krw(billing)
     said = registry.put(
         Evidence(
-            id=ids.human_id(org_id, f"{sid}-현행처리비-계약"),
+            id=_said_id(stream),
             kind="human",
             label=f"{name} 현행 처리비({describe(billing)})",
             value=monthly,
@@ -191,6 +191,26 @@ def to_treatment(
             meta={"ownerOrgId": org_id, "streamId": sid, "billing": billing},
         )
     )
+    return _per_kg(registry, stream, billing, said, today, method)
+
+
+def _said_id(stream: dict[str, Any]) -> str:
+    return ids.human_id(stream["orgId"], f"{stream['id']}-현행처리비-계약")
+
+
+def _per_kg(
+    registry: Any,
+    stream: dict[str, Any],
+    billing: dict[str, Any],
+    said: Evidence,
+    today: str,
+    method: str | None,
+) -> dict[str, Any]:
+    """담당자가 적은 계약 금액(said)을 지금 월 발생량으로 나눈 kg당 처리비와 그 calc 근거."""
+    kg = stream["monthlyKg"]
+    org_id, sid = stream["orgId"], stream["id"]
+    name = stream.get("name") or sid
+    monthly = monthly_krw(billing)
     kg_evidence = list(stream.get("monthlyKgEvidence") or [])
     per_kg = round(monthly / float(kg), 1)
     formula = f"월 처리비 {monthly:,.0f}원 ÷ 월 발생량 {float(kg):,.0f}kg"
@@ -220,3 +240,49 @@ def to_treatment(
         "billing": billing,
         "evidence": [calc.id, said.id, *kg_evidence],
     }
+
+
+def _usable_kg(value: Any) -> bool:
+    return isinstance(value, (int, float)) and not isinstance(value, bool) and value > 0
+
+
+def refresh(registry: Any, stream: dict[str, Any], today: str) -> None:
+    """월 발생량이 바뀐 뒤 계약(billing)으로 받은 현행 처리비의 kg당 환산을 다시 한다. stream을 고친다.
+
+    계약 원본이 기준이다. 월 정액은 그대로 두고 새 월 발생량으로 나누며, 회당 계약은 적어 둔 회당 금액 × 월 횟수를
+    나눈다(횟수는 담당자가 고치기 전까지 그대로 본다). 담당자가 적은 계약 근거(human)는 처음 등록한 그대로 쓰고,
+    환산 calc 근거만 새 월 발생량 근거로 다시 만든다.
+
+    월 발생량이 없거나 0이면 kg당으로 바꾸지 못한다. 예전 물량으로 낸 kg당 값을 새 물량에 곱하지 않도록 환산
+    단가를 비우고(unitCostKrwPerKg None), 계약과 계약 근거만 남긴다. 그때 현행 대비는 내지 않는다(judge/route).
+    """
+    current = stream.get("currentTreatment")
+    if not isinstance(current, dict) or is_sale(current) or not current.get("billing"):
+        return
+    billing = check(current["billing"])
+    keep = {k: current[k] for k in ("methodAssumed",) if k in current}
+    try:
+        said = registry.get(_said_id(stream), stream["orgId"])
+    except KeyError:  # 계약 근거가 없는 예전 기록: 계약 원본으로 다시 등록한다
+        said = None
+    if not _usable_kg(stream.get("monthlyKg")):
+        stream["currentTreatment"] = {
+            **current,
+            "billing": billing,
+            "unitCostKrwPerKg": None,
+            "evidence": [said.id] if said is not None else [],
+        }
+    elif said is None:
+        treatment = to_treatment(
+            registry, stream, billing, today, method=current.get("method"), source="자료 화면 입력"
+        )
+        stream["currentTreatment"] = {**treatment, **keep}
+    else:
+        treatment = _per_kg(registry, stream, billing, said, today, current.get("method"))
+        stream["currentTreatment"] = {**treatment, **keep}
+    answers = stream.get("answers")
+    if isinstance(answers, dict) and answers.get("currentCost") is not None:
+        stream["answers"] = {
+            **answers,
+            "currentCost": stream["currentTreatment"]["unitCostKrwPerKg"],
+        }
