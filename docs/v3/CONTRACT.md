@@ -550,6 +550,10 @@ VendorProfile {"orgId": "org_saegil",
 | `GET /evidence?q=&kind=` | 근거 검색 `[{evidence, score}]`. 로컬 순위는 보는 조직이 열 수 있는 근거만으로 만든 BM25F 색인(근거 이름·원문·출처·ID 필드 가중, 조사 떼기·한글 2-gram·조 번호, 분야 동의어 `evidence/synonyms.ko.json`)이고 `score`는 질의마다 0~1로 맞춘 값이다. Azure AI Search를 설정하면 그 순위와 로컬 순위를 RRF(k=60)로 합치고 `score`는 RRF 점수다 |
 | `GET /intake/csv/template`, `POST /intake/csv` | 측정값 CSV 양식과 업로드 |
 | `POST /intake/media` | 사진·영상 업로드(multipart: `file`, `orgId`, `streamId`). 탐지 모델을 불러 재질 추정과 이물 비율을 model 근거로 등록한다. 아래 "사진·영상" |
+| `POST /intake/scan` | 보관장 3D 스캔 올리기(multipart: `frames` 파일 12~96장(JPEG·PNG, 장마다 3MB 이하, 합계 20MB 이하), `orgId`, `source`(`video` \| `photos`), `durationSec`). 배출 기업만. 브라우저가 영상에서 고른 장면을 재구성 서버(`V3_RECON_URL`, H100)에 맡기고 202로 진행 중인 `ScanView`를 준다. 재구성 서버가 없거나 닿지 않으면 503 `SCAN_UNAVAILABLE`, 같은 회사의 스캔이 이미 분석 중이면 409 `SCAN_IN_PROGRESS`. 아래 "보관장 3D 스캔" |
+| `GET /orgs/{orgId}/scans`, `GET /orgs/{orgId}/scans/{scanId}` | 스캔 목록 `{canScan, scans: [ScanView]}`(최근 5개)과 스캔 하나. 진행 중이면 이때 재구성 서버에 물어 갱신한다(체험하기는 읽기만). `canScan`은 재구성 서버가 2초 안에 답했는지다 |
+| `GET /orgs/{orgId}/scans/{scanId}/points` | 점군(`application/octet-stream`, 머리 16바이트 `RSPC`·판 1·점 수 N·0 + N × 10바이트: int16 x·y·z mm, uint8 r·g·b, uint8 더미 번호). 끝나지 않았으면 404 `POINTS_NOT_READY` |
+| `PUT /orgs/{orgId}/scans/{scanId}/piles/{pileId}`, `PUT /orgs/{orgId}/scans/{scanId}/layout` | 더미의 폐기물 `{streamId}`(null이면 지정 해제, 계량값도 지움)과 계량한 무게 `{weighedKg}`(0 초과 100,000 이하, 폐기물을 먼저 골라야 한다: 422 `STREAM_REQUIRED`), 상차 지점 `{pickup: {x, y} \| null}`. 끝나지 않은 스캔은 409 `SCAN_NOT_READY`, 없는 더미는 404 `PILE_NOT_FOUND`. 응답은 `ScanView` |
 | `POST /intake/documents` | 문서 업로드와 추출. 매입 기준표(`kind: purchase_criteria`)는 판독기가 연결돼 있으면(`V3_LLM=foundry`) 모델이 쪽 그림과 글자 인식 결과(글·표 구조)를 함께 읽어 행 단위 초안 `draft`를 준다: `{id, outcome: ready \| needs_review \| not_found \| model_failed, rows, common, notes, reviewCount, reader, failure}`. 판독기가 없으면 표 머리글로 읽되(`reader.by: "rules"`) 숫자 읽기·단위 환산·확인 필요 판정은 같은 코드가 한다. 읽은 행이 있으면 서버가 초안의 값·원문·쪽을 보관하고 `draft.id`를 준다. 행의 값마다 문서 원문·쪽·단위 환산 메모·확인 사유가 붙는다. 범위 단가·협의·단위 미상·지급 방향 불명·회당 물량은 값을 비우고 확인 사유를 단다. 모델이 문서 안의 AI 대상 지시문을 찾으면 Prompt Shields 탐지와 같이 `blocked: true`(`shield.detectedBy: "reader"`)다. 초안은 `POST /intake/criteria/confirm`으로 저장하기 전에는 근거도 프로필도 아니다 |
 | `POST /intake/criteria/confirm` | `{orgId, documentName, draftId, rows}`. 업체만. 매입 기준 검토 화면에서 담당자가 확인·고친 행을 저장한다. 행은 `{draftRow(초안 행 ID, 직접 더한 줄은 null), material, grade, form, unitPriceKrwPerKg(매입 +, 처리비 −), minMonthlyKg, maxContaminationPct, maxMoisturePct, collectionFee: included \| separate \| null, collectionFeePerPickupKrw}`이고, 재질 코드·단가 필수와 범위(kg당 1만 원 이내)·물량과 상한 범위·재질·등급·형태 중복을 검사해 틀리면 422 `INVALID_CRITERIA`(몇 번째 줄의 무엇인지)다. 서버는 `draftId`로 보관한 초안을 찾아(없거나 다른 조직이면 404 `DRAFT_NOT_FOUND`) 행마다 대조한다: 초안과 같은 값은 doc 근거(발췌는 보관한 문서 원문·환산·쪽), 다른 값·초안이 비워 둔 값(범위·협의·단위 미상·회당 물량)을 채운 값·재질·등급·형태를 바꾼 행의 값은 human 근거다. 화면이 보낸 `source`·`edited`는 근거 판단에 쓰지 않는다. `draftRow`가 없는 행은 직접 적은 줄(human)이다. 업체 프로필의 매입 기준을 재질·등급·형태로 맞춰 고치거나 더하고, 수거비 조건이 모든 행에서 같으면 운반 조건(`transport`)으로 쓴다. 응답은 `confirm`과 같은 `{evidence, profile}`이고 `profile`에 `transportUpdated`, `transport`가 더해진다 |
 | `POST /intake/documents/confirm` | `{orgId, documentName, fields}`. 담당자가 확인한 추출값(`confirmed: true`)만 doc 근거로 등록한다. 응답은 `{"evidence": [근거 ID], "profile": 요약 \| null}`. 업체가 확인한 허가증·매입 기준표 값은 업체 프로필의 허가 품목·매입 기준에도 들어간다(추출 항목의 `target`으로 어느 품목·기준의 값인지 안다. 화면은 받은 `fields`를 그대로 돌려보낸다). 폐기물 종류가 같은 허가 품목, 재질·등급·형태가 같은 매입 기준은 고치고 근거를 붙이며 새로 만들지 않는다(다시 확인해도 겹치지 않는다). 단가를 확인하지 않은 새 기준은 만들지 않는다. `profile`은 `{permitsAdded, permitsUpdated, criteriaAdded, criteriaUpdated, permits, criteria, skipped}`이고 업체가 아니면 `null`이다 |
@@ -640,6 +644,16 @@ VendorProfile {"orgId": "org_saegil",
 - 뒤에서 도는 실행은 요청을 받은 프로세스의 스레드다. 배포는 컨테이너 하나에 uvicorn 프로세스 하나다. 프로세스를 여럿 띄워도 실행 자리와 기록이 PostgreSQL에 있어 409와 스트림은 맞게 돌지만, 다른 프로세스가 쓴 기록은 1초 간격으로 보인다. 프로세스가 죽으면 그 실행은 이어지지 않는다(60초 뒤 멈춘 것으로 보고 다시 진행할 수 있다).
 - 메모리 저장(로컬, 테스트)에서 동기 실행은 끝날 때까지 다른 요청을 기다리게 하므로(전과 같다) 스트림도 끝에 한꺼번에 받는다. 실시간으로 보려면 `mode=async`를 쓴다(뒤에서 도는 실행은 저장소를 부를 때만 잠근다).
 
+### 보관장 3D 스캔
+
+`app/v3/scan/`. 배출 기업이 휴대폰으로 보관장을 한 바퀴 찍으면 브라우저가 장면 24~80장(긴 변 896px)을 골라 보내고, 재구성 서버(`infra/h100/recon`, H100)가 m 단위 바닥 좌표계(원점은 보인 바닥의 중심, z 위쪽)로 더미를 나눠 부피를 잰다.
+
+- `ScanView`: `{id, orgId, createdAt, source, frameCount, status: processing | done | failed, progress: {stage: geometry | scale | floor | piles, ratio} | null, failure: {message} | null, summary: {pileCount, volume(claim m³), weight: {low, high}(claim kg) | null, weightPending, floorAreaM2} | null, piles: [...], layout, floor: {polygon, areaM2}, camera: {path}, bounds, pointsCount, quality: {frames, scaleSpreadPct, notes}}`.
+- `piles[]`: `{id, name("더미 n"), center, footprint(꼭짓점 넷), sizeM, yawDeg, heightM, volume(claim, model 근거), volumeRangeM3, coverage, thumbnail(JPEG data URL), streamId, streamName, density: {basis: weighed | stream | ref, lowKgM3, highKgM3, label, evidence} | null, weight: {low, high} | null, weighedKg(claim, human 근거) | null, note}`. 무게 = 부피 범위 × 밀도(calc 근거). 밀도는 계량값(그 스캔에서 같은 폐기물로 지정한 더미의 계량 kg 합 ÷ 부피 합) > 폐기물의 `bulkDensityKgPerM3`(human 근거) > 형태가 필름이면 US EPA 2016 환산표 LDPE 필름 흩어짐 20.8 ~ 압축 89.0 kg/m³(ref 근거) 순서이고, 없으면 `weight: null`(산정 보류, `summary.weightPending`에 센다).
+- `layout`: `{pickup: {x, y, source: start | manual}, rules: {gapM 1.0, wallM 0.3, pickupClearM 1.5, evidence(assumption)}, current: 지표, proposal: {piles: [{id, center, footprint, yawDeg, zone}], zones: [{streamId, name, polygon}], metrics: 지표, moved} | null, unavailable: 문장 | null}`. 지표는 `{mixedPairs, minMixedGapM, weightedDistanceM, footprintM2}`. 정리안은 `scan/layout.py`가 규칙으로 정한다(모델이 그리지 않는다): 다른 폐기물 사이 gapM 이상, 벽에서 wallM 안쪽, 상차 지점 반경 비우기, 같은 폐기물끼리 0.2m, 0°/90°만, 부피 합이 큰 폐기물부터 상차 지점 가까이 탐욕 배치, 지정하지 않은 더미는 제자리.
+- 계산한 값(무게·합계·정리안)과 그 근거는 쓰는 경로(분석 끝남, 더미 고치기, 상차 지점)에서 등록해 저장한다. 조회는 쓰지 않는다(체험하기 읽기 전용). 실제 조직은 폐기물의 이름·형태·밀도가 바뀌었으면 조회 때 다시 계산한다.
+- 체험하기의 시연 배출 기업에는 합성 보관장 장면을 재구성 서버로 돌린 결과(`app/v3/demo/scan/`)를 고정 ID `scan_demo_hanbit`로 넣는다(파일이 있을 때만).
+
 ### 오류 코드 전체 목록
 
 요청을 읽다가 나는 오류와 요청한 조직을 정하다 나는 오류는 두 서버(`api.py`, `devserver.py`)가 `app/v3/httpio.py`의 같은 함수로 낸다. 코드와 상태 코드가 서버에 따라 달라지지 않는다. 아래가 `/api/v3`가 내는 `error.code`의 전부다(`tests/v3/test_fix2_contract_docs.py`가 코드와 이 표를 대조한다).
@@ -684,6 +698,9 @@ VendorProfile {"orgId": "org_saegil",
 | `TRANSFER_OWNERSHIP_FIRST` | 409 | 탈퇴하려는 사용자가 다른 구성원이 있는 조직의 유일한 owner다. 먼저 다른 구성원을 owner로 지정한다. 아무것도 지우지 않는다(9장 "탈퇴") |
 | `OUTSIDE_STALE` | 409 | 견적 요청서를 만들려는 가입하지 않은 업체가 지금 흐름 자료로는 후보가 아니다(후보를 찾은 뒤 재질·품목을 바꿨거나 흐름을 지웠다, 업체가 가입했다 등). 초안을 만들지 않는다. 문장에 바뀐 칸과 다시 찾으라는 말이 있다 |
 | `INVITE_INVALID` | 410 | 초대가 없거나, 만료되었거나(7일), 이미 쓰였다 |
+| `SCAN_NOT_FOUND`, `PILE_NOT_FOUND`, `POINTS_NOT_READY` | 404 | 보관장 3D 스캔·더미가 없거나 볼 수 없다. 점군은 분석이 끝나야 있다 |
+| `SCAN_NOT_READY`, `SCAN_IN_PROGRESS` | 409 | 분석이 끝나지 않은 스캔을 고치려 했다. 같은 회사의 스캔이 이미 분석 중이다(GPU를 업체 측 AI와 함께 쓴다) |
+| `TOO_FEW_FRAMES`, `BAD_IMAGE`, `STREAM_REQUIRED` | 422 | 스캔 장면이 12장보다 적다. 재구성 서버가 사진을 읽지 못했다. 계량값을 적기 전에 더미의 폐기물을 고르지 않았다 |
 | `TOO_LARGE` | 413 | 본문이 20MB를 넘는다 |
 | `UNSUPPORTED_MEDIA` | 415 | 사진·영상이 아닌 파일이다. 탐지 모델이 연결되지 않았어도 형식 검사가 먼저다 |
 | `INVALID_BODY` | 422 | 본문이 JSON 객체가 아니거나 필수 항목(`questionId`·`value`, `threadId` 등)이 없다 |
@@ -705,6 +722,7 @@ VendorProfile {"orgId": "org_saegil",
 | `DRAFT_NOT_FOUND` | 404 | 매입 기준표 저장이 가리킨 판독 초안이 없거나 다른 조직의 것이다 |
 | `DOCUMENT_INTELLIGENCE_UNAVAILABLE` | 503 | Document Intelligence가 설정되지 않아 글이 아닌 문서를 읽을 수 없다 |
 | `BFF_KEY_NOT_SET` | 503 | bff 모드인데 BFF 키 설정이 비어 있다. 모든 요청을 거절한다 |
+| `SCAN_UNAVAILABLE` | 503 | 보관장 3D 스캔 재구성 서버(`V3_RECON_URL`)가 설정되지 않았거나 닿지 않는다 |
 | `TRUST_UNAVAILABLE` | 503 | `GET /trust`가 최신 평가 요약 파일을 읽지 못했다 |
 
 업체 측 에이전트 서비스(`vendor_service.py`. `/api/v3`가 아니라 따로 뜨는 서비스다)만 내는 코드: `UNAUTHORIZED`(401, 서비스 키가 틀림), `WRONG_RECIPIENT`(403, 이 서비스의 업체에게 온 메시지가 아님), `SERVICE_KEY_NOT_SET`·`VENDOR_NOT_SET`(503, 설정이 빠짐). 로컬에서 따로 띄우는 표준 라이브러리 서버(`vendor_devserver.py`)는 같은 코드를 내고, 회사 측 서버가 저장 파일을 아직 쓰지 않았으면 `STORE_NOT_READY`(503)를 낸다. 나머지는 위 표와 같다.

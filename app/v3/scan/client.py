@@ -1,6 +1,6 @@
 """보관장 3D 스캔의 재구성 서버(H100, infra/h100/recon) 호출.
 
-- 설정 V3_RECON_URL(예: http://10.72.0.4:8090). 비어 있으면 None이고 스캔 올리기는 503 SCAN_UNAVAILABLE이다.
+- 설정 V3_RECON_URL(예: H100 사설 주소의 8090 포트). 비어 있으면 None이고 스캔 올리기는 503 SCAN_UNAVAILABLE이다.
 - http는 사설 주소(10.x, 172.16-31.x, 192.168.x)나 V3_INTERNAL_HTTP_HOSTS의 이름일 때만 쓴다. 공개 주소로는
   사진을 평문으로 보내지 않는다(그 밖의 주소는 https만).
 - 사진은 multipart의 frames 필드로 보낸다. 결과 모양 검사는 scan/result.py가 한다.

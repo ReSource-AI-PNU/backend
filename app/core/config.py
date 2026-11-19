@@ -86,7 +86,7 @@ class Settings(BaseSettings):
     v3_detector_endpoint: str = ""
     v3_detector_api_key: str = ""
     v3_detector_deployment: str = ""
-    # 보관장 3D 스캔의 재구성 서버(H100, infra/h100/recon). 예: http://10.72.0.4:8090. 비면 스캔 올리기를 받지 않는다
+    # 보관장 3D 스캔의 재구성 서버(H100, infra/h100/recon). H100 사설 주소의 8090. 비면 스캔 올리기를 받지 않는다
     v3_recon_url: str = ""
     # 문서 추출(Document Intelligence prebuilt-layout). 둘 중 하나라도 비면 UTF-8 글 파일만 읽는다
     azure_document_intelligence_endpoint: str = ""

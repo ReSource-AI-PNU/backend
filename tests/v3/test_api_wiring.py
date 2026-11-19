@@ -132,9 +132,10 @@ def test_contract_routes_are_read():
     assert ("GET", "/sessions/{}/quote-request") in routes
     assert ("GET", "/orgs/{}/report") in routes
     assert ("POST", "/intake/criteria/confirm") in routes
+    assert ("POST", "/intake/scan") in routes and ("GET", "/orgs/{}/scans/{}/points") in routes
     assert ("PUT", "/sessions/{}/outcomes/{}") in routes  # 검수 기록 정정(새 반입 등록과 따로)
     assert ("POST", "/sessions/{}/permit-checks") in routes
-    assert len(routes) == 33
+    assert len(routes) == 39  # 보관장 3D 스캔 6개 포함
 
 
 def test_devserver_routes_equal_the_contract():

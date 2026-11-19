@@ -141,9 +141,10 @@ def create_scan(
     try:
         job_id = client.submit(named)
     except ReconError as error:
+        if error.status == 422 and error.code == "TOO_FEW_FRAMES":
+            raise ServiceError("TOO_FEW_FRAMES", FAILURES["TOO_FEW_FRAMES"], 422) from error
         if error.status == 422:
-            code = error.code if error.code in FAILURES else "BAD_IMAGE"
-            raise ServiceError(code, FAILURES[code], 422) from error
+            raise ServiceError("BAD_IMAGE", FAILURES["BAD_IMAGE"], 422) from error
         logger.warning("재구성 서버에 맡기지 못했다: %s %s", error.code, error)
         raise UNAVAILABLE from error
     scan = {
