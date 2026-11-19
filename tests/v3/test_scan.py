@@ -201,7 +201,9 @@ def test_upload_progress_done_and_volume_evidence():
     assert fake.submitted[1].count(b'name="frames"') == 24
     view = views.get_scan(app, HANBIT, view["id"], HANBIT)
     assert view["status"] == "processing" and view["progress"] == {"stage": "scale", "ratio": 0.5}
-    view = finished(app)
+    for _ in range(4):
+        view = views.get_scan(app, HANBIT, view["id"], HANBIT)
+    assert view["status"] == "done"
     assert view["summary"]["pileCount"] == 5 and view["summary"]["weightPending"] == 5
     assert view["summary"]["weight"] is None  # 무게 기준이 없으면 산정 보류
     evidence_ok(app, view["summary"]["volume"])
@@ -319,6 +321,11 @@ def test_upload_rules():
         "WRONG_ROLE",
         403,
     )
+    first = views.create_scan(app, HANBIT, FRAMES, "video", None, HANBIT)
+    busy = _code(views.create_scan, app, HANBIT, FRAMES, "video", None, HANBIT)
+    assert busy == ("SCAN_IN_PROGRESS", 409)
+    for _ in range(3):
+        views.get_scan(app, HANBIT, first["id"], HANBIT)
     fake.up = False
     assert _code(views.create_scan, app, HANBIT, FRAMES, "video", None, HANBIT) == (
         "SCAN_UNAVAILABLE",

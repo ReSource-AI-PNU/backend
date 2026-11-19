@@ -125,6 +125,15 @@ def create_scan(
     client = getattr(app, "recon", None)
     if client is None or not client.configured:
         raise UNAVAILABLE
+    # GPU 하나를 여러 회사가 함께 쓴다: 한 회사는 한 번에 하나만 맡긴다(끝났거나 멈춘 것은 세지 않는다)
+    for other in app.store.list_scans(org_id):
+        if (
+            other.get("status") == "processing"
+            and refresh(app, other).get("status") == "processing"
+        ):
+            raise ServiceError(
+                "SCAN_IN_PROGRESS", "이미 분석 중인 스캔이 있습니다. 끝난 뒤 다시 올려 주세요.", 409
+            )
     named = [
         (f"f{i:03d}." + ("png" if data[:4] == b"\x89PNG" else "jpg"), data)
         for i, (_, data) in enumerate(frames)
