@@ -59,18 +59,56 @@ def vendor(permitted: bool):
     }
 
 
+def verified(found: dict, process: str = "재활용") -> dict:
+    """배출 기업 담당자가 그 업체가 올린 허가증 원문에서 PP와 처리 방식을 대조해 둔 업체."""
+    document = {
+        "id": "pd_v",
+        "name": "허가증.pdf",
+        "holder": {"name": found["name"]},
+        "items": [],
+        "evidence": [],
+    }
+    check = {
+        "id": "pc_v",
+        "vendorOrgId": found["orgId"],
+        "documentId": "pd_v",
+        "document": "허가증.pdf",
+        "page": 1,
+        "wasteItem": "폐플라스틱",
+        "materials": ["PP"],
+        "process": process,
+        "itemFound": True,
+        "processFits": True,
+        "checkedBy": {"orgId": HANBIT, "orgName": "(주)한빛정밀", "userName": None},
+        "checkedAt": "2026-11-19T00:00:00+00:00",
+    }
+    return {**found, "permitDocuments": [document], "permitChecks": [check]}
+
+
 def items_by_key(result):
     return {item["key"]: item for item in result["output"]["items"]}
 
 
 def test_permit_is_decided_by_the_vendors_talked_to_and_the_rest_are_staff_tasks(registry):
     met = regulation.check_requirements(
-        registry, org_id=HANBIT, today=TODAY, stream=STREAM, route="sell", vendors=[vendor(True)]
+        registry,
+        org_id=HANBIT,
+        today=TODAY,
+        stream=STREAM,
+        route="sell",
+        vendors=[verified(vendor(True))],
     )
     assert met["status"] == "calculated"
     found = items_by_key(met)
     assert found["permit_holder"]["status"] == "met"
-    assert "(주)시험자원" in found["permit_holder"]["note"]
+    assert "(주)시험자원: 허가증 대조 완료" in found["permit_holder"]["note"]
+    assert found["permit_holder"]["permit"]["level"] == "verified"
+    # 허가증 문서 근거만 있고 원문 대조 기록이 없으면 충족이 아니다(확인 필요)
+    typed = regulation.check_requirements(
+        registry, org_id=HANBIT, today=TODAY, stream=STREAM, route="sell", vendors=[vendor(True)]
+    )
+    assert typed["status"] == "conditional"
+    assert items_by_key(typed)["permit_holder"]["permit"]["level"] == "registered"
     staff = [i for i in found.values() if i["decidedBy"] == "staff"]
     assert staff and all(i["status"] == "conditional" for i in staff)
     assert "circular_resource" in found  # 매각에만 걸리는 요건

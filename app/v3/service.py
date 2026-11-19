@@ -50,19 +50,19 @@ from app.v3.agents.orchestrator import (
 from app.v3.agents.policy_rule import RulePolicy
 from app.v3.agents.pool import ClaimPool, is_private
 from app.v3.agents.vendor import VendorAgent
-from app.v3.demo.seed import DEMO_ANSWERS, EMITTER, ORGS, seed_demo
+from app.v3.demo.seed import DEMO_ANSWERS, EMITTER, ORGS, seed_demo, share_evidence
 from app.v3.evidence import search
 from app.v3.evidence.model import KINDS, PUBLIC, Evidence
 from app.v3.evidence.registry import EvidenceForbidden, EvidenceNotFound
 from app.v3.evidence.seeds import load_seed_dir
 from app.v3.evidence.units import UnitError, same_value
 from app.v3.evidence.validator import validate_message, validate_text
-from app.v3.intake import criteria_llm, csv_measure, documents, shields
+from app.v3.intake import criteria_llm, csv_measure, documents, permit_docs, shields
 from app.v3.intake import detector as media
 from app.v3.judge import basis
 from app.v3.judge.common import quality, without_emitter_only
 from app.v3.judge.defaults import register_defaults
-from app.v3.store import InMemoryStore, NotFound
+from app.v3.store import InMemoryStore, NotFound, VersionConflict
 from app.v3.untrusted import (
     contaminant_labels,
     counterparty_stream,
@@ -435,7 +435,8 @@ def _demo_history(app: App) -> str | None:
         view = get_view(app, session_id, EMITTER)
         vendors = {t["id"]: t["vendorOrgId"] for t in view["threads"]}
         for item in view["approvals"]:
-            if item.get("blocked"):
+            if item.get("blocked") or item.get("permitHold"):
+                # 허가증 원문 대조가 끝나지 않은 경로는 확정하지 않는다(시연에서도 승인 대기로 남는다)
                 continue
             approve(app, session_id, item["threadId"], EMITTER)
             approve(app, session_id, item["threadId"], vendors[item["threadId"]])
@@ -1100,6 +1101,31 @@ def approve(app: App, session_id: str, thread_id: str, viewer: str) -> dict[str,
     return get_view(app, session_id, viewer)
 
 
+def record_permit_check(
+    app: App, session_id: str, body: dict[str, Any], viewer: str, user_name: str | None = None
+) -> dict[str, Any]:
+    """배출 기업 담당자가 업체가 올린 허가증 원문에서 이 폐기물의 품목과 처리 방법을 대조한 기록을 남긴다.
+
+    POST /sessions/{id}/permit-checks. 기록한 사람(조직, 계정 이름)과 시각이 함께 남는다. 응답은 진단 뷰다.
+    오류: PERMIT_CHECK_FORBIDDEN(403, 배출 기업이 아님), NOT_AWAITING_APPROVAL(409), ROUTE_NOT_FOUND(404),
+    ALREADY_CONFIRMED(409), PERMIT_NOT_MATCHED(409), PERMIT_DOCUMENT_NOT_FOUND(404),
+    PERMIT_DOCUMENT_IGNORED(409, 다른 업체·사업장의 허가증), INVALID_PAGE(422), INVALID_VALUE(422).
+    """
+    _session_for(app, session_id, viewer)
+    if not isinstance(body, dict):
+        raise ServiceError("INVALID_BODY", "대조한 내용을 객체로 보내 주세요.", 422)
+    org = app.store.get_org(viewer)
+    checker = {
+        "orgId": viewer,
+        "orgName": org_label(org.get("name"), "배출 기업"),
+        # 계정 이름은 배출 기업 안에서만 보인다(업체 뷰에서는 뺀다, _vendor_permit)
+        "userName": " ".join(str(user_name or "").split())[:40] or None,
+    }
+    with _exclusive(app, session_id, "permit_check"):
+        _wrap(Orchestrator(app).record_permit_check, session_id, viewer, body, checker)
+    return get_view(app, session_id, viewer)
+
+
 # ── 실행 자리(한 진단에 진행 하나) ───────────────────────────────────
 
 
@@ -1708,6 +1734,8 @@ def _result_view(session: dict[str, Any], viewer: str, owner: bool) -> dict[str,
                 # 업체가 내건 조건과 최소 물량·적재 검사만 남긴다(나머지는 배출 기업의 판단이다)
                 "checks": [c for c in item["checks"] if c["key"] in VENDOR_CHECK_KEYS],
                 "alternatives": [],
+                "blockedRoutes": [],
+                "permit": _vendor_permit(item.get("permit")),
             }
         )
     return {
@@ -1734,7 +1762,17 @@ def _recheck(app: App, org_id: str) -> None:
     """
     for session in app.store.list_sessions(org_id):
         if session.get("status") == "awaiting_approval":
-            Orchestrator(app).recheck(session["id"])
+            orchestrator = Orchestrator(app)
+            if _live_run(app, session["id"]) is None:
+                # 허가 확인 상태(허가 품목, 올린 허가증, 원문 대조)가 바뀌었으면 결과표·승인 카드를 먼저 새로
+                # 맞춘다. 진행이 돌고 있으면 그 진행에 맡긴다(같은 진단을 함께 고치지 않게)
+                try:
+                    orchestrator.refresh_permits(session["id"])
+                except VersionConflict:
+                    logger.warning(
+                        "허가 확인 상태를 다시 보다가 진단이 먼저 바뀌었다: %s", session["id"]
+                    )
+            orchestrator.recheck(session["id"])
 
 
 def get_report(
@@ -1893,6 +1931,8 @@ def get_view(app: App, session_id: str, viewer: str) -> dict[str, Any]:
                 **a,
                 "blockedCodes": block_codes(a.get("blockedReason")),
                 "streamIds": list(work["assigned"].get(a["threadId"]) or []),
+                # 이 대화에 배정된 폐기물마다 허가 확인 상태(결과표와 같은 값). 대조 완료가 아닌 것이 있으면 확정을 막는다
+                **_approval_permits(work, a["threadId"], owner),
                 # 막으면서 지운 승인(emitter·vendor). 비어 있으면 지운 승인이 없다
                 "clearedApprovals": list(a.get("clearedApprovals") or []),
                 # 계약 검토 담당의 검토(양쪽이 같은 것을 본다). 막힘이 있으면 승인할 수 없다
@@ -1917,6 +1957,30 @@ def _review_of(app: App, session: dict[str, Any], thread_id: str) -> dict[str, A
     except (NotFound, KeyError):
         return None
     return Orchestrator(app).contract_review(session, thread)
+
+
+def _vendor_permit(permit: dict[str, Any] | None) -> dict[str, Any] | None:
+    """업체에게 보이는 허가 확인 상태. 대조한 배출 기업 담당자의 계정 이름과 그 대조 근거 ID는 뺀다."""
+    if not permit or not permit.get("check"):
+        return permit
+    check = dict(permit["check"])
+    check["checkedBy"] = {**(check.get("checkedBy") or {}), "userName": None}
+    check["evidence"] = None
+    evidence = [e for e in permit.get("evidence") or [] if e != permit["check"].get("evidence")]
+    return {**permit, "check": check, "evidence": evidence}
+
+
+def _approval_permits(work: dict[str, Any], thread_id: str, owner: bool = True) -> dict[str, Any]:
+    assigned = set(work["assigned"].get(thread_id) or [])
+    found = [
+        {
+            "streamId": item["streamId"],
+            **(item["permit"] if owner else _vendor_permit(item["permit"])),
+        }
+        for item in (work.get("result") or {}).get("assignments") or []
+        if item.get("threadId") == thread_id and item["streamId"] in assigned and item.get("permit")
+    ]
+    return {"permits": found, "permitHold": any(p.get("status") != "met" for p in found)}
 
 
 QUESTION_KEYS = (
@@ -2387,7 +2451,7 @@ def upload_document(
     부르지 못함, failure에 화면 문장)다. 초안은 confirm_criteria로 담당자가 확인·저장한 행만 업체 프로필이 된다.
     판독기가 없으면 예전처럼 머리글 규칙으로 읽은 fields를 돌려준다.
     """
-    _owner(app, org_id, viewer)
+    org = _owner(app, org_id, viewer)
     if kind not in documents.EXTRACTORS:
         raise ServiceError(
             "INVALID_KIND", f"문서 종류는 {', '.join(documents.EXTRACTORS)} 가운데 하나입니다.", 422
@@ -2439,6 +2503,11 @@ def upload_document(
         return {**base, **read}
     extracted = documents.EXTRACTORS[kind](layout)
     fields = extracted.pop("fields", [])
+    found: dict[str, Any] = {}
+    if kind == "permit" and org.get("role") == "vendor":
+        found["permitDocument"] = _remember_permit(
+            app, org_id, filename, data, layout, extracted, viewer
+        )
     return {
         **base,
         "blocked": False,
@@ -2448,7 +2517,52 @@ def upload_document(
         "extracted": extracted,
         "needsReview": any(f.get("needsReview") for f in fields),
         "note": "뽑은 값은 담당자가 확인하기 전에는 근거로 쓰지 않습니다.",
+        **found,
     }
+
+
+def _remember_permit(
+    app: App,
+    org_id: str,
+    filename: str,
+    data: bytes,
+    layout: dict[str, Any],
+    extracted: dict[str, Any],
+    viewer: str,
+) -> dict[str, Any]:
+    """업체가 올린 허가증을 "검토 대기" 문서로 업체 프로필(permitDocuments)에 남긴다(intake/permit_docs.py).
+
+    AI가 읽은 값만으로는 허가 확인이 되지 않는다. 배출 기업 담당자가 이 문서의 원문에서 품목과 처리 방법을
+    대조해 기록해야 "허가증 대조 완료"가 된다. 승인을 기다리는 진단의 결과표도 "검토 대기"로 바뀐다(_recheck).
+    """
+    document = permit_docs.read(
+        app.registry,
+        org_id,
+        str(filename or "허가증")[:120],
+        data,
+        layout,
+        extracted,
+        uploaded_at=app.store.now(),
+        today=app.today,
+        uploaded_by=viewer,
+    )
+    try:
+        profile = copy.deepcopy(app.store.get_vendor_profile(org_id))
+    except NotFound:
+        profile = {"orgId": org_id, "permits": [], "criteria": [], "fleet": {}, "guardrails": {}}
+    profile["permitDocuments"] = permit_docs.remember(profile, document)
+    app.store.put_vendor_profile(profile)
+    # 이미 대화가 열린 배출 기업에는 읽은 표기 근거를 연다(결과표에서 근거가 열리게)
+    for thread in app.store.list_threads(org_id=org_id):
+        if thread.get("vendorOrgId") == org_id and thread.get("status") in (
+            "open",
+            "agreed",
+            "confirmed",
+        ):
+            for evidence_id in document["evidence"]:
+                share_evidence(app.registry, evidence_id, thread["emitterOrgId"])
+    _recheck(app, org_id)
+    return document
 
 
 def _read_criteria(app: App, data: bytes, filename: str, layout: dict[str, Any]) -> dict[str, Any]:

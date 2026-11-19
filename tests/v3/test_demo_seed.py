@@ -15,9 +15,31 @@ TODAY = "2026-11-17"
 
 
 @pytest.fixture
-def demo():
+def demo(monkeypatch):
+    # 운영 시연과 같은 기본 시드(허가 확인 상태 세 가지)를 본다. 다른 시험은 conftest.py가 verified로 돈다
+    monkeypatch.setenv("V3_DEMO_PERMITS", "mixed")
     store, registry = InMemoryStore(lambda: "2026-11-17T00:00:00+00:00"), InMemoryRegistry()
     return store, registry, seed_demo(store, registry, TODAY)
+
+
+def test_demo_shows_three_permit_states(demo):
+    """새길자원은 한빛정밀 담당자가 허가증 원문을 대조해 둔 업체, 남해열분해는 허가증만 올린 업체, 미소환경은 입력만 한 업체."""
+    store, registry, _ = demo
+    saegil = store.get_vendor_profile("org_saegil")
+    namhae = store.get_vendor_profile("org_namhae")
+    miso = store.get_vendor_profile("org_miso")
+    assert {c["checkedBy"]["orgId"] for c in saegil["permitChecks"]} == {"org_hanbit"}
+    assert {(c["wasteItem"], tuple(c["materials"])) for c in saegil["permitChecks"]} == {
+        ("폐플라스틱", ("PP",)),
+        ("포장재", ("LDPE",)),
+    }
+    for check in saegil["permitChecks"]:
+        found = registry.get(check["evidence"], "org_hanbit")
+        assert found.kind == "human" and found.access == ("org_hanbit",)
+        with pytest.raises(EvidenceForbidden):
+            registry.get(check["evidence"], "org_saegil")  # 담당자 기록은 배출 기업 것이다
+    assert namhae["permitDocuments"] and not namhae.get("permitChecks")
+    assert not miso.get("permitDocuments") and not miso.get("permitChecks")
 
 
 def test_orgs_and_streams(demo):

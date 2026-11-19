@@ -282,6 +282,8 @@ def route(app: service.App, request: Request) -> Any:
         case ("POST", ["sessions", session_id, "approvals"]):
             thread_id = str(httpio.required(request.json(), "threadId"))
             return service.approve(app, session_id, thread_id, viewer)
+        case ("POST", ["sessions", session_id, "permit-checks"]):
+            return service.record_permit_check(app, session_id, request.json(), viewer)
         case ("POST", ["sessions", session_id, "corrections"]):
             return service.record_correction(app, session_id, request.json(), viewer)
         case ("POST", ["sessions", session_id, "outcomes"]):

@@ -23,7 +23,7 @@ from app.v3.judge.common import (
     transport_charge,
     vendor_distance,
 )
-from app.v3.judge.permits import permit_level
+from app.v3.judge.permits import permit_level, short_view
 from app.v3.judge.route import current_cost, now_formula, reuse_checks, reuse_numbers
 
 try:  # 없으면 순수 파이썬 완전 탐색으로만 돈다
@@ -270,8 +270,9 @@ def optimize_assignment(
     탄소 환산액은 따로 보인다. 완전 탐색으로 풀 때는 탄소를 가장 많이 줄이는 배정도 구해(output.greenest) 고른
     배정과의 돈·탄소 차이를 남긴다.
 
-    허가: 배정 후보마다 허가 근거의 수준(permits.permit_level)을 본다. 허가 업종이 처리 방식과 맞지 않거나 공공
-    허가 명부와 어긋나면(mismatch) 그 업체에는 배정하지 않고, 업체가 입력한 허가 품목뿐이면(self) 조건부로 둔다.
+    허가: 배정 후보(업체 · 폐기물 · 처리 방식)마다 허가 확인 상태(permits.permit_level)를 본다. 담당자의 원문 대조가
+    품목·처리 방식이 다르다고 했거나 확인한 허가증 업종·공공 명부가 처리 방식과 어긋나면(mismatch) 그 업체에는
+    배정하지 않는다(진행 가능한 합계에도 들지 않는다). 대조 완료(verified)가 아니면 배정은 조건부다.
 
     output["solver"]에 쓴 풀이를 남긴다. OR-Tools(CP-SAT)가 있으면 그것으로도 풀고, 조합이
     MAX_COMBINATIONS 이하이면 완전 탐색과 같은 답일 때만 "ortools", 아니면 완전 탐색의 답을 쓰고
@@ -405,6 +406,7 @@ def optimize_assignment(
                         "vendorOrgId": vendor.get("orgId"),
                         "text": level["text"],
                         "evidence": rec.visible(level["evidence"]),
+                        "permit": {**short_view(level), "evidence": rec.visible(level["evidence"])},
                     }
                 )
                 rec.check(
@@ -743,13 +745,7 @@ def optimize_assignment(
                     carbon_total += transport["value"]
             level = choice["permit"]
             if level is not None:
-                entry["permit"] = {
-                    "level": level["level"],
-                    "label": level["label"],
-                    "status": level["status"],
-                    "text": level["text"],
-                    "evidence": rec.visible(level["evidence"]),
-                }
+                entry["permit"] = {**short_view(level), "evidence": rec.visible(level["evidence"])}
                 rec.check(
                     f"permit_level:{stream.get('id')}",
                     level["status"],

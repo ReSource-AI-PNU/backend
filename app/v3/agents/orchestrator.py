@@ -42,6 +42,7 @@ from app.v3.agents.draft import (
 from app.v3.agents.pool import safe_id
 from app.v3.agents.vendor import public_profile
 from app.v3.demo.seed import share_evidence, share_stream, share_vendor_terms
+from app.v3.evidence.model import Evidence
 from app.v3.evidence.registry import EvidenceForbidden, EvidenceNotFound
 from app.v3.evidence.render import render_text
 from app.v3.evidence.units import UnitError, convert
@@ -53,7 +54,7 @@ from app.v3.evidence.validator import (
     validate_text,
 )
 from app.v3.intake.grade_model import GradeModelError, grade_stream
-from app.v3.judge import basis, negotiate
+from app.v3.judge import basis, negotiate, permits
 from app.v3.judge.common import best_criterion, permit_match, quality, without_emitter_only
 from app.v3.judge.toolbox import TOOLS, call_tool
 from app.v3.live import STATUS_NOTES, Recorder
@@ -803,9 +804,9 @@ class Orchestrator:
         emitter = self.store.get_org(org_id)
         streams = self.store.list_streams(org_id)
         profiles = discoverable_profiles(self.store, emitter)
-        for profile in profiles.values():  # 허가증은 대조하기 전에 연다
-            for permit in profile.get("permits") or []:
-                for evidence_id in permit.get("evidence") or []:
+        for profile in profiles.values():  # 허가증은 대조하기 전에 연다(올린 허가증의 AI 판독도)
+            for item in [*(profile.get("permits") or []), *(profile.get("permitDocuments") or [])]:
+                for evidence_id in item.get("evidence") or []:
                     share_evidence(self.registry, evidence_id, org_id)
         publics = {v: public_profile(p, fleet_cost=False) for v, p in profiles.items()}
         work["stages"].update({"3": "running", "4": "running"})
@@ -969,10 +970,7 @@ class Orchestrator:
             route = next((r for r in ("sell", "treat") if r in routes[sid]), "keep")
             # 허가 요건은 대화를 연 업체(허가 품목이 맞아 연 곳)로 판정한다
             talked = [
-                {
-                    **publics[t.vendor_org],
-                    "name": org_label(self.store.get_org(t.vendor_org).get("name")),
-                }
+                self._assign_vendor(session, profiles[t.vendor_org])
                 for t in opened
                 if sid in t.stream_ids
             ]
@@ -1200,12 +1198,21 @@ class Orchestrator:
         return failed, list(dict.fromkeys(evidence))
 
     def _decline_for_permit(
-        self, session, thread: Thread, failed: list[str], evidence: list[str], *, reassign=True
+        self,
+        session,
+        thread: Thread,
+        failed: list[str],
+        evidence: list[str],
+        *,
+        reassign=True,
+        reason: str | None = None,
     ) -> bool:
         """허가 품목이 맞지 않음을 연 뒤에 알았다. 회사 측이 근거와 함께 decline으로 닫는다."""
         if thread.closed or thread.blocked:
             return False
-        reason = "업체의 허가 품목이 이 대화의 폐기물과 맞지 않아 근거와 함께 대화를 닫습니다."
+        reason = (
+            reason or "업체의 허가 품목이 이 대화의 폐기물과 맞지 않아 근거와 함께 대화를 닫습니다."
+        )
         message = make_decline(
             thread_id=thread.id,
             sender=thread.emitter_org,
@@ -1268,6 +1275,8 @@ class Orchestrator:
         *,
         reassign: bool = True,
         ask: bool = False,
+        reason: str | None = None,
+        recheck: bool = True,
     ) -> str:
         """허가 품목이 맞지 않는 흐름을 연 뒤에 알았다. "closed"(대화를 닫음) | "excluded"(그 흐름만 뺌).
 
@@ -1278,9 +1287,20 @@ class Orchestrator:
         """
         if thread.closed or thread.blocked:
             return "closed"
-        left, failed, evidence = self._permitted_left(session, thread, failed, evidence)
+        if recheck:
+            left, failed, evidence = self._permitted_left(session, thread, failed, evidence)
+        else:
+            # 허가 품목은 맞지만 원문 대조가 이 흐름만 맞지 않다고 했다. 나머지 흐름은 그대로 남는다
+            gone = {
+                x["streamId"]
+                for x in session["work"]["excluded"]
+                if x["vendorOrgId"] == thread.vendor_org
+            }
+            left = [sid for sid in thread.stream_ids if sid not in failed and sid not in gone]
         if not left:
-            self._decline_for_permit(session, thread, failed, evidence, reassign=reassign)
+            self._decline_for_permit(
+                session, thread, failed, evidence, reassign=reassign, reason=reason
+            )
             return "closed"
         work = session["work"]
         self._mark_excluded(session, thread, failed, evidence)
@@ -1289,7 +1309,9 @@ class Orchestrator:
             session["id"],
             "system",
             "thread",
-            f"허가 품목이 맞지 않는 폐기물({names})만 이 대화에서 뺐습니다. 나머지 폐기물은 그대로 둡니다.",
+            f"허가증 원문 대조가 맞지 않은 폐기물({names})만 이 대화에서 뺐습니다. 나머지 폐기물은 그대로 둡니다."
+            if reason
+            else f"허가 품목이 맞지 않는 폐기물({names})만 이 대화에서 뺐습니다. 나머지 폐기물은 그대로 둡니다.",
             thread.id,
             vendorOrgId=thread.vendor_org,
             status=thread.status,
@@ -1312,7 +1334,7 @@ class Orchestrator:
                     "streamId": sid,
                     "vendorOrgId": thread.vendor_org,
                     "threadId": thread.id,
-                    "cause": "permit_stream",
+                    "cause": "permit_check" if reason else "permit_stream",
                 }
                 if entry not in handed:
                     handed.append(entry)
@@ -1336,7 +1358,7 @@ class Orchestrator:
                     thread.status, thread.agreed_seq = "open", None
             self.store.put_thread(thread)
             if reassign and work.get("result") is not None:
-                self._reassign(session, cause="permit_stream")
+                self._reassign(session, cause="permit_check" if reason else "permit_stream")
         if ask and thread.status == "open":
             message = make_notice(
                 kind="question",
@@ -1410,7 +1432,9 @@ class Orchestrator:
             summary_ids={
                 "streamIds": [s["id"] for s in streams],
                 "vendorOrgIds": [v["orgId"] for v in vendors],
-                "reason": cause if cause in ("permit", "permit_stream", "terms") else "handoff",
+                "reason": cause
+                if cause in ("permit", "permit_stream", "terms", "permit_check")
+                else "handoff",
             },
         )
         work["optimize"] = optimized
@@ -1460,6 +1484,7 @@ class Orchestrator:
                 self._remember(session, thread)
                 self._loading_for(session, thread, new, streams, profiles)
                 self._verify(session, thread)
+        self._assigned_requirements(session, streams)
         work["result"] = self._result(session, streams)
         self._announce_reviews(session)
         if cause != "terms":
@@ -1485,6 +1510,8 @@ class Orchestrator:
                 "permit_stream": "허가 품목이 맞지 않게 된 폐기물을 그 업체의 배정에서 빼고 "
                 "최적안을 다시 계산했습니다.",
                 "terms": "업체의 조건이 바뀐 대화를 새 조건으로 이어 간 뒤 최적안을 다시 계산했습니다.",
+                "permit_check": "허가 확인 상태(허가증 업로드, 담당자의 원문 대조)가 바뀌어 "
+                "최적안을 다시 계산했습니다.",
             }.get(
                 cause, "합의한 대화가 담당자에게 넘어가 그 업체를 빼고 최적안을 다시 계산했습니다."
             ),
@@ -1873,13 +1900,335 @@ class Orchestrator:
 
     # ── ⑤⑥ 비용·탄소 비교와 최적안 ────────────────────────────────────
     def _assign_vendor(self, session: dict[str, Any], profile: dict[str, Any]) -> dict[str, Any]:
-        """최적 배정에 넘기는 업체 프로필. 공공 허가 명부와 대조하도록 업체 이름을 더한다."""
+        """최적 배정과 법령 요건에 넘기는 업체 프로필. 허가 확인 상태를 가르도록 업체 이름, 업체가 올린 허가증,
+        이 진단의 배출 기업 담당자가 남긴 대조 기록(다른 배출 기업의 기록은 넣지 않는다)을 더한다."""
         shown = self._public(session, profile)
         try:
-            name = org_label(self.store.get_org(str(profile.get("orgId"))).get("name"))
+            org = self.store.get_org(str(profile.get("orgId")))
         except NotFound:
             return shown
+        shown = {**shown, **permits.context(profile, org, session.get("emitterOrgId"))}
+        name = org_label(org.get("name"))
         return {**shown, "name": name} if name else shown
+
+    # ── 허가 확인 상태(업체 입력·허가증 업로드·담당자의 원문 대조) ───────────────
+    def _seen(self, evidence_ids, org_id: str) -> list[str]:
+        """org_id가 볼 수 있는 근거 ID만."""
+        out: list[str] = []
+        for evidence_id in evidence_ids or []:
+            try:
+                self.registry.get(evidence_id, org_id)
+            except (EvidenceNotFound, EvidenceForbidden):
+                continue
+            out.append(evidence_id)
+        return list(dict.fromkeys(out))
+
+    def _permit_of(self, session, stream: dict[str, Any], vendor_id: str | None) -> dict | None:
+        """vendor_id로 이 폐기물을 보낼 때의 지금 허가 확인 상태(화면용). 그 업체 자신의 근거로만 판정한다."""
+        if not vendor_id:
+            return None
+        try:
+            profile = self.store.get_vendor_profile(vendor_id)
+        except NotFound:
+            return None
+        vendor = self._assign_vendor(session, profile)
+        view = permits.short_view(permits.permit_level(self.registry, stream, vendor, self.today))
+        if view is not None:
+            view["evidence"] = self._seen(view["evidence"], session["emitterOrgId"])
+        return view
+
+    def _assigned_requirements(self, session, streams: list[dict[str, Any]]) -> None:
+        """배정이 정해진 뒤 폐기물마다 배정한 업체 하나와 그 경로로 법령 요건을 다시 판정한다.
+
+        ③에서는 대화를 연 업체 모두로 허가 요건을 봤다. 결과에는 실제로 받는 업체의 허가 확인 상태만 들어가야
+        한다(다른 후보의 허가증으로 배정 업체의 상태를 채우지 않는다). 업체에 배정하지 않은 폐기물은 지금 방식
+        그대로(keep)로 보고, 공정 재투입은 따로 낸 요건(reuseRequirements)을 그대로 둔다.
+        """
+        work = session["work"]
+        by_id = {s["id"]: s for s in streams}
+        profiles = {p["orgId"]: p for p in self.store.list_vendor_profiles()}
+        for item in (work.get("optimize") or {}).get("output", {}).get("assignments") or []:
+            stream = by_id.get(item["streamId"])
+            if stream is None or item.get("route") == "reuse":
+                continue
+            vendor_id = item.get("vendorOrgId")
+            route = item.get("route") or "keep"
+            arguments: dict[str, Any] = {"stream": stream, "route": route}
+            if vendor_id and vendor_id in profiles:
+                arguments["vendors"] = [self._assign_vendor(session, profiles[vendor_id])]
+            work["requirements"][stream["id"]] = self._tool(
+                session,
+                "check_requirements",
+                arguments,
+                summary_ids={"streamId": stream["id"], "route": route, "vendorOrgId": vendor_id},
+            )
+
+    def _blocked_routes(self, session, stream, assigned: str | None, names) -> list[dict]:
+        """이 폐기물로 대화한 업체 가운데 허가 확인 결과 이 경로로 진행할 수 없는 곳(사유 포함)."""
+        out, seen = [], set()
+        for thread in self._threads(session["id"]):
+            vendor = thread.vendor_org
+            if vendor == assigned or vendor in seen or stream["id"] not in thread.stream_ids:
+                continue
+            seen.add(vendor)
+            permit = self._permit_of(session, stream, vendor)
+            if permit and permit["level"] == "mismatch":
+                out.append(
+                    {
+                        "vendorOrgId": vendor,
+                        "vendorName": names.get(vendor),
+                        "permit": permit,
+                        "note": permit["text"],
+                    }
+                )
+        return out
+
+    def permit_states(self, session, thread: Thread) -> list[dict[str, Any]]:
+        """이 대화에 배정된 폐기물마다 지금의 허가 확인 상태. [{streamId, level, label, status, ...}]"""
+        out = []
+        for sid in sorted(session["work"]["assigned"].get(thread.id) or []):
+            try:
+                stream = self.store.get_stream(sid)
+            except NotFound:
+                continue
+            view = self._permit_of(session, stream, thread.vendor_org)
+            if view is not None:
+                out.append({"streamId": sid, **view})
+        return out
+
+    def _hold_reason(self, held: list[dict[str, Any]], vendor_name: str) -> str:
+        parts = []
+        for item in held:
+            try:
+                label = stream_label(self.store.get_stream(item["streamId"]))
+            except NotFound:
+                label = "폐기물"
+            parts.append(f"{label} → {vendor_name}({item['label']})")
+        return (
+            "허가증 원문 대조가 끝나지 않은 경로가 있어 확정할 수 없습니다: "
+            + ", ".join(parts)
+            + ". 배출 기업 담당자가 결과표에서 업체가 올린 허가증 원문의 품목과 처리 방법을 대조해 기록하면 "
+            "승인할 수 있습니다."
+        )
+
+    def refresh_permits(self, session_id: str) -> bool:
+        """승인을 기다리는 진단의 허가 확인 상태를 지금 자료로 다시 본다. 바뀌었으면 True.
+
+        원문 대조 결과 진행할 수 없게 된 배정은 그 대화에서 빼고 다시 배정한다(_drop_for_permit). 상태만 바뀌었으면
+        (허가증 업로드, 대조 완료) 최적안과 결과 한 장을 다시 계산해 결과표·승인 카드가 같은 상태를 보이게 한다.
+        """
+        session = self.store.get_session(session_id)
+        work = session["work"]
+        if session.get("status") != "awaiting_approval" or work.get("result") is None:
+            return False
+        dropped = False
+        for thread in self._threads(session_id):
+            if thread.status != "agreed":
+                continue
+            failed = [p for p in self.permit_states(session, thread) if p["level"] == "mismatch"]
+            if failed:
+                evidence = list(dict.fromkeys(e for p in failed for e in p["evidence"]))
+                self._drop_for_permit(
+                    session,
+                    thread,
+                    [p["streamId"] for p in failed],
+                    evidence,
+                    reason="허가증 원문 대조 결과 이 폐기물이나 처리 방식이 업체의 허가 내용과 맞지 않아 "
+                    "근거와 함께 대화를 닫습니다.",
+                    recheck=False,
+                )
+                dropped = True
+        if dropped:
+            self._save(session)
+            return True
+        streams = {s["id"]: s for s in self.store.list_streams(session["emitterOrgId"])}
+
+        def mark(permit: dict | None) -> tuple:
+            permit = permit or {}
+            return (
+                permit.get("level"),
+                permit.get("source"),
+                (permit.get("check") or {}).get("id"),
+                (permit.get("document") or {}).get("id"),
+                tuple(sorted(str(x.get("name")) for x in permit.get("ignored") or [])),
+            )
+
+        changed = False
+        for item in work["result"].get("assignments") or []:
+            stream = streams.get(item["streamId"])
+            if stream is None:
+                continue
+            shown = [(item.get("vendorOrgId"), item.get("permit"))]
+            shown += [(a["vendorOrgId"], a.get("permit")) for a in item.get("alternatives") or []]
+            shown += [(b["vendorOrgId"], b.get("permit")) for b in item.get("blockedRoutes") or []]
+            for vendor_id, permit in shown:
+                if vendor_id and mark(permit) != mark(self._permit_of(session, stream, vendor_id)):
+                    changed = True
+        if changed:
+            self._reassign(session, cause="permit_check")
+            self._save(session)
+        return changed
+
+    def record_permit_check(
+        self, session_id: str, org_id: str, body: dict[str, Any], checker: dict[str, Any]
+    ) -> dict[str, Any]:
+        """배출 기업 담당자가 업체가 올린 허가증 원문에서 이 폐기물의 품목과 처리 방법을 대조한 기록을 남긴다.
+
+        body: {streamId, vendorOrgId, documentId, page, itemFound, processFits, itemQuote?, processQuote?}.
+        그 업체가 올린, 상호·소재지가 맞는 허가증만 받는다. 기록은 업체 프로필의 permitChecks에 쌓이고(이 배출
+        기업의 판단에만 쓰인다), human 근거로 남는다. 그 뒤 허가 확인 상태를 다시 본다(refresh_permits).
+        """
+        session = self.store.get_session(session_id)
+        if session["emitterOrgId"] != org_id:
+            raise OrchestratorError(
+                "PERMIT_CHECK_FORBIDDEN",
+                "허가증 원문 대조는 이 진단의 배출 기업 담당자만 기록할 수 있습니다.",
+                403,
+            )
+        if session.get("status") != "awaiting_approval":
+            raise OrchestratorError(
+                "NOT_AWAITING_APPROVAL",
+                "허가증 원문 대조는 승인을 기다리는 진단에서 기록합니다.",
+            )
+        sid = str(body.get("streamId") or "")
+        vendor_id = str(body.get("vendorOrgId") or "")
+        threads = [
+            t
+            for t in self._threads(session_id)
+            if t.vendor_org == vendor_id and sid in t.stream_ids
+        ]
+        thread = next((t for t in threads if t.status in ("open", "agreed")), None)
+        if thread is None:
+            if any(t.status == "confirmed" for t in threads):
+                raise OrchestratorError("ALREADY_CONFIRMED", "이미 확정한 경로입니다.")
+            raise OrchestratorError(
+                "ROUTE_NOT_FOUND", "이 진단에서 그 업체와 이 폐기물로 대화한 경로가 없습니다.", 404
+            )
+        stream = self.store.get_stream(sid)
+        try:
+            profile = self.store.get_vendor_profile(vendor_id)
+        except NotFound:
+            raise OrchestratorError("ROUTE_NOT_FOUND", "그런 업체가 없습니다.", 404) from None
+        vendor = self._assign_vendor(session, profile)
+        if permits.matched_permit(stream, vendor) is None:
+            raise OrchestratorError(
+                "PERMIT_NOT_MATCHED", "업체의 허가 품목에 이 폐기물이 없어 대조할 경로가 아닙니다."
+            )
+        usable, ignored = permits.usable_documents(vendor)
+        document_id = body.get("documentId")
+        document = next((d for d in usable if d.get("id") == document_id), None)
+        if document is None:
+            known = [d for d in profile.get("permitDocuments") or [] if d.get("id") == document_id]
+            if known:
+                why = next(
+                    (x["reason"] for x in ignored if x.get("name") == known[0].get("name")),
+                    "이 업체의 허가증으로 쓸 수 없는 문서입니다.",
+                )
+                raise OrchestratorError("PERMIT_DOCUMENT_IGNORED", why)
+            raise OrchestratorError(
+                "PERMIT_DOCUMENT_NOT_FOUND",
+                "그 업체가 올린 허가증이 아닙니다. 업체가 올린 허가증 가운데에서 고르세요.",
+                404,
+            )
+        page = body.get("page")
+        pages = [int(p) for p in document.get("pages") or [] if isinstance(p, int)]
+        if isinstance(page, bool) or not isinstance(page, int) or page < 1:
+            raise OrchestratorError("INVALID_PAGE", "대조한 쪽을 1 이상의 정수로 적어 주세요.", 422)
+        if pages and page not in pages:
+            raise OrchestratorError(
+                "INVALID_PAGE", f"허가증에 없는 쪽입니다(1~{max(pages)}쪽).", 422
+            )
+        found, fits = body.get("itemFound"), body.get("processFits")
+        if not isinstance(found, bool) or not isinstance(fits, bool):
+            raise OrchestratorError(
+                "INVALID_VALUE",
+                "품목이 있는지(itemFound)와 처리 방법이 맞는지(processFits)를 참·거짓으로 보내 주세요.",
+                422,
+            )
+
+        def quote(key: str) -> str | None:
+            text = " ".join(str(body.get(key) or "").split())[:200]
+            return text or None
+
+        process = permits.process_of(vendor)
+        material = stream.get("material")
+        at = self.store.now()
+        record = {
+            "vendorOrgId": vendor_id,
+            "streamId": sid,
+            "sessionId": session_id,
+            "documentId": document["id"],
+            "document": document.get("name"),
+            "page": page,
+            "wasteItem": stream.get("wasteItem"),
+            "materials": [material] if material else [],
+            "process": process,
+            "itemFound": found,
+            "processFits": fits,
+            "itemQuote": quote("itemQuote"),
+            "processQuote": quote("processQuote"),
+            "checkedBy": dict(checker),
+            "checkedAt": at,
+        }
+        record["id"] = f"pc_{ids.digest(record)}"
+        vendor_name = org_label(self.store.get_org(vendor_id).get("name"), "업체")
+        scope = permits.scope_of(stream)
+        need = permits.needed_business(vendor)
+        lines = [
+            f"{document.get('name')} {page}쪽 원문 대조",
+            f"품목 {scope}: {'있음' if found else '없음'}"
+            + (f" (원문: {record['itemQuote']})" if record["itemQuote"] else ""),
+            f"처리 방식 {process}({need}업): {'맞음' if fits else '다름'}"
+            + (f" (원문: {record['processQuote']})" if record["processQuote"] else ""),
+        ]
+        who = f"{checker.get('orgName') or '배출 기업'} 담당자"
+        # 계정 이름은 이 배출 기업만 보는 근거의 출처에만 남긴다(진행 기록은 업체도 본다)
+        signed = f"{who} {checker['userName']}" if checker.get("userName") else who
+        evidence = self.registry.put(
+            Evidence(
+                id=ids.human_id(org_id, f"허가증대조-{vendor_id}-{record['id']}"),
+                kind="human",
+                label=f"허가증 원문 대조: {vendor_name} · {scope} · {process}",
+                value="맞음" if found and fits else "맞지 않음",
+                excerpt="\n".join(lines),
+                source=f"{signed} 확인({at[:10]})",
+                as_of=self.today,
+                # 배출 기업의 기록이다(담당자 이름이 들어 있어 업체에는 열지 않는다)
+                access=(org_id,),
+                meta={
+                    "ownerOrgId": org_id,
+                    "permitCheck": record["id"],
+                    "document": document.get("name"),
+                    "documentId": document["id"],
+                    "page": page,
+                    "checkedAt": at,
+                },
+            )
+        )
+        record["evidence"] = evidence.id
+        for evidence_id in document.get("evidence") or []:
+            try:
+                share_evidence(self.registry, evidence_id, org_id)
+            except (EvidenceNotFound, EvidenceForbidden):
+                continue
+        stored = dict(profile)
+        stored["permitChecks"] = [*(profile.get("permitChecks") or []), record]
+        self.store.put_vendor_profile(stored)
+        self._event(
+            session_id,
+            "system",
+            "thread",
+            f"{josa(who, '이가')} {vendor_name}의 허가증 원문에서 {josa(scope, '와과')} "
+            f"{josa(f'처리 방식 {process}', '을를')} 대조했습니다: "
+            + ("맞음." if found and fits else "맞지 않음."),
+            thread.id,
+            vendorOrgId=vendor_id,
+            streamIds=[sid],
+            permitCheck=record["id"],
+            orgId=org_id,
+        )
+        self.refresh_permits(session_id)
+        return self.store.get_session(session_id)
 
     def _with_origin(self, session: dict[str, Any], arguments: dict[str, Any]) -> None:
         """공장 좌표가 있으면 최적 배정에 넘긴다(수거 운행 배출을 계산한다)."""
@@ -2127,6 +2476,7 @@ class Orchestrator:
             self._remember(session, thread)
             self._loading_for(session, thread, assigned[thread.id], streams, profiles)
             self._verify(session, thread)
+        self._assigned_requirements(session, streams)
         work["result"] = self._result(session, streams)
         self._announce_reviews(session)
         work["stages"]["6"] = (
@@ -2497,6 +2847,9 @@ class Orchestrator:
                             else f"{names.get(handed[sid]['vendorOrgId']) or '업체'}의 허가 품목이 "
                             "이 폐기물과 맞지 않게 되어 배정을 뺐습니다. 확인 필요."
                             if handed[sid].get("cause") == "permit_stream"
+                            else f"{names.get(handed[sid]['vendorOrgId']) or '업체'}로 가는 경로는 허가증 원문 "
+                            "대조 결과 진행할 수 없어 배정을 뺐습니다. 다른 업체를 찾지 못했습니다. 확인 필요."
+                            if handed[sid].get("cause") == "permit_check"
                             else f"{josa(names.get(handed[sid]['vendorOrgId']) or '업체', '와과')} 합의한 대화가 "
                             "담당자에게 넘어가 이 폐기물의 배정을 뺐습니다. 확인 필요."
                         ),
@@ -2516,9 +2869,12 @@ class Orchestrator:
                     }
                 )
             alternatives = []
+            blocked_routes = self._blocked_routes(session, by_id[sid], vendor_id, names)
+            blocked_ids = {b["vendorOrgId"] for b in blocked_routes}
             for other_id, thread in sorted(threads.items()):
                 other = (work["offers"].get(thread.id) or {}).get(sid)
-                if other_id == vendor_id or not other:
+                if other_id == vendor_id or not other or other_id in blocked_ids:
+                    # 허가 확인 결과 진행할 수 없는 경로는 대안(진행 가능한 선택지)에 넣지 않는다
                     continue
                 other_route = tool_of(other_id, "judge_route", streamId=sid)
                 # 운반비와 전처리 인건비까지 뺀 값(cost_carbon)이 있으면 그것으로 견준다
@@ -2560,6 +2916,8 @@ class Orchestrator:
                             "id": f"{tag}_alt_{safe_id(other_id)}_unitPrice",
                         },
                         "monthlyAfter": other_after,
+                        # 이 업체로 보낼 때의 허가 확인 상태(이 업체 자신의 근거로만 판정)
+                        "permit": self._permit_of(session, by_id[sid], other_id),
                         "note": "허가 근거가 맞지 않아 배정하지 않았습니다. " + excluded["text"]
                         if excluded
                         else "운반비와 인건비를 넣으면 지금보다 이득이 없어 고르지 않았습니다"
@@ -2607,6 +2965,8 @@ class Orchestrator:
                 "currentAssumed": bool(item.get("currentAssumed")),
                 "checks": checks,
                 "alternatives": alternatives,
+                # 허가 확인 결과 이 경로로 진행할 수 없는 업체(사유와 함께). 예상 손익은 싣지 않는다
+                "blockedRoutes": blocked_routes,
             }
             assignments.append(entry)
             for found in ((route or {}).get("output", {}).get("current") or {}).get(
@@ -2655,6 +3015,7 @@ class Orchestrator:
                         }
                     ],
                     "alternatives": [],
+                    "blockedRoutes": [],
                 }
             )
         totals = optimized["output"].get("totals") or {}
@@ -2847,6 +3208,8 @@ class Orchestrator:
                             for k in ("key", "title", "applies", "action", "status", "note")
                         },
                         "kind": "check" if item["decidedBy"] == "permit_match" else "todo",
+                        # 받는 업체의 허가 확인 상태(배정 뒤 판정). 결과표·승인 카드와 같은 값이다
+                        "permit": item.get("permit"),
                         "clauses": [clause(claims[c]) for c in item["claims"] if c in claims],
                     }
                     for item in output.get("items") or []
@@ -2931,6 +3294,13 @@ class Orchestrator:
                 else "업체의 허가 품목이 일부 폐기물과 맞지 않게 되어 그 폐기물만 뺐습니다. "
                 "남은 조건을 확인하고 다시 승인해 주세요.",
             )
+        side = thread.side_of(org_id)
+        held = [p for p in self.permit_states(session, thread) if p["status"] != "met"]
+        if held and (side == "emitter" or thread.approvals.get("emitter")):
+            # 허가증 원문 대조가 끝나지 않은 경로는 확정하지 않는다. 배출 기업의 승인(과 확정이 될 승인)을 막는다.
+            # 업체는 먼저 승인해 둘 수 있다. 근거 검증 실패(validation)와 섞이지 않게 승인 칸을 막지 않고 사유만 돌려준다
+            vendor_name = org_label(self.store.get_org(thread.vendor_org).get("name"), "업체")
+            raise OrchestratorError("PERMIT_UNVERIFIED", self._hold_reason(held, vendor_name))
         blocked = self._verify(session, thread)
         if blocked:
             self._save(session)
@@ -2949,7 +3319,6 @@ class Orchestrator:
                 "REVIEW_BLOCKED",
                 f"계약 검토 담당이 막은 항목이 있어 승인할 수 없습니다: {', '.join(stops)}.",
             )
-        side = thread.side_of(org_id)
         both = thread.approve(org_id)
         self.store.set_approval(session_id, thread_id, side, True)
         self.store.put_thread(thread)

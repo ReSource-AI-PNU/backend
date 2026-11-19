@@ -11,6 +11,7 @@ seed_demo(store, registry, today)는 저장소를 비우고 같은 상태로 다
 
 from __future__ import annotations
 
+import os
 from dataclasses import replace
 from typing import Any
 
@@ -90,10 +91,14 @@ def share_evidence(registry: Any, evidence_id: str, org_id: str) -> Evidence:
 
 
 def vendor_evidence_ids(profile: dict[str, Any]) -> list[str]:
-    """업체 프로필에 걸린 근거 ID(허가증, 매입 기준표, 노선·차량)."""
+    """업체 프로필에 걸린 근거 ID(허가증, 올린 허가증의 AI 판독, 원문 대조 기록, 매입 기준표, 노선·차량)."""
     found: list[str] = []
     for permit in profile.get("permits") or []:
         found += permit.get("evidence") or []
+    for document in profile.get("permitDocuments") or []:
+        found += document.get("evidence") or []
+    # 배출 기업 담당자의 허가증 원문 대조 기록(그 배출 기업만 본다)
+    found += [c["evidence"] for c in profile.get("permitChecks") or [] if c.get("evidence")]
     for criterion in profile.get("criteria") or []:
         found += criterion.get("evidence") or []
     found += (profile.get("fleet") or {}).get("evidence") or []
@@ -102,9 +107,10 @@ def vendor_evidence_ids(profile: dict[str, Any]) -> list[str]:
 
 
 def share_vendor_terms(registry: Any, profile: dict[str, Any], org_id: str) -> list[str]:
-    """대화가 열릴 때 업체의 허가증, 매입 기준, 운반 조건 근거를 배출 기업에 연다. fleet 근거는 열지 않는다."""
+    """대화가 열릴 때 업체의 허가증(올린 허가증의 AI 판독 포함), 매입 기준, 운반 조건 근거를 배출 기업에 연다.
+    fleet 근거는 열지 않는다."""
     shared: list[str] = []
-    for section in ("permits", "criteria"):
+    for section in ("permits", "criteria", "permitDocuments"):
         for item in profile.get(section) or []:
             for evidence_id in item.get("evidence") or []:
                 share_evidence(registry, evidence_id, org_id)
@@ -291,6 +297,107 @@ class _Seeder:
             DOC_DATE,
         )
         return {"wasteItem": waste_item, "materials": materials, "evidence": [eid]}
+
+    def permit_document(
+        self,
+        org: str,
+        holder: tuple[str, str],
+        items: list[tuple[str, list[str], str]],
+        business: str,
+    ) -> dict:
+        """업체가 올린 허가증(가상)의 검토 대기 기록. AI가 읽은 품목·업종·상호·소재지와 그 쪽·원문 표기.
+
+        items는 [(폐기물 종류, 재질, 원문 표기)]다. 담당자의 원문 대조 기록은 따로(permit_check) 만든다.
+        """
+        name = f"{holder[0]} 폐기물처리업 허가증(가상).pdf"
+        quotes = [f"1쪽 · {quote}" for _, _, quote in items]
+        quotes += [f"1쪽 · 업종: {business}", f"1쪽 · 상호 {holder[0]} · 소재지 {holder[1]}"]
+        eid = self.put(
+            ids.doc_id(org, "허가증-AI판독", "demo"),
+            org,
+            f"허가증(AI가 읽음, 대조 전): {name}",
+            "\n".join(quotes),
+            f"{name} · AI가 읽은 표기(담당자 대조 전)",
+            DOC_DATE,
+        )
+        return {
+            "id": f"pd_demo_{org.removeprefix('org_')}",
+            "orgId": org,
+            "name": name,
+            "uploadedAt": f"{DOC_DATE}T09:00:00+00:00",
+            "uploadedBy": org,
+            "pages": [1],
+            "items": [
+                {"wasteItem": item, "materials": list(materials), "page": 1, "quote": quote}
+                for item, materials, quote in items
+            ],
+            "business": {"name": business, "page": 1, "quote": f"업종: {business}"},
+            "holder": {
+                "name": holder[0],
+                "address": holder[1],
+                "page": 1,
+                "quote": f"상호 {holder[0]} · 소재지 {holder[1]}",
+            },
+            "permitNumber": None,
+            "evidence": [eid],
+            "readBy": "ai",
+        }
+
+    def permit_check(
+        self,
+        emitter: tuple[str, str],
+        vendor: str,
+        document: dict,
+        waste_item: str,
+        material: str,
+        process: str,
+        quotes: tuple[str, str],
+    ) -> dict:
+        """배출 기업 담당자가 허가증 원문에서 품목과 처리 방법을 대조한 기록(가상, 시연 시작 전에 해 둔 것)."""
+        record = {
+            "vendorOrgId": vendor,
+            "streamId": None,
+            "sessionId": None,
+            "documentId": document["id"],
+            "document": document["name"],
+            "page": 1,
+            "wasteItem": waste_item,
+            "materials": [material],
+            "process": process,
+            "itemFound": True,
+            "processFits": True,
+            "itemQuote": quotes[0],
+            "processQuote": quotes[1],
+            "checkedBy": {"orgId": emitter[0], "orgName": emitter[1], "userName": None},
+            "checkedAt": f"{DOC_DATE}T10:00:00+00:00",
+        }
+        record["id"] = f"pc_demo_{vendor.removeprefix('org_')}_{ids.digest(record)[:6]}"
+        evidence_id = ids.human_id(emitter[0], f"허가증대조-{vendor}-{record['id']}")
+        self.registry.put(
+            Evidence(
+                id=evidence_id,
+                kind="human",
+                label=f"허가증 원문 대조: {waste_item}({material}) · {process}",
+                value="맞음",
+                excerpt=(
+                    f"{document['name']} 1쪽 원문 대조\n품목 {waste_item}({material}): 있음 (원문: {quotes[0]})\n"
+                    f"처리 방식 {process}: 맞음 (원문: {quotes[1]})"
+                ),
+                source=f"{emitter[1]} 담당자 확인({DOC_DATE}) · {SYNTHETIC_NOTE}",
+                as_of=DOC_DATE,
+                access=(emitter[0],),
+                meta={
+                    "ownerOrgId": emitter[0],
+                    "permitCheck": record["id"],
+                    "documentId": document["id"],
+                    "page": 1,
+                    "synthetic": True,
+                },
+            )
+        )
+        self.evidence_ids.append(evidence_id)
+        record["evidence"] = evidence_id
+        return record
 
     def criterion(self, org: str, cid: str, **spec: Any) -> dict:
         doc = "매입기준표"
@@ -518,6 +625,45 @@ def _streams(s: _Seeder) -> list[dict[str, Any]]:
 def _vendors(s: _Seeder) -> list[dict[str, Any]]:
     sg, nh, ms = VENDORS
     pp = {"material": "PP", "form": None}
+    # 허가 확인 상태를 세 가지로 보인다(judge/permits.py): 새길자원은 한빛정밀 담당자가 허가증 원문을 대조해 둔
+    # 업체(대조 완료), 남해열분해는 허가증을 올렸지만 아직 아무도 대조하지 않은 업체(검토 대기), 미소환경은
+    # 허가 품목만 입력한 업체(원본 확인 필요)다. 대조 기록은 한빛정밀의 것이라 다온산업에는 쓰이지 않는다
+    sg_doc = s.permit_document(
+        sg,
+        ("(주)새길자원", "부산광역시 강서구 미음동"),
+        [
+            ("폐플라스틱", ["PP", "PE"], "영업대상 폐기물: 폐플라스틱(PP, PE)"),
+            ("포장재", ["LDPE", "LLDPE"], "영업대상 폐기물: 폐포장재(LDPE, LLDPE 필름)"),
+        ],
+        "폐기물종합재활용업",
+    )
+    nh_doc = s.permit_document(
+        nh,
+        ("(주)남해열분해", "경상남도 김해시 주촌면"),
+        [("폐플라스틱", [], "영업대상 폐기물: 폐합성수지")],
+        "폐기물종합재활용업",
+    )
+    hanbit = (EMITTER, "(주)한빛정밀")
+    sg_checks = [
+        s.permit_check(
+            hanbit,
+            sg,
+            sg_doc,
+            "폐플라스틱",
+            "PP",
+            "재활용",
+            ("영업대상 폐기물: 폐플라스틱(PP, PE)", "업종: 폐기물종합재활용업"),
+        ),
+        s.permit_check(
+            hanbit,
+            sg,
+            sg_doc,
+            "포장재",
+            "LDPE",
+            "재활용",
+            ("영업대상 폐기물: 폐포장재(LDPE, LLDPE 필름)", "업종: 폐기물종합재활용업"),
+        ),
+    ]
     return [
         {
             "orgId": sg,
@@ -525,6 +671,8 @@ def _vendors(s: _Seeder) -> list[dict[str, Any]]:
                 s.permit(sg, "폐플라스틱", ["PP", "PE"]),
                 s.permit(sg, "포장재", ["LDPE", "LLDPE"]),
             ],
+            "permitDocuments": [sg_doc],
+            "permitChecks": sg_checks,
             "criteria": [
                 s.criterion(
                     sg,
@@ -588,6 +736,7 @@ def _vendors(s: _Seeder) -> list[dict[str, Any]]:
         {
             "orgId": nh,
             "permits": [s.permit(nh, "폐플라스틱", ["PP", "PE", "PS", "ABS", "PP+ABS"])],
+            "permitDocuments": [nh_doc],
             "criteria": [
                 s.criterion(
                     nh,
@@ -642,7 +791,7 @@ def _vendors(s: _Seeder) -> list[dict[str, Any]]:
         {
             "orgId": ms,
             # 필름(포장재·LDPE) 허가 품목이 없다: 필름 흐름으로는 대화를 열지 않아야 한다.
-            # 허가증을 아직 올리지 않고 허가 품목만 입력한 업체다: 배정되면 허가 근거가 "업체 입력"이라 조건부가 된다
+            # 허가증을 아직 올리지 않고 허가 품목만 입력한 업체다: 배정되면 "허가증 원본 확인 필요"로 확정이 보류된다
             "permits": [s.typed_permit(ms, "폐플라스틱", ["PP", "ABS"])],
             "criteria": [
                 s.criterion(
@@ -682,6 +831,79 @@ def _vendors(s: _Seeder) -> list[dict[str, Any]]:
     ]
 
 
+def demo_permits() -> str:
+    """시연 업체의 허가 확인 상태. mixed(기본): 새길 대조 완료 · 남해 검토 대기 · 미소 원본 확인 필요.
+    verified: 두 배출 기업 담당자가 세 업체의 허가 품목을 모두 원문 대조해 둔 상태(확정까지 가는 시험이 쓴다)."""
+    return "verified" if os.environ.get("V3_DEMO_PERMITS") == "verified" else "mixed"
+
+
+_HOLDERS = {
+    "org_saegil": ("(주)새길자원", "부산광역시 강서구 미음동"),
+    "org_namhae": ("(주)남해열분해", "경상남도 김해시 주촌면"),
+    "org_miso": ("(주)미소환경", "부산광역시 사상구 학장동"),
+}
+
+
+def verify_all(
+    seeder: _Seeder,
+    vendors: list[dict[str, Any]],
+    emitters: list[str],
+    names: dict[str, str] | None = None,
+    holders: dict[str, tuple[str, str]] | None = None,
+) -> None:
+    """모든 업체에 허가증을 올리고, emitters의 담당자가 허가 품목(재질마다)과 처리 방식을 모두 대조해 둔다.
+
+    names는 조직 이름(없으면 시연 조직), holders는 업체마다 허가증의 상호·소재지다(없으면 조직 이름과 "부산광역시").
+    """
+    names = names or {org["id"]: org["name"] for org in ORGS}
+    holders = holders or _HOLDERS
+    for profile in vendors:
+        org = profile["orgId"]
+        documents = list(profile.get("permitDocuments") or [])
+        if not documents:
+            documents = [
+                seeder.permit_document(
+                    org,
+                    holders.get(org, (names.get(org, org), "부산광역시")),
+                    [
+                        (
+                            p["wasteItem"],
+                            list(p.get("materials") or []),
+                            f"영업대상 폐기물: {p['wasteItem']}",
+                        )
+                        for p in profile.get("permits") or []
+                    ],
+                    "폐기물종합재활용업",
+                )
+            ]
+        checks = list(profile.get("permitChecks") or [])
+        done = {
+            (c["checkedBy"]["orgId"], c["wasteItem"], tuple(c["materials"]), c["process"])
+            for c in checks
+        }
+        process = str(profile.get("process") or "재활용")
+        for emitter in emitters:
+            for permit in profile.get("permits") or []:
+                for material in permit.get("materials") or []:
+                    key = (emitter, permit["wasteItem"], (material,), process)
+                    if key in done:
+                        continue
+                    done.add(key)
+                    checks.append(
+                        seeder.permit_check(
+                            (emitter, names.get(emitter, emitter)),
+                            org,
+                            documents[0],
+                            permit["wasteItem"],
+                            material,
+                            process,
+                            (f"영업대상 폐기물: {permit['wasteItem']}", "업종: 폐기물종합재활용업"),
+                        )
+                    )
+        profile["permitDocuments"] = documents
+        profile["permitChecks"] = checks
+
+
 def seed_demo(store: Any, registry: Any, today: str, *, wipe: bool = True) -> dict[str, Any]:
     """저장소를 비우고 시연 시작 상태로 채운다. 여러 번 불러도 같은 상태가 된다.
 
@@ -698,6 +920,8 @@ def seed_demo(store: Any, registry: Any, today: str, *, wipe: bool = True) -> di
     for stream in streams:
         store.put_stream({**stream, "synthetic": True})
     vendors = _vendors(seeder)
+    if demo_permits() == "verified":
+        verify_all(seeder, vendors, [EMITTER, OTHER_EMITTER])
     for profile in vendors:
         store.put_vendor_profile(profile)
     return {

@@ -711,6 +711,32 @@ async def approve(session_id: str, request: Request):
     return await call(service.approve, session_id, str(required(body, "threadId")), viewer)
 
 
+@router.post("/sessions/{session_id}/permit-checks")
+@guarded
+async def record_permit_check(session_id: str, request: Request):
+    """배출 기업 담당자가 업체가 올린 허가증 원문에서 품목과 처리 방법을 대조한 기록(service.record_permit_check)."""
+    viewer = await viewer_of(request)
+    body = await json_object(request)
+    return await call(
+        service.record_permit_check, session_id, body, viewer, await checker_name(request)
+    )
+
+
+async def checker_name(request: Request) -> str | None:
+    """대조를 기록한 사람의 이름(bff 모드에서 계정 이름). 알 수 없으면 None(조직 이름만 남는다)."""
+    auth = current_auth()
+    if auth.mode != httpio.AUTH_BFF:
+        return None
+    who = auth.bff(request.headers)
+    if not who.user_id:
+        return None
+    try:
+        user = await call(accounts.check_user, who.user_id)
+    except service.ServiceError:  # 이름을 못 읽어도 기록은 남긴다(조직 이름으로)
+        return None
+    return (user or {}).get("name") if isinstance(user, dict) else None
+
+
 # ── 재학습 데이터 수집 (7단계) ───────────────────────────────────────
 @router.post("/sessions/{session_id}/corrections")
 @guarded

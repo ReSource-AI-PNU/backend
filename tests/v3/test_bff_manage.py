@@ -325,6 +325,44 @@ def test_deleting_a_sole_owned_emitter_deletes_its_data_only(world):
         accounts.grant_membership(state, "d-x@example.com", org)
 
 
+def _upload_permit(client, user, vendor, name):
+    """업체가 허가증(가상 글 파일)을 올린다. 배출 기업 담당자가 원문을 대조하기 전에는 검토 대기다."""
+    text = f"폐기물처리업 허가증(가상)\n상호: {name}\n업종: 폐기물 종합재활용업\n영업대상 폐기물: 폐플라스틱(PP, PC)\n"
+    sent = client.post(
+        "/api/v3/intake/documents",
+        headers=bff(user, vendor),
+        files={"file": ("허가증.txt", text.encode("utf-8"), "text/plain")},
+        data={"orgId": vendor, "kind": "permit"},
+    )
+    assert sent.status_code == 200, sent.text
+    assert sent.json()["permitDocument"]["holder"]["name"] == name
+
+
+def _check_permits(client, session_id, headers):
+    """배출 기업 담당자가 승인 전에 남은 경로마다 업체가 올린 허가증 원문을 대조해 기록한다(bff 경로)."""
+    view = client.get(f"/api/v3/sessions/{session_id}", headers=headers).json()
+    for approval in view["approvals"]:
+        thread = next(t for t in view["threads"] if t["id"] == approval["threadId"])
+        for permit in approval.get("permits") or []:
+            if permit["status"] == "met":
+                continue
+            assert permit["document"], permit  # 대조할 허가증이 있다
+            done = client.post(
+                f"/api/v3/sessions/{session_id}/permit-checks",
+                headers=headers,
+                json={
+                    "streamId": permit["streamId"],
+                    "vendorOrgId": thread["vendorOrgId"],
+                    "documentId": permit["document"]["id"],
+                    "page": 1,
+                    "itemFound": True,
+                    "processFits": True,
+                },
+            )
+            assert done.status_code == 200, done.text
+    return client.get(f"/api/v3/sessions/{session_id}", headers=headers).json()
+
+
 def test_deleting_a_vendor_closes_open_threads_and_keeps_other_orgs_consistent(world):
     client, state, _ = world
     vendor_user, vendor = make_new_vendor(client)
@@ -347,8 +385,18 @@ def test_deleting_a_vendor_closes_open_threads_and_keeps_other_orgs_consistent(w
     assert closed["id"] not in {a["threadId"] for a in after.json()["approvals"]}
     assert all(a["vendorOrgId"] != vendor for a in after.json()["result"]["assignments"])
     assert after.json()["session"]["status"] in (before, "idle")
-    # 남은 대화는 그대로 승인할 수 있다
-    for item in after.json()["approvals"]:
+    # 남은 대화는 허가증 원문을 대조한 뒤 그대로 승인할 수 있다(대조 전에는 409 PERMIT_UNVERIFIED)
+    held = [a for a in after.json()["approvals"] if a.get("permitHold")]
+    if held:
+        blocked = client.post(
+            f"/api/v3/sessions/{session_id}/approvals",
+            headers=headers,
+            json={"threadId": held[0]["threadId"]},
+        )
+        assert error(blocked, 409) == "PERMIT_UNVERIFIED"
+    checked = _check_permits(client, session_id, headers)
+    assert not any(a.get("permitHold") for a in checked["approvals"])
+    for item in checked["approvals"]:
         approved = client.post(
             f"/api/v3/sessions/{session_id}/approvals",
             headers=headers,
@@ -404,6 +452,18 @@ def test_a_vendor_with_a_confirmed_deal_keeps_its_profile_out_of_discovery(world
     headers = bff(user, org)
     thread = next(t for t in view["threads"] if t["vendorOrgId"] == vendor)
     assert thread["status"] == "agreed", thread
+    # 허가 품목만 입력한 업체: 허가증을 올리고 배출 기업 담당자가 원문을 대조해야 확정할 수 있다
+    approval = next(a for a in view["approvals"] if a["threadId"] == thread["id"])
+    assert approval["permitHold"] is True
+    assert approval["permits"][0]["label"] == "등록 품목 일치 · 허가증 원본 확인 필요"
+    _upload_permit(client, vendor_user, vendor, "(주)가상PC자원")
+    checked = _check_permits(client, session_id, headers)
+    permit = next(a for a in checked["result"]["assignments"] if a["vendorOrgId"] == vendor)[
+        "permit"
+    ]
+    assert permit["level"] == "verified"
+    # bff에서는 기록한 사람의 계정 이름이 남는다(배출 기업만 본다)
+    assert permit["check"]["checkedBy"]["userName"] and permit["check"]["checkedBy"]["orgId"] == org
     for side in (headers, bff(vendor_user, vendor)):
         approved = client.post(
             f"/api/v3/sessions/{session_id}/approvals",

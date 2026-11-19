@@ -10,7 +10,7 @@ import json
 from dataclasses import replace
 from typing import Any
 
-from app.v3.demo.seed import SYNTHETIC_NOTE, _Seeder
+from app.v3.demo.seed import SYNTHETIC_NOTE, _Seeder, verify_all
 from app.v3.evidence.model import PUBLIC
 from app.v3.evidence.registry import InMemoryRegistry
 from app.v3.evidence.seeds import load_seed_dir
@@ -174,7 +174,24 @@ def build_world(case: dict[str, Any], *, registry_source: Any = None):
                 "note": SYNTHETIC_NOTE,
             }
         )
-        store.put_vendor_profile(_vendor(seeder, spec))
+        profile = _vendor(seeder, spec)
+        if spec.get("permitVerified", True):
+            # 사례는 허가 확인이 아닌 다른 판단을 본다. 배출 기업 담당자가 업체의 허가증 원문을 대조해 둔 상태로
+            # 시작한다(허가 확인 상태 자체는 tests/v3/test_permit_verification.py가 본다)
+            name = spec.get("name") or f"(주)가상업체-{spec['orgId'].removeprefix('org_')}"
+            emitters = [emitter["id"], *(o.get("id") for o in world.get("otherEmitters") or [])]
+            verify_all(
+                seeder,
+                [profile],
+                [e for e in emitters if e],
+                {
+                    spec["orgId"]: name,
+                    emitter["id"]: emitter["name"],
+                    **{o["id"]: o.get("name") or o["id"] for o in world.get("otherEmitters") or []},
+                },
+                {spec["orgId"]: (name, spec.get("region") or "부산(가상)")},
+            )
+        store.put_vendor_profile(profile)
     for patch in world.get("evidencePatches") or []:
         patch_evidence(registry, patch)
     shield = None

@@ -171,7 +171,11 @@ def test_result_sheet_assigns_every_stream(demo):
     assert value(sprue_carbon["carbon"]) == pytest.approx(
         value(sprue_carbon["carbonProcess"]) + value(sprue_carbon["carbonTransport"]), abs=2e-6
     )
-    assert sprue_carbon["permit"]["level"] == "document"
+    # 시험 시드(conftest.py, V3_DEMO_PERMITS=verified)는 한빛정밀 담당자가 허가증 원문을 대조해 둔 상태다
+    assert sprue_carbon["permit"]["level"] == "verified"
+    assert (
+        sprue_carbon["permit"]["source"] == "check" and sprue_carbon["permit"]["check"]["page"] == 1
+    )
     # 순비용의 내역: 매각 수익(처리비면 음수) − 운반비 − 전처리 인건비
     assert sprue["transportPaidBy"] == "vendor" and value(sprue["transport"]) == 0
     assert value(sprue["revenue"]) == 320 * 600 and sprue["labor"] is None
@@ -236,9 +240,9 @@ def test_stage_bar_and_graph(demo):
     ]
     status = {s["stage"]: s["status"] for s in waiting["stages"]}
     assert status[1] == "needs_check"  # 모른다고 답한 수분이 남아 있다
-    # 허가 요건은 대화를 연 업체의 허가 품목과 허가 근거 수준으로 판정한다. 시연의 (주)미소환경은 허가 품목을
-    # 입력만 하고 허가증을 올리지 않아(업체 입력) 그 업체와 대화한 폐기물의 허가 요건이 조건부다
-    assert status[3] == "needs_check"
+    # 허가 요건은 배정한 업체의 허가 확인 상태로 판정한다. 시험 시드(conftest.py)는 모든 경로를 원문 대조해 둔
+    # 상태라 충족이다(대조가 남은 경로의 보류는 test_permit_verification.py가 본다)
+    assert status[3] == "done"
     assert status[2] == status[4] == status[5] == status[6] == "done"
     graph = waiting["graph"]
     kinds = {n["type"] for n in graph["nodes"]}

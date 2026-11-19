@@ -490,7 +490,12 @@ TEXT_KEYS_SKIPPED = {
     "id", "at", "createdAt", "today", "asOf", "evidence", "reasonEvidence", "threadId", "messageId",
     "documentId", "questionId", "rendered", "lot", "streamIds", "assignedStreamIds", "key", "from",
     "to", "orgId", "vendorOrgId", "emitterOrgId", "claimId", "name", "streamId",
+    # 허가증 업로드·원문 대조 시각
+    "checkedAt", "uploadedAt",
 }  # fmt: skip
+
+# 허가 확인 상태(permit)에서 허가증 원문을 옮긴 칸(쪽마다의 원문 표기, 상호·소재지, 문서 이름). 근거로 열린다
+PERMIT_DOCUMENT_KEYS = {"quote", "itemQuote", "processQuote", "address", "permitNumber", "document"}
 
 
 # 가입하지 않은 업체 후보(결과 한 장의 outsideVendors)에서 공공데이터 원문을 옮긴 칸
@@ -526,6 +531,8 @@ def test_rule1_sentences_written_by_code_carry_no_loose_numbers(confirmed_demo):
                 and path.rsplit(".", 1)[-1] in PUBLIC_RECORD_KEYS
             ):
                 continue  # 공공데이터 명부를 원문 그대로 옮긴 식별 정보(ref 근거로 열린다). 수치가 아니다
+            if ".permit" in f".{path}" and path.rsplit(".", 1)[-1] in PERMIT_DOCUMENT_KEYS:
+                continue  # 허가증 원문 표기(문서에 적힌 글 그대로). 코드가 쓴 문장이 아니다
             if path == "events.summary":
                 # 순번만 있다: "근거 확인 통과(1번째 작성)", "담당자 질문(2번째 묶음): …"
                 assert re.search(r"\d번째 (작성|묶음)", text), (viewer, text)

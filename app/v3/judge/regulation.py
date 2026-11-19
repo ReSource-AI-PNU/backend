@@ -19,7 +19,7 @@ from app.v3.evidence import lexical, search
 from app.v3.evidence.registry import EvidenceForbidden, EvidenceNotFound
 from app.v3.evidence.validator import MIN_QUOTE_CHARS
 from app.v3.judge.common import Recorder, permit_match
-from app.v3.judge.permits import permit_level
+from app.v3.judge.permits import permit_level, short_view
 
 _SPLIT = re.compile(r"(?<=[.。다])\s+|\n+")
 QUOTE_MAX = 300  # 인용은 문장 하나, 길면 앞부분만(원문의 부분 문자열이라 검증기를 그대로 통과한다)
@@ -101,53 +101,59 @@ def requirements() -> tuple[dict[str, Any], ...]:
     return tuple(json.loads(REQUIREMENTS_FILE.read_text(encoding="utf-8")))
 
 
-def _permit_status(registry, stream, vendors, today=None) -> tuple[str, str, list[str]]:
-    """허가 요건: 대화를 연 업체 가운데 허가 품목이 맞는 곳이 있는가, 그 허가를 무엇으로 확인했는가.
+SHORT_LABEL = {
+    "verified": "허가증 대조 완료",
+    "pending_review": "허가증 검토 대기",
+    "registered": "허가증 원본 확인 필요",
+    "mismatch": "이 경로로 진행 불가",
+}
 
-    허가 근거 수준(permits.permit_level)이 업체 입력뿐인 업체가 있으면 조건부다(그 업체로 보내기 전에 허가증 사본을
-    받아야 한다). 허가 업종이나 공공 명부가 어긋나는 업체에는 맡기지 않으므로, 맞는 업체가 그런 곳뿐이면 불충족이다.
+
+def _permit_status(registry, stream, vendors, today=None):
+    """허가 요건: 받는 업체의 허가를 무엇으로 확인했는가. (상태, 문장, 근거, 허가 확인 상태 | None).
+
+    배정 뒤에는 배정한 업체 하나만 넘어온다. 그 업체 · 이 폐기물 · 그 업체의 처리 방식의 허가 확인 상태
+    (permits.permit_level)로 판정한다: 허가증 대조 완료면 충족, 검토 대기·원본 확인 필요면 조건부, 진행 불가면 불충족.
+    배정 전(대화를 연 업체 여럿)에는 업체마다의 상태를 적고, 모두 대조 완료일 때만 충족이다.
+    다른 업체의 허가 근거로 이 업체의 상태를 채우지 않는다.
     """
     if not vendors:
         return (
             "conditional",
             "지금 맡기는 업체의 허가증에 이 폐기물이 들어 있는지 확인이 필요합니다.",
             [],
+            None,
         )
     results = [(vendor, *permit_match(stream, vendor)) for vendor in vendors]
     matched = [r for r in results if r[1] is True]
     if matched:
         levels = [(r[0], permit_level(registry, stream, r[0], today)) for r in matched]
         evidence = list(dict.fromkeys(e for _, level in levels for e in level["evidence"]))
-        named = all(vendor.get("name") for vendor, _ in levels)
-        head = (
-            f"허가 품목이 맞는 업체({', '.join(str(v['name']) for v, _ in levels)})와만 대화했습니다."
-            if named
-            else "허가 품목이 맞는 업체와만 대화했습니다."
+        statuses = {level["status"] for _, level in levels}
+        status = (
+            "met" if statuses == {"met"} else "unmet" if statuses == {"unmet"} else "conditional"
         )
-        how = ", ".join(f"{vendor['name']}: {level['label']}" for vendor, level in levels)
-        short = {"self": "업체 입력뿐", "mismatch": "허가 근거가 맞지 않음"}
-        weak = [(vendor, level) for vendor, level in levels if level["status"] != "met"]
-        who = ", ".join(
-            f"{v.get('name') or '업체'}({short.get(level['level'], level['label'])})"
-            for v, level in weak
+        if len(levels) == 1:
+            vendor, level = levels[0]
+            name = vendor.get("name") or "받는 업체"
+            return status, f"{name}: {level['label']}. {level['text']}", evidence, level
+        how = ", ".join(
+            f"{vendor.get('name') or '업체'} {SHORT_LABEL[level['level']]}"
+            for vendor, level in levels
         )
-        if weak and all(level["status"] == "unmet" for _, level in levels):
-            note = (
-                f"{head} 그러나 허가 업종이나 공공 허가 명부가 이 폐기물과 맞지 않습니다: {who}. "
-                "허가 기관에 확인하기 전에는 이 폐기물을 넘기지 않습니다."
-            )
-            return "unmet", note, evidence
-        if weak:
-            note = (
-                f"{head} 다만 허가 근거가 약하거나 맞지 않는 업체가 있습니다: {who}. 그 업체로 보내기 전에 "
-                "허가증 사본이나 공공 허가 명부로 확인해야 합니다."
-            )
-            return "conditional", note, evidence
-        tail = f" 허가 근거: {how}." if named else ""
-        return "met", head + tail, evidence
+        note = (
+            f"허가 품목이 맞는 업체와 대화합니다. 허가 확인: {how}. "
+            "배정한 업체의 허가는 결과에서 그 업체의 근거로 다시 판정합니다."
+        )
+        return status, note, evidence, None
     if any(r[1] is None for r in results):
-        return "needs_information", "업체 허가 품목이 올라와 있지 않아 확인하지 못했습니다.", []
-    return "unmet", "허가 품목이 맞는 업체가 없습니다. 이 폐기물은 넘기지 않습니다.", []
+        return (
+            "needs_information",
+            "업체 허가 품목이 올라와 있지 않아 확인하지 못했습니다.",
+            [],
+            None,
+        )
+    return "unmet", "허가 품목이 맞는 업체가 없습니다. 이 폐기물은 넘기지 않습니다.", [], None
 
 
 def check_requirements(registry, *, org_id, today, stream, route, topics=None, vendors=None):
@@ -184,10 +190,15 @@ def check_requirements(registry, *, org_id, today, stream, route, topics=None, v
             laws.append(law.id)
             cited.add(law.id)
         if req["decidedBy"] == "permit_match":
-            status, note, permit_evidence = _permit_status(registry, stream, vendors, today)
+            status, note, permit_evidence, level = _permit_status(registry, stream, vendors, today)
             decided.append(status)
         else:
-            status, note, permit_evidence = "conditional", "담당자가 확인할 일입니다.", []
+            status, note, permit_evidence, level = (
+                "conditional",
+                "담당자가 확인할 일입니다.",
+                [],
+                None,
+            )
         rec.check(
             f"req:{req['key']}",
             status,
@@ -206,6 +217,8 @@ def check_requirements(registry, *, org_id, today, stream, route, topics=None, v
                 "note": note,
                 "claims": claims,
                 "evidence": list(dict.fromkeys([*permit_evidence, *laws])),
+                # 받는 업체가 하나(배정한 업체)면 그 허가 확인 상태. 결과표·승인 카드와 같은 값이다
+                **({"permit": short_view(level)} if level else {}),
             }
         )
     # 폐기물과 경로로 찾은 관련 조항(체크리스트에 없는 것). 담당자가 따로 준 주제가 있으면 그것도 찾는다
