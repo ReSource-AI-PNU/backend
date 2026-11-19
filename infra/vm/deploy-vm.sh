@@ -39,6 +39,8 @@
 #   AZURE_SEARCH_INDEX            근거 색인 이름 (기본 rsai-evidence)
 #   FOUNDRY_EMBEDDING_DEPLOYMENT  질의·색인 임베딩 배포 (기본 text-embedding-3-small, 1536차원).
 #                    Foundry 계정에 이 배포가 없으면 V3_EMBEDDINGS를 비워 벡터 없이 글과 시맨틱 랭커로 찾는다
+#   (근거 검색 재순위) V3_LLM=foundry이면 검색 상위 후보를 같은 배포(gpt-5-mini)가 다시 줄 세운다
+#                    (evidence/rerank.py). 백엔드 환경에 V3_SEARCH_RERANK=0을 넣으면 끈다
 #
 # 비밀: Key Vault에서 읽어 VM의 /opt/rsai/env/*.env(권한 600)에만 쓴다. 화면과 명령줄에 값을 찍지 않는다.
 #       v3-bff-key, v3-org-tokens, auth-secret 이 Key Vault에 없으면 새로 만들어 Key Vault에만 둔다.

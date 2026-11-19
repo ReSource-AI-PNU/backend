@@ -5,8 +5,10 @@
 
 use_backend로 Azure AI Search(search_azure.py)를 연결하면 백엔드의 순위와 로컬 순위를 RRF로 합친다
 (fuse=False면 백엔드 순위만 쓴다). 돌려주는 근거의 내용은 언제나 레지스트리에서 다시 읽은 것이고,
-조직이 볼 수 없는 근거는 걸러 낸다. 백엔드가 실패하면 로컬 검색으로 답한다. 판단 도구는 이 검색을
-쓰지 않으므로 도구의 결과는 그대로다.
+조직이 볼 수 없는 근거는 걸러 낸다. 백엔드가 실패하면 로컬 검색으로 답한다.
+
+use_reranker로 재순위기(evidence/rerank.py)를 연결하면 위 순위의 상위 후보를 모델이 다시 줄 세운다.
+모델은 순서만 정하고 근거 내용과 인용은 그대로이며, 실패하면 위 순위로 답한다.
 """
 
 from __future__ import annotations
@@ -30,6 +32,7 @@ LOCAL = "local"
 _backend: SearchBackend | None = None
 _backend_name = LOCAL
 _fuse = True
+_reranker: Any = None  # rerank(query, ranked, by_id) -> ranked. None이면 재순위하지 않는다
 FUSION_DEPTH = 50  # RRF로 합칠 때 양쪽에서 받는 순위 수
 
 _TOKEN = re.compile(r"[0-9a-z가-힣]+")
@@ -87,25 +90,28 @@ def search_evidence(
     if not query.strip():
         return [{"evidence": shown(e, org_id), "score": 0.0} for e in items[:limit]]
     by_id = {e.id: e for e in items}
-    local = rank_local(items, query)
+    ranked = rank_local(items, query)
+    shown_by_id: dict[str, dict[str, Any]] = {}
     if _backend is not None:
         depth = max(limit, FUSION_DEPTH) if _fuse else limit
         ranked_elsewhere = _from_backend(registry, query, kinds, org_id, depth)
         if ranked_elsewhere is not None:
             if not _fuse:
                 return ranked_elsewhere[:limit]
-            fused = lexical.rrf(
+            ranked = lexical.rrf(
                 [
                     [hit["evidence"]["id"] for hit in ranked_elsewhere],
-                    [evidence_id for evidence_id, _ in local[:depth]],
+                    [evidence_id for evidence_id, _ in ranked[:depth]],
                 ]
             )
             shown_by_id = {hit["evidence"]["id"]: hit["evidence"] for hit in ranked_elsewhere}
-            return [
-                {"evidence": shown_by_id.get(eid) or shown(by_id[eid], org_id), "score": value}
-                for eid, value in fused[:limit]
-            ]
-    return [{"evidence": shown(by_id[eid], org_id), "score": value} for eid, value in local[:limit]]
+    if _reranker is not None:
+        ranked = _reranker.rerank(query, ranked, by_id)
+    return [
+        {"evidence": shown_by_id.get(eid) or shown(by_id[eid], org_id), "score": value}
+        for eid, value in ranked[:limit]
+        if eid in shown_by_id or eid in by_id
+    ]
 
 
 def rank_local(items: Iterable[Evidence], query: str) -> list[tuple[str, float]]:
@@ -125,6 +131,16 @@ def use_backend(backend: SearchBackend | None, name: str = "azure", *, fuse: boo
 
 def backend_name() -> str:
     return _backend_name
+
+
+def use_reranker(reranker: Any) -> None:
+    """상위 후보를 다시 줄 세울 재순위기를 정한다(evidence/rerank.py). None이면 끈다."""
+    global _reranker
+    _reranker = reranker
+
+
+def reranker_name() -> str | None:
+    return getattr(_reranker, "name", None) if _reranker is not None else None
 
 
 def _from_backend(

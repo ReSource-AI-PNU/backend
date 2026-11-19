@@ -16,6 +16,9 @@
   V3_EVAL_L2_AZURE=1일 때만 평가 전용 색인을 만들어 돈다. 없으면 미측정.
 - S6: S1과 S5의 순위를 RRF로 합친 하이브리드(제품의 search_evidence가 백엔드를 연결했을 때와 같다).
   S5가 돌 때만 잰다.
+- S7, S8: S1, S6 순위의 상위 40개를 모델(gpt-5-mini)이 다시 줄 세운 것(evidence/rerank.py, 제품의
+  search_evidence가 재순위기를 연결했을 때와 같다). Foundry 설정이 있고 V3_EVAL_L2_RERANK=1일 때만 돈다.
+  모델을 부르므로 같은 입력이어도 결과가 조금 다를 수 있다.
 
 S1의 동의어 표와 무게는 개발 질의(dev)만 보고 정했다. 시험 질의(test-v1)는 고친 뒤 한 번 쟀다.
 
@@ -33,6 +36,7 @@ import json
 import math
 import os
 import sys
+import time
 from collections.abc import Callable, Mapping, Sequence
 from pathlib import Path
 from typing import Any
@@ -71,8 +75,14 @@ AZURE_SYSTEMS = {
     "S5": "하이브리드 + 시맨틱 랭커",
     "S6": "S1 + S5 하이브리드(RRF, Azure가 연결된 ③ 도구)",
 }
-SYSTEMS = {**LOCAL_SYSTEMS, **AZURE_SYSTEMS}
+RERANK_SYSTEMS = {
+    "S7": "S1 + 모델 재순위(gpt-5-mini, 상위 40)",
+    "S8": "S6 + 모델 재순위(gpt-5-mini, 상위 40, 운영 구성)",
+}
+SYSTEMS = {**LOCAL_SYSTEMS, **AZURE_SYSTEMS, **RERANK_SYSTEMS}
 AZURE_OPT_IN = "V3_EVAL_L2_AZURE"
+RERANK_OPT_IN = "V3_EVAL_L2_RERANK"
+RERANK_WORKERS = 3  # 배포의 분당 토큰 한도(요청마다 입력 + 최대 출력 토큰을 미리 잡는다) 안에서
 DEPTH = 20  # 순위를 이만큼 받아 둔다(지표는 10까지만 본다)
 BASELINE_TOLERANCE = 0.02  # 평가 설계 16장: S0·S1 nDCG@10이 기준선보다 0.02 넘게 떨어지면 실패
 
@@ -211,6 +221,48 @@ def fused_ranker(*rankers: Callable[[str], Ranking]) -> Callable[[str], Ranking]
     return rank
 
 
+def rerank_chat_from_env(env: Mapping[str, str]) -> tuple[Any, str | None]:
+    """(재순위 모델, 미측정 이유). V3_EVAL_L2_RERANK=1이고 Foundry 주소·키가 있을 때만 만든다."""
+    if (env.get(RERANK_OPT_IN) or "").strip() != "1":
+        return None, f"모델 재순위를 켜지 않음({RERANK_OPT_IN}=1이 아님)"
+    endpoint, key = (env.get(n, "").strip() for n in ("FOUNDRY_ENDPOINT", "FOUNDRY_API_KEY"))
+    if not (endpoint and key):
+        return None, "Foundry 설정(FOUNDRY_ENDPOINT, FOUNDRY_API_KEY) 없음"
+    from app.v3.agents.llm import FoundryChat
+
+    deployment = env.get("FOUNDRY_DEPLOYMENT", "").strip() or "gpt-5-mini"
+    from app.v3.eval.trials import Meter, MeteredLLM
+
+    chat = FoundryChat(
+        endpoint,
+        deployment,
+        key,
+        reasoning_effort="low",
+        max_completion_tokens=3000,
+        timeout=90,
+        retries=3,
+    )
+    # 분당 토큰 한도(429)에 걸리면 기다렸다 다시 부른다(실패를 원래 순위로 세지 않게)
+    return MeteredLLM(chat, Meter(None)), None
+
+
+def reranked_ranker(
+    base: Callable[[str], Ranking], reranker: Any, items: Sequence[Evidence]
+) -> Callable[[str], Ranking]:
+    """base 순위의 상위 후보를 reranker가 다시 줄 세운다(search.search_evidence의 재순위와 같다)."""
+    by_id = {e.id: e for e in items}
+    return lambda query: reranker.rerank(query, base(query), by_id)
+
+
+def warm(rankers: Sequence[Callable[[str], Ranking]], queries: Sequence[dict[str, Any]]) -> None:
+    """모델을 부르는 순위를 미리 나란히 낸다(재순위기가 결과를 기억한다). 순서와 결과는 그대로다."""
+    from concurrent.futures import ThreadPoolExecutor
+
+    jobs = [(ranker, q["query"]) for ranker in rankers for q in queries]
+    with ThreadPoolExecutor(RERANK_WORKERS) as pool:
+        list(pool.map(lambda job: job[0](job[1]), jobs))
+
+
 def azure_rankers(
     items: Sequence[Evidence], env: Mapping[str, str], *, transport: Any = None
 ) -> tuple[dict[str, Callable[[str], Ranking]], str | None]:
@@ -221,7 +273,10 @@ def azure_rankers(
         client = None
         reason = f"Azure AI Search 설정 없음(또는 {AZURE_OPT_IN}=1이 아님)"
     else:
-        client = azure.client_from_env(env, transport=transport)
+        # 평가는 시계를 써도 된다: 임베딩 한도(429)에 걸리면 기다렸다 다시 보낸다(가짜 transport면 기다리지 않는다)
+        client = azure.client_from_env(
+            env, transport=transport, sleep=time.sleep if transport is None else None
+        )
         reason = None if client is not None else "Azure AI Search 설정 없음"
     if client is None:
         return {}, reason
@@ -229,7 +284,7 @@ def azure_rankers(
     client.index = f"{client.index}-eval-l2"
     client.create_index()
     client.upsert(list(items))
-    embed = client._embed
+    embed = (lambda texts: client._vectors(texts)) if client._embed else None
 
     def run(payload: dict[str, Any]) -> Ranking:
         response = client._call("POST", f"/indexes/{client.index}/docs/search", payload)
@@ -456,8 +511,9 @@ def run_layer(
     systems: list[str] | None = None,
     env: Mapping[str, str] | None = None,
     azure_transport: Any = None,
+    rerank_chat: Any = None,
 ) -> dict[str, Any]:
-    """split의 질의로 방식마다 순위를 내고 지표를 잰다. Azure 방식은 설정이 있을 때만 돈다."""
+    """split의 질의로 방식마다 순위를 내고 지표를 잰다. Azure·재순위 방식은 설정이 있을 때만 돈다."""
     env = os.environ if env is None else env
     queries = load_queries(split)
     items = corpus(corpus_registry())
@@ -476,6 +532,24 @@ def run_layer(
             else:
                 why = reason or "임베딩 설정(V3_EMBEDDINGS) 없음"
                 not_measured.append(f"{name} {SYSTEMS[name]}: {why}")
+    rerankers: list[Any] = []
+    rerank_wanted = [s for s in wanted if s in RERANK_SYSTEMS]
+    if rerank_wanted:
+        from app.v3.evidence.rerank import LlmReranker
+
+        chat, reason = (rerank_chat, None) if rerank_chat is not None else rerank_chat_from_env(env)
+        bases = {"S7": local["S1"], "S8": rankers.get("S6")}
+        for name in rerank_wanted:
+            if chat is None or bases[name] is None:
+                why = reason or "S6(Azure 하이브리드)를 재지 않음"
+                not_measured.append(f"{name} {SYSTEMS[name]}: {why}")
+                continue
+            reranker = LlmReranker(chat)
+            rerankers.append(reranker)
+            rankers[name] = reranked_ranker(bases[name], reranker, items)
+        picked = [rankers[n] for n in rerank_wanted if n in rankers]
+        if picked:
+            warm(picked, queries if split == "dev" else [*queries, *load_queries("dev")])
     baseline = load_baseline() or {}
     thresholds = dict(baseline.get("thresholds") or {})
     results = {name: run_system(ranker, queries) for name, ranker in rankers.items()}
@@ -542,6 +616,12 @@ def run_layer(
             "질의는 고친 뒤 한 번 쟀다. S1v1은 고치기 전의 S1이다(같은 질의, 같은 말뭉치)."
         ),
     ]
+    if rerankers:
+        failed = sum(r.failures for r in rerankers)
+        notes.append(
+            "S7·S8은 개발셋(dev)만 보고 정했다(상위 후보 수, 프롬프트). 시험 질의(test-v1)는 정한 뒤 "
+            f"한 번 쟀다. 모델 호출이 실패해 원래 순위로 답한 질의 {failed}건."
+        )
     not_measured.append("인용 문장 적합률: 질의별 요건 라벨이 없어 미측정")
     not_measured.append("관련 등급의 이중 라벨과 Cohen's κ(평가 설계 13장)")
     return stats.layer(
@@ -596,6 +676,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--split", choices=["dev", "test", "all"], default="test")
     parser.add_argument("--out", type=Path, default=None)
     parser.add_argument("--resamples", type=int, default=stats.RESAMPLES)
+    parser.add_argument("--systems", nargs="*", choices=list(SYSTEMS), default=None)
     parser.add_argument(
         "--write-baseline", action="store_true", help="개발셋으로 방식·문턱값을 다시 정해 쓴다"
     )
@@ -606,7 +687,7 @@ def main(argv: list[str] | None = None) -> int:
             json.dumps(build_baseline(), ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
         )
         sys.stdout.write(f"{BASELINE}\n")
-    result = run_layer(args.split, resamples=args.resamples)
+    result = run_layer(args.split, resamples=args.resamples, systems=args.systems)
     text = json.dumps(result, ensure_ascii=False, indent=2)
     if args.out:
         args.out.parent.mkdir(parents=True, exist_ok=True)

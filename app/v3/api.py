@@ -148,7 +148,7 @@ def build_app() -> service.App:
 
     from app.v3 import tracing
     from app.v3.agents import maf
-    from app.v3.evidence import search, search_azure
+    from app.v3.evidence import rerank, search, search_azure
     from app.v3.intake import detector, documents, shields
     from app.v3.judge.distance import distance_provider_from_env
 
@@ -188,6 +188,17 @@ def build_app() -> service.App:
         logger.warning("Azure AI Search 설정이 틀려 로컬 검색으로 돈다: %s", error)
         search_client = None
     search.use_backend(search_client.search if search_client is not None else None)
+    search.use_reranker(
+        rerank.reranker_from_env(
+            {
+                "V3_LLM": settings.v3_llm,
+                "FOUNDRY_ENDPOINT": settings.foundry_endpoint,
+                "FOUNDRY_DEPLOYMENT": settings.foundry_deployment,
+                "FOUNDRY_API_KEY": settings.foundry_api_key,
+                rerank.ENV_SWITCH: os.environ.get(rerank.ENV_SWITCH, ""),
+            }
+        )
+    )
     # 둘 다 주소와 키가 모두 있을 때만 켜진다. 없으면 None이고 upload_document가 그렇다고 표시한다
     document_client = documents.client_from_env(
         {
@@ -202,8 +213,9 @@ def build_app() -> service.App:
         }
     )
     logger.info(
-        "근거 검색 %s, Document Intelligence %s, Prompt Shields %s",
+        "근거 검색 %s(재순위 %s), Document Intelligence %s, Prompt Shields %s",
         search.backend_name(),
+        search.reranker_name() or "없음",
         "연결" if document_client else "미연결",
         "연결" if shield_client else "미연결",
     )
