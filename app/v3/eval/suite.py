@@ -138,6 +138,7 @@ def run_suite(
     progress: Callable[[str], None] | None = None,
     llm_factory: Callable[..., Any] | None = None,
     env: Any = None,
+    workers: int = 1,
 ) -> dict[str, Any]:
     started = time.perf_counter()
     say = progress or (lambda _msg: None)
@@ -165,13 +166,19 @@ def run_suite(
     if ("L3" in layers or "L4" in layers) and budget_left("L4", "에이전트 과업 성공(끝 상태)"):
         say(f"L4 시나리오 {split} × {repeats}")
         cases = sets.load_split(split)
-        outcome = trials.run_trials(cases, repeats=repeats, keep_raw=keep_raw, meter=meter)
+        outcome = trials.run_trials(
+            cases, repeats=repeats, keep_raw=keep_raw, meter=meter, workers=workers
+        )
         extra_metrics, extra_tables, notes = [], [], []
         if split == "test":
             say("L4 변형 80")
             base = {t["caseId"]: t for t in outcome["trials"] if t["repeat"] == 0}
             results = metamorphic.run_variants(
-                sets.load_variants(), base, options={"llm_factory": factory}, meter=meter
+                sets.load_variants(),
+                base,
+                options={"llm_factory": factory},
+                meter=meter,
+                workers=workers,
             )
             variant = metamorphic.variant_metrics(results, resamples=resamples)
             extra_metrics, extra_tables = variant["metrics"], variant["tables"]
@@ -236,6 +243,8 @@ def run_suite(
         "repeats": repeats,
         "budgetCalls": budget_calls,
         "modelCalls": meter.calls,
+        "throttledRetries": meter.throttled,
+        "workers": workers,
         "promptTokens": meter.prompt_tokens,
         "completionTokens": meter.completion_tokens,
         "costKrw": None,
@@ -413,6 +422,7 @@ def render_markdown(result: dict[str, Any]) -> str:
         f"| 모델 호출 · 입력/출력 토큰 | {h['modelCalls']} · {h['promptTokens']}/{h['completionTokens']} |",
         f"| 비용(원) | {h['costKrw'] if h['costKrw'] is not None else stats.NOT_MEASURED} |",
         f"| 호출 예산 | {h['budgetCalls'] if h['budgetCalls'] is not None else '없음'} |",
+        f"| 나란히 돈 실행 수 · 한도(429)로 다시 부른 수 | {h.get('workers') or 1} · {h.get('throttledRetries') or 0} |",
         f"| 걸린 시간 | {h['elapsedSeconds']}초 |",
         (
             "| 신뢰구간 | 95%. 비율 지표는 Wilson 점수 구간(Wilson 1927, n은 묶음 수), "
@@ -600,7 +610,9 @@ def superseded(old: dict[str, Any], new: dict[str, Any], reason: str = SUPERSEDE
             key: None
             if item is None
             else {
-                "label": public.metric_text(*HEADLINE.get(key, ("", key)), str(item.get("label")))[0],
+                "label": public.metric_text(*HEADLINE.get(key, ("", key)), str(item.get("label")))[
+                    0
+                ],
                 "value": item.get("value"),
             }
             for key, item in (old.get("headline") or {}).items()

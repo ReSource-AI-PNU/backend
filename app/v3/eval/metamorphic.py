@@ -12,7 +12,7 @@ from __future__ import annotations
 from typing import Any
 
 from app.v3.eval import stats
-from app.v3.eval.trials import Meter, run_trial
+from app.v3.eval.trials import Meter, in_parallel, run_trial
 
 MONEY = ("unitPrice", "monthlyAfter", "monthlyNow", "difference")
 TOLERANCE = 1.0  # 원
@@ -143,13 +143,23 @@ def run_variants(
     *,
     options: dict[str, Any] | None = None,
     meter: Meter | None = None,
+    workers: int = 1,
 ) -> list[dict[str, Any]]:
-    """변형마다 한 번 돈다. base_trials는 기본 사례 ID → run_trial 결과(첫 반복)."""
+    """변형마다 한 번 돈다. base_trials는 기본 사례 ID → run_trial 결과(첫 반복).
+
+    workers가 1보다 크면 변형을 나란히 돈다(결과 순서는 같다). 실행마다 계량을 따로 둔다.
+    """
     meter = meter or Meter(None)
     options = options or {}
+
+    def one(variant: dict[str, Any]) -> dict[str, Any]:
+        own = meter.child()
+        factory = own.factory if meter.inner is not None else options.get("llm_factory")
+        return run_trial(variant["case"], {**options, "llm_factory": factory}, meter=own)
+
+    ran = in_parallel([lambda v=variant: one(v) for variant in variants], workers)
     out = []
-    for variant in variants:
-        trial = run_trial(variant["case"], options, meter=meter)
+    for variant, trial in zip(variants, ran, strict=True):
         base = base_trials.get(variant["base"])
         if base is None:
             verdict = {"ok": False, "why": "기본 사례를 돌리지 않았다"}

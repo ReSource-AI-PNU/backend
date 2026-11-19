@@ -27,6 +27,7 @@ from __future__ import annotations
 import argparse
 import datetime as dt
 import json
+import os
 import sys
 from pathlib import Path
 
@@ -56,6 +57,12 @@ def main(argv: list[str] | None = None) -> int:
     )
     parser.add_argument("--llm", choices=("rule", "foundry"), default="rule")
     parser.add_argument("--budget-calls", type=int, default=None, help="모델 호출 상한")
+    parser.add_argument(
+        "--workers",
+        type=int,
+        default=int(os.environ.get("V3_EVAL_WORKERS") or 1),
+        help="L4 시나리오·변형을 나란히 돌릴 수(기본 1, V3_EVAL_WORKERS). 배포의 분당 토큰 한도를 본다",
+    )
     parser.add_argument("--resamples", type=int, default=stats.RESAMPLES)
     parser.add_argument("--date", default=None, help="파일 이름과 머리의 날짜(기본: 오늘)")
     parser.add_argument("--out-dir", type=Path, default=OUT_DIR)
@@ -94,6 +101,7 @@ def main(argv: list[str] | None = None) -> int:
         resamples=args.resamples,
         keep_raw=not args.no_raw,
         progress=say,
+        workers=args.workers,
     )
     result["header"]["date"] = date
     out = args.out_dir

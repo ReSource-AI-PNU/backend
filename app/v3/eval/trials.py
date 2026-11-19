@@ -11,13 +11,20 @@
   (llm_factory=None)은 모델을 부르지 않으므로 토큰이 없다.
 - budget_calls에 닿으면 새 실행을 시작하지 않고 남은 칸을 "예산 초과로 미측정"으로 둔다. 진행 중인
   실행은 끝까지 돈다(실행 도중에 끊으면 결과가 망가진다).
+- workers가 1보다 크면 실행을 나란히 돈다(모델 호출을 기다리는 시간이 대부분이다). 실행마다 계량을
+  따로 두고 전체 계량에도 더하며, 결과는 사례·반복 순서 그대로다. 예산은 실행을 시작할 때 보므로
+  나란히 돌던 실행만큼 넘을 수 있다.
+- 모델 배포의 분당 토큰 한도(429)나 서버 오류(5xx)는 평가 실행기가 기다렸다가 다시 부른다(THROTTLE_WAITS).
+  에이전트가 보는 모델 호출은 한 번이고 초안 시도로 세지 않는다. 다시 부른 횟수는 계량에 남는다.
 """
 
 from __future__ import annotations
 
+import threading
 import time
 from collections import Counter
 from collections.abc import Callable
+from concurrent.futures import ThreadPoolExecutor
 from typing import Any
 
 from app.v3.agents.draft import MAX_ATTEMPTS
@@ -54,23 +61,37 @@ FAILURE_TYPES = (
     "정책 위반",
 )
 BUDGET_SKIPPED = "예산 초과로 미측정"
+# 429·5xx에 기다렸다 다시 부르는 초. 평가 실행기만 기다린다(에이전트 코드는 시계를 읽지 않는다)
+THROTTLE_WAITS = (5, 10, 20, 40, 60, 60)
+THROTTLE_STATUSES = {408, 429, 500, 502, 503, 504}
 
 
 # ── 모델 호출 계량 ───────────────────────────────────────────────────
 
 
 class Meter:
-    """llm_factory를 감싸 호출 수, 토큰, 걸린 시간, 오류를 센다."""
+    """llm_factory를 감싸 호출 수, 토큰, 걸린 시간, 오류를 센다. 나란히 돌아도 센 값이 섞이지 않는다."""
 
-    def __init__(self, inner: Callable[..., Any] | None, budget_calls: int | None = None) -> None:
+    def __init__(
+        self,
+        inner: Callable[..., Any] | None,
+        budget_calls: int | None = None,
+        *,
+        parent: Meter | None = None,
+        sleep: Callable[[float], None] = time.sleep,
+    ) -> None:
         self.inner = inner
         self.budget_calls = budget_calls
+        self.parent = parent
+        self.sleep = sleep
         self.calls = 0
         self.prompt_tokens = 0
         self.completion_tokens = 0
         self.unknown_usage = 0  # usage를 주지 않은 응답 수
+        self.throttled = 0  # 429·5xx로 기다렸다 다시 부른 수
         self.errors: list[str] = []
         self.seconds = 0.0
+        self._lock = threading.Lock()
 
     @property
     def factory(self) -> Callable[..., Any] | None:
@@ -83,6 +104,41 @@ class Meter:
 
         return make
 
+    def child(self) -> Meter:
+        """실행 하나의 계량. 센 값은 이 계량(부모)에도 함께 더한다."""
+        return Meter(self.inner, None, parent=self, sleep=self.sleep)
+
+    def count(
+        self,
+        *,
+        calls: int = 0,
+        prompt: int = 0,
+        completion: int = 0,
+        unknown: int = 0,
+        throttled: int = 0,
+        seconds: float = 0.0,
+        error: str | None = None,
+    ) -> None:
+        with self._lock:
+            self.calls += calls
+            self.prompt_tokens += prompt
+            self.completion_tokens += completion
+            self.unknown_usage += unknown
+            self.throttled += throttled
+            self.seconds += seconds
+            if error is not None:
+                self.errors.append(error)
+        if self.parent is not None:
+            self.parent.count(
+                calls=calls,
+                prompt=prompt,
+                completion=completion,
+                unknown=unknown,
+                throttled=throttled,
+                seconds=seconds,
+                error=error,
+            )
+
     def over_budget(self) -> bool:
         return self.budget_calls is not None and self.calls >= self.budget_calls
 
@@ -92,6 +148,7 @@ class Meter:
             "promptTokens": self.prompt_tokens,
             "completionTokens": self.completion_tokens,
             "unknownUsage": self.unknown_usage,
+            "throttled": self.throttled,
             "errors": len(self.errors),
             "seconds": round(self.seconds, 3),
         }
@@ -118,20 +175,31 @@ class MeteredLLM:
 
     def complete(self, messages, *, tools=None, response_schema=None):
         meter = self.meter
-        meter.calls += 1
+        meter.count(calls=1)
         started = time.perf_counter()
         try:
-            response = self.inner.complete(messages, tools=tools, response_schema=response_schema)
-        except LLMError as error:
-            meter.errors.append(str(error)[:300])
-            raise
+            for wait in (*THROTTLE_WAITS, None):
+                try:
+                    response = self.inner.complete(
+                        messages, tools=tools, response_schema=response_schema
+                    )
+                    break
+                except LLMError as error:
+                    status = getattr(error, "status", None)
+                    # 상태 코드가 없는 오류(형식, 거절)는 에이전트가 겪을 실패이므로 다시 부르지 않는다
+                    if wait is None or status not in THROTTLE_STATUSES:
+                        meter.count(error=str(error)[:300])
+                        raise
+                    meter.count(throttled=1)
+                    meter.sleep(wait)
         finally:
-            meter.seconds += time.perf_counter() - started
+            meter.count(seconds=time.perf_counter() - started)
         prompt, completion = _usage(response)
-        if prompt is None and completion is None:
-            meter.unknown_usage += 1
-        meter.prompt_tokens += prompt or 0
-        meter.completion_tokens += completion or 0
+        meter.count(
+            prompt=prompt or 0,
+            completion=completion or 0,
+            unknown=int(prompt is None and completion is None),
+        )
         return response
 
 
@@ -362,6 +430,15 @@ def run_trial(
     return trial
 
 
+def in_parallel[T](jobs: list[Callable[[], T]], workers: int = 1) -> list[T]:
+    """jobs를 workers개까지 나란히 돌리고 결과를 jobs 순서대로 돌려준다. 1 이하면 차례로 돈다."""
+    if workers <= 1 or len(jobs) <= 1:
+        return [job() for job in jobs]
+    with ThreadPoolExecutor(max_workers=workers) as pool:
+        futures = [pool.submit(job) for job in jobs]
+        return [future.result() for future in futures]
+
+
 def run_trials(
     cases: list[dict[str, Any]],
     *,
@@ -373,10 +450,12 @@ def run_trials(
     keep_raw: bool = False,
     progress: Callable[[str], None] | None = None,
     meter: Meter | None = None,
+    workers: int = 1,
 ) -> dict[str, Any]:
     """사례마다 repeats번 돈다. 같은 사례의 반복은 한데 모아 pass^k를 낸다.
 
     meter를 주면 그 계량(과 예산)을 이어 쓴다. 이때 llm_factory와 budget_calls는 meter의 것이다.
+    workers가 1보다 크면 실행을 나란히 돈다(결과 순서는 같다).
     """
     if repeats < 1:
         raise ValueError("repeats는 1 이상이다")
@@ -389,15 +468,29 @@ def run_trials(
     }
     trials: list[dict[str, Any]] = []
     skipped: list[dict[str, Any]] = []
-    for case in cases:
-        for repeat in range(repeats):
-            if meter.over_budget():
-                skipped.append({"caseId": case["id"], "repeat": repeat, "reason": BUDGET_SKIPPED})
-                continue
-            trials.append(run_trial(case, options, meter=meter, repeat=repeat, keep_raw=keep_raw))
-            if progress:
-                last = trials[-1]
-                progress(f"{case['id']}#{repeat + 1}: {'성공' if last['success'] else '실패'}")
+    plan = [(case, repeat) for case in cases for repeat in range(repeats)]
+
+    def one(case: dict[str, Any], repeat: int) -> dict[str, Any] | None:
+        if meter.over_budget():
+            return None
+        own = meter.child()
+        trial = run_trial(
+            case,
+            {**options, "llm_factory": own.factory},
+            meter=own,
+            repeat=repeat,
+            keep_raw=keep_raw,
+        )
+        if progress:
+            progress(f"{case['id']}#{repeat + 1}: {'성공' if trial['success'] else '실패'}")
+        return trial
+
+    done = in_parallel([lambda c=case, r=repeat: one(c, r) for case, repeat in plan], workers)
+    for (case, repeat), trial in zip(plan, done, strict=True):
+        if trial is None:
+            skipped.append({"caseId": case["id"], "repeat": repeat, "reason": BUDGET_SKIPPED})
+        else:
+            trials.append(trial)
     per_case = summarize_cases(trials, repeats)
     return {
         "repeats": repeats,

@@ -166,3 +166,66 @@ def test_a_broken_case_is_an_execution_error():
     case["world"]["vendors"][0]["criteria"] = [{"id": "c", "material": "PP"}]
     outcome = trials.run_trials([case])
     assert outcome["trials"][0]["failureType"] == "실행 오류"
+
+
+def test_parallel_workers_give_the_same_trials_in_the_same_order():
+    picked = [CASES["C04"], CASES["C28"], CASES["C47"]]
+    one = trials.run_trials(picked, repeats=2)
+    many = trials.run_trials(picked, repeats=2, workers=3)
+
+    def keep(outcome):
+        return [
+            (t["caseId"], t["repeat"], t["success"], t["slots"], t["mismatches"])
+            for t in outcome["trials"]
+        ]
+
+    assert keep(one) == keep(many)
+    assert [c["successes"] for c in many["cases"]] == [c["successes"] for c in one["cases"]]
+
+
+def test_each_parallel_trial_counts_only_its_own_calls():
+    def answer(messages, tools, schema):
+        return {"content": "{}", "usage": {"prompt_tokens": 3, "completion_tokens": 1}}
+
+    def factory(role, org_id, model=None):
+        return ScriptedLLM([answer] * 30) if role == "company" else None
+
+    outcome = trials.run_trials(
+        [CASES["C04"], CASES["C11"]], repeats=2, llm_factory=factory, workers=4
+    )
+    assert sum(t["calls"] for t in outcome["trials"]) == outcome["meter"]["calls"]
+    assert all(t["promptTokens"] == 3 * t["calls"] for t in outcome["trials"])
+
+
+def test_rate_limited_calls_wait_and_retry_without_counting_as_a_new_call():
+    from app.v3.agents.llm import LLMError
+
+    class Throttled:
+        provider, model = "fake", "fake"
+
+        def __init__(self):
+            self.left = 2
+
+        def complete(self, messages, *, tools=None, response_schema=None):
+            if self.left:
+                self.left -= 1
+                raise LLMError("429", status=429)
+            return {"content": "{}", "usage": {"prompt_tokens": 1, "completion_tokens": 1}}
+
+    waited = []
+    meter = trials.Meter(lambda role, org, model=None: Throttled(), sleep=waited.append)
+    llm = meter.factory("company", "org_a")
+    llm.complete([{"role": "user", "content": "x"}])
+    assert meter.calls == 1 and meter.throttled == 2 and waited == list(trials.THROTTLE_WAITS[:2])
+    assert meter.errors == []
+
+    class Refused(Throttled):
+        def complete(self, messages, *, tools=None, response_schema=None):
+            raise LLMError("400", status=400)
+
+    meter = trials.Meter(lambda role, org, model=None: Refused(), sleep=waited.append)
+    try:
+        meter.factory("company", "org_a").complete([{"role": "user", "content": "x"}])
+    except LLMError:
+        pass
+    assert meter.throttled == 0 and len(meter.errors) == 1
