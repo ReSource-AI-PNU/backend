@@ -59,6 +59,7 @@ from app.v3.judge import pickup as pickup_terms
 from app.v3.judge.common import Recorder as JudgeRecorder
 from app.v3.judge.common import (
     best_criterion,
+    haversine_km,
     permit_match,
     quality,
     vendor_distance,
@@ -813,6 +814,13 @@ class Orchestrator:
             # 다시 합의하지 못하고 닫히면 이 흐름들은 결과 한 장에서 "확인 필요"가 된다
             work.setdefault("renegotiating", {})[thread.id] = list(before)
         work["offers"].pop(thread.id, None)  # 지난 조건으로 받은 제안은 더 쓰지 않는다
+        # 지난 조건으로 협상한 단가도 더 쓰지 않는다(남겨 두면 업체가 다시 낸 기준표 단가와 계산에 쓰는 협상 단가가
+        # 어긋난다). 수거·운반 조건만 바뀌었으면 단가 합의는 그대로여야 하므로, 업체가 새 조건으로 답한 뒤 합의 전
+        # 단가 협상을 다시 한다. 업체가 단가 조건을 바꿨으면 업체가 새로 낸 단가를 그대로 쓴다
+        work.setdefault("negotiated", {}).pop(thread.vendor_org, None)
+        work.setdefault("negotiation", {}).pop(thread.id, None)
+        pickup_only = bool(codes) and codes & REOPEN_CODES == {"PICKUP_TERMS_CHANGED"}
+        work.setdefault("renegotiatePrice", {})[thread.id] = pickup_only
         work.setdefault("agreedBasis", {}).pop(thread.id, None)
         work.setdefault("agreedTerms", {}).pop(thread.id, None)
         work.setdefault("pickups", {}).pop(thread.vendor_org, None)  # 새 수거·운반 답을 받는다
@@ -2444,7 +2452,7 @@ class Orchestrator:
         """
         shown = public_profile(profile, fleet_cost=False)
         # 운반 조건은 이 공장에 적용되는 것(업체가 조건 답에 밝힌 수거 상태와 견적, 답이 없으면 프로필에서 정한 것)이다
-        shown["transport"] = pickup_terms.tool_transport(self._haul(session, profile))
+        shown["transport"] = pickup_terms.tool_transport(self._haul(session, profile, measure=True))
         deals = ((session.get("work") or {}).get("negotiated") or {}).get(
             profile.get("orgId")
         ) or {}
@@ -2469,7 +2477,9 @@ class Orchestrator:
         except NotFound:
             return None
 
-    def _profile_haul(self, session: dict[str, Any], profile: dict[str, Any]) -> dict[str, Any]:
+    def _profile_haul(
+        self, session: dict[str, Any], profile: dict[str, Any], *, measure: bool = False
+    ) -> dict[str, Any]:
         """업체 프로필(노선·운반 조건, 수거 가능 지역·최대 수거 거리)과 공장 지역으로 정한 이 공장의 수거·운반 조건."""
         fleet = profile.get("fleet") or {}
         found = pickup_terms.effective(
@@ -2477,30 +2487,52 @@ class Orchestrator:
             fleet.get("routes"),
             self._region(session),
             fleet,
-            self._pickup_km(session, fleet),
+            self._pickup_km(session, fleet, measure=measure),
         )
         return {**found, "source": "profile", "seq": None}
 
-    def _pickup_km(self, session: dict[str, Any], fleet: dict[str, Any]) -> float | None:
-        """공장 → 업체 차고지 거리(최대 수거 거리를 밝힌 업체만). 최적 배정의 거리와 같은 계산이다."""
+    def _pickup_km(
+        self, session: dict[str, Any], fleet: dict[str, Any], *, measure: bool = False
+    ) -> float | None:
+        """공장 → 업체 차고지 거리(최대 수거 거리를 밝힌 업체만).
+
+        배정·대화를 돌리는 동안(measure=True)에는 최적 배정과 같은 계산(도로 거리 제공자, 없으면 직선 거리 × 우회
+        계수)으로 재고 진단에 적어 둔다. 조회(진단 뷰, 계약 검토, 승인 재확인)에서는 적어 둔 값을 읽고, 없으면 직선
+        거리 × 우회 계수로 어림한다. 조회에서는 근거를 쓰거나 외부 길찾기를 부르지 않는다(체험하기는 쓰기를 거절한다).
+        """
         if fleet.get("maxPickupKm") is None:
             return None
+        depot = fleet.get("depot")
         try:
             origin = self.store.get_org(session["emitterOrgId"]).get("location")
         except NotFound:
             return None
+        if not origin or not depot:
+            return None
+        key = f"{float(depot[0]):.5f},{float(depot[1]):.5f}"
+        known = ((session.get("work") or {}).get("pickupKm") or {}).get(key)
+        if known is not None:
+            return float(known)
+        if not measure:
+            factor = basis.resolve(self.registry, session["emitterOrgId"], "distance.detourFactor")
+            return haversine_km(origin, depot) * float(factor.value) if factor else None
         rec = JudgeRecorder(
             "pickup_distance", self.registry, session["emitterOrgId"], self.today, {}
         )
         found = vendor_distance(
             rec, {"fleet": fleet}, origin, getattr(self.app, "distance_provider", None)
         )
-        return found["km"] if found["known"] else None
+        if not found["known"]:
+            return None
+        session.setdefault("work", {}).setdefault("pickupKm", {})[key] = found["km"]
+        return found["km"]
 
-    def _haul(self, session: dict[str, Any], profile: dict[str, Any]) -> dict[str, Any]:
+    def _haul(
+        self, session: dict[str, Any], profile: dict[str, Any], *, measure: bool = False
+    ) -> dict[str, Any]:
         """이 공장의 수거·운반 조건. 업체가 조건 답에 밝힌 것이 있으면 그것, 없으면 프로필에서 정한 것."""
         answer = ((session.get("work") or {}).get("pickups") or {}).get(profile.get("orgId"))
-        return dict(answer) if answer else self._profile_haul(session, profile)
+        return dict(answer) if answer else self._profile_haul(session, profile, measure=measure)
 
     def _negotiate(self, session, live: list[Thread], assigned: dict[str, list[str]]) -> set[str]:
         """⑥ 합의 전 단가 협상 한 번. 배정된 흐름마다 회사 측이 요청 폭만큼 나은 단가를 요청하고(코드가 쓴 질문,
@@ -2643,8 +2675,22 @@ class Orchestrator:
         )
 
         if work.get("result") is not None:
-            # 다시 연 대화의 재협상이 끝났다. 이미 합의했거나 확정한 다른 대화의 배정은 그대로 두고
-            # 최적안과 결과 한 장을 다시 만든다(새 조건이 최적안에 들어가면 그 대화는 다시 합의가 된다)
+            # 다시 연 대화의 재협상이 끝났다. 수거·운반 조건만 바뀌어 다시 연 대화는 처음 합의 때처럼 합의 전 단가 협상을
+            # 한 번 하고(단가가 바뀌면 그 단가로 비용을 다시 계산한다), 이미 합의했거나 확정한 다른 대화의 배정은 그대로
+            # 두고 최적안과 결과 한 장을 다시 만든다(새 조건이 최적안에 들어가면 그 대화는 다시 합의가 된다)
+            again = [
+                t
+                for t in live
+                if t.id in (work.get("renegotiating") or {})
+                and (work.get("renegotiatePrice") or {}).get(t.id)
+            ]
+            asked = {
+                t.id: [s for s in work["renegotiating"][t.id] if s in work["offers"][t.id]]
+                for t in again
+            }
+            changed = self._negotiate(session, again, asked)
+            if changed:
+                cost_tools([t for t in again if t.id in changed])
             self._reassign(session, cause="terms")
             # run()이 다음 단계로 넘기므로 한 단계 앞에 둔다(승인 대기면 propose → approval)
             session["phase"] = "propose" if session["phase"] == "approval" else "approval"

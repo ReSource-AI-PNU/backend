@@ -561,3 +561,57 @@ def test_off_route_quote_without_a_count_stays_pending_in_the_conversation():
     thread = next(t for t in view["threads"] if t["vendorOrgId"] == MISO and t["messages"])
     said = next(m for m in reversed(thread["messages"]) if "수거·운반:" in m["text"])
     assert "월 수거 횟수는 담당자가 확인한 뒤 알려 드립니다" in said["text"]
+
+
+def test_reopened_thread_renegotiates_so_price_and_money_agree():
+    """수거·운반 조건만 바뀌어 대화를 다시 열어도 표시 단가와 계산 단가가 같은 협상 결과를 쓴다(협상 켬)."""
+    app = make_app(negotiate=True)
+    saegil = copy.deepcopy(app.store.get_vendor_profile(SAEGIL))
+    saegil["guardrails"]["autoDecline"] = [*saegil["guardrails"]["autoDecline"], "금속 인서트"]
+    app.store.put_vendor_profile(saegil)
+    view = to_approval(app)
+    sid = view["session"]["id"]
+    before = _defect_row(view)
+    assert before["vendorOrgId"] == MISO
+    price = before["unitPrice"]["value"]
+    assert before["revenue"]["value"] == price * 400
+    _miso_off_route(app, VISIT)
+    service._recheck(app, MISO)
+    fresh = service.run_session(app, sid, HANBIT)
+    row = _defect_row(fresh)
+    assert row["vendorOrgId"] == MISO and row["pickup"]["status"] == "visit"
+    # 다시 협상한 단가가 표시와 계산에 함께 쓰인다(처음 협상과 같은 범위라 같은 단가다)
+    assert row["unitPrice"]["value"] == price
+    assert row["revenue"]["value"] == row["unitPrice"]["value"] * 400
+    assert row["transport"]["value"] == 60000
+    assert row["monthlyAfter"]["value"] == row["revenue"]["value"] - 60000
+    alternatives = [a for a in row["alternatives"] if a["monthlyAfter"] and a["unitPrice"]]
+    for item in alternatives:
+        assert item["monthlyAfter"]["value"] <= item["unitPrice"]["value"] * 400
+
+
+def test_demo_view_never_measures_pickup_distance_or_writes():
+    """조회(진단 뷰, 계약 검토, 승인 재확인)는 길찾기를 부르거나 근거를 쓰지 않는다(체험하기는 쓰기를 거절한다).
+
+    최대 수거 거리를 밝힌 업체(새길자원·남해열분해 시드)는 배정을 돌릴 때 잰 거리를 진단에 적어 두고, 조회는 그 값을
+    읽는다. 적어 둔 값이 없는 예전 진단은 직선 거리 × 우회 계수로 어림한다.
+    """
+    from app.v3.demo.scope import demo_app
+
+    app = make_app()
+    view = to_approval(app)
+    sid = view["session"]["id"]
+    session = app.store.get_session(sid)
+    assert session["work"].get("pickupKm")  # 배정 때 잰 거리
+
+    def boom(points):
+        raise AssertionError("조회에서 길찾기를 부르면 안 된다")
+
+    app.distance_provider = boom
+    for viewer in (HANBIT, MISO, SAEGIL):
+        shown = service.get_view(demo_app(app), sid, viewer)
+        assert shown["approvals"] and all(a.get("review") for a in shown["approvals"])
+    session["work"].pop("pickupKm")
+    app.store.put_session(session)
+    shown = service.get_view(demo_app(app), sid, HANBIT)
+    assert all(a.get("review") for a in shown["approvals"])
