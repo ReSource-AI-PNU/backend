@@ -35,7 +35,7 @@ INDEX=1 bash infra/vm/deploy-vm.sh         # 끝에 백엔드 컨테이너 안�
 | `infra/vm/deploy-vm.sh` | Key Vault에서 비밀을 읽어 VM의 `/opt/rsai/env/*.env`(권한 600)에만 쓰고, `git archive`한 소스를 올려 VM 안에서 이미지를 빌드한다. 마이그레이션 → 시작 → Ollama 모델 받기 → HTTPS 응답 확인 순서다 |
 
 - **지역:** PostgreSQL·AI Search와 같은 Central US에 둔다. East US 2에 두었을 때 DB 왕복이 평균 39ms라 근거를 하나씩 읽는 진단 실행 한 번이 10분을 넘겼다.
-- **설정:** `V3_LLM=foundry`(기본. Foundry gpt-5-mini. 2026-11-18 출력 형식을 고친 뒤 초안 첫 시도 통과율 99~100%, 시연 업체 세 곳 모두 합의. `rule`은 규칙 정책), `V3_AUTH=bff`(기본. 실제 계정·조직: 프런트 서버만 Key Vault `v3-bff-key`로 백엔드를 부르고 백엔드가 사용자·소속을 확인한다. 키가 없으면 스크립트가 만들어 `backend.env`와 `frontend.env`의 `V3_BFF_KEY`에 넣는다. `V3_AUTH=token`이면 전처럼 `v3-org-tokens`), `AUTH_DEV_LOGIN=true`(시연용 로그인). bff에서 `SEED=1`은 시연 조직만 되돌리고(`scripts.v3.accounts_admin reset-demo`) 시연 진단을 승인 대기까지 돌려 둔다. 관리자는 가입한 뒤 `GRANT_ADMIN=<이메일>`로 배포하거나 백엔드 컨테이너에서 `python -m scripts.v3.accounts_admin grant-admin <이메일>`로 넣는다. Ollama: 앱 VM은 GPU가 없어 CPU로는 6천 토큰 프롬프트에 qwen2.5:7b가 8분 30초 걸린다(프롬프트 처리 초당 12.1토큰, 2026-11-18 측정). 그래서 업체 측 오픈 모델은 East US의 GPU VM(아래 "GPU VM")에서 돌리고 `USE_OLLAMA=gpu`로 배포한다. GPU VM이 꺼져 있거나 없으면 `USE_OLLAMA`를 비우고 배포한다: Ollama 주소를 비우고 `V3_LLM_ALL_VENDORS=1`로 Ollama를 고른 업체(시연의 남해열분해)도 Foundry가 답한다. 운영 화면에는 설정한 모델과 실제로 답한 모델이 따로 보인다.
+- **설정:** `V3_LLM=foundry`(기본. Foundry gpt-5-mini. 2026-11-18 출력 형식을 고친 뒤 초안 첫 시도 통과율 99~100%, 시연 업체 세 곳 모두 합의. `rule`은 규칙 정책), `V3_AUTH=bff`(기본. 실제 계정·조직: 프런트 서버만 Key Vault `v3-bff-key`로 백엔드를 부르고 백엔드가 사용자·소속을 확인한다. 키가 없으면 스크립트가 만들어 `backend.env`와 `frontend.env`의 `V3_BFF_KEY`에 넣는다. `V3_AUTH=token`이면 전처럼 `v3-org-tokens`), `AUTH_DEV_LOGIN=true`(시연용 로그인). bff에서 `SEED=1`은 시연 조직만 되돌리고(`scripts.v3.accounts_admin reset-demo`) 시연 진단을 승인 대기까지 돌려 둔다. 관리자는 가입한 뒤 `GRANT_ADMIN=<이메일>`로 배포하거나 백엔드 컨테이너에서 `python -m scripts.v3.accounts_admin grant-admin <이메일>`로 넣는다. Ollama: 앱 VM은 GPU가 없어 CPU로는 6천 토큰 프롬프트에 qwen2.5:7b가 8분 30초 걸린다(프롬프트 처리 초당 12.1토큰, 2026-11-18 측정). 그래서 업체 측 오픈 모델은 H100 계산 인스턴스(아래 "H100 계산 인스턴스")에서 돌리고 `USE_OLLAMA=h100`으로 배포한다(2026-11-19까지는 East US의 A10 GPU VM, `USE_OLLAMA=gpu`). GPU VM이 꺼져 있거나 없으면 `USE_OLLAMA`를 비우고 배포한다: Ollama 주소를 비우고 `V3_LLM_ALL_VENDORS=1`로 Ollama를 고른 업체(시연의 남해열분해)도 Foundry가 답한다. 운영 화면에는 설정한 모델과 실제로 답한 모델이 따로 보인다.
 - **Azure AI 연결:** `deploy-vm.sh`가 `backend.env`에 Document Intelligence(`AZURE_DOCUMENT_INTELLIGENCE_ENDPOINT`, 키 `docintel-key`), Content Safety Prompt Shields(`AZURE_CONTENT_SAFETY_ENDPOINT`, 키 `contentsafety-key`), AI Search(`AZURE_SEARCH_ENDPOINT`, `AZURE_SEARCH_INDEX=rsai-evidence`, 키 `search-admin-key`), 임베딩(`V3_EMBEDDINGS=foundry`, `FOUNDRY_EMBEDDING_DEPLOYMENT=text-embedding-3-small`, `AZURE_SEARCH_VECTOR_DIMENSIONS=1536`), `APPLICATIONINSIGHTS_CONNECTION_STRING`을 넣는다. 주소는 태그와 종류로 찾고 키는 Key Vault에서 읽는다. 리소스를 찾지 못하면 그 연결만 빠지고 앱은 로컬 경로로 돈다. `V3_LLM=foundry`이면 근거 검색의 상위 후보를 같은 gpt-5-mini 배포가 다시 줄 세운다(`app/v3/evidence/rerank.py`, 끄려면 `V3_SEARCH_RERANK=0`). 모델이 실패하면 검색 순위를 그대로 쓴다.
 - **임베딩:** 설계는 Ollama `bge-m3`였지만 Ollama는 VM 안에서만 닿아 맥에서 색인할 수 없다. 색인과 질의가 같은 모델을 쓰도록 둘 다 Foundry `text-embedding-3-small`(배포 이름 같음, GlobalStandard, 용량 50, 1536차원)로 한다. 색인 `rsai-evidence`는 2026-11-18 맥에서 시드 근거 48건(법령 26, 기준값 11, 가정값 11)으로 만들었다. 다시 만들 때는 `INDEX=1`(VM 안, 운영 DB)이나 맥에서 아래처럼 한다(키는 Key Vault에서 환경 변수로만 읽는다).
 
@@ -52,7 +52,24 @@ INDEX=1 bash infra/vm/deploy-vm.sh         # 끝에 백엔드 컨테이너 안�
 - **끄고 켜기:** `stop.sh`가 VM을 할당 해제하고, `start.sh`가 다시 켠다(태그 `project=resource-ai`). 할당 해제 중에는 디스크 비용만 든다. Compose 서비스는 `restart: unless-stopped`라 VM이 켜지면 같이 올라온다.
 - **비용(정가):** VM 시간당 0.172달러(월 약 126), 공용 IP 시간당 약 0.005달러, 디스크 128GB StandardSSD.
 
-## GPU VM (업체 측 오픈 모델, Ollama)
+## H100 계산 인스턴스 (업체 측 오픈 모델, Ollama, 2026-11-19부터)
+
+조직위가 팀마다 H100을 써도 된다고 했다. 구독의 VM 할당량에는 H100이 없고(모든 지역 0), Azure ML 계산 할당량에만 있다(NCadsH100v5: eastus2 500 vCPU, eastus 1000 vCPU, 여러 팀이 나눠 씀). 그래서 기존 작업 영역 `team-workspace`(eastus2)의 **계산 인스턴스** `rsai-h100`(Standard_NC40ads_H100_v5: H100 NVL 94GB, 40 vCPU, 314GB, 시간당 약 6.98달러)로 돌린다.
+
+| 자원 | 내용 |
+|---|---|
+| `vnet-rsai-h100` | eastus2, 10.72.0.0/24(`snet-h100` 10.72.0.0/25). 앱 VNet(10.70.0.0/16)과 양방향 피어링(`peer-h100-to-app`, `peer-app-to-h100`) |
+| `nsg-rsai-h100` | 11434와 SSH(22, 50000)는 앱 VNet에서만, Azure ML 관리 포트(44224 AzureMachineLearning, 29876-29877 BatchNodeManagement) |
+| `rsai-h100` | 계산 인스턴스. SSH 키는 RSA여야 한다(`~/.ssh/rsai_h100`). 공용 SSH(50000)는 닿지 않아 앱 VM을 거쳐 사설 주소로 들어간다(`h100.sh ssh`) |
+| `infra/h100/setup-ollama.sh` | Ollama 설치(드라이버·CUDA는 이미지에 있다), 사설 주소에만 바인딩(껐다 켜서 주소가 바뀌면 `h100.sh up`이 다시 묶는다), 모델 하루 유지, 동시 4, `qwen2.5:32b` 받기 |
+| `infra/h100/h100.sh` | `up`(켜고 Ollama를 사설 주소에 다시 묶고 모델 예열, 사설 주소가 바뀌었으면 앱의 `OLLAMA_BASE_URL`을 고치고 백엔드만 다시 띄움) · `down` · `status` · `ssh` |
+
+- **켜고 끄기:** 조직위 요청대로 서비스하지 않을 때 `bash infra/h100/h100.sh down`으로 끈다. 쓸 때만 켜는 맥의 감시 작업은 붙이지 않는다. 꺼진 동안 Ollama 차례는 Foundry가 답한다(`OLLAMA_FALLBACK=1`). 배포는 `USE_OLLAMA=h100`이고 꺼져 있으면 먼저 켠다.
+- **측정(2026-11-19, 앱 VM에서, 입력 약 8천 토큰):** A10 qwen2.5:7b 입력 초당 1,836토큰·생성 37토큰·한 번 8.6초, H100 qwen2.5:7b 9,496·197·2.0초, H100 qwen2.5:32b 2,136·60·6.6초, H100 gpt-oss:20b 14,104·216·1.9초.
+- **업체 측 품질(시험셋 20사례, 회사 측은 Foundry, 업체 측만 바꿈):** Foundry gpt-5-mini 19/20(초안 첫 시도 0.984), qwen2.5:7b 10/20(0.719, 담당자 인계 15), **qwen2.5:32b 20/20(0.968, 인계 0)**, gpt-oss:20b 10/20(0.783, 자리표시자 오류가 많음). 시연 업체(남해열분해)는 qwen2.5:32b를 쓴다.
+- **디스크:** 루트 119GB 가운데 모델에 쓸 수 있는 여유가 약 60GB였다(`/mnt`는 임시 디스크이고 62GB 스왑 파일이 있다). 70B급은 들어가지 않는다.
+
+## GPU VM (업체 측 오픈 모델, Ollama, 2026-11-19까지. 지금은 예비로 꺼 둔다)
 
 구독의 GPU 할당량은 East US의 A10 계열(`NVADSA10v5`, 한도 200 vCPU를 여러 팀이 나눠 씀)에만 있어서 앱 VM과 지역이 다르다.
 

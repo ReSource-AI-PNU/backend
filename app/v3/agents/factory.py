@@ -214,7 +214,7 @@ def build_llm_factory(
             if ollama and picked.get("name"):
                 if fallback and not probe(ollama):
                     logger.warning(
-                        "%s: Ollama에 닿지 않아(GPU VM이 꺼져 있음) 이 차례는 주 모델이 답한다",
+                        "%s: Ollama에 닿지 않아(GPU가 꺼져 있음) 이 차례는 주 모델이 답한다",
                         org_id,
                     )
                     return make_main()

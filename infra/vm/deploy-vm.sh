@@ -27,7 +27,10 @@
 #                    꺼진 동안 Ollama 차례는 Foundry가 답한다(OLLAMA_FALLBACK=1).
 #                    주소는 GPU VM의 사설 IP로 자동으로 찾고(앱 VNet과 피어링), 앱 VM의 ollama 컨테이너는 쓰지 않는다.
 #                    임베딩은 근거 색인과 같은 Foundry 임베딩을 그대로 쓴다
-#   OLLAMA_URL       USE_OLLAMA=gpu에서 자동으로 찾은 주소 대신 쓸 Ollama 주소
+#                    h100이면 H100 계산 인스턴스(Azure ML team-workspace의 rsai-h100, infra/h100/setup-ollama.sh로 준비)의
+#                    Ollama가 답한다(2026-11-19부터 기본으로 쓴다). 꺼져 있으면 배포가 먼저 켠다. 서비스하지 않을 때는
+#                    infra/h100/h100.sh down으로 끈다(조직위 요청). 꺼진 동안 Ollama 차례는 Foundry가 답한다
+#   OLLAMA_URL       USE_OLLAMA=gpu·h100에서 자동으로 찾은 주소 대신 쓸 Ollama 주소
 #   GPU_VM           USE_OLLAMA=gpu일 때 찾을 GPU VM 이름 (기본 vm-rsai-gpu)
 #   OLLAMA_MODELS    USE_OLLAMA=1일 때 VM에 받아 둘 Ollama 모델 (기본 "bge-m3 qwen2.5:7b")
 #   SSH_SOURCE       SSH를 허용할 공용 IP (기본: 지금 이 컴퓨터의 공용 IP. NSG 규칙과 다르면 맞춘다)
@@ -141,7 +144,20 @@ put "$B" V3_LLM "$V3_LLM"
 put "$B" FOUNDRY_ENDPOINT "$FOUNDRY_ENDPOINT"
 put "$B" FOUNDRY_DEPLOYMENT "${FOUNDRY_DEPLOYMENT:-gpt-5-mini}"
 put_secret "$B" FOUNDRY_API_KEY foundry-api-key
-if [ "$USE_OLLAMA" = gpu ]; then
+if [ "$USE_OLLAMA" = h100 ]; then
+  # H100 계산 인스턴스(Azure ML team-workspace의 rsai-h100). 꺼져 있으면 켜고 Ollama가 답할 때까지 기다린다.
+  # 실패해도 배포는 계속한다(OLLAMA_FALLBACK=1). 앱 설정은 아래에서 새로 쓰므로 h100.sh가 앱을 다시 띄우지 않게 한다
+  SKIP_APP=1 bash "$HERE/../h100/h100.sh" up || say "H100을 켜지 못했다. 업체 측 오픈 모델 차례는 Foundry가 답한다"
+  if [ -z "$OLLAMA_URL" ]; then
+    sub="$(az account show --query id -o tsv)"
+    h100_ip="$(az rest --method get --url "https://management.azure.com/subscriptions/$sub/resourceGroups/$RG/providers/Microsoft.MachineLearningServices/workspaces/${WORKSPACE:-team-workspace}/computes/${COMPUTE:-rsai-h100}?api-version=2024-04-01" --query properties.properties.connectivityEndpoints.privateIpAddress -o tsv 2>/dev/null || true)"
+    [ -n "$h100_ip" ] || { say "H100 계산 인스턴스를 찾지 못했다(infra/h100/h100.sh)"; exit 1; }
+    OLLAMA_URL="http://$h100_ip:11434"
+  fi
+  say "업체 측 오픈 모델: H100의 Ollama ($OLLAMA_URL)"
+  put "$B" OLLAMA_BASE_URL "$OLLAMA_URL"
+  put "$B" OLLAMA_FALLBACK 1
+elif [ "$USE_OLLAMA" = gpu ]; then
   # GPU VM이 꺼져 있으면 켜고 Ollama가 답할 때까지 기다린다(시연 되돌리기가 실제 모델로 돈다). 실패해도 배포는 계속한다:
   # OLLAMA_FALLBACK=1이라 Ollama에 닿지 않는 차례는 Foundry가 답한다
   bash "$HERE/../gpu/gpu.sh" up || say "GPU VM을 켜지 못했다. 업체 측 오픈 모델 차례는 Foundry가 답한다"

@@ -117,7 +117,7 @@ def test_vendors_answer_with_offer_conditional_and_fee(demo):
     assert "금속 인서트" in fee["meta"]["excluded"][0]["reason"]
     conditional = namhae["messages"][3]
     assert conditional["streamIds"] == ["st_purge"] and conditional["meta"]["terms"]["conditions"]
-    assert namhae["vendorModel"]["configured"] == {"provider": "ollama", "name": "qwen2.5:7b"}
+    assert namhae["vendorModel"]["configured"] == {"provider": "ollama", "name": "qwen2.5:32b"}
     assert (
         namhae["vendorModel"]["name"] == "규칙 정책(모델 미연결)" and namhae["vendorModel"]["used"]
     )
