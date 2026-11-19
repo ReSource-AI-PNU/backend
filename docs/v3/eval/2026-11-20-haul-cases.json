@@ -1,0 +1,314 @@
+{
+  "date": "2026-11-19",
+  "rows": [
+    {
+      "case": "기준",
+      "change": null,
+      "after": {
+        "session": "awaiting_approval",
+        "vendor": "(주)새길자원",
+        "route": "sell",
+        "status": "conditional",
+        "unitPrice": 320.0,
+        "revenue": 320000.0,
+        "transport": 0.0,
+        "transportPaidBy": "vendor",
+        "transportPending": false,
+        "monthlyAfter": 320000.0,
+        "monthlyNow": -250000.0,
+        "difference": 570000.0,
+        "carbon": -3.391931,
+        "carbonProcess": -3.393954,
+        "carbonTransport": 0.002023,
+        "transportKm": 10.514478,
+        "pickup": "기존 노선 포함",
+        "pickupFee": null,
+        "pickupCount": null,
+        "monthlyFormula": null,
+        "alternatives": [
+          {
+            "vendor": "(주)미소환경",
+            "monthlyAfter": 200000.0,
+            "note": "선택되지 않은 제안 · 한 달 값은 별도 운반비 반영 전"
+          },
+          {
+            "vendor": "(주)남해열분해",
+            "monthlyAfter": -90000.0,
+            "note": "선택되지 않은 제안"
+          }
+        ],
+        "checks": [
+          "permit_level:conditional"
+        ],
+        "approvalBlocked": false,
+        "totalDifference": 570000.0
+      }
+    },
+    {
+      "case": "거리만",
+      "change": "far",
+      "after": {
+        "session": "awaiting_approval",
+        "vendor": "(주)새길자원",
+        "route": "sell",
+        "status": "conditional",
+        "unitPrice": 320.0,
+        "revenue": 320000.0,
+        "transport": 0.0,
+        "transportPaidBy": "vendor",
+        "transportPending": false,
+        "monthlyAfter": 320000.0,
+        "monthlyNow": -250000.0,
+        "difference": 570000.0,
+        "carbon": -3.386014,
+        "carbonProcess": -3.393954,
+        "carbonTransport": 0.00794,
+        "transportKm": 41.265464,
+        "pickup": "기존 노선 포함",
+        "pickupFee": null,
+        "pickupCount": null,
+        "monthlyFormula": null,
+        "alternatives": [
+          {
+            "vendor": "(주)미소환경",
+            "monthlyAfter": 200000.0,
+            "note": "선택되지 않은 제안 · 한 달 값은 별도 운반비 반영 전"
+          },
+          {
+            "vendor": "(주)남해열분해",
+            "monthlyAfter": -90000.0,
+            "note": "선택되지 않은 제안"
+          }
+        ],
+        "checks": [
+          "permit_level:conditional"
+        ],
+        "approvalBlocked": false,
+        "totalDifference": 570000.0
+      }
+    },
+    {
+      "case": "견적만(노선 수거 운반비 회당 5만 × 월 2회)",
+      "change": "route_fee",
+      "after": {
+        "session": "awaiting_approval",
+        "vendor": "(주)새길자원",
+        "route": "sell",
+        "status": "conditional",
+        "unitPrice": 320.0,
+        "revenue": 320000.0,
+        "transport": 100000.0,
+        "transportPaidBy": "emitter",
+        "transportPending": false,
+        "monthlyAfter": 220000.0,
+        "monthlyNow": -250000.0,
+        "difference": 470000.0,
+        "carbon": -3.391931,
+        "carbonProcess": -3.393954,
+        "carbonTransport": 0.002023,
+        "transportKm": 10.514478,
+        "pickup": "기존 노선 포함",
+        "pickupFee": 50000.0,
+        "pickupCount": 2.0,
+        "monthlyFormula": null,
+        "alternatives": [
+          {
+            "vendor": "(주)미소환경",
+            "monthlyAfter": 200000.0,
+            "note": "선택되지 않은 제안 · 한 달 값은 별도 운반비 반영 전"
+          },
+          {
+            "vendor": "(주)남해열분해",
+            "monthlyAfter": -90000.0,
+            "note": "선택되지 않은 제안"
+          }
+        ],
+        "checks": [
+          "permit_level:conditional"
+        ],
+        "approvalBlocked": false,
+        "totalDifference": 470000.0
+      },
+      "edited": {
+        "blockedAfterEdit": true,
+        "sameAsFresh": true,
+        "vendor": "(주)새길자원",
+        "transport": 100000.0,
+        "transportPending": false,
+        "monthlyAfter": 220000.0,
+        "difference": 470000.0,
+        "pickup": "기존 노선 포함"
+      }
+    },
+    {
+      "case": "노선 밖 견적(회당 3만 × 월 2회)",
+      "change": "off_fee",
+      "after": {
+        "session": "awaiting_approval",
+        "vendor": "(주)새길자원",
+        "route": "sell",
+        "status": "conditional",
+        "unitPrice": 320.0,
+        "revenue": 320000.0,
+        "transport": 60000.0,
+        "transportPaidBy": "emitter",
+        "transportPending": false,
+        "monthlyAfter": 260000.0,
+        "monthlyNow": -250000.0,
+        "difference": 510000.0,
+        "carbon": -3.391931,
+        "carbonProcess": -3.393954,
+        "carbonTransport": 0.002023,
+        "transportKm": 10.514478,
+        "pickup": "업체 수거 가능 확인",
+        "pickupFee": 30000.0,
+        "pickupCount": 2.0,
+        "monthlyFormula": null,
+        "alternatives": [
+          {
+            "vendor": "(주)미소환경",
+            "monthlyAfter": 200000.0,
+            "note": "선택되지 않은 제안 · 한 달 값은 별도 운반비 반영 전"
+          },
+          {
+            "vendor": "(주)남해열분해",
+            "monthlyAfter": -90000.0,
+            "note": "선택되지 않은 제안"
+          }
+        ],
+        "checks": [
+          "permit_level:conditional"
+        ],
+        "approvalBlocked": false,
+        "totalDifference": 510000.0
+      },
+      "edited": {
+        "blockedAfterEdit": true,
+        "sameAsFresh": true,
+        "vendor": "(주)새길자원",
+        "transport": 60000.0,
+        "transportPending": false,
+        "monthlyAfter": 260000.0,
+        "difference": 510000.0,
+        "pickup": "업체 수거 가능 확인"
+      }
+    },
+    {
+      "case": "노선 밖 견적(회당 3만, 횟수 모름)",
+      "change": "off_fee_only",
+      "after": {
+        "session": "awaiting_approval",
+        "vendor": "(주)새길자원",
+        "route": "sell",
+        "status": "conditional",
+        "unitPrice": 320.0,
+        "revenue": 320000.0,
+        "transport": null,
+        "transportPaidBy": "emitter",
+        "transportPending": true,
+        "monthlyAfter": 320000.0,
+        "monthlyNow": -250000.0,
+        "difference": 570000.0,
+        "carbon": -3.391931,
+        "carbonProcess": -3.393954,
+        "carbonTransport": 0.002023,
+        "transportKm": 10.514478,
+        "pickup": "업체 수거 가능 확인",
+        "pickupFee": 30000.0,
+        "pickupCount": null,
+        "monthlyFormula": null,
+        "alternatives": [
+          {
+            "vendor": "(주)미소환경",
+            "monthlyAfter": 200000.0,
+            "note": "선택되지 않은 제안 · 한 달 값은 별도 운반비 반영 전"
+          },
+          {
+            "vendor": "(주)남해열분해",
+            "monthlyAfter": -90000.0,
+            "note": "선택되지 않은 제안"
+          }
+        ],
+        "checks": [
+          "transport:conditional",
+          "permit_level:conditional"
+        ],
+        "approvalBlocked": false,
+        "totalDifference": 570000.0
+      },
+      "edited": {
+        "blockedAfterEdit": true,
+        "sameAsFresh": true,
+        "vendor": "(주)새길자원",
+        "transport": null,
+        "transportPending": true,
+        "monthlyAfter": 320000.0,
+        "difference": 570000.0,
+        "pickup": "업체 수거 가능 확인"
+      }
+    },
+    {
+      "case": "노선 밖 수거 불가",
+      "change": "off_none",
+      "after": {
+        "session": "awaiting_approval",
+        "vendor": "(주)미소환경",
+        "route": "sell",
+        "status": "conditional",
+        "unitPrice": 200.0,
+        "revenue": 200000.0,
+        "transport": null,
+        "transportPaidBy": null,
+        "transportPending": true,
+        "monthlyAfter": 200000.0,
+        "monthlyNow": -250000.0,
+        "difference": 450000.0,
+        "carbon": -3.390094,
+        "carbonProcess": -3.393954,
+        "carbonTransport": 0.00386,
+        "transportKm": 20.060269,
+        "pickup": "별도 수거 확인 필요",
+        "pickupFee": null,
+        "pickupCount": null,
+        "monthlyFormula": null,
+        "alternatives": [
+          {
+            "vendor": "(주)남해열분해",
+            "monthlyAfter": -90000.0,
+            "note": "선택되지 않은 제안"
+          },
+          {
+            "vendor": "(주)새길자원",
+            "monthlyAfter": null,
+            "note": "수거 불가: 업체가 이 공장까지 수거하러 올 수 없다고 밝혀 배정하지 않았습니다."
+          }
+        ],
+        "checks": [
+          "transport:conditional",
+          "pickup_route:conditional",
+          "permit_level:conditional"
+        ],
+        "approvalBlocked": false,
+        "totalDifference": 450000.0
+      },
+      "edited": {
+        "blockedAfterEdit": true,
+        "sameAsFresh": true,
+        "vendor": "(주)미소환경",
+        "transport": null,
+        "transportPending": true,
+        "monthlyAfter": 200000.0,
+        "difference": 450000.0,
+        "pickup": "별도 수거 확인 필요"
+      }
+    }
+  ],
+  "outOfScope": [
+    "운송 배출은 '트럭 운송 계수(톤·km당) × 월 발생량 × 공장 → 업체 차고지 거리'로만 센다. 계수에 빈 차로 돌아오는 몫이 들어 있으므로 수거 횟수나 노선 밖 별도 방문을 바꿔도 운송 배출은 달라지지 않는다(차량 크기, 실제 경로, 다른 공장을 함께 도는 노선 효율은 넣지 않았다).",
+    "지금 처리(혼합 소각)로 실어 가는 운송 배출은 알 수 없어 빼지 않았다(옮기는 쪽을 불리하게 본다).",
+    "신재 대체 효과(재생 원료가 새 원료를 대신해 줄이는 배출)는 넣지 않았다.",
+    "월 손익은 실제로 오가는 돈(매각 수익 또는 처리비, 공장이 내는 운반비, 전처리 인건비)만이다. 탄소를 배출권 시세로 환산한 값은 배정을 고를 때만 쓰고 월 손익에 더하지 않았다.",
+    "업체가 금액이나 월 수거 횟수를 밝히지 않은 운반비는 0원으로 두지 않고 '별도 운반비 반영 전'으로 표시한다. 그때 배정을 고르는 계산은 알 수 없는 운반비를 넣지 못한다.",
+    "업체의 운행 단가(km당 운송비)는 업체만 보는 값이라 공장의 월 손익에 쓰지 않는다. 공장이 내는 운반비는 업체가 밝힌 견적뿐이다."
+  ]
+}
