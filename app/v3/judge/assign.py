@@ -24,6 +24,7 @@ from app.v3.judge.common import (
     vendor_distance,
 )
 from app.v3.judge.permits import permit_level, short_view
+from app.v3.judge.pickup import UNCONFIRMED
 from app.v3.judge.route import current_cost, now_formula, reuse_checks, reuse_numbers
 
 try:  # 없으면 순수 파이썬 완전 탐색으로만 돈다
@@ -159,6 +160,55 @@ def cp_sat_pick(usable, options, weight):
 def _fixed_transport(vendor: dict) -> float:
     """이 업체에 맡기면 배출 기업이 따로 내는 월 운반비. 조건이나 금액을 모르면 0으로 둔다."""
     return float(transport_charge(vendor)["monthly"] or 0.0)
+
+
+def _transport_room(choice: dict, choices: list[dict]) -> tuple[float, dict] | None:
+    """(운반비 반영 전 월 손익 − 다음으로 나은 선택지의 월 손익, 그 선택지). 견줄 확정 선택지가 없으면 None.
+
+    다른 업체는 운반비가 정해진 곳만 견준다(그 업체의 월 운반비를 모두 뺀 값). 현행 유지와 재투입은 늘 견준다.
+    """
+    others = []
+    for other in choices:
+        if other is choice:
+            continue
+        value = other["value"]
+        if other["vendor"] is not None:
+            charge = transport_charge(other["vendor"])
+            if charge["pending"] or charge["unavailable"]:
+                continue
+            value -= float(charge["monthly"] or 0.0)
+        others.append((value, _name(other), other))
+    if not others:
+        return None
+    value, _, best = max(others, key=lambda o: (round(o[0], 6), [-ord(c) for c in o[1]]))
+    gap = choice["value"] - value
+    return (gap, best) if gap > 0 else None
+
+
+def _tagged(label: str, tail: str) -> str:
+    """calc 근거 이름의 " 계산" 앞에 꼬리표를 넣는다. "변경 뒤 월 손익(별도 운반비 반영 전) 계산"."""
+    if not tail:
+        return label
+    head = label.removesuffix(" 계산")
+    return f"{head}{tail} 계산" if head != label else f"{label}{tail}"
+
+
+def _claim_id(made: dict | None, key: str) -> str | None:
+    found = (made or {}).get(key)
+    return found["id"] if found else None
+
+
+def _pending_text(charge: dict) -> str:
+    """운반비를 정하지 못한 이유. 숫자를 쓰지 않는다."""
+    if charge["status"] == "check":
+        why = "업체가 밝힌 수거 노선에 이 공장 지역이 없어 운반비가 정해지지 않았습니다"
+    elif charge["basis"] == "separate" and charge["perPickup"] is not None:
+        why = "회당 운반비는 있지만 월 수거 횟수가 없어 월 운반비를 계산하지 못했습니다(월 수거 횟수 확인 필요)"
+    elif charge["basis"] == "separate":
+        why = "운반비를 따로 내야 하는데 금액이 없어 계산에 넣지 못했습니다"
+    else:
+        why = "업체가 운반비 조건을 밝히지 않았습니다"
+    return f"{why}. 월 손익은 별도 운반비 반영 전 값입니다. 확인 필요."
 
 
 def _money_carbon(combo) -> tuple[float, float]:
@@ -328,6 +378,9 @@ def optimize_assignment(
         str(v.get("orgId")): vendor_distance(rec, v, origin, distance_provider) for v in vendors
     }
     output["permitExcluded"] = []
+    # 수거 불가라고 밝힌 업체에는 배정하지 않는다(진행 가능한 추천과 합계에서 뺀다)
+    output["pickupExcluded"] = []
+    charges_of = {str(v.get("orgId")): transport_charge(v) for v in vendors}
 
     usable, options = [], []
     for stream in streams:
@@ -415,6 +468,25 @@ def optimize_assignment(
                     level["text"],
                     None,
                     level["evidence"],
+                )
+                continue
+            if charges_of[str(vendor.get("orgId"))]["unavailable"]:
+                gone = charges_of[str(vendor.get("orgId"))]
+                text = "업체가 이 공장까지 수거하러 올 수 없다고 밝혀 배정하지 않았습니다."
+                output["pickupExcluded"].append(
+                    {
+                        "streamId": stream.get("id"),
+                        "vendorOrgId": vendor.get("orgId"),
+                        "text": text,
+                        "evidence": rec.visible(gone["evidence"]),
+                    }
+                )
+                rec.check(
+                    f"pickup:{stream.get('id')}:{vendor.get('orgId')}",
+                    "unmet",
+                    text,
+                    None,
+                    gone["evidence"],
                 )
                 continue
             price = float(criterion["unitPriceKrwPerKg"])
@@ -554,8 +626,44 @@ def optimize_assignment(
             + (" (직선 거리 × 우회 계수, 가정값)" if distance["assumed"] else " (도로 거리)"),
             distance["evidence"],
         )
-    for members in groups.values():
+    # 업체마다 한 번 드는 월 운반비(견적 금액 · 수거 횟수 · 월 합계)를 계산 근거로 남긴다. 같은 수거 차량에 함께
+    # 싣는 폐기물에는 한 번만 들고, 흐름별 몫은 이 월 합계를 물량 비율로 나눈 값이다(합이 월 합계와 같다)
+    hauls: dict[str, dict] = {}
+    for k, vendor_id in enumerate(sorted(groups)):
+        members = groups[vendor_id]
         charge = transport_charge(best[members[0]]["vendor"])
+        made: dict[str, dict | None] = {"fee": None, "pickups": None, "monthly": None}
+        if charge["basis"] == "separate" and charge["monthly"] is not None:
+            per_month = charge["unit"] == "per_month"
+            made["fee"] = rec.number(
+                f"v{k}TransportFee",
+                charge["perMonth"] if per_month else charge["perPickup"],
+                "원/월" if per_month else "원/회",
+                "업체가 밝힌 월 운반비" if per_month else "업체가 밝힌 회당 운반비",
+                charge["feeEvidence"],
+            )
+            inputs = [made["fee"]["evidence"][0]]
+            if not per_month:
+                made["pickups"] = rec.number(
+                    f"v{k}TransportPickups",
+                    charge["pickups"],
+                    "회/월",
+                    "업체가 밝힌 월 수거 횟수"
+                    if charge["pickupsEvidence"]
+                    else "업체가 정한 월 최소 수거 횟수",
+                    charge["pickupsEvidence"],
+                )
+                inputs.append(made["pickups"]["evidence"][0])
+            made["monthly"] = rec.number(
+                f"v{k}TransportMonthly",
+                charge["monthly"],
+                "원/월",
+                "업체가 밝힌 월 운반비. 수거 횟수를 곱하지 않습니다"
+                if per_month
+                else "회당 운반비 × 월 수거 횟수. 같은 수거 차량에 함께 싣는 폐기물에는 한 번만 듭니다",
+                inputs,
+            )
+        hauls[vendor_id] = made
         total_kg = math.fsum(usable[i]["kg"] for i in members)
         left = float(charge["monthly"] or 0.0)
         for i in members[:-1]:
@@ -580,6 +688,7 @@ def optimize_assignment(
             label=names.calc_label("monthlyNow", who),
         )
         parts["now"].append(made["evidence"][0])
+        now_id = made["evidence"][0]
         breakdown = {"revenue": None, "transport": None, "labor": None}
         after, after_ev, after_formula = choice["value"], list(choice["ev"]), "현행 유지의 월 손익"
         if choice.get("reuse"):
@@ -607,24 +716,37 @@ def optimize_assignment(
             breakdown["revenue"] = made["id"]
             after_ev = [made["evidence"][0], *choice["ev"]]
             after_formula = "매각 수익(처리비면 음수) − 운반비 − 전처리 인건비"
-            if charge and charge["known"] and charge["monthly"] is not None:
+            haul = hauls.get(str(choice["vendor"].get("orgId"))) or {}
+            if charge and charge["monthly"] is not None:
                 made = rec.number(
                     f"{tag}Transport",
                     share[i],
                     "원/월",
                     "운반비는 업체 단가에 들어 있습니다(수거 포함)"
-                    if charge["paidBy"] == "vendor"
-                    else "업체의 1회 운반비 × 월 수거 횟수를 이 업체로 가는 폐기물의 물량 비율로 나눈 값",
-                    charge["evidence"],
+                    if charge["basis"] == "included"
+                    else "이 업체의 월 운반비를 이 업체로 가는 폐기물의 물량 비율로 나눈 값",
+                    [haul["monthly"]["evidence"][0]] if haul.get("monthly") else charge["evidence"],
                     label=names.calc_label("transport", who),
                 )
                 breakdown["transport"] = made["id"]
                 after_ev.append(made["evidence"][0])
-            elif charge and charge["known"]:
+            elif charge and charge["pending"]:
+                # 운반비를 정하지 못했다. 0원으로 확정하지 않고 월 손익을 "별도 운반비 반영 전"으로 둔다
+                after_formula = "매각 수익(처리비면 음수) − 전처리 인건비. 별도 운반비 반영 전"
                 rec.check(
                     f"transport:{stream.get('id')}",
                     "conditional",
-                    "운반비를 따로 내야 하는데 금액이 없어 계산에 넣지 못했습니다. 확인 필요.",
+                    _pending_text(charge),
+                    None,
+                    charge["evidence"],
+                )
+            if charge and charge["status"] in UNCONFIRMED:
+                rec.check(
+                    f"pickup:{stream.get('id')}",
+                    "conditional",
+                    "업체가 밝힌 수거 노선에 이 공장 지역이 없어 따로 수거하러 올 수 있는지 확인이 필요합니다."
+                    if charge["status"] == "check"
+                    else "업체가 수거 노선을 밝히지 않아 이 공장까지 수거하러 오는지 확인이 필요합니다.",
                     None,
                     charge["evidence"],
                 )
@@ -640,27 +762,29 @@ def optimize_assignment(
                 breakdown["labor"] = made["id"]
                 after_ev.append(made["evidence"][0])
             after = choice["value"] - share.get(i, 0.0)
+        pending = bool(choice["vendor"] and charge and charge["pending"])
+        tail = "(별도 운반비 반영 전)" if pending else ""
         made = rec.number(
             f"{tag}MonthlyAfter",
             after,
             "원/월",
             after_formula,
             after_ev,
-            label=names.calc_label("monthlyAfter", who),
+            label=_tagged(names.calc_label("monthlyAfter", who), tail),
         )
         parts["after"].append(made["evidence"][0])
+        after_id = made["evidence"][0]
         made = rec.number(
             f"{tag}Difference",
             after - now,
             "원/월",
-            "배정 뒤 월 손익 − 현행 월 손익",
+            "배정 뒤 월 손익 − 현행 월 손익" + (". 별도 운반비 반영 전" if pending else ""),
             [*choice["ev"], *item["cost_ev"]],
-            label=names.calc_label("difference", who),
+            label=_tagged(names.calc_label("difference", who), tail),
         )
         parts["difference"].append(made["evidence"][0])
-        unknown_transport = bool(
-            charge and charge["known"] and charge["monthly"] is None and choice["vendor"]
-        )
+        unconfirmed = bool(choice["vendor"] and charge and charge["status"] in UNCONFIRMED)
+        haul = hauls.get(str(choice["vendor"].get("orgId"))) if choice["vendor"] else None
         entry = {
             "streamId": stream.get("id"),
             "vendorOrgId": choice["vendor"].get("orgId") if choice["vendor"] else None,
@@ -671,7 +795,7 @@ def optimize_assignment(
             else ("sell" if choice["price"] >= 0 else "treat"),
             "criterionId": choice["criterion"].get("id") if choice["criterion"] else None,
             "status": "conditional"
-            if choice.get("conditional") or unknown_transport
+            if choice.get("conditional") or pending or unconfirmed
             else "calculated",
             "monthlyNow": f"{tag}MonthlyNow",
             "monthlyAfter": f"{tag}MonthlyAfter",
@@ -680,6 +804,14 @@ def optimize_assignment(
             "transport": breakdown["transport"],
             "labor": breakdown["labor"],
             "transportPaidBy": charge["paidBy"] if charge and charge["known"] else None,
+            # 수거 상태와 운반비 조건(judge/pickup.py). 업체마다 한 번 드는 월 운반비의 견적 근거를 잇는다
+            "pickupStatus": charge["status"] if charge else None,
+            "transportBasis": charge["basis"] if charge else None,
+            "transportUnit": charge["unit"] if charge else None,
+            "transportPending": pending,
+            "transportFee": _claim_id(haul, "fee"),
+            "transportPickups": _claim_id(haul, "pickups"),
+            "transportMonthly": _claim_id(haul, "monthly"),
             "currentAssumed": item["assumed"],
             "carbon": None,
             "carbonProcess": None,
@@ -687,7 +819,27 @@ def optimize_assignment(
             "carbonValue": None,
             "transportKm": None,
             "permit": None,
+            "transportRoom": None,
+            "transportRoomAgainst": None,
         }
+        if pending:
+            # 운반비가 정해지지 않은 배정: 운반비가 한 달 얼마를 넘으면 다음으로 나은 선택지가 나은지 남긴다
+            room = _transport_room(choice, options[i])
+            if room is not None:
+                gap, other = room
+                entry["transportRoom"] = rec.number(
+                    f"{tag}TransportRoom",
+                    gap,
+                    "원/월",
+                    "별도 운반비 반영 전 월 손익 − 다음으로 나은 선택지의 월 손익. 이 업체의 월 운반비가 "
+                    "이보다 크면 다음 선택지가 낫습니다",
+                    [after_id, *(other["ev"] if other["vendor"] is not None else [now_id])],
+                    label=f"{who} 운반비 손익분기 계산" if who else "운반비 손익분기 계산",
+                )["id"]
+                entry["transportRoomAgainst"] = {
+                    "vendorOrgId": other["vendor"].get("orgId") if other["vendor"] else None,
+                    "route": _route(other),
+                }
         if choice["vendor"] is not None:
             vendor_id = str(choice["vendor"].get("orgId"))
             moved = choice["moved"] if (choice["moved"] or {}).get("known") else None
@@ -757,20 +909,33 @@ def optimize_assignment(
                     entry["status"] = "conditional"
         output["assignments"].append(entry)
         now_total, after_total = now_total + now, after_total + after
+    # 운반비를 정하지 못한 배정이 섞인 합계는 잠정값이다(이름과 계산식에 밝힌다)
+    pending_ids = [a["streamId"] for a in output["assignments"] if a.get("transportPending")]
+    note = ". 별도 운반비 반영 전 값이 섞여 있습니다" if pending_ids else ""
+    tail = "(별도 운반비 반영 전 포함)" if pending_ids else ""
     rec.number("totalNow", now_total, "원/월", "폐기물별 현행 월 손익의 합", parts["now"])
-    rec.number("totalAfter", after_total, "원/월", "폐기물별 배정 뒤 월 손익의 합", parts["after"])
+    rec.number(
+        "totalAfter",
+        after_total,
+        "원/월",
+        "폐기물별 배정 뒤 월 손익의 합" + note,
+        parts["after"],
+        label=_tagged(names.calc_label("totalAfter"), tail),
+    )
     rec.number(
         "totalDifference",
         after_total - now_total,
         "원/월",
-        "배정 뒤 합 − 현행 합",
+        "배정 뒤 합 − 현행 합" + note,
         parts["difference"],
+        label=_tagged(names.calc_label("totalDifference"), tail),
     )
     output["totals"] = {
         "monthlyNow": "totalNow",
         "monthlyAfter": "totalAfter",
         "difference": "totalDifference",
         "carbon": None,
+        "pending": pending_ids,
     }
     if parts["carbon"]:
         output["totals"]["carbon"] = rec.number(

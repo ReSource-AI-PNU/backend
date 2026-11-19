@@ -259,8 +259,8 @@ def test_result_sheet_carries_the_loading_checks_of_each_assignment():
     sprue = by_stream(view)["st_sprue"]
     load = next(c for c in sprue["checks"] if c["key"] == "loading")
     assert {c["role"] for c in load["claims"]} >= {"pickups", "perPickup", "capacity"}
-    # 업체가 보는 뷰에도 적재 검사는 남는다(배출 기업의 손익 판단은 빠진다)
+    # 업체가 보는 뷰에도 적재 검사와 수거 노선 확인은 남는다(배출 기업의 손익 판단은 빠진다)
     theirs = service.get_view(app, view["session"]["id"], SAEGIL)
     for item in theirs["result"]["assignments"]:
         keys = {c["key"] for c in item["checks"]}
-        assert "min_volume" in keys and keys <= {"vendor_condition", *LOADING_KEYS}
+        assert "min_volume" in keys and keys <= {"vendor_condition", "pickup_route", *LOADING_KEYS}

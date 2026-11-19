@@ -88,7 +88,7 @@ MODEL_PROVIDERS = ("foundry", "ollama")
 # 화면에 보이는 날짜(기준일)의 시간대 Asia/Seoul. 서머타임이 없어 UTC+9 고정이다(이미지에 tzdata가 없어도 된다)
 SEOUL = timezone(timedelta(hours=9), "Asia/Seoul")
 VENDOR_EVENT_KINDS = ("message", "handoff", "approval", "thread", "document", "review")
-VENDOR_CHECK_KEYS = ("vendor_condition", "min_volume", "loading", "loading_volume")
+VENDOR_CHECK_KEYS = ("vendor_condition", "min_volume", "loading", "loading_volume", "pickup_route")
 # 업체가 보는 판단 그래프에 쓰는 검사(judge_route). 업체의 매입 기준·허가 품목과, 대화에서 업체에 열린
 # 흐름 자료(오염도, 수분, 형태, 혼입물, 물량의 근거)를 대조한 것만이다. 배출 기업의 현행 처리에 관한
 # 검사와 비용·탄소 검사는 넣지 않는다
@@ -1428,6 +1428,18 @@ def _message_view(message: dict[str, Any], emitter_org_id: str | None = None) ->
                 ],
                 "days": terms.get("days") or [],
                 "conditions": terms.get("conditions") or [],
+                # 수거·운반 견적: 수거 상태, 운반비 방식과 부담, 금액·횟수가 어느 claim인지(값은 claims에만 있다)
+                "pickup": {
+                    "status": pickup.get("status"),
+                    "basis": pickup.get("basis"),
+                    "paidBy": pickup.get("paidBy"),
+                    "unit": pickup.get("unit"),
+                    "feeClaimId": pickup.get("feeRef"),
+                    "pickupsClaimId": pickup.get("pickupsRef"),
+                    "days": pickup.get("days") or [],
+                }
+                if (pickup := terms.get("pickup"))
+                else None,
             }
             if terms
             else None,
@@ -1731,6 +1743,14 @@ def _result_view(session: dict[str, Any], viewer: str, owner: bool) -> dict[str,
                 "carbonProcess": None,
                 "carbonTransport": None,
                 "transportKm": None,
+                # 수거 상태와 운반비 방식만 보인다. 금액은 배출 기업 쪽 계산 근거라 빼고(업체 자신의 견적은 대화의
+                # 조건 답에 있다), 운반비 손익분기(배출 기업의 비교)도 뺀다
+                "pickup": {
+                    **item["pickup"],
+                    **dict.fromkeys(("fee", "pickups", "monthly", "room", "roomAgainst")),
+                }
+                if item.get("pickup")
+                else None,
                 # 업체가 내건 조건과 최소 물량·적재 검사만 남긴다(나머지는 배출 기업의 판단이다)
                 "checks": [c for c in item["checks"] if c["key"] in VENDOR_CHECK_KEYS],
                 "alternatives": [],

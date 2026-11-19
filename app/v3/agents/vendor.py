@@ -45,6 +45,7 @@ from app.v3.evidence.units import UnitError, convert
 from app.v3.evidence.validator import validate_message
 from app.v3.fleet import INFO_KEYS
 from app.v3.judge import negotiate
+from app.v3.judge import pickup as pickup_terms
 from app.v3.judge.common import without_emitter_only
 from app.v3.untrusted import counterparty_stream, org_label, stream_label
 
@@ -475,6 +476,74 @@ def _price(claim: Any) -> float | None:
         return convert(float(claim.value), claim.unit, "원/kg")
     except (UnitError, TypeError, ValueError):
         return None
+
+
+def _haul_claims(pool: ClaimPool, haul: dict[str, Any], vendor_org: str) -> dict[str, str | None]:
+    """운반비 견적의 금액과 수거 횟수를 claim으로 풀에 넣는다(값과 같은 근거가 있을 때만). {"fee", "pickups"}."""
+    fee = pickups = None
+    if haul.get("basis") == "separate" and haul.get("amount") is not None:
+        fee = pool.add_fact(
+            "transport_fee",
+            haul["amount"],
+            pickup_terms.UNIT_OF[haul["unit"]],
+            haul.get("feeEvidence") or haul.get("evidence"),
+            label="운반비 견적",
+            source="profile",
+            vendorOrgId=vendor_org,
+            field="transportFee",
+        )
+    if haul.get("pickups") is not None:
+        pickups = pool.add_fact(
+            "transport_pickups",
+            haul["pickups"],
+            "회/월",
+            haul.get("pickupsEvidence") or haul.get("evidence"),
+            label="운반 수거 횟수",
+            source="profile",
+            vendorOrgId=vendor_org,
+            field="transportPickups",
+        )
+    return {"fee": fee, "pickups": pickups}
+
+
+def _attach_haul(
+    reply: Message,
+    output: dict[str, Any],
+    haul: dict[str, Any],
+    refs: dict[str, str | None],
+    pool: ClaimPool,
+) -> None:
+    """조건을 내는 답에 수거·운반 견적을 붙인다. 모델이 쓰지 않아도 코드가 같은 꼴로 붙인다.
+
+    회당 운반비인데 견적에 월 횟수가 없으면, 이 답에서 업체가 밝힌 수거 횟수(terms.pickupsPerMonthRef로 본문에 쓴
+    claim)만 쓴다. 그것도 없으면 횟수 없이 보낸다(회사 측은 월 운반비를 정하지 않고 "월 수거 횟수 확인 필요"로 둔다).
+    숫자는 claim으로만 쓴다(본문에 {{id}}).
+    """
+    if "수거·운반:" in (reply.text or ""):
+        return
+    fee_ref, pickups_ref = refs.get("fee"), refs.get("pickups")
+    if haul.get("unit") == "per_pickup" and pickups_ref is None:
+        terms = output.get("terms") if isinstance(output.get("terms"), dict) else {}
+        cited = terms.get("pickupsPerMonthRef")
+        said = {c.id for c in reply.claims}
+        if isinstance(cited, str) and cited in said and f"{{{{{cited}}}}}" in (reply.text or ""):
+            pickups_ref = cited
+    line = pickup_terms.answer_line(haul, fee_ref, pickups_ref)
+    used = [r for r in (fee_ref, pickups_ref) if r and f"{{{{{r}}}}}" in line]
+    have = {c.id for c in reply.claims}
+    reply.claims = (*reply.claims, *pool.resolve([r for r in used if r not in have]))
+    reply.text = f"{reply.text.rstrip()}\n{line}" if (reply.text or "").strip() else line
+    reply.meta["terms"]["pickup"] = {
+        "status": haul.get("status"),
+        "basis": haul.get("basis"),
+        "paidBy": haul.get("paidBy"),
+        "unit": haul.get("unit"),
+        "feeRef": fee_ref if fee_ref in used else None,
+        "pickupsRef": pickups_ref if pickups_ref in used else None,
+        "days": list(haul.get("days") or []),
+        # 노선 수거의 운반비 조건(노선 밖이라 이 공장에 그대로 쓰지 않았을 때 참고로 보인다)
+        "routeBasis": haul.get("routeBasis"),
+    }
 
 
 class VendorAgent:
@@ -945,6 +1014,8 @@ class VendorAgent:
         kept = [c for cid, c in claims.items() if cid in used or cid in cited]
         last = sources[-1]
         terms = json.loads(json.dumps(last.meta["terms"]))
+        # 수거·운반 견적은 앞선 조건 답에 있다(회사 측이 그 답을 기억한다). 이 답의 claim에 없으니 싣지 않는다
+        terms.pop("pickup", None)
         kind = "conditional" if any(m.type == "conditional" for m in sources) else "offer"
         body = "단가 조정 요청을 검토했습니다.\n" + "\n".join(f"- {line}" for line in lines)
         if conditions:
@@ -1023,6 +1094,13 @@ class VendorAgent:
         pool = ClaimPool(self.registry, vendor_org)
         facts = {s["id"]: pool.add_stream(s) for s in streams}
         criteria = pool.add_vendor_profile(profile)
+        # 이 공장에 적용할 수거 상태와 운반비 조건(노선·운반 조건과 공장 지역). 조건을 내는 답에 코드가 붙인다
+        haul = pickup_terms.effective(
+            profile.get("transport"),
+            (profile.get("fleet") or {}).get("routes"),
+            emitter.get("region"),
+        )
+        haul_refs = _haul_claims(pool, haul, vendor_org)
         if not any(m.seq == message.get("seq") for m in thread.messages):
             pool.add_message(message)
         from_messages = {m.seq: pool.add_message(m) for m in thread.messages}
@@ -1242,6 +1320,8 @@ class VendorAgent:
             terms, problems = self._terms(output, reply, pool)
             if terms is not None:
                 reply.meta["terms"] = terms
+                # 수거·운반 견적(상태, 운반비 방식, 금액·횟수의 claim)을 본문 한 줄과 terms.pickup으로 붙인다
+                _attach_haul(reply, output, haul, haul_refs, pool)
             result = validate_message(reply, self.registry, today=self.today, names=names)
             found += [r.to_dict() for r in result.rejections]
             found += problems

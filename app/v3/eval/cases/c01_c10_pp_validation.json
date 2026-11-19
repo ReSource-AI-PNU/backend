@@ -1109,7 +1109,8 @@
                 "minMonthlyKg": 300
               }
             ],
-            "name": "(주)가상압축자원"
+            "name": "(주)가상압축자원",
+            "transport": null
           }
         ]
       },

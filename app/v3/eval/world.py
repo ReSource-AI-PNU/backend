@@ -34,6 +34,10 @@ STREAM_DEFAULTS = {
     "contaminants": [],
 }
 FLEET_DEFAULTS = {"capacityKg": 5000, "capacityM3": 20, "costPerKm": 1200}
+# 운반 조건을 적지 않은 사례의 업체는 공장 지역을 지나는 노선으로 수거하고 운반비는 단가에 포함한다(사례가 수거·운반을
+# 시험하지 않을 때의 기본값. judge/pickup.py가 운반 조건이 비면 "별도 운반비 반영 전"으로 둔다). 사례가 "transport": null을
+# 적으면 업체가 운반 조건과 노선을 밝히지 않은 것이고, {"paidBy", "feePerPickupKrw"}를 적으면 그 조건을 쓴다
+TRANSPORT_DEFAULT = "vendor"
 GUARD_DEFAULTS = {
     "days": ["화", "목"],
     "minPickupsPerMonth": 2,
@@ -98,7 +102,7 @@ def _stream(seeder: _Seeder, org: str, spec: dict[str, Any]) -> dict[str, Any]:
     return {**stream, "synthetic": True}
 
 
-def _vendor(seeder: _Seeder, spec: dict[str, Any]) -> dict[str, Any]:
+def _vendor(seeder: _Seeder, spec: dict[str, Any], region: str | None = None) -> dict[str, Any]:
     org = spec["orgId"]
     permits = [
         seeder.permit(org, p["wasteItem"], list(p.get("materials") or []))
@@ -122,15 +126,38 @@ def _vendor(seeder: _Seeder, spec: dict[str, Any]) -> dict[str, Any]:
             merged["capacityM3"],
             merged["costPerKm"],
         )
-    return {
+    guardrails = {**GUARD_DEFAULTS, **(spec.get("guardrails") or {})}
+    profile = {
         "orgId": org,
         "permits": permits,
         "criteria": criteria,
         "fleet": fleet,
-        "guardrails": {**GUARD_DEFAULTS, **(spec.get("guardrails") or {})},
+        "guardrails": guardrails,
         "model": spec.get("model") or {"provider": "foundry", "name": "gpt-5-mini"},
         "synthetic": True,
     }
+    terms = spec.get("transport", TRANSPORT_DEFAULT)
+    if terms is None:
+        return profile
+    if terms == TRANSPORT_DEFAULT:
+        profile["transport"] = seeder.transport(org, "vendor")
+    else:
+        profile["transport"] = seeder.transport(
+            org, str(terms.get("paidBy") or "vendor"), terms.get("feePerPickupKrw")
+        )
+    if region and "routes" not in spec:
+        routes = [
+            {
+                "name": "공장 지역 노선(가상)",
+                "days": list(guardrails.get("days") or []),
+                "regions": [region],
+                "complexes": [],
+            }
+        ]
+        profile["fleet"] = {**profile["fleet"], "routes": routes}
+    elif spec.get("routes"):
+        profile["fleet"] = {**profile["fleet"], "routes": list(spec["routes"])}
+    return profile
 
 
 def base_registry(source: Any = None) -> InMemoryRegistry:
@@ -174,7 +201,7 @@ def build_world(case: dict[str, Any], *, registry_source: Any = None):
                 "note": SYNTHETIC_NOTE,
             }
         )
-        profile = _vendor(seeder, spec)
+        profile = _vendor(seeder, spec, emitter.get("region"))
         if spec.get("permitVerified", True):
             # 사례는 허가 확인이 아닌 다른 판단을 본다. 배출 기업 담당자가 업체의 허가증 원문을 대조해 둔 상태로
             # 시작한다(허가 확인 상태 자체는 tests/v3/test_permit_verification.py가 본다)

@@ -55,6 +55,7 @@ from app.v3.evidence.validator import (
 )
 from app.v3.intake.grade_model import GradeModelError, grade_stream
 from app.v3.judge import basis, negotiate, permits
+from app.v3.judge import pickup as pickup_terms
 from app.v3.judge.common import best_criterion, permit_match, quality, without_emitter_only
 from app.v3.judge.toolbox import TOOLS, call_tool
 from app.v3.live import STATUS_NOTES, Recorder
@@ -84,6 +85,10 @@ LOADING_CLAIMS = {
 # 승인을 막는 사유 코드(approvals[].blockedCodes). 근거 검증기의 거부 코드도 올 수 있다
 BLOCK_CODES = ("EVIDENCE_CHANGED", "STREAM_CHANGED", "VENDOR_TERMS_CHANGED")
 _BLOCK_CODE = re.compile(r": ([A-Z][A-Z_]+)(?=,|\.|$)")
+
+
+# 업체 쪽 조건이 바뀌어 막힌 대화. 진단을 다시 진행하면 새 조건으로 대화를 다시 연다
+REOPEN_CODES = {"VENDOR_TERMS_CHANGED", "PICKUP_TERMS_CHANGED"}
 
 
 def block_codes(reason: str | None) -> list[str]:
@@ -175,14 +180,144 @@ def new_work() -> dict[str, Any]:
 
 
 def memo_result(memo: list[dict[str, Any]], name: str, **arguments: Any) -> dict[str, Any] | None:
+    """같은 도구·인자로 부른 결과 가운데 가장 최근 것. 업체 조건이 바뀌어 다시 부른 결과가 앞선 결과를 덮는다."""
+    found = None
     for entry in memo or []:
         if entry.get("failed"):
             continue  # 입력을 만들 수 없어 실패한 호출(draft.AgentTools). 결과가 없다
         if entry["name"] == name and all(
             entry["arguments"].get(k) == v for k, v in arguments.items()
         ):
-            return entry["result"]
-    return None
+            found = entry["result"]
+    return found
+
+
+def clean_haul(raw: Any) -> dict[str, Any] | None:
+    """업체 측이 조건 답에 붙인 수거·운반 견적(terms.pickup)을 정해 둔 모양으로만 남긴다. 상대가 보낸 값은 믿지 않는다."""
+    if not isinstance(raw, dict) or raw.get("status") not in pickup_terms.STATUSES:
+        return None
+
+    def ref(key: str) -> str | None:
+        value = raw.get(key)
+        return value if isinstance(value, str) and value else None
+
+    return {
+        "status": raw["status"],
+        "basis": raw.get("basis") if raw.get("basis") in pickup_terms.BASES else "undecided",
+        "paidBy": raw.get("paidBy") if raw.get("paidBy") in ("vendor", "emitter") else None,
+        "unit": raw.get("unit") if raw.get("unit") in pickup_terms.UNIT_OF else None,
+        "feeRef": ref("feeRef"),
+        "pickupsRef": ref("pickupsRef"),
+        "days": [d for d in raw.get("days") or [] if d in WEEKDAYS],
+        "routeBasis": raw.get("routeBasis")
+        if raw.get("routeBasis") in pickup_terms.BASES
+        else None,
+    }
+
+
+def _claim_number(claim: Any, unit: str) -> float | None:
+    if claim is None:
+        return None
+    try:
+        return convert(float(claim.value), claim.unit, unit)
+    except (UnitError, TypeError, ValueError):
+        return None
+
+
+def haul_answer(raw: Any, claims: dict[str, Claim], seq: int) -> dict[str, Any] | None:
+    """업체 조건 답의 수거·운반 견적. 금액·횟수는 검증된 claim에서 읽는다(단위가 맞지 않으면 없는 값).
+
+    따로 받는 운반비인데 금액 claim이 없으면 금액은 None이다(0원으로 정하지 않는다).
+    """
+    haul = clean_haul(raw)
+    if haul is None:
+        return None
+    fee = claims.get(haul["feeRef"] or "")
+    count = claims.get(haul["pickupsRef"] or "")
+    want = pickup_terms.UNIT_OF.get(haul["unit"] or "")
+    amount = _claim_number(fee, want) if (want and haul["basis"] == "separate") else None
+    pickups = _claim_number(count, "회/월")
+    fee_ev = list(fee.evidence) if fee is not None and amount is not None else []
+    count_ev = list(count.evidence) if count is not None and pickups is not None else []
+    return {
+        "status": haul["status"],
+        "days": haul["days"],
+        "routeBasis": haul["routeBasis"],
+        "basis": haul["basis"],
+        "paidBy": haul["paidBy"],
+        "amount": amount,
+        "unit": haul["unit"] if amount is not None else None,
+        "pickups": pickups,
+        "evidence": list(dict.fromkeys([*fee_ev, *count_ev])),
+        "feeEvidence": fee_ev,
+        "pickupsEvidence": count_ev,
+        "fee": fee.to_dict() if fee is not None and amount is not None else None,
+        "seq": seq,
+        "source": "answer",
+    }
+
+
+def haul_words(shown: dict[str, Any]) -> str:
+    """수거·운반 조건을 숫자 없이 적은 말. 예: "별도 수거 확인 필요 · 운반비 미정"."""
+    status = pickup_terms.STATUS_LABEL.get(str(shown.get("status")), "수거 방식 미상")
+    if shown.get("status") == "unavailable":
+        return status
+    basis = pickup_terms.BASIS_LABEL.get(str(shown.get("basis")), "미정")
+    payer = " (공장 부담)" if shown.get("basis") == "separate" else ""
+    return f"{status} · 운반비 {basis}{payer}"
+
+
+def haul_check(haul: dict[str, Any]) -> dict[str, Any]:
+    """결과 한 줄의 "수거 노선" 확인 항목. 문장에는 숫자를 쓰지 않는다."""
+    status = haul.get("status")
+    days = list(haul.get("days") or [])
+    text = {
+        "route": "업체가 밝힌 수거 노선이 이 공장 지역을 지나갑니다"
+        + (f"(운행 요일 {', '.join(days)})." if days else "."),
+        "visit": "공장 지역이 업체의 수거 노선 밖이지만 업체가 따로 수거하러 온다고 밝혔습니다.",
+        "check": "업체가 밝힌 수거 노선에 이 공장 지역이 없습니다. 따로 수거하러 올 수 있는지와 "
+        "운반비를 확인해야 합니다.",
+        "unavailable": "업체가 이 공장까지 수거하러 올 수 없다고 밝혔습니다.",
+        "unknown": "업체가 수거 노선을 밝히지 않아 이 공장까지 수거하러 오는지 확인이 필요합니다.",
+    }.get(str(status), "수거 방식을 확인해야 합니다.")
+    return {
+        "key": "pickup_route",
+        "status": "met"
+        if status in ("route", "visit")
+        else "unmet"
+        if status == "unavailable"
+        else "conditional",
+        "text": text,
+        "evidence": list(haul.get("evidence") or []),
+    }
+
+
+def comparison_scope(assignments: list[dict[str, Any]]) -> list[dict[str, str]]:
+    """비용·탄소 비교의 계산 범위. 지금 처리 쪽 운송은 자료가 없어 넣지 않았다는 것을 밝힌다(숫자 없음)."""
+    moved = [a for a in assignments if a.get("vendorOrgId")]
+    if not moved:
+        return []
+    out = [
+        {
+            "key": "cost",
+            "text": "비용: 지금 처리 쪽은 입력한 처리비(또는 판매 단가)만 넣었고, 지금 따로 내는 운반비는 "
+            "자료가 없어 넣지 않았습니다. 옮긴 뒤 쪽은 업체가 밝힌 운반비를 넣었습니다"
+            + (
+                ". 운반비가 정해지지 않은 곳은 별도 운반비 반영 전 값입니다."
+                if any(a.get("transportPending") for a in moved)
+                else "."
+            ),
+        }
+    ]
+    if any(a.get("carbonTransport") for a in moved):
+        out.append(
+            {
+                "key": "carbon",
+                "text": "탄소: 옮긴 뒤 쪽에는 업체까지 실어 가는 운송 배출을 더했고, 지금 처리 쪽 운송 배출은 "
+                "자료가 없어 넣지 않았습니다. 그래서 줄어드는 탄소는 실제보다 작게 잡혔을 수 있습니다.",
+            }
+        )
+    return out
 
 
 def claim_in(result: dict[str, Any] | None, key: str | None, new_id: str) -> dict[str, Any] | None:
@@ -561,7 +696,7 @@ class Orchestrator:
     def _renegotiate(self, session: dict[str, Any]) -> bool:
         """업체 조건이 바뀌어 승인이 막힌 합의 대화를 다시 연다. 하나라도 열었으면 True.
 
-        다시 여는 것은 VENDOR_TERMS_CHANGED로 막힌 대화뿐이다. 흐름 자료가 바뀐 대화
+        다시 여는 것은 VENDOR_TERMS_CHANGED·PICKUP_TERMS_CHANGED로 막힌 대화뿐이다. 흐름 자료가 바뀐 대화
         (STREAM_CHANGED)는 자료를 되돌리거나 진단을 새로 해야 한다.
         """
         opened = False
@@ -569,8 +704,8 @@ class Orchestrator:
             if thread.status != "agreed":
                 continue
             codes = {item.rsplit(": ", 1)[-1] for item in self._verify(session, thread)}
-            if "VENDOR_TERMS_CHANGED" in codes and "STREAM_CHANGED" not in codes:
-                opened = self._reopen(session, thread) or opened
+            if codes & REOPEN_CODES and "STREAM_CHANGED" not in codes:
+                opened = self._reopen(session, thread, codes) or opened
         if opened:
             session["phase"], session["status"] = "converse", "running"
             for stage in ("4", "5", "6"):
@@ -578,7 +713,7 @@ class Orchestrator:
         self._save(session)
         return opened
 
-    def _reopen(self, session, thread: Thread) -> bool:
+    def _reopen(self, session, thread: Thread, codes: set[str] | None = None) -> bool:
         """합의한 대화를 회사 측의 counter로 다시 연다. 앞선 제안과 승인은 지난 조건의 것이다."""
         work = session["work"]
         assigned = sorted(work["assigned"].get(thread.id) or thread.stream_ids)
@@ -589,7 +724,7 @@ class Orchestrator:
                 return False
             if thread.status == "agreed":
                 left = {item.rsplit(": ", 1)[-1] for item in self._verify(session, thread)}
-                if "VENDOR_TERMS_CHANGED" not in left:
+                if not left & REOPEN_CODES:
                     return False  # 남은 흐름의 조건은 그대로다. 다시 승인만 받으면 된다
         gone = {x["streamId"] for x in work["excluded"] if x["vendorOrgId"] == thread.vendor_org}
         left_streams = [sid for sid in thread.stream_ids if sid not in gone]
@@ -598,8 +733,12 @@ class Orchestrator:
             thread_id=thread.id,
             sender=thread.emitter_org,
             recipient=thread.vendor_org,
-            text="합의한 뒤에 업체의 조건(매입 기준표·허가 품목·가드레일)이 바뀌었습니다. "
-            "지금 조건으로 받을 수 있는지와 조건을 다시 알려 주세요.",
+            text=(
+                "합의한 뒤에 업체의 수거·운반 조건이 바뀌었습니다. "
+                if codes and "PICKUP_TERMS_CHANGED" in codes and "VENDOR_TERMS_CHANGED" not in codes
+                else "합의한 뒤에 업체의 조건(매입 기준표·허가 품목·가드레일·수거·운반)이 바뀌었습니다. "
+            )
+            + "지금 조건으로 받을 수 있는지와 조건을 다시 알려 주세요.",
             stage=5,
             stream_ids=tuple(left_streams),
             asks=[{"streamId": sid, "field": "terms"} for sid in left_streams],
@@ -627,6 +766,7 @@ class Orchestrator:
         work["offers"].pop(thread.id, None)  # 지난 조건으로 받은 제안은 더 쓰지 않는다
         work.setdefault("agreedBasis", {}).pop(thread.id, None)
         work.setdefault("agreedTerms", {}).pop(thread.id, None)
+        work.setdefault("pickups", {}).pop(thread.vendor_org, None)  # 새 수거·운반 답을 받는다
         work.setdefault("reopened", {})[thread.id] = message.seq
         work["cannotAsk"].pop(thread.id, None)
         # 업체가 고친 기준표의 새 근거를 배출 기업에 연다(대화를 열 때와 같다)
@@ -1556,6 +1696,8 @@ class Orchestrator:
                 "id": emitter["id"],
                 "name": emitter.get("name"),
                 "location": emitter.get("location"),
+                # 업체 측이 자기 노선이 이 공장 지역을 지나는지 보고 수거·운반 견적을 낸다(judge/pickup.py)
+                "region": emitter.get("region"),
             },
         }
 
@@ -1681,6 +1823,10 @@ class Orchestrator:
                     "days": list(terms.get("days") or []),
                     "conditions": [c for c in terms.get("conditions") or [] if isinstance(c, str)],
                 }
+            # 업체가 밝힌 수거 상태와 운반 견적(금액·단위·횟수는 검증된 claim에서 읽는다). 업체마다 마지막 답을 쓴다
+            answered = haul_answer(terms.get("pickup"), claims, message.seq)
+            if answered is not None:
+                work.setdefault("pickups", {})[thread.vendor_org] = answered
         for item in meta.get("excluded") or []:
             if isinstance(item, dict) and item.get("streamId") in thread.stream_ids:
                 entry = {
@@ -1750,6 +1896,9 @@ class Orchestrator:
             pickups = terms.get("pickupsPerMonth")
             if isinstance(pickups, (int, float)) and not isinstance(pickups, bool):
                 meta["terms"]["pickupsPerMonth"] = pickups  # 화면에는 나가지 않는다(값은 claims에)
+            haul = clean_haul(terms.get("pickup"))
+            if haul is not None:
+                meta["terms"]["pickup"] = haul
         return meta
 
     # ── ④~⑤ 대화 ──────────────────────────────────────────────────────
@@ -2245,6 +2394,8 @@ class Orchestrator:
         협상 단가는 업체 측이 낸 계산 근거(negotiate_reply)이고, 그 기준의 나머지 근거(최소 물량, 상한)는 그대로다.
         """
         shown = public_profile(profile, fleet_cost=False)
+        # 운반 조건은 이 공장에 적용되는 것(업체가 조건 답에 밝힌 수거 상태와 견적, 답이 없으면 프로필에서 정한 것)이다
+        shown["transport"] = pickup_terms.tool_transport(self._haul(session, profile))
         deals = ((session.get("work") or {}).get("negotiated") or {}).get(
             profile.get("orgId")
         ) or {}
@@ -2262,6 +2413,26 @@ class Orchestrator:
                 }
             criteria.append(criterion)
         return {**shown, "criteria": criteria}
+
+    def _region(self, session: dict[str, Any]) -> str | None:
+        try:
+            return self.store.get_org(session["emitterOrgId"]).get("region")
+        except NotFound:
+            return None
+
+    def _profile_haul(self, session: dict[str, Any], profile: dict[str, Any]) -> dict[str, Any]:
+        """업체 프로필(노선·운반 조건)과 공장 지역으로 정한 이 공장의 수거·운반 조건."""
+        found = pickup_terms.effective(
+            profile.get("transport"),
+            (profile.get("fleet") or {}).get("routes"),
+            self._region(session),
+        )
+        return {**found, "source": "profile", "seq": None}
+
+    def _haul(self, session: dict[str, Any], profile: dict[str, Any]) -> dict[str, Any]:
+        """이 공장의 수거·운반 조건. 업체가 조건 답에 밝힌 것이 있으면 그것, 없으면 프로필에서 정한 것."""
+        answer = ((session.get("work") or {}).get("pickups") or {}).get(profile.get("orgId"))
+        return dict(answer) if answer else self._profile_haul(session, profile)
 
     def _negotiate(self, session, live: list[Thread], assigned: dict[str, list[str]]) -> set[str]:
         """⑥ 합의 전 단가 협상 한 번. 배정된 흐름마다 회사 측이 요청 폭만큼 나은 단가를 요청하고(코드가 쓴 질문,
@@ -2521,6 +2692,9 @@ class Orchestrator:
             ):
                 # 합의한 뒤에 업체가 매입 기준표·허가 품목·가드레일을 바꿔 합의 조건이 달라졌다
                 failed.append(f"{thread.id}: VENDOR_TERMS_CHANGED")
+            if agreed.get("pickup") is not None and now["pickup"] != agreed["pickup"]:
+                # 합의한 뒤에 업체의 노선이나 운반 조건이 바뀌어 이 공장의 수거 상태나 운반비가 달라졌다
+                failed.append(f"{thread.id}: PICKUP_TERMS_CHANGED")
         return list(dict.fromkeys(failed))
 
     def _vendor_terms(
@@ -2587,7 +2761,15 @@ class Orchestrator:
                 "capacityM3": fleet.get("capacityM3"),
             }
         )
-        return {"streams": streams, "common": common, "inputs": used}
+        # 이 공장의 수거 상태와 운반비 조건(노선, 운반 조건, 노선 밖 수거 조건). 근거 ID 없이 값만 견준다
+        haul = pickup_terms.shown(self._profile_haul(session, profile))
+        return {
+            "streams": streams,
+            "common": common,
+            "inputs": used,
+            "pickup": ids.digest(haul),
+            "pickupShown": haul,
+        }
 
     def _remember(self, session, thread: Thread) -> None:
         """합의한 내용의 지문을 남긴다(흐름 자료와 받은 조건, 업체 쪽 설정). 승인 전에 다시 견준다.
@@ -2601,6 +2783,8 @@ class Orchestrator:
         old = work.setdefault("agreedTerms", {}).get(thread.id)
         if old:
             fresh["common"] = old["common"]
+            if old.get("pickup") is not None:
+                fresh["pickup"], fresh["pickupShown"] = old["pickup"], old.get("pickupShown")
             for sid in fresh["streams"]:
                 if sid in old["streams"] and sid in old.get("inputs", {}):
                     fresh["streams"][sid] = old["streams"][sid]
@@ -2608,7 +2792,7 @@ class Orchestrator:
         work["agreedTerms"][thread.id] = fresh
 
     @staticmethod
-    def _block_reason(failed: list[str]) -> str:
+    def _block_reason(failed: list[str], change: str | None = None) -> str:
         reason = "근거 확인에 실패한 항목이 있어 승인할 수 없습니다: " + ", ".join(failed)
         codes = block_codes(reason)
         if "STREAM_CHANGED" in codes:
@@ -2617,6 +2801,12 @@ class Orchestrator:
             reason += (
                 ". 합의한 뒤에 업체의 조건(매입 기준표·허가 품목·가드레일)이 바뀌었습니다. "
                 "진단을 다시 진행하면 새 조건으로 대화를 이어 갑니다."
+            )
+        if "PICKUP_TERMS_CHANGED" in codes:
+            reason += (
+                ". 합의한 뒤에 업체의 수거·운반 조건이 바뀌었습니다"
+                + (f"({change})" if change else "")
+                + ". 앞선 승인은 지웠습니다. 진단을 다시 진행하면 새 조건으로 운반비와 한 달 손익을 다시 계산합니다."
             )
         return reason
 
@@ -2632,7 +2822,7 @@ class Orchestrator:
             None,
         )
         if failed:
-            reason = self._block_reason(failed)
+            reason = self._block_reason(failed, self._pickup_change(session, thread))
             if current and current["blocked"] and current["blockedReason"] == reason:
                 return failed
             self.store.block_approval(session["id"], thread.id, reason)
@@ -2654,6 +2844,23 @@ class Orchestrator:
         elif current and current["blocked"]:
             self.store.block_approval(session["id"], thread.id, None)
         return failed
+
+    def _pickup_change(self, session, thread: Thread) -> str | None:
+        """합의한 때와 지금의 수거·운반 조건을 숫자 없이 견준 문장. 바뀌지 않았으면 None."""
+        agreed = ((session["work"].get("agreedTerms") or {}).get(thread.id) or {}).get(
+            "pickupShown"
+        )
+        if not agreed:
+            return None
+        try:
+            now = pickup_terms.shown(
+                self._profile_haul(session, self.store.get_vendor_profile(thread.vendor_org))
+            )
+        except NotFound:
+            return None
+        if now == agreed:
+            return None
+        return f"합의: {haul_words(agreed)} → 지금: {haul_words(now)}"
 
     def recheck(self, session_id: str) -> list[str]:
         """승인을 기다리는 진단의 합의한 대화를 모두 다시 확인한다. 막힌 대화의 ID를 돌려준다.
@@ -2726,8 +2933,8 @@ class Orchestrator:
             checks = []
             for source in (route, cost):
                 for check in (source or {}).get("checks") or []:
-                    if any(c["key"] == check["key"] for c in checks):
-                        continue
+                    if check["key"] == "pickup" or any(c["key"] == check["key"] for c in checks):
+                        continue  # 수거 상태는 아래 "수거 노선" 한 줄로 보인다
                     if check["status"] != "met" or check["key"] in (
                         "current_assumed",
                         "current_method",
@@ -2812,7 +3019,7 @@ class Orchestrator:
                     if check["status"] != "met" and status == "calculated":
                         status = "conditional"
                 used.append(loading)
-                pickup = self._route_check(vendor_id, session["emitterOrgId"])
+                pickup = self._route_check(session, vendor_id)
                 if pickup is not None:
                     checks.append(pickup)
                 # 업체가 밝힌 수거 가능 지역·최대 수거 거리(2026-11-19 멘토링). 밝히지 않았으면 싣지 않는다
@@ -2900,6 +3107,16 @@ class Orchestrator:
                     ),
                     None,
                 )
+                # 수거 불가라고 밝힌 업체는 진행할 수 있는 선택지가 아니다(한 달 값을 견주지 않는다)
+                no_pickup = next(
+                    (
+                        x
+                        for x in optimized["output"].get("pickupExcluded") or []
+                        if x["streamId"] == sid and x["vendorOrgId"] == other_id
+                    ),
+                    None,
+                )
+                other_pending = bool(other_output.get("transportPending")) and not no_pickup
                 alternatives.append(
                     {
                         "vendorOrgId": other_id,
@@ -2915,16 +3132,24 @@ class Orchestrator:
                             **other["claim"],
                             "id": f"{tag}_alt_{safe_id(other_id)}_unitPrice",
                         },
-                        "monthlyAfter": other_after,
+                        "monthlyAfter": None if no_pickup else other_after,
                         # 이 업체로 보낼 때의 허가 확인 상태(이 업체 자신의 근거로만 판정)
                         "permit": self._permit_of(session, by_id[sid], other_id),
+                        # 운반비가 정해지지 않아 한 달 값이 별도 운반비 반영 전이다(확정 견적과 견줄 때 밝힌다)
+                        "transportPending": other_pending,
+                        "pickupStatus": other_output.get("pickupStatus"),
                         "note": "허가 근거가 맞지 않아 배정하지 않았습니다. " + excluded["text"]
                         if excluded
+                        else "수거 불가: " + no_pickup["text"]
+                        if no_pickup
                         else "운반비와 인건비를 넣으면 지금보다 이득이 없어 고르지 않았습니다"
                         if worse
-                        else "조건부 제안"
-                        if other["type"] == "conditional"
-                        else "선택되지 않은 제안",
+                        else (
+                            "조건부 제안"
+                            if other["type"] == "conditional"
+                            else "선택되지 않은 제안"
+                        )
+                        + (" · 한 달 값은 별도 운반비 반영 전" if other_pending else ""),
                     }
                 )
             entry = {
@@ -2947,6 +3172,12 @@ class Orchestrator:
                 "transport": claim_in(optimized, item.get("transport"), f"{tag}_transport"),
                 "labor": claim_in(optimized, item.get("labor"), f"{tag}_labor"),
                 "transportPaidBy": item.get("transportPaidBy"),
+                # 수거 상태와 운반비 조건(견적 금액·단위·횟수, 업체 월 운반비, 업체 답의 메시지 번호)
+                "pickup": self._pickup_view(session, vendor_id, item, optimized, tag)
+                if vendor_id
+                else None,
+                # 운반비가 정해지지 않아 이 줄의 한 달 값은 별도 운반비 반영 전이다
+                "transportPending": bool(item.get("transportPending")),
                 "reuse": reuse_view((work.get("reuse") or {}).get(sid), tag),
                 # 탄소 변화 = 처리 방식이 바뀌어 달라지는 배출 + 수거 운행 배출(같은 업체로 가는 폐기물끼리 나눈 몫)
                 "carbon": claim_in(optimized, item.get("carbon"), f"{tag}_carbon"),
@@ -2999,6 +3230,8 @@ class Orchestrator:
                     "transport": None,
                     "labor": None,
                     "transportPaidBy": None,
+                    "pickup": None,
+                    "transportPending": False,
                     "reuse": reuse_view(
                         (work.get("reuse") or {}).get(item["streamId"]),
                         safe_id(item["streamId"]),
@@ -3057,13 +3290,18 @@ class Orchestrator:
             )
         ]
         statuses = [a["status"] for a in assignments] or ["needs_information"]
+        shown_totals = {
+            key: claim_in(optimized, totals.get(key), f"total_{key}")
+            for key in ("monthlyNow", "monthlyAfter", "difference", "carbon")
+        }
         return {
             "status": max(statuses, key=lambda s: WORST[s]),
             "assignments": assignments,
-            "totals": {
-                key: claim_in(optimized, totals.get(key), f"total_{key}")
-                for key in ("monthlyNow", "monthlyAfter", "difference", "carbon")
-            },
+            "totals": shown_totals,
+            # 운반비가 정해지지 않아 별도 운반비 반영 전 값이 합계에 섞인 폐기물(합계는 잠정값이다)
+            "transportPending": list(totals.get("pending") or []),
+            # 비용·탄소 비교의 계산 범위(지금 처리 쪽 운송이 빠졌다는 것 등)
+            "scope": comparison_scope(assignments),
             "assumptions": self._assumptions(sorted(dict.fromkeys(assumptions)), org_id),
             "sensitivity": sensitivity,
             "referencePrices": reference,
@@ -3112,51 +3350,41 @@ class Orchestrator:
             "carbonGap": claim_in(optimized, found["carbonGap"], "green_carbonGap"),
         }
 
-    def _route_check(self, vendor_id: str, emitter_id: str) -> dict[str, Any] | None:
-        """④ 업체가 밝힌 수거 노선(지역·산업단지)이 이 공장 지역을 지나는지. 노선을 밝히지 않았으면 None.
-
-        노선의 지역 이름에서 "국가산업단지", "산단" 같은 꼬리를 뗀 이름이 공장 지역 글에 들어 있으면 지나간다고 본다.
-        이 검사는 배정을 바꾸지 않는다(업체가 노선 밖이라도 따로 올 수 있다). 문장에는 숫자를 쓰지 않는다.
-        """
+    def _route_check(self, session: dict[str, Any], vendor_id: str) -> dict[str, Any] | None:
+        """④ 수거 노선 확인 한 줄. 업체가 밝힌 수거 상태(노선 포함, 노선 밖 방문, 확인 필요, 수거 불가, 미상)."""
         try:
-            fleet = self.store.get_vendor_profile(vendor_id).get("fleet") or {}
-            region = str(self.store.get_org(emitter_id).get("region") or "")
+            haul = self._haul(session, self.store.get_vendor_profile(vendor_id))
         except NotFound:
             return None
-        routes = fleet.get("routes") or []
-        if not routes or not region:
+        return haul_check(haul)
+
+    def _pickup_view(self, session, vendor_id, item, optimized, tag) -> dict[str, Any] | None:
+        """결과 한 줄의 수거·운반: 수거 상태, 운반비 방식과 부담, 견적 금액·횟수, 업체 월 운반비."""
+        try:
+            haul = self._haul(session, self.store.get_vendor_profile(vendor_id))
+        except NotFound:
             return None
-
-        def core(text: str) -> str:
-            plain = "".join(str(text).split())
-            for tail in ("국가산업단지", "일반산업단지", "산업단지", "산단"):
-                if plain.endswith(tail) and len(plain) > len(tail):
-                    return plain[: -len(tail)]
-            return plain
-
-        where = "".join(region.split())
-        passing = [
-            r
-            for r in routes
-            if any(core(p) and core(p) in where for p in [*r["regions"], *r["complexes"]])
-        ]
-        if passing:
-            days = [
-                d
-                for d in ("월", "화", "수", "목", "금", "토", "일")
-                if any(d in r["days"] for r in passing)
-            ]
-            return {
-                "key": "pickup_route",
-                "status": "met",
-                "text": f"업체가 밝힌 수거 노선이 이 공장 지역을 지나갑니다(운행 요일 {', '.join(days)}).",
-                "evidence": [],
-            }
+        fee = claim_in(optimized, item.get("transportFee"), f"{tag}_transportFee")
+        if fee is None and haul.get("fee"):
+            # 금액은 밝혔지만 횟수가 없어 월 운반비를 못 낸 경우에도 업체가 밝힌 금액은 보인다
+            fee = naming.annotate({**haul["fee"], "id": f"{tag}_transportFee"}, "transportFee")
         return {
-            "key": "pickup_route",
-            "status": "conditional",
-            "text": "업체가 밝힌 수거 노선에 이 공장 지역이 없습니다. 따로 수거하러 올 수 있는지 확인이 필요합니다.",
-            "evidence": [],
+            "status": haul.get("status"),
+            "label": pickup_terms.STATUS_LABEL.get(str(haul.get("status"))),
+            "days": list(haul.get("days") or []),
+            "basis": haul.get("basis"),
+            "basisLabel": pickup_terms.BASIS_LABEL.get(str(haul.get("basis"))),
+            "routeBasis": haul.get("routeBasis"),
+            "paidBy": haul.get("paidBy"),
+            "unit": item.get("transportUnit") or haul.get("unit"),
+            "fee": fee,
+            "pickups": claim_in(optimized, item.get("transportPickups"), f"{tag}_transportPickups"),
+            "monthly": claim_in(optimized, item.get("transportMonthly"), f"{tag}_transportMonthly"),
+            "room": claim_in(optimized, item.get("transportRoom"), f"{tag}_transportRoom"),
+            "roomAgainst": item.get("transportRoomAgainst"),
+            "pending": bool(item.get("transportPending")),
+            "seq": haul.get("seq"),
+            "source": haul.get("source"),
         }
 
     def _area_check(
@@ -3308,7 +3536,10 @@ class Orchestrator:
                 "APPROVAL_BLOCKED",
                 "합의한 뒤에 업체의 조건이 바뀌어 승인할 수 없습니다. 진단을 다시 진행하면 "
                 "새 조건으로 대화를 이어 갑니다."
-                if any(item.endswith(": VENDOR_TERMS_CHANGED") for item in blocked)
+                if any(
+                    item.endswith((": VENDOR_TERMS_CHANGED", ": PICKUP_TERMS_CHANGED"))
+                    for item in blocked
+                )
                 else "근거 확인에 실패한 항목이 있어 승인할 수 없습니다.",
             )
         # 계약 검토 담당(agents/reviewer.py)이 막은 항목이 있으면 어느 쪽도 승인할 수 없다. 사람이 승인하기 전의

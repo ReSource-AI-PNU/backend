@@ -22,6 +22,7 @@ from app.v3.judge.common import (
     transport_charge,
     vendor_distance,
 )
+from app.v3.judge.pickup import UNCONFIRMED
 from app.v3.judge.route import baseline, current_cost
 
 try:  # 없으면 순수 파이썬 풀이로만 돈다
@@ -89,39 +90,90 @@ def cost_carbon(
     transport = None
     paid_by = transportPaidBy
     charge = transport_charge(vendor, pickupsPerMonth)
-    if charge["known"]:
-        # 업체가 운반 조건을 밝혔다: 단가에 포함이거나, 1회 운반비를 따로 받는다
+    output["pickupStatus"] = charge["status"]
+    output["transportPending"] = False
+    if charge["unavailable"]:
+        # 수거 불가: 이 업체에는 맡길 수 없다(금액은 참고로만 남긴다)
+        output["transportPending"] = True
+        rec.check(
+            "pickup",
+            "unmet",
+            "업체가 이 공장까지 수거하러 올 수 없다고 밝혔습니다.",
+            None,
+            charge["evidence"],
+        )
+    elif charge["status"] in UNCONFIRMED:
+        rec.check(
+            "pickup",
+            "conditional",
+            "업체가 밝힌 수거 노선에 이 공장 지역이 없어 따로 수거하러 올 수 있는지 확인이 필요합니다."
+            if charge["status"] == "check"
+            else "업체가 수거 노선을 밝히지 않아 이 공장까지 수거하러 오는지 확인이 필요합니다.",
+            "이 공장까지 수거하러 올 수 있는지, 운반비는 얼마인지 알려 주세요.",
+            charge["evidence"],
+        )
+    if charge["unavailable"]:
+        pass
+    elif charge["known"]:
+        # 업체가 운반 조건을 밝혔다: 단가에 포함이거나, 운반비를 따로 받는다
         paid_by, terms_ev = charge["paidBy"], charge["evidence"]
-        if paid_by == "vendor":
+        if charge["basis"] == "included":
             transport = 0.0
             rec.check(
                 "transport", "met", "운반비는 업체 단가에 들어 있습니다(수거 포함).", None, terms_ev
             )
         elif charge["monthly"] is not None:
             transport = charge["monthly"]
-            rec.number(
-                "transportPerPickup",
-                charge["perPickup"],
-                "원/회",
-                "업체가 밝힌 1회 운반비",
-                terms_ev,
-            )
+            if charge["unit"] == "per_month":
+                rec.number(
+                    "transportPerMonth",
+                    charge["perMonth"],
+                    "원/월",
+                    "업체가 밝힌 월 운반비",
+                    charge["feeEvidence"],
+                )
+                formula = "업체가 밝힌 월 운반비(수거 횟수를 곱하지 않음)"
+            else:
+                rec.number(
+                    "transportPerPickup",
+                    charge["perPickup"],
+                    "원/회",
+                    "업체가 밝힌 1회 운반비",
+                    charge["feeEvidence"],
+                )
+                formula = "1회 운반비 × 월 수거 횟수 (이 폐기물만 보낼 때)"
             rec.number(
                 "monthlyTransport",
                 transport,
                 "원/월",
-                "1회 운반비 × 월 수거 횟수 (이 폐기물만 보낼 때)",
-                terms_ev,
+                formula,
+                [*charge["feeEvidence"], *charge["pickupsEvidence"]] or terms_ev,
             )
             output["transportAssumed"] = False
         else:
+            output["transportPending"] = True
             rec.check(
                 "transport",
                 "conditional",
-                "운반비를 따로 내야 하는데 금액이 없습니다. 확인 필요.",
-                "1회 운반비와 월 수거 횟수를 알려 주세요.",
+                (
+                    "회당 운반비는 있지만 월 수거 횟수가 없습니다(월 수거 횟수 확인 필요). "
+                    if charge["perPickup"] is not None
+                    else "운반비를 따로 내야 하는데 금액이 없습니다. "
+                )
+                + "월 손익은 별도 운반비 반영 전 값입니다. 확인 필요.",
+                "운반비 금액(회당 또는 월)과 월 수거 횟수를 알려 주세요.",
                 terms_ev,
             )
+    elif charge["declared"]:
+        # 이 공장에 적용할 운반비가 정해지지 않았다(노선 밖이거나 업체가 밝히지 않음). 어림값을 빼지 않는다
+        output["transportPending"] = True
+        rec.check(
+            "transport",
+            "conditional",
+            "이 공장까지의 운반비가 정해지지 않았습니다. 월 손익은 별도 운반비 반영 전 값입니다. 확인 필요.",
+            "이 공장까지 수거할 때 운반비를 단가에 포함하는지, 따로 받는다면 얼마인지 알려 주세요.",
+            charge["evidence"],
+        )
     else:
         transport = _estimated_transport(
             rec, output, vendor, origin, pickupsPerMonth, distance_provider

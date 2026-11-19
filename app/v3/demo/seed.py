@@ -102,7 +102,19 @@ def vendor_evidence_ids(profile: dict[str, Any]) -> list[str]:
     for criterion in profile.get("criteria") or []:
         found += criterion.get("evidence") or []
     found += (profile.get("fleet") or {}).get("evidence") or []
-    found += (profile.get("transport") or {}).get("evidence") or []
+    found += transport_evidence_ids(profile)
+    return list(dict.fromkeys(found))
+
+
+def transport_evidence_ids(profile: dict[str, Any]) -> list[str]:
+    """운반 조건의 근거(노선 수거 조건과 노선 밖 수거 조건의 금액·횟수·조건 문장)."""
+    transport = profile.get("transport") or {}
+    found: list[str] = []
+    for section in (transport, transport.get("offRoute") or {}):
+        if not isinstance(section, dict):
+            continue
+        for key in ("evidence", "feeEvidence", "pickupsEvidence"):
+            found += [e for e in section.get(key) or [] if isinstance(e, str)]
     return list(dict.fromkeys(found))
 
 
@@ -115,7 +127,7 @@ def share_vendor_terms(registry: Any, profile: dict[str, Any], org_id: str) -> l
             for evidence_id in item.get("evidence") or []:
                 share_evidence(registry, evidence_id, org_id)
                 shared.append(evidence_id)
-    for evidence_id in (profile.get("transport") or {}).get("evidence") or []:
+    for evidence_id in transport_evidence_ids(profile):
         share_evidence(registry, evidence_id, org_id)
         shared.append(evidence_id)
     return list(dict.fromkeys(shared))

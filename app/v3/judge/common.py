@@ -12,6 +12,7 @@ from app.v3.evidence.model import Evidence
 from app.v3.evidence.registry import EvidenceForbidden, EvidenceNotFound
 from app.v3.intake import grade_model
 from app.v3.judge import basis
+from app.v3.judge import pickup as pickup_terms
 from app.v3.textutil import josa
 from app.v3.untrusted import contaminant_labels, counterparty_stream, form_key, stream_label
 
@@ -478,28 +479,46 @@ def pickups_of(vendor: dict, pickups=None) -> float | None:
 
 
 def transport_charge(vendor: dict, pickups=None) -> dict:
-    """업체 한 곳에 맡길 때 배출 기업이 따로 내는 월 운반비.
+    """업체 한 곳에 맡길 때 배출 기업이 따로 내는 월 운반비와 수거 상태(judge/pickup.py).
 
-    {"known": 조건을 아는가, "paidBy", "monthly": 금액 | None, "perPickup", "pickups", "evidence"}
+    {"known": 운반비 조건을 아는가, "declared": 이 공장에 적용할 조건을 밝혔는가(status·basis가 있음),
+     "status": 수거 상태 | None, "basis": included|separate|undecided, "paidBy", "monthly": 금액 | None,
+     "perPickup", "perMonth", "unit", "pickups", "evidence", "feeEvidence", "pickupsEvidence",
+     "pending": 월 운반비를 정하지 못함(월 손익은 별도 운반비 반영 전), "unavailable": 수거 불가}
     - 조건이 없으면 known False (예전 프로필). 금액은 넣지 않고 "확인 필요"로 둔다.
-    - 업체 부담(수거 포함)이면 0원.
-    - 배출 기업 부담인데 1회 운반비나 월 횟수가 없으면 monthly None.
+    - 단가에 포함(업체 부담)이면 0원.
+    - 배출 기업 부담인데 금액이나 월 횟수가 없으면 monthly None. 월 금액(feePerMonthKrw)이면 횟수를 곱하지 않는다.
+    - 수거 횟수는 도구 입력, 업체가 밝힌 횟수(pickupsPerMonth) 순으로 쓴다. 이 공장에 적용할 조건을 밝히지 않은
+      예전 입력에만 업체가 정한 월 최소 횟수를 쓴다.
     """
     terms = vendor.get("transport") or {}
-    paid_by = terms.get("paidBy")
+    fee = pickup_terms.fee_terms(terms)
+    status = terms.get("status") if terms.get("status") in pickup_terms.STATUSES else None
     evidence = list(terms.get("evidence") or [])
+    declared = status is not None or terms.get("basis") in pickup_terms.BASES
+    # 이 공장에 적용할 조건을 밝혔으면(업체 답) 횟수는 그 답의 횟수만 쓴다. 업체가 정한 월 최소 횟수로 채우지 않는다
+    count = num(pickups) or num(terms.get("pickupsPerMonth"))
+    if count is None and not declared:
+        count = pickups_of(vendor)
     out = {
-        "known": paid_by in ("vendor", "emitter"),
-        "paidBy": paid_by,
+        "known": fee["basis"] in ("included", "separate"),
+        "declared": declared,
+        "status": status,
+        "basis": fee["basis"],
+        "paidBy": fee["paidBy"],
         "monthly": None,
-        "perPickup": num(terms.get("feePerPickupKrw")),
-        "pickups": pickups_of(vendor, pickups),
+        "perPickup": fee["amount"] if fee["unit"] == "per_pickup" else None,
+        "perMonth": fee["amount"] if fee["unit"] == "per_month" else None,
+        "unit": fee["unit"],
+        "pickups": count,
         "evidence": evidence,
+        "feeEvidence": list(terms.get("feeEvidence") or evidence),
+        "pickupsEvidence": list(terms.get("pickupsEvidence") or []),
+        "unavailable": status == "unavailable",
     }
-    if paid_by == "vendor":
-        out["monthly"] = 0.0
-    elif paid_by == "emitter" and out["perPickup"] is not None and out["pickups"]:
-        out["monthly"] = out["perPickup"] * out["pickups"]
+    if status != "unavailable":
+        out["monthly"] = pickup_terms.monthly({**fee, "status": status, "pickups": count})
+    out["pending"] = out["monthly"] is None and not out["unavailable"]
     return out
 
 
