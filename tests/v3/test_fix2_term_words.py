@@ -271,4 +271,4 @@ def test_the_demo_is_untouched_by_the_new_check():
         for item in thread["messages"]:
             assert item["validation"]["rejections"] == []
     checked, passed = recheck(app, view)
-    assert checked == passed == 21
+    assert checked == passed == 24  # 대화 12, confirm 3, 문서 9(요청서·이행 계획서·계약서 초안)

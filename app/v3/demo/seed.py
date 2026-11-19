@@ -569,6 +569,9 @@ def _vendors(s: _Seeder) -> list[dict[str, Any]]:
                         "complexes": ["녹산국가산업단지", "신호일반산업단지"],
                     }
                 ],
+                # 수거 가능 지역(가상). 노선 밖이라도 이 안이면 따로 수거하러 간다(계약 검토가 본다)
+                "serviceAreas": ["부산 강서구", "부산 사하구", "경남 김해시"],
+                "maxPickupKm": 40,
             },
             "transport": s.transport(sg, "vendor"),
             "process": "재활용",
@@ -618,6 +621,8 @@ def _vendors(s: _Seeder) -> list[dict[str, Any]]:
                         "complexes": [],
                     }
                 ],
+                "serviceAreas": ["경남 김해시", "부산 강서구", "경남 창원시"],
+                "maxPickupKm": 60,
             },
             # 위탁 처리라 운반비를 따로 받는다(1회 운반비 × 월 수거 횟수가 순비용에 들어간다)
             "transport": s.transport(nh, "emitter", 30000),

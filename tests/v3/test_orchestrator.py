@@ -249,7 +249,7 @@ def test_stage_bar_and_graph(demo):
     assert any(n["id"].startswith("law:") for n in graph["nodes"])
 
 
-def test_both_approvals_confirm_and_make_two_documents(demo):
+def test_both_approvals_confirm_and_make_three_documents(demo):
     *_, done = demo
     assert done["session"]["status"] == "confirmed"
     agreed = [t for t in done["threads"] if t["status"] == "confirmed"]
@@ -260,10 +260,14 @@ def test_both_approvals_confirm_and_make_two_documents(demo):
         assert last["streamIds"] == thread["assignedStreamIds"] and last["claims"]
         assert thread["turns"] == 4  # confirm은 턴으로 세지 않는다
         docs = [d for d in done["documents"] if d["threadId"] == thread["id"]]
-        assert [d["kind"] for d in docs] == ["request", "plan"]
+        assert [d["kind"] for d in docs] == ["request", "plan", "contract"]
         assert all(d["validation"]["ok"] and d["claims"] and "{{" in d["text"] for d in docs)
         assert "요청서" in docs[0]["title"] and "이행 계획서" in docs[1]["title"]
         assert "계약서" not in docs[0]["title"] and "{{" not in docs[0]["rendered"]
+        # 계약서는 계약 검토 담당이 쓴 초안이고, 서명 전에 법무 검토가 필요하다고 적는다
+        assert (
+            docs[2]["title"].startswith("위탁 계약서 초안") and "법무 검토" in docs[2]["rendered"]
+        )
     assert all(a["emitter"] and a["vendor"] for a in done["approvals"])
     # 열려 있던 다른 제안은 대안으로 남는다
     assert {t["status"] for t in done["threads"]} == {"confirmed", "not_opened"}
@@ -275,7 +279,7 @@ def test_validator_pass_rate_is_one_hundred_percent(demo):
         checked, passed = recheck(app, view)
         assert checked == passed
     checked, passed = recheck(app, done)
-    assert checked == 12 + 3 + 6 and passed == checked  # 대화 12, confirm 3, 문서 6
+    assert checked == 12 + 3 + 9 and passed == checked  # 대화 12, confirm 3, 문서 9
     for thread in done["threads"]:
         for message in thread["messages"]:
             assert message["validation"]["ok"] is True and message["validation"]["attempts"] == 1
@@ -329,7 +333,7 @@ def test_run_is_idempotent_at_every_stop():
     done = approve_all(app, service.get_view(app, sid, HANBIT))
     again = service.run_session(app, sid, HANBIT)
     assert again["session"]["status"] == "confirmed" and again["events"] == done["events"]
-    assert len(again["documents"]) == 6
+    assert len(again["documents"]) == 9
 
 
 def test_question_policy_three_per_batch_two_batches():

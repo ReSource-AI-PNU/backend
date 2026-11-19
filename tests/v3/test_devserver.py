@@ -122,7 +122,7 @@ def test_full_flow_over_http(base):
         )
     view = api(base, "GET", f"/sessions/{sid}")
     assert view["session"]["status"] == "confirmed"
-    assert len(view["documents"]) == 6 and all(d["validation"]["ok"] for d in view["documents"])
+    assert len(view["documents"]) == 9 and all(d["validation"]["ok"] for d in view["documents"])
     confirms = [t["messages"][-1] for t in view["threads"] if t["status"] == "confirmed"]
     assert len(confirms) == 3 and all(m["type"] == "confirm" for m in confirms)
     # 업체가 보는 뷰와 다른 배출 기업

@@ -92,7 +92,7 @@ def test_vendor_view_has_nothing_from_the_emitters_current_treatment(entered, co
     view = to_approval(app)
     if confirmed:
         view = approve_all(app, view)
-        assert view["session"]["status"] == "confirmed" and len(view["documents"]) == 6
+        assert view["session"]["status"] == "confirmed" and len(view["documents"]) == 9
     session_id = view["session"]["id"]
     mine = service.get_view(app, session_id, HANBIT)
     private = private_claims(mine)

@@ -5,6 +5,10 @@ capacityM3(적재 부피), costPerKm(km당 운행 단가)다. vehicleCount(차�
 수거 지역·산업단지)는 업체가 밝히는 운영 정보로 저장하고 업체 화면에 보이지만 아직 계산에 쓰지 않는다
 (vendor.public_profile이 판단 도구 입력에서 뺀다. 계산 근거 ID가 바뀌지 않게 하려는 것이다).
 
+serviceAreas(수거 가능 지역: 시·군·구나 산업단지 이름)와 maxPickupKm(차고지에서 수거하러 가는 최대 거리)는
+업체가 "어디까지 수거하러 갈 수 있는지" 밝히는 값이다(2026-11-19 멘토링: 업체에게 받을 정보에 수거 가능 지역을 기록).
+판단 도구 입력에는 싣지 않고, 결과의 "수거 가능 지역" 확인 항목과 계약 검토(agents/reviewer.py)가 쓴다.
+
 값이 틀리면 FleetError(ValueError. 문장은 화면에 그대로 보일 한국어)다. service.update_vendor가 422 INVALID_VALUE로 바꾼다.
 """
 
@@ -23,14 +27,15 @@ NUMBERS = {
     "capacityKg": ("차량 적재 중량(kg)", 0.0, False, 100_000.0),
     "capacityM3": ("차량 적재 부피(m3)", 0.0, False, 1_000.0),
     "costPerKm": ("km당 운행 단가(원)", 0.0, True, 1_000_000.0),
+    "maxPickupKm": ("최대 수거 거리(km)", 0.0, False, 1_000.0),
 }
 MAX_VEHICLES = 1_000
 MAX_ROUTES = 30
 MAX_PLACES = 30
 ROUTE_KEYS = ("name", "days", "regions", "complexes")
-KEYS = ("depot", *NUMBERS, "vehicleCount", "routes")
-# 계산에 쓰지 않는 운영 정보(판단 도구 입력에서 뺀다)
-INFO_KEYS = ("vehicleCount", "routes")
+KEYS = ("depot", *NUMBERS, "vehicleCount", "routes", "serviceAreas")
+# 계산에 쓰지 않는 운영 정보(판단 도구 입력에서 뺀다). 수거 가능 지역은 확인 항목과 계약 검토만 쓴다
+INFO_KEYS = ("vehicleCount", "routes", "serviceAreas", "maxPickupKm")
 
 
 def _number(value: Any) -> float | None:
@@ -152,6 +157,8 @@ def clean_patch(value: Any) -> dict[str, Any]:
             out[key] = _bounded(key, item)
         elif key == "vehicleCount":
             out[key] = _count(item)
+        elif key == "serviceAreas":
+            out[key] = _texts(item, "수거 가능 지역(serviceAreas)", 50)
         else:
             out[key] = _routes(item)
     return out

@@ -24,7 +24,7 @@ from app.v3.a2a.policy import (
     permit_evidence,
 )
 from app.v3.a2a.thread import Thread, ThreadError
-from app.v3.agents import questions
+from app.v3.agents import questions, reviewer
 from app.v3.agents.company import CompanyAgent
 from app.v3.agents.draft import (
     ACCEPT,
@@ -1461,6 +1461,7 @@ class Orchestrator:
                 self._loading_for(session, thread, new, streams, profiles)
                 self._verify(session, thread)
         work["result"] = self._result(session, streams)
+        self._announce_reviews(session)
         if cause != "terms":
             work["stages"]["4"] = "needs_check"
         work["stages"]["6"] = (
@@ -2127,6 +2128,7 @@ class Orchestrator:
             self._loading_for(session, thread, assigned[thread.id], streams, profiles)
             self._verify(session, thread)
         work["result"] = self._result(session, streams)
+        self._announce_reviews(session)
         work["stages"]["6"] = (
             "needs_check" if work["result"]["status"] == "needs_information" else "done"
         )
@@ -2463,6 +2465,14 @@ class Orchestrator:
                 pickup = self._route_check(vendor_id, session["emitterOrgId"])
                 if pickup is not None:
                     checks.append(pickup)
+                # 업체가 밝힌 수거 가능 지역·최대 수거 거리(2026-11-19 멘토링). 밝히지 않았으면 싣지 않는다
+                area = self._area_check(
+                    vendor_id,
+                    session["emitterOrgId"],
+                    claim_in(optimized, item.get("transportKm"), f"{tag}_transportKm"),
+                )
+                if area is not None:
+                    checks.append(area)
                 permit = item.get("permit")
                 if permit:
                     checks.append(
@@ -2788,6 +2798,17 @@ class Orchestrator:
             "evidence": [],
         }
 
+    def _area_check(
+        self, vendor_id: str, emitter_id: str, distance: dict[str, Any] | None
+    ) -> dict[str, Any] | None:
+        """④ 업체가 밝힌 수거 가능 지역(시·군·구, 산업단지)과 최대 수거 거리가 이 공장을 덮는지(reviewer.area_check)."""
+        try:
+            fleet = self.store.get_vendor_profile(vendor_id).get("fleet") or {}
+            region = str(self.store.get_org(emitter_id).get("region") or "")
+        except NotFound:
+            return None
+        return reviewer.area_check(fleet, region, distance)
+
     def _process_of(self, vendor_id: str | None, stream: dict[str, Any]) -> str | None:
         """받는 곳의 처리 방식. 업체면 프로필의 process, 지금 방식 그대로면 현행 처리(없으면 혼합 소각 가정)."""
         if not vendor_id:
@@ -2920,6 +2941,14 @@ class Orchestrator:
                 if any(item.endswith(": VENDOR_TERMS_CHANGED") for item in blocked)
                 else "근거 확인에 실패한 항목이 있어 승인할 수 없습니다.",
             )
+        # 계약 검토 담당(agents/reviewer.py)이 막은 항목이 있으면 어느 쪽도 승인할 수 없다. 사람이 승인하기 전의
+        # 마지막 안전장치다(2026-11-19 멘토링: 아무도 써 보지 않아 단점이 보이지 않으니 최소한의 안전장치)
+        stops = reviewer.blocked_titles(self.contract_review(session, thread))
+        if stops:
+            raise OrchestratorError(
+                "REVIEW_BLOCKED",
+                f"계약 검토 담당이 막은 항목이 있어 승인할 수 없습니다: {', '.join(stops)}.",
+            )
         side = thread.side_of(org_id)
         both = thread.approve(org_id)
         self.store.set_approval(session_id, thread_id, side, True)
@@ -2951,6 +2980,98 @@ class Orchestrator:
             session["status"], session["phase"] = "idle", "done"
         self._save(session)
         return session
+
+    def contract_review(self, session: dict[str, Any], thread: Thread) -> dict[str, Any]:
+        """계약 검토 담당의 검토(agents/reviewer.py). 합의한 대화 하나의 조건을 결과 한 장과 다시 대조한다.
+
+        수거 가능 지역은 결과 한 장을 만든 뒤에 업체가 바꿨을 수 있어 지금 프로필로 다시 본다.
+        """
+        work = session["work"]
+        result = work.get("result") or {}
+        rows = []
+        for row in result.get("assignments") or []:
+            if row.get("threadId") != thread.id:
+                continue
+            checks = [c for c in row.get("checks") or [] if c.get("key") != "pickup_area"]
+            area = self._area_check(thread.vendor_org, thread.emitter_org, row.get("transportKm"))
+            rows.append({**row, "checks": [*checks, *([area] if area else [])]})
+        try:
+            guard = self.store.get_vendor_profile(thread.vendor_org).get("guardrails") or {}
+        except NotFound:
+            guard = {}
+        approval = next(
+            (a for a in self.store.list_approvals(session["id"]) if a["threadId"] == thread.id),
+            None,
+        )
+        earlier = sum(
+            1
+            for t in self.store.list_threads(org_id=thread.emitter_org)
+            if t.get("vendorOrgId") == thread.vendor_org
+            and t.get("status") == "confirmed"
+            and t.get("sessionId") != session["id"]
+        )
+        names: dict[str, str] = {}
+        for row in rows:
+            try:
+                names[row["streamId"]] = stream_label(self.store.get_stream(row["streamId"]))
+            except NotFound:
+                continue
+        return reviewer.review(
+            rows=rows,
+            offers=work["offers"].get(thread.id) or {},
+            guardrails=guard,
+            regulation=result.get("regulation"),
+            approval=approval,
+            earlier_deals=earlier,
+            stream_names=names,
+        )
+
+    def _announce_reviews(self, session) -> None:
+        """승인을 기다리는 대화마다 계약 검토 담당의 검토를 대화 기록에 남긴다(양쪽이 본다).
+
+        결과가 앞서 남긴 것과 같으면 다시 쓰지 않는다. 화면의 승인 상자는 뷰를 만들 때마다 검토를 새로 받는다.
+        """
+        work = session["work"]
+        seen = work.setdefault("reviews", {})
+        for thread in self._threads(session["id"]):
+            if thread.status != "agreed" or thread.id not in work["assigned"]:
+                continue
+            found = self.contract_review(session, thread)
+            mark = ids.digest(
+                {
+                    "status": found["status"],
+                    "items": [[i["key"], i["status"], i["text"]] for i in found["items"]],
+                }
+            )
+            if seen.get(thread.id) == mark:
+                continue
+            seen[thread.id] = mark
+            self.feed.activity(
+                session["id"],
+                "review",
+                found["summary"],
+                stage=6,
+                actor=reviewer.ACTOR,
+                thread=thread,
+                org_id=thread.emitter_org,
+                shared=True,
+                review={
+                    "status": found["status"],
+                    "items": [
+                        {k: item[k] for k in ("key", "title", "status", "text")}
+                        for item in found["items"]
+                    ],
+                },
+            )
+            self._event(
+                session["id"],
+                reviewer.ACTOR,
+                "review",
+                found["summary"],
+                thread.id,
+                status=found["status"],
+                blocked=reviewer.blocked_titles(found),
+            )
 
     def _confirm(self, session, thread: Thread) -> None:
         """양쪽 승인 뒤에만 confirm을 보내고 요청서와 이행 계획서를 만든다."""
@@ -3064,7 +3185,7 @@ class Orchestrator:
         streams = {sid: self.store.get_stream(sid) for sid in assigned}
         loading = memo_result(memo, "check_loading", streamIds=sorted(assigned))
 
-        def build(kind: str, title: str, lines_for) -> dict[str, Any]:
+        def build(kind: str, title: str, lines_for, footer: str | None = None) -> dict[str, Any]:
             claims: list[dict[str, Any]] = []
 
             def use(claim: dict[str, Any] | None, claim_id: str) -> str | None:
@@ -3083,7 +3204,7 @@ class Orchestrator:
                 "",
                 *lines_for(use),
                 "",
-                "이 문서는 앱 안에서만 쓰는 문서이며 계약서나 관청 제출 서류가 아닙니다.",
+                footer or "이 문서는 앱 안에서만 쓰는 문서이며 계약서나 관청 제출 서류가 아닙니다.",
             ]
             return {
                 "kind": kind,
@@ -3250,9 +3371,116 @@ class Orchestrator:
             )
             return out
 
+        review = self.contract_review(session, thread)
+        pilot = any(i["key"] == "pilot" and i.get("pilot") for i in review["items"])
+        rows = {
+            row["streamId"]: row
+            for row in (work.get("result") or {}).get("assignments") or []
+            if row.get("threadId") == thread.id
+        }
+
+        def draft_lines(use) -> list[str]:
+            """위탁 계약서 초안(계약 검토 담당이 쓴다). 조항 머리는 번호 목록이고 숫자는 근거가 붙은 값만 쓴다."""
+            heads: list[str] = []
+
+            def head(text: str) -> list[str]:
+                heads.append(text)
+                return ["", f"{len(heads)}. {text}"]
+
+            lines = [
+                (
+                    "보내는 곳(위탁자)과 받는 곳(수탁자)은 양쪽 담당자가 앱에서 승인한 조건으로 아래 폐기물의 "
+                    "수거와 처리를 약속합니다."
+                ),
+                *head("대상 폐기물과 물량"),
+            ]
+            for sid in assigned:
+                facts, tag = stream_facts(sid), safe_id(sid)
+                stream = facts["stream"]
+                kg = use(facts["kg"], f"{tag}_monthlyKg")
+                kind = f"{stream.get('material')}, {stream.get('form') or '형태 확인 필요'}"
+                amount = f"{kg} 안팎" if kg else "월 물량 확인 필요"
+                lines.append(f"- {stream_label(stream)}({kind}): {amount}")
+            lines += head("단가와 정산")
+            for sid in assigned:
+                facts, tag = stream_facts(sid), safe_id(sid)
+                offer = facts["offer"]
+                price = use(offer["claim"], f"{tag}_unitPrice") if offer else None
+                fee = bool(offer) and offer["unitPriceKrwPerKg"] < 0
+                word = "처리비(보내는 곳이 냄)" if fee else "매입 단가(받는 곳이 줌)"
+                shown = f"{word} {price}" if price else "단가 확인 필요"
+                lines.append(f"- {stream_label(facts['stream'])}: {shown}")
+            lines.append(
+                "- 정산은 반입 검수에서 잰 실제 무게로 하고, 검수할 때마다 무게·등급·단가를 앱에 기록해 "
+                "양쪽이 같은 기록을 봅니다."
+            )
+            lines += head("수거와 운반")
+            days = next(
+                (offers[s]["days"] for s in assigned if s in offers and offers[s]["days"]), []
+            )
+            lines.append(
+                f"- 수거 요일: {', '.join(days)} 가운데 협의" if days else "- 수거 요일: 협의"
+            )
+            pickups = use(claim_in(loading, "pickupsPerMonth", "x"), "pickupsPerMonth")
+            if pickups:
+                lines.append(f"- 한 달 수거 횟수: {pickups}")
+            payers = {(rows.get(sid) or {}).get("transportPaidBy") for sid in assigned}
+            if payers == {"vendor"}:
+                lines.append("- 운반비: 받는 곳이 부담합니다(단가에 포함).")
+            elif payers == {"emitter"}:
+                lines.append("- 운반비: 보내는 곳이 부담합니다.")
+            else:
+                lines.append("- 운반비: 부담 주체를 정해 적어야 합니다(확인 필요).")
+            where = next((i for i in review["items"] if i["key"] == "pickup"), None)
+            if where:
+                lines.append(f"- 수거 가능 지역: {where['text']}")
+            lines += head("반입 검수와 등급")
+            lines.append(
+                "- 반입 검수에서 오염도나 수분이 합의한 매입 기준의 상한을 넘으면 받는 곳 매입 기준표의 "
+                "다음 등급 단가를 따릅니다."
+            )
+            lines.append(
+                "- 검수 결과가 조건과 다르면 앱에서 다시 협의하고, 합의 전까지는 지금 조건을 지킵니다."
+            )
+            lines += head("허가와 법령")
+            lines.append("- 받는 곳은 허가받은 업종과 품목 안에서만 이 폐기물을 처리합니다.")
+            lines.append(
+                "- 보내는 곳은 위탁하기 전에 받는 곳의 허가증에 이 폐기물과 처리 방법이 들어 있는지 확인합니다."
+            )
+            permit = next((i for i in review["items"] if i["key"] == "permit"), None)
+            if permit and permit["status"] != "ok":
+                lines.append(f"- 확인할 것: {permit['text']}")
+            if pilot:
+                lines += head("시범 기간")
+                lines.append("- 두 회사가 처음 거래하므로 첫 한 달을 시범 기간으로 합니다.")
+                lines.append(
+                    "- 첫 반입 검수 기록을 양쪽이 앱에서 확인한 뒤에 다음 달 수거를 이어 갑니다."
+                )
+                lines.append(
+                    "- 시범 기간에는 어느 쪽이든 앱에서 알리고 바로 거래를 멈출 수 있습니다."
+                )
+            terms = contract_lines(use)
+            lines += head("단가 조정과 변경")
+            lines += terms[2:]
+            lines += head("계약 검토 담당의 검토")
+            lines.append(f"- {review['summary']}")
+            for item in review["items"]:
+                # 법령 요건은 바로 아래에 조항과 함께 적는다
+                if item["status"] != "ok" and item["key"] != "law":
+                    lines.append(f"- {item['title']}: {item['text']}")
+            lines.extend(law_lines(use))
+            return lines
+
         return [
             build("request", "수거·처리 요청서", request_lines),
             build("plan", "이행 계획서", plan_lines),
+            build(
+                "contract",
+                "위탁 계약서 초안",
+                draft_lines,
+                "이 초안은 양쪽 담당자가 앱에서 승인한 조건과 계약 검토 담당의 검토로 만들었습니다. "
+                "서명하기 전에 양쪽의 법무 검토와 허가 기관 확인이 필요하며, 관청 제출 서류가 아닙니다.",
+            ),
         ]
 
     def _with_claims(self, text: str, thread: Thread, use) -> str:

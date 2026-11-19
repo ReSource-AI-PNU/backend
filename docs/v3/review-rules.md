@@ -45,7 +45,8 @@
 | 8. 승인 뒤 조건(흐름 자료)이 바뀌면 확정하지 않는다 | `test_rule8_stream_changed_after_one_approval_needs_a_new_agreement` | **고침.** 한쪽이 승인한 뒤 물량이 바뀌어도 반대쪽 승인으로 확정됐고, 문서에는 바뀐 물량과 예전 단가가 함께 적혔다 |
 | 8. 승인 뒤 근거가 바뀌면 그 승인은 지워진다 | `test_rule8_evidence_changed_after_one_approval_clears_that_approval` | **고침.** 화면에는 승인이 지워진 것으로 나오는데 스레드에는 남아 있어, 근거가 되돌아온 뒤 반대쪽만 승인해도 확정됐다 |
 | 8. 모델이 승인 전에 confirm을 내거나 확정 통지에 값을 지어내지 못한다 | `test_rule8_a_model_cannot_confirm_early_or_write_its_own_confirmation` | **지켜짐** |
-| 8. 문서는 요청서와 계획서뿐이다 | `test_rule8_documents_are_only_requests_and_plans` | **지켜짐** |
+| 8. 문서는 요청서, 계획서, 위탁 계약서 초안뿐이다(계약서 초안은 2026-11-19 멘토링으로 더함. 제목에 "초안", 본문 끝에 서명 전 법무 검토·허가 기관 확인이 필요하고 관청 제출 서류가 아니라고 적는다) | `test_rule8_documents_are_only_requests_plans_and_a_contract_draft` | **지켜짐** |
+| 8. 계약 검토 담당이 막은 합의는 어느 쪽도 승인할 수 없다(수거 가능 지역 밖, 업체 범위 밖 단가·요일, 허가 근거 불일치, 법령 요건 불충족) | `tests/v3/test_contract_review.py`의 `test_vendor_outside_its_service_area_cannot_be_approved`, `test_price_outside_vendor_range_blocks` | **더함(2026-11-19)** |
 | 9. 가드레일(하한·상한 단가, 요일, 월 최소 횟수, 자동 거절) 밖 제안이 나가지 않는다 | `test_rule9_terms_outside_the_guardrails_never_leave`(6종), `test_rule9_guardrails_apply_to_every_kind_of_vendor_message`, `test_rule9_weekday_in_notes_must_match_declared_days`, `test_rule9_raised_floor_blocks_the_table_price_too`, `test_rule9_stored_terms_carry_the_validated_price` | **고침.** `terms.days`는 맞게 적고 본문이나 조건 문장에 "일요일에 수거"라고 쓰면 나갔다. 조건이 없는 `answer`로 가드레일 밖 단가·횟수 claim을 인용하는 길도 막았다 |
 | 9. 12턴 초과 시 handoff(누가 계속 말하든) | `test_rule9_twelve_turns_then_handoff_whoever_keeps_talking` | **지켜짐** |
 | 9. 담당자 질문은 3개씩 2묶음 | `test_rule9_a_model_that_never_stops_asking_gets_two_batches_of_three` | **지켜짐** |

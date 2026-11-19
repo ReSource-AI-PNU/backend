@@ -163,7 +163,11 @@ def test_demo_scenario_with_unknown_answers_reaches_confirmation(app):
     final = service.get_view(app, session_id, EMITTER)
     statuses = {t["id"]: t["status"] for t in final["threads"]}
     assert all(statuses[t["id"]] == "confirmed" for t in agreed)
-    assert final["documents"] and {d["kind"] for d in final["documents"]} <= {"request", "plan"}
+    assert final["documents"] and {d["kind"] for d in final["documents"]} <= {
+        "request",
+        "plan",
+        "contract",
+    }
     assert all(d["validation"]["ok"] for d in final["documents"])
 
     # 업체는 자기 스레드와 그 스레드의 흐름만 본다. 다른 배출 기업은 진단을 보지 못한다.

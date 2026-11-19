@@ -63,6 +63,7 @@ KINDS = (
     "tool",
     "question",
     "status",
+    "review",  # 계약 검토 담당이 합의 조건을 대조한 결과(agents/reviewer.py). 양쪽이 본다
 )
 
 TYPE_LABELS = {

@@ -35,6 +35,7 @@ from app.v3.a2a.message import STAGES
 from app.v3.a2a.policy import QuestionPolicy, evidence_owner
 from app.v3.a2a.thread import Thread
 from app.v3.account_store import InMemoryAccounts, LoginLimiter
+from app.v3.agents import reviewer
 from app.v3.agents.draft import model_label
 from app.v3.agents.gateway import LocalVendorGateway
 from app.v3.agents.orchestrator import (
@@ -86,7 +87,7 @@ STREAM_FIELDS = (
 MODEL_PROVIDERS = ("foundry", "ollama")
 # 화면에 보이는 날짜(기준일)의 시간대 Asia/Seoul. 서머타임이 없어 UTC+9 고정이다(이미지에 tzdata가 없어도 된다)
 SEOUL = timezone(timedelta(hours=9), "Asia/Seoul")
-VENDOR_EVENT_KINDS = ("message", "handoff", "approval", "thread", "document")
+VENDOR_EVENT_KINDS = ("message", "handoff", "approval", "thread", "document", "review")
 VENDOR_CHECK_KEYS = ("vendor_condition", "min_volume", "loading", "loading_volume")
 # 업체가 보는 판단 그래프에 쓰는 검사(judge_route). 업체의 매입 기준·허가 품목과, 대화에서 업체에 열린
 # 흐름 자료(오염도, 수분, 형태, 혼입물, 물량의 근거)를 대조한 것만이다. 배출 기업의 현행 처리에 관한
@@ -1892,6 +1893,8 @@ def get_view(app: App, session_id: str, viewer: str) -> dict[str, Any]:
                 "streamIds": list(work["assigned"].get(a["threadId"]) or []),
                 # 막으면서 지운 승인(emitter·vendor). 비어 있으면 지운 승인이 없다
                 "clearedApprovals": list(a.get("clearedApprovals") or []),
+                # 계약 검토 담당의 검토(양쪽이 같은 것을 본다). 막힘이 있으면 승인할 수 없다
+                "review": _review_of(app, session, a["threadId"]),
             }
             for a in app.store.list_approvals(session_id)
             # 승인할 수 있는 대화만 낸다. 담당자에게 넘어간 대화의 승인 칸은 보이지 않는다
@@ -1903,6 +1906,15 @@ def get_view(app: App, session_id: str, viewer: str) -> dict[str, Any]:
         "events": _events_view(app, events, viewer, owner),
         "feedback": _feedback_view(app, session, viewer, owner),
     }
+
+
+def _review_of(app: App, session: dict[str, Any], thread_id: str) -> dict[str, Any] | None:
+    """승인 상자에 싣는 계약 검토(agents/reviewer.py). 대화를 읽지 못하면 None."""
+    try:
+        thread = Thread.from_dict(app.store.get_thread(thread_id))
+    except (NotFound, KeyError):
+        return None
+    return Orchestrator(app).contract_review(session, thread)
 
 
 QUESTION_KEYS = (
@@ -2096,6 +2108,10 @@ def _activity_view(
         # 실행이 멈출 때 남긴 대화의 끝 상태. 화면은 그 대화의 상태 표시를 이것으로 바꾼다
         data["threadStatus"] = entry.get("threadStatus")
         data["threadOutcome"] = entry.get("threadOutcome")
+    elif kind == "review":
+        # 계약 검토 담당의 말. 어느 편도 아니라 작성자 쪽(side)을 reviewer로 둔다
+        data["author"] = {"side": "reviewer", "kind": "system", "label": reviewer.LABEL}
+        data["review"] = entry.get("review")
     elif kind == "tool":
         name = entry.get("tool")
         data["tool"] = {

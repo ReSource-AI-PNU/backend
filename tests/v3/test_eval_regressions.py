@@ -93,7 +93,7 @@ def test_a_vendor_or_stream_named_with_a_digit_can_still_negotiate():
     thread = session.view["threads"][0]
     assert thread["status"] == "confirmed" and thread["messages"][0]["type"] == "inquiry"
     assert "(주)제3자원" in thread["messages"][0]["text"]
-    assert len(session.view["documents"]) == 2
+    assert len(session.view["documents"]) == 3  # 요청서, 이행 계획서, 위탁 계약서 초안
     assert all(v["ok"] for v in session.validated.values())
 
 

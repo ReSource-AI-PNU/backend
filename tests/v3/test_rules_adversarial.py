@@ -482,7 +482,7 @@ def test_rule1_every_claim_validates_for_whoever_is_looking(confirmed_demo):
             assert claim["value"] is None or claim["evidence"], (viewer, claim["id"])
     assert_clean(app, session_id)
     kinds = sorted(d["kind"] for d in views[HANBIT]["documents"])
-    assert kinds == ["plan", "plan", "plan", "request", "request", "request"]
+    assert kinds == ["contract"] * 3 + ["plan"] * 3 + ["request"] * 3
 
 
 TEXT_KEYS_SKIPPED = {
@@ -1421,7 +1421,7 @@ def test_rule7_permit_partly_lost_after_agreement_drops_that_stream_and_asks_aga
     view = approve_all(app, view)
     assert view["session"]["status"] == "confirmed"
     documents = [d for d in view["documents"] if d["threadId"] == kept["id"]]
-    assert len(documents) == 2 and all(d["streamIds"] == ["st_film"] for d in documents)
+    assert len(documents) == 3 and all(d["streamIds"] == ["st_film"] for d in documents)
     assert_clean(app, session_id)
 
 
@@ -1456,7 +1456,7 @@ def test_rule8_one_side_alone_or_the_same_side_twice_never_confirms(side):
     service.approve(app, session_id, thread["id"], SAEGIL if side == HANBIT else HANBIT)
     status, confirms, documents = _confirmed_things(app, session_id, thread["id"])
     assert status == "confirmed" and len(confirms) == 1
-    assert sorted(d["kind"] for d in documents) == ["plan", "request"]
+    assert sorted(d["kind"] for d in documents) == ["contract", "plan", "request"]
 
 
 def raises_any(call, *args):
@@ -1538,18 +1538,28 @@ def test_rule8_a_model_cannot_confirm_early_or_write_its_own_confirmation():
     assert_clean(app, session_id)
 
 
-def test_rule8_documents_are_only_requests_and_plans(confirmed_demo):
+def test_rule8_documents_are_only_requests_plans_and_a_contract_draft(confirmed_demo):
+    """문서는 요청서, 이행 계획서, 위탁 계약서 초안뿐이다(2026-11-19 멘토링으로 계약서 초안을 더함).
+
+    계약서는 초안이라고 제목에 적고, 서명 전에 법무 검토와 허가 기관 확인이 필요하며 관청 제출 서류가 아니라고 적는다.
+    """
     app, session_id = confirmed_demo
     for viewer, view in all_views(app, session_id).items():
         for document in view["documents"]:
-            assert document["kind"] in ("request", "plan"), viewer
-            assert "요청서" in document["title"] or "계획서" in document["title"]
-            assert "계약서나 관청 제출 서류가 아닙니다" in document["rendered"]
+            assert document["kind"] in ("request", "plan", "contract"), viewer
+            if document["kind"] == "contract":
+                assert document["title"].startswith("위탁 계약서 초안")
+                assert "법무 검토" in document["rendered"]
+                assert "관청 제출 서류가 아닙니다" in document["rendered"]
+            else:
+                assert "요청서" in document["title"] or "계획서" in document["title"]
+                assert "계약서나 관청 제출 서류가 아닙니다" in document["rendered"]
             thread = next(t for t in view["threads"] if t["id"] == document["threadId"])
             assert thread["status"] == "confirmed"
-    # 코드가 만드는 문서 종류가 둘뿐인지 소스에서도 확인한다
+    # 코드가 만드는 문서 종류가 셋뿐인지 소스에서도 확인한다(build("kind", 꼴과 줄바꿈 뒤의 kind)
     source = (ROOT / "app/v3/agents/orchestrator.py").read_text(encoding="utf-8")
-    assert sorted(re.findall(r'build\("(\w+)",', source)) == ["plan", "request"]
+    kinds = re.findall(r'build\(\s*"(\w+)",', source)
+    assert sorted(kinds) == ["contract", "plan", "request"]
 
 
 # ── 규칙 9. 가드레일과 대화 상한 ─────────────────────────────────────

@@ -450,8 +450,25 @@ VendorProfile {"orgId": "org_saegil",
 - `questions[]`: `unknown`, `answerType`(`number | choice | text`), `unit`, `choices`
 - `questionBatch`(새 항목, 배출 기업에게만): 답을 기다리는 질문 묶음의 요약 `{batch, maxBatches, maxPerBatch, count, open, last, intro, note}`이고, 기다리는 질문이 없으면 `null`이다. 질문은 묶음당 최대 3개, 진단당 최대 2묶음이다. 화면의 머리 문장은 `intro`를 쓴다(첫 묶음: "찾기 전에 n가지를 여쭙겠습니다.", 둘째 묶음: "n가지만 더 여쭙겠습니다. 이번이 마지막 질문입니다."). 첫 묶음 뒤에도 질문이 올 수 있으므로 첫 묶음에 "…만"이라고 쓰지 않는다. `note`는 첫 묶음일 때 "답을 보고 한 번 더 여쭐 수 있습니다."이다.
 - `unresolved[{streamId, field}]`: 질문 한도를 다 쓰고도 모르는 값
-- `approvals[]`: `streamIds`
-- `documents[]`: `threadId`, `streamIds`, `rendered`(자리표시자를 값으로 바꾼 글), `createdAt`
+- `approvals[]`: `streamIds`, `review`(아래 "계약 검토")
+- `documents[]`: `threadId`, `streamIds`, `rendered`(자리표시자를 값으로 바꾼 글), `createdAt`. `kind`는 `request`(수거·처리 요청서), `plan`(이행 계획서), `contract`(위탁 계약서 초안, 2026-11-19)다. 셋 다 양쪽 승인 뒤에만 만들고 근거 검증기를 거친다
+
+### 계약 검토 (`approvals[].review`, 2026-11-19)
+
+두 AI가 합의한 조건을 사람이 승인하기 전에 다시 대조하는 세 번째 에이전트 "계약 검토 담당"의 결과다(`app/v3/agents/reviewer.py`). 어느 편도 아니고 모델을 부르지 않는다(규칙으로 대조해 같은 입력이면 늘 같은 결과). 양쪽이 같은 값을 본다. 뷰를 만들 때마다 지금 결과 한 장과 업체 프로필로 다시 만든다.
+
+```json
+{"status": "blocked | needs_check | clear",
+ "summary": "합의 조건을 항목마다 대조했고 막을 항목은 없습니다. 승인 전에 담당자가 확인할 것: …",
+ "items": [{"key": "pickup", "title": "수거 가능 지역", "status": "block | check | ok", "text": "…", "pilot": true}],
+ "reviewer": {"label": "계약 검토 담당", "kind": "rules"}}
+```
+
+- 항목(`key`, 이 순서): `evidence`(근거 대조. 승인 전 근거 검증이 막았으면 block), `terms_range`(합의 단가·요일이 업체가 정한 범위 안인지. 밖이면 block, 범위를 정하지 않았으면 check), `permit`(결과의 `permit_level`), `pickup`(결과의 `pickup_area`, 없으면 `pickup_route`. 둘 다 없으면 check), `volume`(`min_volume`·`loading`), `transport`(운반비 부담 주체를 모르면 check), `inspection`(측정하지 않은 값이나 업체가 건 검수 조건이 있으면 check), `law`(결과 `regulation`에서 이 대화의 폐기물. 불충족이면 block, 담당자 할 일이 있으면 check), `pilot`(같은 두 회사가 다른 찾기에서 확정한 거래가 없으면 `pilot: true`. 계약서 초안에 한 달 시범 기간이 들어간다).
+- 결과 확인 항목의 상태는 `met → ok`, `conditional`·`needs_information → check`, `unmet → block`으로 옮긴다.
+- **block이 하나라도 있으면 양쪽 모두 승인할 수 없다**(409 `REVIEW_BLOCKED`). check는 화면에서 담당자가 확인했다고 표시해야 승인 단추가 켜진다(서버는 막지 않는다).
+- 문장에는 숫자와 근거 자리표시자를 쓰지 않는다. 업체가 정한 하한·상한 단가 같은 상대에게 감춘 값도 쓰지 않는다.
+- 합의한 뒤 결과 한 장을 만들 때 실시간 진행에 `kind: "review"` 기록(`actor: "contract_reviewer"`, `author: {"side": "reviewer", "kind": "system", "label": "계약 검토 담당"}`, `review: {status, items[{key, title, status, text}]}`)과 실행 기록 `events[].kind: "review"`를 남긴다. 결과가 앞서 남긴 것과 같으면 다시 남기지 않는다.
 - **문서는 양쪽이 함께 본다. 배출 기업의 현행 처리 방법이나 그것에서 나온 값은 문서에 없다.** 이행 계획서에 있던 "탄소 변화(현행 혼합 소각 대비…)" 줄은 뺐고, 현행 처리에 관한 검사(`current_cost`, `current_assumed`)는 "반입 전 확인"에 넣지 않는다. 탄소 변화와 그 환산액은 배출 기업만 보는 `result.assignments[].carbon`, `carbonValue`에 있다.
 - **업체가 보는 뷰 전체에 현행 처리 방법·현행 단가·그것에서 나온 값이 없다**(`tests/v3/test_fix2_vendor_view_current.py`). 업체 쪽 판단 도구가 현행 처리를 모른 채 가정값으로 낸 계산 근거의 ID(`calc:…:currentUnitCost`, `monthlyNow`, `difference`, `sensitivity*`, `carbonDifference`, `kauValue`, `assumption:current.*`)도 업체 뷰의 실행 기록에서 빼고 `hiddenEvidenceCount`에 센다. 두 에이전트의 claim 풀에도 이 값들은 들어가지 않는다(상대에게 인용할 수 없다).
 - `events[].kind`: `thread`, `question`, `document`, `stage`를 더했다
@@ -571,7 +588,7 @@ VendorProfile {"orgId": "org_saegil",
 ```json
 {"seq": 64, "at": "2026-11-18T05:12:09+00:00", "stage": 4,
  "actor": "company_agent | vendor_agent | validator | tool | system",
- "kind": "drafting | validating | rejected | rewriting | sent | handoff | tool | question | status",
+ "kind": "drafting | validating | rejected | rewriting | sent | handoff | tool | question | status | review",
  "threadId": "th_1", "vendorOrgId": "org_saegil", "vendorName": "(주)새길자원",
  "author": {"side": "company", "kind": "agent", "label": "회사 측 AI"},
  "text": "회사 측 AI가 메시지를 쓰고 있습니다.", "attempt": 1}
@@ -588,6 +605,7 @@ VendorProfile {"orgId": "org_saegil",
 | `tool` | `tool` | 판단 도구를 불렀다 | `tool: {"name", "label", "status"}` |
 | `question` | `system` | 담당자 질문 묶음을 냈다(배출 기업만) | |
 | `status` | `system` | 단계 시작, 대화 열기, 조건 정리, 합의, 승인, 확정, 문서, 멈춤, 오류 안내, 대화의 끝 상태 | 대화의 끝 상태면 `threadStatus`, `threadOutcome` |
+| `review` | `contract_reviewer` | 계약 검토 담당이 합의한 대화의 조건을 대조했다(양쪽이 본다) | `review: {status, items}`, `author.side: "reviewer"` |
 
 - `author`는 그 일이 붙는 말풍선의 쪽이다(7장 "작성자 표시"와 같은 값). 코드가 쓴 메시지(허가 품목 decline, handoff)는 `kind: "system"`, `label: "자동 안내"`다. 진행기의 안내(`status`, `question`)는 `null`이다.
 - `text`는 화면에 그대로 보일 한국어 한 줄이다. 숫자, 근거 ID, 내부 코드를 넣지 않는다(거부 사유도 분류만 쓴다). 값은 `message`의 claims에 있다.
@@ -647,6 +665,7 @@ VendorProfile {"orgId": "org_saegil",
 | `NOT_AGREED` | 409 | 합의된 조건이 없는 대화를 승인하려 했다 |
 | `EMAIL_TAKEN` | 409 | 이미 가입한 이메일이다(대소문자와 앞뒤 공백은 가리지 않는다) |
 | `APPROVAL_BLOCKED` | 409 | 승인이 막혀 있다. 이유는 `approvals[].blockedReason`과 `blockedCodes`에 있다(아래 "승인을 막는 사유 코드") |
+| `REVIEW_BLOCKED` | 409 | 계약 검토 담당(`app/v3/agents/reviewer.py`)이 막은 항목이 있어 승인할 수 없다. 막은 항목과 이유는 `approvals[].review.items[]`(`status: "block"`)에 있다. 양쪽 모두 같다 |
 | `PERMIT_MISMATCH` | 409 | 승인하려는 대화의 업체 허가 품목이 합의 뒤에 바뀌어 흐름과 맞지 않는다. 승인하지 않는다. 맞는 흐름이 남지 않으면 그 대화를 근거와 함께 `decline`으로 닫고, 일부만 맞지 않으면 그 흐름만 빼고 승인을 지운다(남은 조건으로 다시 승인한다) |
 | `THREAD_NOT_CONFIRMED` | 409 | 확정되지 않은 대화에 실제 결과를 기록하려 했다 |
 | `RUN_IN_PROGRESS` | 409 | 그 진단의 진행(run, 답, 승인)이 이미 돌고 있다(위 "실시간 진행"의 실행 자리). 탈퇴로 지울 조직이 들어간 진단이 진행 중일 때도(9장 "탈퇴"). 아무것도 지우지 않는다 |
@@ -842,6 +861,7 @@ HTTP 오류 코드가 아니라 `approvals[].blockedCodes`(배열)와 `blockedRe
   "depot": [128.97, 35.09],
   "capacityKg": 3000, "capacityM3": 15, "costPerKm": 900,
   "vehicleCount": 3,
+  "serviceAreas": ["부산 강서구", "경남 김해시"], "maxPickupKm": 40,
   "routes": [
     {"name": "강서 화목 노선", "days": ["화", "목"], "regions": ["부산 강서구"], "complexes": ["녹산국가산업단지"]}
   ]
@@ -855,12 +875,15 @@ HTTP 오류 코드가 아니라 `approvals[].blockedCodes`(배열)와 `blockedRe
 | `capacityM3` | 0보다 크고 1,000 이하 | 부피 적재 검사 |
 | `costPerKm` | 0 이상 1,000,000 이하 | 운송비 어림, 노선 추가 비용. 업체만 보는 값이다(상대에게 나누는 계산 근거에서 뺀다) |
 | `vehicleCount` | 1 이상 1,000 이하의 정수 | 아직 쓰지 않는다(저장·표시) |
+| `serviceAreas` | 수거 가능 지역. 50자 이하 글 30개 이하(시·도, 시·군·구, 산업단지 이름. 예: "부산", "경남 김해시", "녹산국가산업단지"). 겹침을 지운다 | 결과의 `pickup_area` 확인 항목과 계약 검토(2026-11-19) |
+| `maxPickupKm` | 차고지에서 수거하러 가는 최대 거리. 0보다 크고 1,000 이하 | 결과의 `pickup_area` 확인 항목과 계약 검토. 값은 상대에게 보이지 않는다 |
 | `routes` | 30개 이하. 항목마다 `name`(1~50자, 노선끼리 겹치지 않음), `days`(`월`~`일`에서 하나 이상. 요일 순으로 맞추고 겹침을 지운다), `regions`(수거 지역, 50자 이하 글 30개 이하), `complexes`(산업단지, 100자 이하 글 30개 이하). `regions`나 `complexes`가 하나는 있어야 한다. 다른 항목은 받지 않는다 | 아직 쓰지 않는다(저장·표시) |
 
 - `evidence`는 서버가 정한다. 보내도 버린다(GET으로 받은 `fleet`을 그대로 돌려보내도 된다). 그 밖의 모르는 항목은 422다.
 - `capacityKg`, `capacityM3`, `costPerKm`은 저장할 때 업체 입력 근거(human)가 되어 `fleet.evidence`에 들어간다(값이 같으면 있던 근거를 그대로 쓴다).
 - 운행 요일은 노선마다 적지만, 업체 측 AI가 제안에 쓰는 수거 요일의 한계는 전처럼 `guardrails.days`다.
-- 지금 판단 도구는 `depot`, `capacityKg`, `capacityM3`, `costPerKm`만 쓴다. 노선 추가 비용(`route_extra_cost`)의 기존 정류장은 `routes`가 아니라 그 업체가 다른 배출 기업과 합의·확정한 대화의 공장 위치다. `vehicleCount`와 `routes`는 판단 도구 입력(`vendor.public_profile`)에 싣지 않는다(계산 근거 ID가 바뀌지 않는다). 업체 탐색은 허가 품목·매입 기준과 차고지 거리로 고르고 수거 지역으로 거르지 않는다.
+- 지금 판단 도구는 `depot`, `capacityKg`, `capacityM3`, `costPerKm`만 쓴다. 노선 추가 비용(`route_extra_cost`)의 기존 정류장은 `routes`가 아니라 그 업체가 다른 배출 기업과 합의·확정한 대화의 공장 위치다. `vehicleCount`, `routes`, `serviceAreas`, `maxPickupKm`은 판단 도구 입력(`vendor.public_profile`)에 싣지 않는다(계산 근거 ID가 바뀌지 않는다). 업체 탐색은 허가 품목·매입 기준과 차고지 거리로 고르고 수거 지역으로 거르지 않는다.
+- **수거 가능 지역 확인(`result.assignments[].checks[]`의 `pickup_area`, 2026-11-19).** 업체가 `serviceAreas`나 `maxPickupKm`을 밝혔을 때만 나간다. 공장 조직의 `region` 글에 수거 가능 지역의 낱말(시·도만 적었으면 그 시·도, 시·군·구나 산업단지를 적었으면 그 낱말이 모두. "국가산업단지"·"산단" 같은 꼬리는 뗀다)이 들어 있거나 공장 → 업체 거리(`transportKm`)가 `maxPickupKm` 이하이면 `met`, 거리를 몰라 대조하지 못했으면 `conditional`, 둘 다 밖이면 `unmet`이다. 시·도를 함께 적었으면 공장 지역의 시·도와 같아야 한다(부산 강서구와 서울 강서구를 가른다). `unmet`은 계약 검토에서 막힘이 된다. 배정은 바꾸지 않는다.
 
 ### 운반 조건 (`PUT /vendors/{orgId}`의 `transport`, 2026-11-19)
 
