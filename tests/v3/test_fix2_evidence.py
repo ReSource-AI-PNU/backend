@@ -24,13 +24,20 @@ def test_totals_chain_to_the_per_stream_calculations():
     result = view["result"]
     per_stream = {
         key: [a[key]["evidence"][0] for a in result["assignments"] if a.get(key)]
-        for key in ("monthlyNow", "monthlyAfter", "difference", "carbon")
+        for key in ("monthlyNow", "monthlyAfter", "difference")
     }
+    # 열분해는 공정 에너지·수율·열분해유 용도 근거가 없어 처리 방식 탄소를 산정 보류한다(2026-11-19 자원순환
+    # 효과 보강). 퍼지 덩어리는 운송 배출만 합계에 든다
+    per_stream["carbon"] = [
+        (a["carbon"] or a["carbonTransport"])["evidence"][0]
+        for a in result["assignments"]
+        if a.get("carbon") or a.get("carbonTransport")
+    ]
     for key, claim in result["totals"].items():
         if key == "carbon":
-            # 열분해로 가는 퍼지 덩어리도 문헌 배출계수(2026-11-19)로 합계에 든다(네 흐름의 합이다)
             purge = next(a for a in result["assignments"] if a["streamId"] == "st_purge")
-            assert purge["carbon"] is not None and len(per_stream[key]) == 4
+            assert purge["carbon"] is None and purge["carbonTransport"] is not None
+            assert len(per_stream[key]) == 4
         total_id = claim["evidence"][0]
         assert total_id.startswith("calc:optimize_assignment:") and ":total" in total_id
         found = service.get_evidence(app, total_id, HANBIT)
@@ -62,10 +69,16 @@ def test_carbon_total_chains_to_the_per_stream_carbon_calculations():
     )
     claims = {c["id"]: c for c in done["claims"]}
     total = claims[done["output"]["totals"]["carbon"]]
+    # 열분해(퍼지 덩어리)는 처리 방식 탄소를 산정 보류한다. 공장 위치(origin)를 주지 않아 운송 배출도 없으므로
+    # 합계에 들지 않는다(2026-11-19 자원순환 효과 보강)
     per_stream = [
-        claims[a["carbon"]]["evidence"][0] for a in done["output"]["assignments"] if a["carbon"]
+        claims[a["carbon"] or a["carbonTransport"]]["evidence"][0]
+        for a in done["output"]["assignments"]
+        if a["carbon"] or a["carbonTransport"]
     ]
-    assert len(per_stream) == len(streams)  # 열분해도 문헌 배출계수가 있다
+    purge = next(a for a in done["output"]["assignments"] if a["streamId"] == "st_purge")
+    assert purge["carbon"] is None and purge["carbonTransport"] is None
+    assert len(per_stream) == len(streams) - 1
     assert total["evidence"] == [total["evidence"][0], *per_stream]
     found = app.registry.get(total["evidence"][0], HANBIT)
     assert found.meta["inputEvidence"] == per_stream

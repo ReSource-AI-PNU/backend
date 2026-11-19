@@ -267,7 +267,12 @@ def cost_carbon(
                 "kauValue",
                 -delta * float(kau.value),
                 "원/월",
-                "감축량(운송 포함) × KAU 단가" if moved is not None else "감축량 × KAU 단가",
+                (
+                    "처리 단계 배출 변화(운송 포함) × 배출권(KAU) 시세"
+                    if moved is not None
+                    else "처리 단계 배출 변화 × 배출권(KAU) 시세"
+                )
+                + ". 판단용 환산이며 받거나 팔 수 있는 돈이 아닙니다",
                 [kau.id],
                 private=True,
             )["id"]

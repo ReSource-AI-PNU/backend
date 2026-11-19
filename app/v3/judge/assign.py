@@ -7,11 +7,13 @@ import logging
 import math
 
 from app.v3 import names
+from app.v3.judge import circular
 from app.v3.judge.common import (
     CARBON_FORMULA,
     TOTAL_CARBON_FORMULA,
     TRANSPORT_CARBON_FORMULA,
     Recorder,
+    after_process,
     best_criterion,
     carbon_per_kg,
     grade_of,
@@ -497,6 +499,7 @@ def optimize_assignment(
                 "cost": cost,
                 "cost_ev": cost_ev,
                 "assumed": assumed,
+                "method": method,
                 "labor_ev": labor_ev,
                 "hours": hours,
                 "rate": rate,
@@ -539,10 +542,19 @@ def optimize_assignment(
         return True
 
     greenest = None
+    unbundled = None  # 시나리오 B: 같은 업체로 합쳐 최소 물량을 채우는 묶음 없이 고른 배정
+
+    def alone(combo) -> bool:
+        """업체로 가는 폐기물마다 혼자서 고른 매입 기준의 최소 물량을 채우는가."""
+        return all(
+            choice["vendor"] is None
+            or usable[i]["kg"] + 1e-9 >= (num(choice["criterion"].get("minMonthlyKg")) or 0.0)
+            for i, choice in enumerate(combo)
+        )
 
     def exhaustive():
-        nonlocal greenest
-        best, best_key, green_key = None, None, None
+        nonlocal greenest, unbundled
+        best, best_key, green_key, alone_key = None, None, None, None
         for combo in itertools.product(*options):
             if not feasible(combo):
                 continue
@@ -552,8 +564,21 @@ def optimize_assignment(
             key = (-round(objective, 6), names)  # 동점이면 업체 ID 순서가 앞선 배정
             if best_key is None or key < best_key:
                 best, best_key = combo, key
-            # 탄소를 가장 많이 줄이는 배정(탄소가 같으면 돈이 나은 쪽, 그다음 업체 ID 순서)
-            green = (round(carbon, 9), -round(money, 6), names)
+            if (alone_key is None or key < alone_key) and alone(combo):
+                unbundled, alone_key = combo, key
+        if best is None:
+            return None
+        # 탄소를 가장 많이 줄이는 배정(탄소가 같으면 돈이 나은 쪽, 그다음 업체 ID 순서). 처리 방식 배출계수를
+        # 모르는 선택지(열분해 등, 탄소 0으로 들어 있다)로 바꾸거나 거기서 빼는 비교는 하지 않는다. 모르는 값을
+        # 0으로 견주면 "소각으로 되돌리면 운송 배출만큼 덜 낸다" 같은 거짓 비교가 나온다
+        for combo in itertools.product(*options):
+            if not feasible(combo) or not all(
+                c is b or (c["carbon_known"] and b["carbon_known"])
+                for c, b in zip(combo, best, strict=True)
+            ):
+                continue
+            money, carbon = _money_carbon(combo)
+            green = (round(carbon, 9), -round(money, 6), tuple(_name(c) for c in combo))
             if green_key is None or green < green_key:
                 greenest, green_key = combo, green
         return best
@@ -889,7 +914,8 @@ def optimize_assignment(
                         f"{tag}CarbonValue",
                         -total * weight,
                         "원/월",
-                        "탄소 감축량 × 내부 탄소 가격(배출권 시세). 실제로 오가는 돈이 아닙니다",
+                        "처리 단계 배출 변화 × 내부 탄소 가격(배출권 시세). 배정을 고를 때만 쓰는 판단용 "
+                        "환산이며 받거나 팔 수 있는 돈이 아닙니다",
                         [made["evidence"][0], *price_ev],
                         label=names.calc_label("carbonValue", who),
                     )["id"]
@@ -956,6 +982,27 @@ def optimize_assignment(
             f"{'·'.join(dict.fromkeys(no_distance))} 운송 배출을 계산하지 못한 업체가 있습니다. 확인 필요.",
         )
     output["greenest"] = _greenest(rec, usable, best, greenest)
+    # 자원순환 효과(현행 대비 감축량·에너지 절감·신재 대체)와 네 시나리오. 월 손익과 섞지 않는다
+    money_b = None
+    if unbundled is not None:
+        money_b = rec.number(
+            "ceB_totalDifference",
+            _money_carbon(unbundled)[0] - now_total,
+            "원/월",
+            "묶음 없이 고른 배정의 월 손익 합(업체마다 한 번 드는 운반비를 뺀 값) − 현행 합",
+            parts["now"],
+            label="묶음 없이 고른 배정의 현행 대비 차이 합계 계산",
+        )["id"]
+    output["circular"] = circular.build(
+        rec,
+        usable,
+        best,
+        unbundled,
+        after_process,
+        money_a="totalDifference",
+        money_b=money_b,
+        skipped=output["skipped"],
+    )
     if no_factor:
         rec.check(
             "carbon",

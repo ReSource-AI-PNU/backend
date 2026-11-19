@@ -1,0 +1,2088 @@
+[
+  {
+    "id": "ref:JRC2021:PP-재활용-소각대비@2021",
+    "kind": "ref",
+    "label": "EU JRC 2021 · PP 재활용의 에너지 회수 소각 대비 온실가스 순효과",
+    "value": -1796,
+    "unit": "kgCO2e/t",
+    "excerpt": "Annex 5. Climate Change effects (kg CO2-eq./t polymer waste)\n(B) Alternative treatment scenario: incineration\nContribution | PETa | PETbg | HDPE | LDPE | PP | PS | EPS | PUR | PVC | EUmix\nNet effect | -2,215 | -3,147 | -1,952 | -1,381 | -1,796 | -1,720 | -1,989 | -2,842 | -1,972 | -1,942",
+    "source": "EU JRC (2021) Environmental effects of plastic waste recycling, JRC122455, doi:10.2760/6309",
+    "asOf": "2021-12-31",
+    "validUntil": null,
+    "access": [
+      "*"
+    ],
+    "version": 1,
+    "meta": {
+      "series": "JRC2021",
+      "item": "PP-재활용-incineration",
+      "period": "2021",
+      "url": "https://publications.jrc.ec.europa.eu/repository/bitstream/JRC122455/environmental_savings_from_plastic_waste_recycling_-_jrc_report_-_v9.pdf",
+      "retrievedAt": "2026-11-19T00:00:00.000Z",
+      "metric": "ghg",
+      "material": "PP",
+      "column": "PP",
+      "route": "recycle",
+      "baseline": "incineration",
+      "region": "EU",
+      "country": "EU",
+      "year": 2021,
+      "table": "Annex 5 (B), 인쇄 p.44",
+      "originalUnit": "kg CO2-eq./t polymer waste",
+      "sign": "음수가 감축(재활용이 대안 처리보다 적게 배출)",
+      "appliesTo": {
+        "origin": [
+          "PCR"
+        ],
+        "route": "기계적 재활용"
+      },
+      "includes": [
+        "수거·운송(EU 평균)",
+        "선별과 선별 잔재 소각",
+        "기계적 재활용 공정과 공정 손실 소각",
+        "신재 수지 생산 대체(PEF 기본 대체율)",
+        "대안 처리의 배출과 회수한 전기·열의 대체(시스템 확장)"
+      ],
+      "conditions": [
+        "EU에서 분리수거한 소비 후 폐플라스틱(주로 포장재) 1톤을 기계적 재활용으로 돌릴 때",
+        "폐기물 투입 1톤(선별 전) 기준이며 선별·재활용 수율과 신재 대체율이 이미 들어 있다",
+        "전력은 EU 잔여 전력 구성(2012), 열은 EU 평균 열 구성으로 대체한다고 본다"
+      ],
+      "caveats": [
+        "EU 연구 시나리오 값이다. 이 사업장의 실측값이나 인증 감축량이 아니다",
+        "국내 공정 스크랩(PIR), 공정 내부 재투입, 혼합 재질 열분해에는 쓰지 않는다",
+        "수율·신재 대체·잔재 처리가 이미 들어 있으므로 따로 곱하거나 더하지 않는다",
+        "기업의 공식 배출량에서 빼거나 배출권으로 팔 수 있는 값이 아니다"
+      ]
+    }
+  },
+  {
+    "id": "ref:JRC2021:PP-재활용-매립대비@2021",
+    "kind": "ref",
+    "label": "EU JRC 2021 · PP 재활용의 매립 대비 온실가스 순효과",
+    "value": -620,
+    "unit": "kgCO2e/t",
+    "excerpt": "Annex 5. Climate Change effects (kg CO2-eq./t polymer waste)\n(C) Alternative treatment scenario: landfilling\nContribution | PETa | PETbg | HDPE | LDPE | PP | PS | EPS | PUR | PVC | EUmix\nNet effect | -859 | -1,791 | -786 | -215 | -620 | -274 | -543 | -1,666 | -316 | -672",
+    "source": "EU JRC (2021) Environmental effects of plastic waste recycling, JRC122455, doi:10.2760/6309",
+    "asOf": "2021-12-31",
+    "validUntil": null,
+    "access": [
+      "*"
+    ],
+    "version": 1,
+    "meta": {
+      "series": "JRC2021",
+      "item": "PP-재활용-landfill",
+      "period": "2021",
+      "url": "https://publications.jrc.ec.europa.eu/repository/bitstream/JRC122455/environmental_savings_from_plastic_waste_recycling_-_jrc_report_-_v9.pdf",
+      "retrievedAt": "2026-11-19T00:00:00.000Z",
+      "metric": "ghg",
+      "material": "PP",
+      "column": "PP",
+      "route": "recycle",
+      "baseline": "landfill",
+      "region": "EU",
+      "country": "EU",
+      "year": 2021,
+      "table": "Annex 5 (C), 인쇄 p.44",
+      "originalUnit": "kg CO2-eq./t polymer waste",
+      "sign": "음수가 감축(재활용이 대안 처리보다 적게 배출)",
+      "appliesTo": {
+        "origin": [
+          "PCR"
+        ],
+        "route": "기계적 재활용"
+      },
+      "includes": [
+        "수거·운송(EU 평균)",
+        "선별과 선별 잔재 소각",
+        "기계적 재활용 공정과 공정 손실 소각",
+        "신재 수지 생산 대체(PEF 기본 대체율)",
+        "대안 처리의 배출과 회수한 전기·열의 대체(시스템 확장)"
+      ],
+      "conditions": [
+        "EU에서 분리수거한 소비 후 폐플라스틱(주로 포장재) 1톤을 기계적 재활용으로 돌릴 때",
+        "폐기물 투입 1톤(선별 전) 기준이며 선별·재활용 수율과 신재 대체율이 이미 들어 있다",
+        "전력은 EU 잔여 전력 구성(2012), 열은 EU 평균 열 구성으로 대체한다고 본다"
+      ],
+      "caveats": [
+        "EU 연구 시나리오 값이다. 이 사업장의 실측값이나 인증 감축량이 아니다",
+        "국내 공정 스크랩(PIR), 공정 내부 재투입, 혼합 재질 열분해에는 쓰지 않는다",
+        "수율·신재 대체·잔재 처리가 이미 들어 있으므로 따로 곱하거나 더하지 않는다",
+        "기업의 공식 배출량에서 빼거나 배출권으로 팔 수 있는 값이 아니다"
+      ]
+    }
+  },
+  {
+    "id": "ref:JRC2021:PP-수율-신재대체율@2021",
+    "kind": "ref",
+    "label": "EU JRC 2021 · PP 선별·재활용 수율과 신재 대체율",
+    "value": 60.435,
+    "unit": "%",
+    "excerpt": "Table 2. Polymer | Sorting rate | Recycling rate | Substitution factor\nPP | 79% | 85% | 0.9",
+    "source": "EU JRC (2021) Environmental effects of plastic waste recycling, JRC122455, doi:10.2760/6309",
+    "asOf": "2021-12-31",
+    "validUntil": null,
+    "access": [
+      "*"
+    ],
+    "version": 1,
+    "meta": {
+      "series": "JRC2021",
+      "item": "PP-수율-신재대체율",
+      "period": "2021",
+      "url": "https://publications.jrc.ec.europa.eu/repository/bitstream/JRC122455/environmental_savings_from_plastic_waste_recycling_-_jrc_report_-_v9.pdf",
+      "retrievedAt": "2026-11-19T00:00:00.000Z",
+      "metric": "virgin",
+      "material": "PP",
+      "column": "PP",
+      "route": "recycle",
+      "baseline": null,
+      "region": "EU",
+      "country": "EU",
+      "year": 2021,
+      "table": "Table 2, p.17",
+      "originalUnit": "% · 대체율(무차원)",
+      "sortingRate": 79,
+      "recyclingRate": 85,
+      "substitutionFactor": 0.9,
+      "formula": "선별 수율 × 재활용 수율 × 신재 대체율",
+      "appliesTo": {
+        "origin": [
+          "PCR"
+        ],
+        "route": "기계적 재활용"
+      },
+      "conditions": [
+        "선별 수율은 수거한 폐기물에서 목표 재질이 선별장을 통과하는 비율, 재활용 수율은 재활용 공장의 투입 대비 산출 비율이다",
+        "신재 대체율은 PEF 방법의 기본값(PP·HDPE·PET 비정질 0.9, LDPE 0.75, PET 병급 1)이다"
+      ],
+      "caveats": [
+        "EU 소비 후 폐플라스틱의 평균 수율이다. 실제 업체의 회수수율을 받으면 그 값을 쓴다",
+        "같은 연구의 온실가스 순효과에 이 수율이 이미 들어 있다. 감축량에 다시 곱하지 않는다"
+      ]
+    }
+  },
+  {
+    "id": "ref:JRC2021:HDPE-재활용-소각대비@2021",
+    "kind": "ref",
+    "label": "EU JRC 2021 · HDPE 재활용의 에너지 회수 소각 대비 온실가스 순효과",
+    "value": -1952,
+    "unit": "kgCO2e/t",
+    "excerpt": "Annex 5. Climate Change effects (kg CO2-eq./t polymer waste)\n(B) Alternative treatment scenario: incineration\nContribution | PETa | PETbg | HDPE | LDPE | PP | PS | EPS | PUR | PVC | EUmix\nNet effect | -2,215 | -3,147 | -1,952 | -1,381 | -1,796 | -1,720 | -1,989 | -2,842 | -1,972 | -1,942",
+    "source": "EU JRC (2021) Environmental effects of plastic waste recycling, JRC122455, doi:10.2760/6309",
+    "asOf": "2021-12-31",
+    "validUntil": null,
+    "access": [
+      "*"
+    ],
+    "version": 1,
+    "meta": {
+      "series": "JRC2021",
+      "item": "HDPE-재활용-incineration",
+      "period": "2021",
+      "url": "https://publications.jrc.ec.europa.eu/repository/bitstream/JRC122455/environmental_savings_from_plastic_waste_recycling_-_jrc_report_-_v9.pdf",
+      "retrievedAt": "2026-11-19T00:00:00.000Z",
+      "metric": "ghg",
+      "material": "HDPE",
+      "column": "HDPE",
+      "route": "recycle",
+      "baseline": "incineration",
+      "region": "EU",
+      "country": "EU",
+      "year": 2021,
+      "table": "Annex 5 (B), 인쇄 p.44",
+      "originalUnit": "kg CO2-eq./t polymer waste",
+      "sign": "음수가 감축(재활용이 대안 처리보다 적게 배출)",
+      "appliesTo": {
+        "origin": [
+          "PCR"
+        ],
+        "route": "기계적 재활용"
+      },
+      "includes": [
+        "수거·운송(EU 평균)",
+        "선별과 선별 잔재 소각",
+        "기계적 재활용 공정과 공정 손실 소각",
+        "신재 수지 생산 대체(PEF 기본 대체율)",
+        "대안 처리의 배출과 회수한 전기·열의 대체(시스템 확장)"
+      ],
+      "conditions": [
+        "EU에서 분리수거한 소비 후 폐플라스틱(주로 포장재) 1톤을 기계적 재활용으로 돌릴 때",
+        "폐기물 투입 1톤(선별 전) 기준이며 선별·재활용 수율과 신재 대체율이 이미 들어 있다",
+        "전력은 EU 잔여 전력 구성(2012), 열은 EU 평균 열 구성으로 대체한다고 본다"
+      ],
+      "caveats": [
+        "EU 연구 시나리오 값이다. 이 사업장의 실측값이나 인증 감축량이 아니다",
+        "국내 공정 스크랩(PIR), 공정 내부 재투입, 혼합 재질 열분해에는 쓰지 않는다",
+        "수율·신재 대체·잔재 처리가 이미 들어 있으므로 따로 곱하거나 더하지 않는다",
+        "기업의 공식 배출량에서 빼거나 배출권으로 팔 수 있는 값이 아니다"
+      ]
+    }
+  },
+  {
+    "id": "ref:JRC2021:HDPE-재활용-매립대비@2021",
+    "kind": "ref",
+    "label": "EU JRC 2021 · HDPE 재활용의 매립 대비 온실가스 순효과",
+    "value": -786,
+    "unit": "kgCO2e/t",
+    "excerpt": "Annex 5. Climate Change effects (kg CO2-eq./t polymer waste)\n(C) Alternative treatment scenario: landfilling\nContribution | PETa | PETbg | HDPE | LDPE | PP | PS | EPS | PUR | PVC | EUmix\nNet effect | -859 | -1,791 | -786 | -215 | -620 | -274 | -543 | -1,666 | -316 | -672",
+    "source": "EU JRC (2021) Environmental effects of plastic waste recycling, JRC122455, doi:10.2760/6309",
+    "asOf": "2021-12-31",
+    "validUntil": null,
+    "access": [
+      "*"
+    ],
+    "version": 1,
+    "meta": {
+      "series": "JRC2021",
+      "item": "HDPE-재활용-landfill",
+      "period": "2021",
+      "url": "https://publications.jrc.ec.europa.eu/repository/bitstream/JRC122455/environmental_savings_from_plastic_waste_recycling_-_jrc_report_-_v9.pdf",
+      "retrievedAt": "2026-11-19T00:00:00.000Z",
+      "metric": "ghg",
+      "material": "HDPE",
+      "column": "HDPE",
+      "route": "recycle",
+      "baseline": "landfill",
+      "region": "EU",
+      "country": "EU",
+      "year": 2021,
+      "table": "Annex 5 (C), 인쇄 p.44",
+      "originalUnit": "kg CO2-eq./t polymer waste",
+      "sign": "음수가 감축(재활용이 대안 처리보다 적게 배출)",
+      "appliesTo": {
+        "origin": [
+          "PCR"
+        ],
+        "route": "기계적 재활용"
+      },
+      "includes": [
+        "수거·운송(EU 평균)",
+        "선별과 선별 잔재 소각",
+        "기계적 재활용 공정과 공정 손실 소각",
+        "신재 수지 생산 대체(PEF 기본 대체율)",
+        "대안 처리의 배출과 회수한 전기·열의 대체(시스템 확장)"
+      ],
+      "conditions": [
+        "EU에서 분리수거한 소비 후 폐플라스틱(주로 포장재) 1톤을 기계적 재활용으로 돌릴 때",
+        "폐기물 투입 1톤(선별 전) 기준이며 선별·재활용 수율과 신재 대체율이 이미 들어 있다",
+        "전력은 EU 잔여 전력 구성(2012), 열은 EU 평균 열 구성으로 대체한다고 본다"
+      ],
+      "caveats": [
+        "EU 연구 시나리오 값이다. 이 사업장의 실측값이나 인증 감축량이 아니다",
+        "국내 공정 스크랩(PIR), 공정 내부 재투입, 혼합 재질 열분해에는 쓰지 않는다",
+        "수율·신재 대체·잔재 처리가 이미 들어 있으므로 따로 곱하거나 더하지 않는다",
+        "기업의 공식 배출량에서 빼거나 배출권으로 팔 수 있는 값이 아니다"
+      ]
+    }
+  },
+  {
+    "id": "ref:JRC2021:HDPE-수율-신재대체율@2021",
+    "kind": "ref",
+    "label": "EU JRC 2021 · HDPE 선별·재활용 수율과 신재 대체율",
+    "value": 68.796,
+    "unit": "%",
+    "excerpt": "Table 2. Polymer | Sorting rate | Recycling rate | Substitution factor\nHDPE | 91% | 84% | 0.9",
+    "source": "EU JRC (2021) Environmental effects of plastic waste recycling, JRC122455, doi:10.2760/6309",
+    "asOf": "2021-12-31",
+    "validUntil": null,
+    "access": [
+      "*"
+    ],
+    "version": 1,
+    "meta": {
+      "series": "JRC2021",
+      "item": "HDPE-수율-신재대체율",
+      "period": "2021",
+      "url": "https://publications.jrc.ec.europa.eu/repository/bitstream/JRC122455/environmental_savings_from_plastic_waste_recycling_-_jrc_report_-_v9.pdf",
+      "retrievedAt": "2026-11-19T00:00:00.000Z",
+      "metric": "virgin",
+      "material": "HDPE",
+      "column": "HDPE",
+      "route": "recycle",
+      "baseline": null,
+      "region": "EU",
+      "country": "EU",
+      "year": 2021,
+      "table": "Table 2, p.17",
+      "originalUnit": "% · 대체율(무차원)",
+      "sortingRate": 91,
+      "recyclingRate": 84,
+      "substitutionFactor": 0.9,
+      "formula": "선별 수율 × 재활용 수율 × 신재 대체율",
+      "appliesTo": {
+        "origin": [
+          "PCR"
+        ],
+        "route": "기계적 재활용"
+      },
+      "conditions": [
+        "선별 수율은 수거한 폐기물에서 목표 재질이 선별장을 통과하는 비율, 재활용 수율은 재활용 공장의 투입 대비 산출 비율이다",
+        "신재 대체율은 PEF 방법의 기본값(PP·HDPE·PET 비정질 0.9, LDPE 0.75, PET 병급 1)이다"
+      ],
+      "caveats": [
+        "EU 소비 후 폐플라스틱의 평균 수율이다. 실제 업체의 회수수율을 받으면 그 값을 쓴다",
+        "같은 연구의 온실가스 순효과에 이 수율이 이미 들어 있다. 감축량에 다시 곱하지 않는다"
+      ]
+    }
+  },
+  {
+    "id": "ref:JRC2021:LDPE-재활용-소각대비@2021",
+    "kind": "ref",
+    "label": "EU JRC 2021 · LDPE 재활용의 에너지 회수 소각 대비 온실가스 순효과",
+    "value": -1381,
+    "unit": "kgCO2e/t",
+    "excerpt": "Annex 5. Climate Change effects (kg CO2-eq./t polymer waste)\n(B) Alternative treatment scenario: incineration\nContribution | PETa | PETbg | HDPE | LDPE | PP | PS | EPS | PUR | PVC | EUmix\nNet effect | -2,215 | -3,147 | -1,952 | -1,381 | -1,796 | -1,720 | -1,989 | -2,842 | -1,972 | -1,942",
+    "source": "EU JRC (2021) Environmental effects of plastic waste recycling, JRC122455, doi:10.2760/6309",
+    "asOf": "2021-12-31",
+    "validUntil": null,
+    "access": [
+      "*"
+    ],
+    "version": 1,
+    "meta": {
+      "series": "JRC2021",
+      "item": "LDPE-재활용-incineration",
+      "period": "2021",
+      "url": "https://publications.jrc.ec.europa.eu/repository/bitstream/JRC122455/environmental_savings_from_plastic_waste_recycling_-_jrc_report_-_v9.pdf",
+      "retrievedAt": "2026-11-19T00:00:00.000Z",
+      "metric": "ghg",
+      "material": "LDPE",
+      "column": "LDPE",
+      "route": "recycle",
+      "baseline": "incineration",
+      "region": "EU",
+      "country": "EU",
+      "year": 2021,
+      "table": "Annex 5 (B), 인쇄 p.44",
+      "originalUnit": "kg CO2-eq./t polymer waste",
+      "sign": "음수가 감축(재활용이 대안 처리보다 적게 배출)",
+      "appliesTo": {
+        "origin": [
+          "PCR"
+        ],
+        "route": "기계적 재활용"
+      },
+      "includes": [
+        "수거·운송(EU 평균)",
+        "선별과 선별 잔재 소각",
+        "기계적 재활용 공정과 공정 손실 소각",
+        "신재 수지 생산 대체(PEF 기본 대체율)",
+        "대안 처리의 배출과 회수한 전기·열의 대체(시스템 확장)"
+      ],
+      "conditions": [
+        "EU에서 분리수거한 소비 후 폐플라스틱(주로 포장재) 1톤을 기계적 재활용으로 돌릴 때",
+        "폐기물 투입 1톤(선별 전) 기준이며 선별·재활용 수율과 신재 대체율이 이미 들어 있다",
+        "전력은 EU 잔여 전력 구성(2012), 열은 EU 평균 열 구성으로 대체한다고 본다"
+      ],
+      "caveats": [
+        "EU 연구 시나리오 값이다. 이 사업장의 실측값이나 인증 감축량이 아니다",
+        "국내 공정 스크랩(PIR), 공정 내부 재투입, 혼합 재질 열분해에는 쓰지 않는다",
+        "수율·신재 대체·잔재 처리가 이미 들어 있으므로 따로 곱하거나 더하지 않는다",
+        "기업의 공식 배출량에서 빼거나 배출권으로 팔 수 있는 값이 아니다"
+      ]
+    }
+  },
+  {
+    "id": "ref:JRC2021:LDPE-재활용-매립대비@2021",
+    "kind": "ref",
+    "label": "EU JRC 2021 · LDPE 재활용의 매립 대비 온실가스 순효과",
+    "value": -215,
+    "unit": "kgCO2e/t",
+    "excerpt": "Annex 5. Climate Change effects (kg CO2-eq./t polymer waste)\n(C) Alternative treatment scenario: landfilling\nContribution | PETa | PETbg | HDPE | LDPE | PP | PS | EPS | PUR | PVC | EUmix\nNet effect | -859 | -1,791 | -786 | -215 | -620 | -274 | -543 | -1,666 | -316 | -672",
+    "source": "EU JRC (2021) Environmental effects of plastic waste recycling, JRC122455, doi:10.2760/6309",
+    "asOf": "2021-12-31",
+    "validUntil": null,
+    "access": [
+      "*"
+    ],
+    "version": 1,
+    "meta": {
+      "series": "JRC2021",
+      "item": "LDPE-재활용-landfill",
+      "period": "2021",
+      "url": "https://publications.jrc.ec.europa.eu/repository/bitstream/JRC122455/environmental_savings_from_plastic_waste_recycling_-_jrc_report_-_v9.pdf",
+      "retrievedAt": "2026-11-19T00:00:00.000Z",
+      "metric": "ghg",
+      "material": "LDPE",
+      "column": "LDPE",
+      "route": "recycle",
+      "baseline": "landfill",
+      "region": "EU",
+      "country": "EU",
+      "year": 2021,
+      "table": "Annex 5 (C), 인쇄 p.44",
+      "originalUnit": "kg CO2-eq./t polymer waste",
+      "sign": "음수가 감축(재활용이 대안 처리보다 적게 배출)",
+      "appliesTo": {
+        "origin": [
+          "PCR"
+        ],
+        "route": "기계적 재활용"
+      },
+      "includes": [
+        "수거·운송(EU 평균)",
+        "선별과 선별 잔재 소각",
+        "기계적 재활용 공정과 공정 손실 소각",
+        "신재 수지 생산 대체(PEF 기본 대체율)",
+        "대안 처리의 배출과 회수한 전기·열의 대체(시스템 확장)"
+      ],
+      "conditions": [
+        "EU에서 분리수거한 소비 후 폐플라스틱(주로 포장재) 1톤을 기계적 재활용으로 돌릴 때",
+        "폐기물 투입 1톤(선별 전) 기준이며 선별·재활용 수율과 신재 대체율이 이미 들어 있다",
+        "전력은 EU 잔여 전력 구성(2012), 열은 EU 평균 열 구성으로 대체한다고 본다"
+      ],
+      "caveats": [
+        "EU 연구 시나리오 값이다. 이 사업장의 실측값이나 인증 감축량이 아니다",
+        "국내 공정 스크랩(PIR), 공정 내부 재투입, 혼합 재질 열분해에는 쓰지 않는다",
+        "수율·신재 대체·잔재 처리가 이미 들어 있으므로 따로 곱하거나 더하지 않는다",
+        "기업의 공식 배출량에서 빼거나 배출권으로 팔 수 있는 값이 아니다"
+      ]
+    }
+  },
+  {
+    "id": "ref:JRC2021:LDPE-수율-신재대체율@2021",
+    "kind": "ref",
+    "label": "EU JRC 2021 · LDPE 선별·재활용 수율과 신재 대체율",
+    "value": 45.99,
+    "unit": "%",
+    "excerpt": "Table 2. Polymer | Sorting rate | Recycling rate | Substitution factor\nLDPE | 73% | 84% | 0.75",
+    "source": "EU JRC (2021) Environmental effects of plastic waste recycling, JRC122455, doi:10.2760/6309",
+    "asOf": "2021-12-31",
+    "validUntil": null,
+    "access": [
+      "*"
+    ],
+    "version": 1,
+    "meta": {
+      "series": "JRC2021",
+      "item": "LDPE-수율-신재대체율",
+      "period": "2021",
+      "url": "https://publications.jrc.ec.europa.eu/repository/bitstream/JRC122455/environmental_savings_from_plastic_waste_recycling_-_jrc_report_-_v9.pdf",
+      "retrievedAt": "2026-11-19T00:00:00.000Z",
+      "metric": "virgin",
+      "material": "LDPE",
+      "column": "LDPE",
+      "route": "recycle",
+      "baseline": null,
+      "region": "EU",
+      "country": "EU",
+      "year": 2021,
+      "table": "Table 2, p.17",
+      "originalUnit": "% · 대체율(무차원)",
+      "sortingRate": 73,
+      "recyclingRate": 84,
+      "substitutionFactor": 0.75,
+      "formula": "선별 수율 × 재활용 수율 × 신재 대체율",
+      "appliesTo": {
+        "origin": [
+          "PCR"
+        ],
+        "route": "기계적 재활용"
+      },
+      "conditions": [
+        "선별 수율은 수거한 폐기물에서 목표 재질이 선별장을 통과하는 비율, 재활용 수율은 재활용 공장의 투입 대비 산출 비율이다",
+        "신재 대체율은 PEF 방법의 기본값(PP·HDPE·PET 비정질 0.9, LDPE 0.75, PET 병급 1)이다"
+      ],
+      "caveats": [
+        "EU 소비 후 폐플라스틱의 평균 수율이다. 실제 업체의 회수수율을 받으면 그 값을 쓴다",
+        "같은 연구의 온실가스 순효과에 이 수율이 이미 들어 있다. 감축량에 다시 곱하지 않는다"
+      ]
+    }
+  },
+  {
+    "id": "ref:JRC2021:PET-비정질-재활용-소각대비@2021",
+    "kind": "ref",
+    "label": "EU JRC 2021 · PET-비정질 재활용의 에너지 회수 소각 대비 온실가스 순효과",
+    "value": -2215,
+    "unit": "kgCO2e/t",
+    "excerpt": "Annex 5. Climate Change effects (kg CO2-eq./t polymer waste)\n(B) Alternative treatment scenario: incineration\nContribution | PETa | PETbg | HDPE | LDPE | PP | PS | EPS | PUR | PVC | EUmix\nNet effect | -2,215 | -3,147 | -1,952 | -1,381 | -1,796 | -1,720 | -1,989 | -2,842 | -1,972 | -1,942",
+    "source": "EU JRC (2021) Environmental effects of plastic waste recycling, JRC122455, doi:10.2760/6309",
+    "asOf": "2021-12-31",
+    "validUntil": null,
+    "access": [
+      "*"
+    ],
+    "version": 1,
+    "meta": {
+      "series": "JRC2021",
+      "item": "PET-비정질-재활용-incineration",
+      "period": "2021",
+      "url": "https://publications.jrc.ec.europa.eu/repository/bitstream/JRC122455/environmental_savings_from_plastic_waste_recycling_-_jrc_report_-_v9.pdf",
+      "retrievedAt": "2026-11-19T00:00:00.000Z",
+      "metric": "ghg",
+      "material": "PET-비정질",
+      "column": "PETa",
+      "route": "recycle",
+      "baseline": "incineration",
+      "region": "EU",
+      "country": "EU",
+      "year": 2021,
+      "table": "Annex 5 (B), 인쇄 p.44",
+      "originalUnit": "kg CO2-eq./t polymer waste",
+      "sign": "음수가 감축(재활용이 대안 처리보다 적게 배출)",
+      "appliesTo": {
+        "origin": [
+          "PCR"
+        ],
+        "route": "기계적 재활용"
+      },
+      "includes": [
+        "수거·운송(EU 평균)",
+        "선별과 선별 잔재 소각",
+        "기계적 재활용 공정과 공정 손실 소각",
+        "신재 수지 생산 대체(PEF 기본 대체율)",
+        "대안 처리의 배출과 회수한 전기·열의 대체(시스템 확장)"
+      ],
+      "conditions": [
+        "EU에서 분리수거한 소비 후 폐플라스틱(주로 포장재) 1톤을 기계적 재활용으로 돌릴 때",
+        "폐기물 투입 1톤(선별 전) 기준이며 선별·재활용 수율과 신재 대체율이 이미 들어 있다",
+        "전력은 EU 잔여 전력 구성(2012), 열은 EU 평균 열 구성으로 대체한다고 본다"
+      ],
+      "caveats": [
+        "EU 연구 시나리오 값이다. 이 사업장의 실측값이나 인증 감축량이 아니다",
+        "국내 공정 스크랩(PIR), 공정 내부 재투입, 혼합 재질 열분해에는 쓰지 않는다",
+        "수율·신재 대체·잔재 처리가 이미 들어 있으므로 따로 곱하거나 더하지 않는다",
+        "기업의 공식 배출량에서 빼거나 배출권으로 팔 수 있는 값이 아니다"
+      ]
+    }
+  },
+  {
+    "id": "ref:JRC2021:PET-비정질-재활용-매립대비@2021",
+    "kind": "ref",
+    "label": "EU JRC 2021 · PET-비정질 재활용의 매립 대비 온실가스 순효과",
+    "value": -859,
+    "unit": "kgCO2e/t",
+    "excerpt": "Annex 5. Climate Change effects (kg CO2-eq./t polymer waste)\n(C) Alternative treatment scenario: landfilling\nContribution | PETa | PETbg | HDPE | LDPE | PP | PS | EPS | PUR | PVC | EUmix\nNet effect | -859 | -1,791 | -786 | -215 | -620 | -274 | -543 | -1,666 | -316 | -672",
+    "source": "EU JRC (2021) Environmental effects of plastic waste recycling, JRC122455, doi:10.2760/6309",
+    "asOf": "2021-12-31",
+    "validUntil": null,
+    "access": [
+      "*"
+    ],
+    "version": 1,
+    "meta": {
+      "series": "JRC2021",
+      "item": "PET-비정질-재활용-landfill",
+      "period": "2021",
+      "url": "https://publications.jrc.ec.europa.eu/repository/bitstream/JRC122455/environmental_savings_from_plastic_waste_recycling_-_jrc_report_-_v9.pdf",
+      "retrievedAt": "2026-11-19T00:00:00.000Z",
+      "metric": "ghg",
+      "material": "PET-비정질",
+      "column": "PETa",
+      "route": "recycle",
+      "baseline": "landfill",
+      "region": "EU",
+      "country": "EU",
+      "year": 2021,
+      "table": "Annex 5 (C), 인쇄 p.44",
+      "originalUnit": "kg CO2-eq./t polymer waste",
+      "sign": "음수가 감축(재활용이 대안 처리보다 적게 배출)",
+      "appliesTo": {
+        "origin": [
+          "PCR"
+        ],
+        "route": "기계적 재활용"
+      },
+      "includes": [
+        "수거·운송(EU 평균)",
+        "선별과 선별 잔재 소각",
+        "기계적 재활용 공정과 공정 손실 소각",
+        "신재 수지 생산 대체(PEF 기본 대체율)",
+        "대안 처리의 배출과 회수한 전기·열의 대체(시스템 확장)"
+      ],
+      "conditions": [
+        "EU에서 분리수거한 소비 후 폐플라스틱(주로 포장재) 1톤을 기계적 재활용으로 돌릴 때",
+        "폐기물 투입 1톤(선별 전) 기준이며 선별·재활용 수율과 신재 대체율이 이미 들어 있다",
+        "전력은 EU 잔여 전력 구성(2012), 열은 EU 평균 열 구성으로 대체한다고 본다"
+      ],
+      "caveats": [
+        "EU 연구 시나리오 값이다. 이 사업장의 실측값이나 인증 감축량이 아니다",
+        "국내 공정 스크랩(PIR), 공정 내부 재투입, 혼합 재질 열분해에는 쓰지 않는다",
+        "수율·신재 대체·잔재 처리가 이미 들어 있으므로 따로 곱하거나 더하지 않는다",
+        "기업의 공식 배출량에서 빼거나 배출권으로 팔 수 있는 값이 아니다"
+      ]
+    }
+  },
+  {
+    "id": "ref:JRC2021:PET-비정질-수율-신재대체율@2021",
+    "kind": "ref",
+    "label": "EU JRC 2021 · PET-비정질 선별·재활용 수율과 신재 대체율",
+    "value": 69.615,
+    "unit": "%",
+    "excerpt": "Table 2. Polymer | Sorting rate | Recycling rate | Substitution factor\nPETa | 91% | 85% | 0.9",
+    "source": "EU JRC (2021) Environmental effects of plastic waste recycling, JRC122455, doi:10.2760/6309",
+    "asOf": "2021-12-31",
+    "validUntil": null,
+    "access": [
+      "*"
+    ],
+    "version": 1,
+    "meta": {
+      "series": "JRC2021",
+      "item": "PET-비정질-수율-신재대체율",
+      "period": "2021",
+      "url": "https://publications.jrc.ec.europa.eu/repository/bitstream/JRC122455/environmental_savings_from_plastic_waste_recycling_-_jrc_report_-_v9.pdf",
+      "retrievedAt": "2026-11-19T00:00:00.000Z",
+      "metric": "virgin",
+      "material": "PET-비정질",
+      "column": "PETa",
+      "route": "recycle",
+      "baseline": null,
+      "region": "EU",
+      "country": "EU",
+      "year": 2021,
+      "table": "Table 2, p.17",
+      "originalUnit": "% · 대체율(무차원)",
+      "sortingRate": 91,
+      "recyclingRate": 85,
+      "substitutionFactor": 0.9,
+      "formula": "선별 수율 × 재활용 수율 × 신재 대체율",
+      "appliesTo": {
+        "origin": [
+          "PCR"
+        ],
+        "route": "기계적 재활용"
+      },
+      "conditions": [
+        "선별 수율은 수거한 폐기물에서 목표 재질이 선별장을 통과하는 비율, 재활용 수율은 재활용 공장의 투입 대비 산출 비율이다",
+        "신재 대체율은 PEF 방법의 기본값(PP·HDPE·PET 비정질 0.9, LDPE 0.75, PET 병급 1)이다"
+      ],
+      "caveats": [
+        "EU 소비 후 폐플라스틱의 평균 수율이다. 실제 업체의 회수수율을 받으면 그 값을 쓴다",
+        "같은 연구의 온실가스 순효과에 이 수율이 이미 들어 있다. 감축량에 다시 곱하지 않는다"
+      ]
+    }
+  },
+  {
+    "id": "ref:JRC2021:PET-병급-재활용-소각대비@2021",
+    "kind": "ref",
+    "label": "EU JRC 2021 · PET-병급 재활용의 에너지 회수 소각 대비 온실가스 순효과",
+    "value": -3147,
+    "unit": "kgCO2e/t",
+    "excerpt": "Annex 5. Climate Change effects (kg CO2-eq./t polymer waste)\n(B) Alternative treatment scenario: incineration\nContribution | PETa | PETbg | HDPE | LDPE | PP | PS | EPS | PUR | PVC | EUmix\nNet effect | -2,215 | -3,147 | -1,952 | -1,381 | -1,796 | -1,720 | -1,989 | -2,842 | -1,972 | -1,942",
+    "source": "EU JRC (2021) Environmental effects of plastic waste recycling, JRC122455, doi:10.2760/6309",
+    "asOf": "2021-12-31",
+    "validUntil": null,
+    "access": [
+      "*"
+    ],
+    "version": 1,
+    "meta": {
+      "series": "JRC2021",
+      "item": "PET-병급-재활용-incineration",
+      "period": "2021",
+      "url": "https://publications.jrc.ec.europa.eu/repository/bitstream/JRC122455/environmental_savings_from_plastic_waste_recycling_-_jrc_report_-_v9.pdf",
+      "retrievedAt": "2026-11-19T00:00:00.000Z",
+      "metric": "ghg",
+      "material": "PET-병급",
+      "column": "PETbg",
+      "route": "recycle",
+      "baseline": "incineration",
+      "region": "EU",
+      "country": "EU",
+      "year": 2021,
+      "table": "Annex 5 (B), 인쇄 p.44",
+      "originalUnit": "kg CO2-eq./t polymer waste",
+      "sign": "음수가 감축(재활용이 대안 처리보다 적게 배출)",
+      "appliesTo": {
+        "origin": [
+          "PCR"
+        ],
+        "route": "기계적 재활용"
+      },
+      "includes": [
+        "수거·운송(EU 평균)",
+        "선별과 선별 잔재 소각",
+        "기계적 재활용 공정과 공정 손실 소각",
+        "신재 수지 생산 대체(PEF 기본 대체율)",
+        "대안 처리의 배출과 회수한 전기·열의 대체(시스템 확장)"
+      ],
+      "conditions": [
+        "EU에서 분리수거한 소비 후 폐플라스틱(주로 포장재) 1톤을 기계적 재활용으로 돌릴 때",
+        "폐기물 투입 1톤(선별 전) 기준이며 선별·재활용 수율과 신재 대체율이 이미 들어 있다",
+        "전력은 EU 잔여 전력 구성(2012), 열은 EU 평균 열 구성으로 대체한다고 본다"
+      ],
+      "caveats": [
+        "EU 연구 시나리오 값이다. 이 사업장의 실측값이나 인증 감축량이 아니다",
+        "국내 공정 스크랩(PIR), 공정 내부 재투입, 혼합 재질 열분해에는 쓰지 않는다",
+        "수율·신재 대체·잔재 처리가 이미 들어 있으므로 따로 곱하거나 더하지 않는다",
+        "기업의 공식 배출량에서 빼거나 배출권으로 팔 수 있는 값이 아니다"
+      ]
+    }
+  },
+  {
+    "id": "ref:JRC2021:PET-병급-재활용-매립대비@2021",
+    "kind": "ref",
+    "label": "EU JRC 2021 · PET-병급 재활용의 매립 대비 온실가스 순효과",
+    "value": -1791,
+    "unit": "kgCO2e/t",
+    "excerpt": "Annex 5. Climate Change effects (kg CO2-eq./t polymer waste)\n(C) Alternative treatment scenario: landfilling\nContribution | PETa | PETbg | HDPE | LDPE | PP | PS | EPS | PUR | PVC | EUmix\nNet effect | -859 | -1,791 | -786 | -215 | -620 | -274 | -543 | -1,666 | -316 | -672",
+    "source": "EU JRC (2021) Environmental effects of plastic waste recycling, JRC122455, doi:10.2760/6309",
+    "asOf": "2021-12-31",
+    "validUntil": null,
+    "access": [
+      "*"
+    ],
+    "version": 1,
+    "meta": {
+      "series": "JRC2021",
+      "item": "PET-병급-재활용-landfill",
+      "period": "2021",
+      "url": "https://publications.jrc.ec.europa.eu/repository/bitstream/JRC122455/environmental_savings_from_plastic_waste_recycling_-_jrc_report_-_v9.pdf",
+      "retrievedAt": "2026-11-19T00:00:00.000Z",
+      "metric": "ghg",
+      "material": "PET-병급",
+      "column": "PETbg",
+      "route": "recycle",
+      "baseline": "landfill",
+      "region": "EU",
+      "country": "EU",
+      "year": 2021,
+      "table": "Annex 5 (C), 인쇄 p.44",
+      "originalUnit": "kg CO2-eq./t polymer waste",
+      "sign": "음수가 감축(재활용이 대안 처리보다 적게 배출)",
+      "appliesTo": {
+        "origin": [
+          "PCR"
+        ],
+        "route": "기계적 재활용"
+      },
+      "includes": [
+        "수거·운송(EU 평균)",
+        "선별과 선별 잔재 소각",
+        "기계적 재활용 공정과 공정 손실 소각",
+        "신재 수지 생산 대체(PEF 기본 대체율)",
+        "대안 처리의 배출과 회수한 전기·열의 대체(시스템 확장)"
+      ],
+      "conditions": [
+        "EU에서 분리수거한 소비 후 폐플라스틱(주로 포장재) 1톤을 기계적 재활용으로 돌릴 때",
+        "폐기물 투입 1톤(선별 전) 기준이며 선별·재활용 수율과 신재 대체율이 이미 들어 있다",
+        "전력은 EU 잔여 전력 구성(2012), 열은 EU 평균 열 구성으로 대체한다고 본다"
+      ],
+      "caveats": [
+        "EU 연구 시나리오 값이다. 이 사업장의 실측값이나 인증 감축량이 아니다",
+        "국내 공정 스크랩(PIR), 공정 내부 재투입, 혼합 재질 열분해에는 쓰지 않는다",
+        "수율·신재 대체·잔재 처리가 이미 들어 있으므로 따로 곱하거나 더하지 않는다",
+        "기업의 공식 배출량에서 빼거나 배출권으로 팔 수 있는 값이 아니다"
+      ]
+    }
+  },
+  {
+    "id": "ref:JRC2021:PET-병급-수율-신재대체율@2021",
+    "kind": "ref",
+    "label": "EU JRC 2021 · PET-병급 선별·재활용 수율과 신재 대체율",
+    "value": 74.62,
+    "unit": "%",
+    "excerpt": "Table 2. Polymer | Sorting rate | Recycling rate | Substitution factor\nPETbg | 91% | 82% | 1",
+    "source": "EU JRC (2021) Environmental effects of plastic waste recycling, JRC122455, doi:10.2760/6309",
+    "asOf": "2021-12-31",
+    "validUntil": null,
+    "access": [
+      "*"
+    ],
+    "version": 1,
+    "meta": {
+      "series": "JRC2021",
+      "item": "PET-병급-수율-신재대체율",
+      "period": "2021",
+      "url": "https://publications.jrc.ec.europa.eu/repository/bitstream/JRC122455/environmental_savings_from_plastic_waste_recycling_-_jrc_report_-_v9.pdf",
+      "retrievedAt": "2026-11-19T00:00:00.000Z",
+      "metric": "virgin",
+      "material": "PET-병급",
+      "column": "PETbg",
+      "route": "recycle",
+      "baseline": null,
+      "region": "EU",
+      "country": "EU",
+      "year": 2021,
+      "table": "Table 2, p.17",
+      "originalUnit": "% · 대체율(무차원)",
+      "sortingRate": 91,
+      "recyclingRate": 82,
+      "substitutionFactor": 1.0,
+      "formula": "선별 수율 × 재활용 수율 × 신재 대체율",
+      "appliesTo": {
+        "origin": [
+          "PCR"
+        ],
+        "route": "기계적 재활용"
+      },
+      "conditions": [
+        "선별 수율은 수거한 폐기물에서 목표 재질이 선별장을 통과하는 비율, 재활용 수율은 재활용 공장의 투입 대비 산출 비율이다",
+        "신재 대체율은 PEF 방법의 기본값(PP·HDPE·PET 비정질 0.9, LDPE 0.75, PET 병급 1)이다"
+      ],
+      "caveats": [
+        "EU 소비 후 폐플라스틱의 평균 수율이다. 실제 업체의 회수수율을 받으면 그 값을 쓴다",
+        "같은 연구의 온실가스 순효과에 이 수율이 이미 들어 있다. 감축량에 다시 곱하지 않는다"
+      ]
+    }
+  },
+  {
+    "id": "ref:JRC2021:PS-재활용-소각대비@2021",
+    "kind": "ref",
+    "label": "EU JRC 2021 · PS 재활용의 에너지 회수 소각 대비 온실가스 순효과",
+    "value": -1720,
+    "unit": "kgCO2e/t",
+    "excerpt": "Annex 5. Climate Change effects (kg CO2-eq./t polymer waste)\n(B) Alternative treatment scenario: incineration\nContribution | PETa | PETbg | HDPE | LDPE | PP | PS | EPS | PUR | PVC | EUmix\nNet effect | -2,215 | -3,147 | -1,952 | -1,381 | -1,796 | -1,720 | -1,989 | -2,842 | -1,972 | -1,942",
+    "source": "EU JRC (2021) Environmental effects of plastic waste recycling, JRC122455, doi:10.2760/6309",
+    "asOf": "2021-12-31",
+    "validUntil": null,
+    "access": [
+      "*"
+    ],
+    "version": 1,
+    "meta": {
+      "series": "JRC2021",
+      "item": "PS-재활용-incineration",
+      "period": "2021",
+      "url": "https://publications.jrc.ec.europa.eu/repository/bitstream/JRC122455/environmental_savings_from_plastic_waste_recycling_-_jrc_report_-_v9.pdf",
+      "retrievedAt": "2026-11-19T00:00:00.000Z",
+      "metric": "ghg",
+      "material": "PS",
+      "column": "PS",
+      "route": "recycle",
+      "baseline": "incineration",
+      "region": "EU",
+      "country": "EU",
+      "year": 2021,
+      "table": "Annex 5 (B), 인쇄 p.44",
+      "originalUnit": "kg CO2-eq./t polymer waste",
+      "sign": "음수가 감축(재활용이 대안 처리보다 적게 배출)",
+      "appliesTo": {
+        "origin": [
+          "PCR"
+        ],
+        "route": "기계적 재활용"
+      },
+      "includes": [
+        "수거·운송(EU 평균)",
+        "선별과 선별 잔재 소각",
+        "기계적 재활용 공정과 공정 손실 소각",
+        "신재 수지 생산 대체(PEF 기본 대체율)",
+        "대안 처리의 배출과 회수한 전기·열의 대체(시스템 확장)"
+      ],
+      "conditions": [
+        "EU에서 분리수거한 소비 후 폐플라스틱(주로 포장재) 1톤을 기계적 재활용으로 돌릴 때",
+        "폐기물 투입 1톤(선별 전) 기준이며 선별·재활용 수율과 신재 대체율이 이미 들어 있다",
+        "전력은 EU 잔여 전력 구성(2012), 열은 EU 평균 열 구성으로 대체한다고 본다"
+      ],
+      "caveats": [
+        "EU 연구 시나리오 값이다. 이 사업장의 실측값이나 인증 감축량이 아니다",
+        "국내 공정 스크랩(PIR), 공정 내부 재투입, 혼합 재질 열분해에는 쓰지 않는다",
+        "수율·신재 대체·잔재 처리가 이미 들어 있으므로 따로 곱하거나 더하지 않는다",
+        "기업의 공식 배출량에서 빼거나 배출권으로 팔 수 있는 값이 아니다"
+      ]
+    }
+  },
+  {
+    "id": "ref:JRC2021:PS-재활용-매립대비@2021",
+    "kind": "ref",
+    "label": "EU JRC 2021 · PS 재활용의 매립 대비 온실가스 순효과",
+    "value": -274,
+    "unit": "kgCO2e/t",
+    "excerpt": "Annex 5. Climate Change effects (kg CO2-eq./t polymer waste)\n(C) Alternative treatment scenario: landfilling\nContribution | PETa | PETbg | HDPE | LDPE | PP | PS | EPS | PUR | PVC | EUmix\nNet effect | -859 | -1,791 | -786 | -215 | -620 | -274 | -543 | -1,666 | -316 | -672",
+    "source": "EU JRC (2021) Environmental effects of plastic waste recycling, JRC122455, doi:10.2760/6309",
+    "asOf": "2021-12-31",
+    "validUntil": null,
+    "access": [
+      "*"
+    ],
+    "version": 1,
+    "meta": {
+      "series": "JRC2021",
+      "item": "PS-재활용-landfill",
+      "period": "2021",
+      "url": "https://publications.jrc.ec.europa.eu/repository/bitstream/JRC122455/environmental_savings_from_plastic_waste_recycling_-_jrc_report_-_v9.pdf",
+      "retrievedAt": "2026-11-19T00:00:00.000Z",
+      "metric": "ghg",
+      "material": "PS",
+      "column": "PS",
+      "route": "recycle",
+      "baseline": "landfill",
+      "region": "EU",
+      "country": "EU",
+      "year": 2021,
+      "table": "Annex 5 (C), 인쇄 p.44",
+      "originalUnit": "kg CO2-eq./t polymer waste",
+      "sign": "음수가 감축(재활용이 대안 처리보다 적게 배출)",
+      "appliesTo": {
+        "origin": [
+          "PCR"
+        ],
+        "route": "기계적 재활용"
+      },
+      "includes": [
+        "수거·운송(EU 평균)",
+        "선별과 선별 잔재 소각",
+        "기계적 재활용 공정과 공정 손실 소각",
+        "신재 수지 생산 대체(PEF 기본 대체율)",
+        "대안 처리의 배출과 회수한 전기·열의 대체(시스템 확장)"
+      ],
+      "conditions": [
+        "EU에서 분리수거한 소비 후 폐플라스틱(주로 포장재) 1톤을 기계적 재활용으로 돌릴 때",
+        "폐기물 투입 1톤(선별 전) 기준이며 선별·재활용 수율과 신재 대체율이 이미 들어 있다",
+        "전력은 EU 잔여 전력 구성(2012), 열은 EU 평균 열 구성으로 대체한다고 본다"
+      ],
+      "caveats": [
+        "EU 연구 시나리오 값이다. 이 사업장의 실측값이나 인증 감축량이 아니다",
+        "국내 공정 스크랩(PIR), 공정 내부 재투입, 혼합 재질 열분해에는 쓰지 않는다",
+        "수율·신재 대체·잔재 처리가 이미 들어 있으므로 따로 곱하거나 더하지 않는다",
+        "기업의 공식 배출량에서 빼거나 배출권으로 팔 수 있는 값이 아니다"
+      ]
+    }
+  },
+  {
+    "id": "ref:JRC2021:PS-수율-신재대체율@2021",
+    "kind": "ref",
+    "label": "EU JRC 2021 · PS 선별·재활용 수율과 신재 대체율",
+    "value": 49.14,
+    "unit": "%",
+    "excerpt": "Table 2. Polymer | Sorting rate | Recycling rate | Substitution factor\nPS | 65% | 84% | 0.9",
+    "source": "EU JRC (2021) Environmental effects of plastic waste recycling, JRC122455, doi:10.2760/6309",
+    "asOf": "2021-12-31",
+    "validUntil": null,
+    "access": [
+      "*"
+    ],
+    "version": 1,
+    "meta": {
+      "series": "JRC2021",
+      "item": "PS-수율-신재대체율",
+      "period": "2021",
+      "url": "https://publications.jrc.ec.europa.eu/repository/bitstream/JRC122455/environmental_savings_from_plastic_waste_recycling_-_jrc_report_-_v9.pdf",
+      "retrievedAt": "2026-11-19T00:00:00.000Z",
+      "metric": "virgin",
+      "material": "PS",
+      "column": "PS",
+      "route": "recycle",
+      "baseline": null,
+      "region": "EU",
+      "country": "EU",
+      "year": 2021,
+      "table": "Table 2, p.17",
+      "originalUnit": "% · 대체율(무차원)",
+      "sortingRate": 65,
+      "recyclingRate": 84,
+      "substitutionFactor": 0.9,
+      "formula": "선별 수율 × 재활용 수율 × 신재 대체율",
+      "appliesTo": {
+        "origin": [
+          "PCR"
+        ],
+        "route": "기계적 재활용"
+      },
+      "conditions": [
+        "선별 수율은 수거한 폐기물에서 목표 재질이 선별장을 통과하는 비율, 재활용 수율은 재활용 공장의 투입 대비 산출 비율이다",
+        "신재 대체율은 PEF 방법의 기본값(PP·HDPE·PET 비정질 0.9, LDPE 0.75, PET 병급 1)이다"
+      ],
+      "caveats": [
+        "EU 소비 후 폐플라스틱의 평균 수율이다. 실제 업체의 회수수율을 받으면 그 값을 쓴다",
+        "같은 연구의 온실가스 순효과에 이 수율이 이미 들어 있다. 감축량에 다시 곱하지 않는다"
+      ]
+    }
+  },
+  {
+    "id": "ref:JRC2021:EPS-재활용-소각대비@2021",
+    "kind": "ref",
+    "label": "EU JRC 2021 · EPS 재활용의 에너지 회수 소각 대비 온실가스 순효과",
+    "value": -1989,
+    "unit": "kgCO2e/t",
+    "excerpt": "Annex 5. Climate Change effects (kg CO2-eq./t polymer waste)\n(B) Alternative treatment scenario: incineration\nContribution | PETa | PETbg | HDPE | LDPE | PP | PS | EPS | PUR | PVC | EUmix\nNet effect | -2,215 | -3,147 | -1,952 | -1,381 | -1,796 | -1,720 | -1,989 | -2,842 | -1,972 | -1,942",
+    "source": "EU JRC (2021) Environmental effects of plastic waste recycling, JRC122455, doi:10.2760/6309",
+    "asOf": "2021-12-31",
+    "validUntil": null,
+    "access": [
+      "*"
+    ],
+    "version": 1,
+    "meta": {
+      "series": "JRC2021",
+      "item": "EPS-재활용-incineration",
+      "period": "2021",
+      "url": "https://publications.jrc.ec.europa.eu/repository/bitstream/JRC122455/environmental_savings_from_plastic_waste_recycling_-_jrc_report_-_v9.pdf",
+      "retrievedAt": "2026-11-19T00:00:00.000Z",
+      "metric": "ghg",
+      "material": "EPS",
+      "column": "EPS",
+      "route": "recycle",
+      "baseline": "incineration",
+      "region": "EU",
+      "country": "EU",
+      "year": 2021,
+      "table": "Annex 5 (B), 인쇄 p.44",
+      "originalUnit": "kg CO2-eq./t polymer waste",
+      "sign": "음수가 감축(재활용이 대안 처리보다 적게 배출)",
+      "appliesTo": {
+        "origin": [
+          "PCR"
+        ],
+        "route": "기계적 재활용"
+      },
+      "includes": [
+        "수거·운송(EU 평균)",
+        "선별과 선별 잔재 소각",
+        "기계적 재활용 공정과 공정 손실 소각",
+        "신재 수지 생산 대체(PEF 기본 대체율)",
+        "대안 처리의 배출과 회수한 전기·열의 대체(시스템 확장)"
+      ],
+      "conditions": [
+        "EU에서 분리수거한 소비 후 폐플라스틱(주로 포장재) 1톤을 기계적 재활용으로 돌릴 때",
+        "폐기물 투입 1톤(선별 전) 기준이며 선별·재활용 수율과 신재 대체율이 이미 들어 있다",
+        "전력은 EU 잔여 전력 구성(2012), 열은 EU 평균 열 구성으로 대체한다고 본다"
+      ],
+      "caveats": [
+        "EU 연구 시나리오 값이다. 이 사업장의 실측값이나 인증 감축량이 아니다",
+        "국내 공정 스크랩(PIR), 공정 내부 재투입, 혼합 재질 열분해에는 쓰지 않는다",
+        "수율·신재 대체·잔재 처리가 이미 들어 있으므로 따로 곱하거나 더하지 않는다",
+        "기업의 공식 배출량에서 빼거나 배출권으로 팔 수 있는 값이 아니다"
+      ]
+    }
+  },
+  {
+    "id": "ref:JRC2021:EPS-재활용-매립대비@2021",
+    "kind": "ref",
+    "label": "EU JRC 2021 · EPS 재활용의 매립 대비 온실가스 순효과",
+    "value": -543,
+    "unit": "kgCO2e/t",
+    "excerpt": "Annex 5. Climate Change effects (kg CO2-eq./t polymer waste)\n(C) Alternative treatment scenario: landfilling\nContribution | PETa | PETbg | HDPE | LDPE | PP | PS | EPS | PUR | PVC | EUmix\nNet effect | -859 | -1,791 | -786 | -215 | -620 | -274 | -543 | -1,666 | -316 | -672",
+    "source": "EU JRC (2021) Environmental effects of plastic waste recycling, JRC122455, doi:10.2760/6309",
+    "asOf": "2021-12-31",
+    "validUntil": null,
+    "access": [
+      "*"
+    ],
+    "version": 1,
+    "meta": {
+      "series": "JRC2021",
+      "item": "EPS-재활용-landfill",
+      "period": "2021",
+      "url": "https://publications.jrc.ec.europa.eu/repository/bitstream/JRC122455/environmental_savings_from_plastic_waste_recycling_-_jrc_report_-_v9.pdf",
+      "retrievedAt": "2026-11-19T00:00:00.000Z",
+      "metric": "ghg",
+      "material": "EPS",
+      "column": "EPS",
+      "route": "recycle",
+      "baseline": "landfill",
+      "region": "EU",
+      "country": "EU",
+      "year": 2021,
+      "table": "Annex 5 (C), 인쇄 p.44",
+      "originalUnit": "kg CO2-eq./t polymer waste",
+      "sign": "음수가 감축(재활용이 대안 처리보다 적게 배출)",
+      "appliesTo": {
+        "origin": [
+          "PCR"
+        ],
+        "route": "기계적 재활용"
+      },
+      "includes": [
+        "수거·운송(EU 평균)",
+        "선별과 선별 잔재 소각",
+        "기계적 재활용 공정과 공정 손실 소각",
+        "신재 수지 생산 대체(PEF 기본 대체율)",
+        "대안 처리의 배출과 회수한 전기·열의 대체(시스템 확장)"
+      ],
+      "conditions": [
+        "EU에서 분리수거한 소비 후 폐플라스틱(주로 포장재) 1톤을 기계적 재활용으로 돌릴 때",
+        "폐기물 투입 1톤(선별 전) 기준이며 선별·재활용 수율과 신재 대체율이 이미 들어 있다",
+        "전력은 EU 잔여 전력 구성(2012), 열은 EU 평균 열 구성으로 대체한다고 본다"
+      ],
+      "caveats": [
+        "EU 연구 시나리오 값이다. 이 사업장의 실측값이나 인증 감축량이 아니다",
+        "국내 공정 스크랩(PIR), 공정 내부 재투입, 혼합 재질 열분해에는 쓰지 않는다",
+        "수율·신재 대체·잔재 처리가 이미 들어 있으므로 따로 곱하거나 더하지 않는다",
+        "기업의 공식 배출량에서 빼거나 배출권으로 팔 수 있는 값이 아니다"
+      ]
+    }
+  },
+  {
+    "id": "ref:JRC2021:EPS-수율-신재대체율@2021",
+    "kind": "ref",
+    "label": "EU JRC 2021 · EPS 선별·재활용 수율과 신재 대체율",
+    "value": 49.14,
+    "unit": "%",
+    "excerpt": "Table 2. Polymer | Sorting rate | Recycling rate | Substitution factor\nEPS | 65% | 84% | 0.9",
+    "source": "EU JRC (2021) Environmental effects of plastic waste recycling, JRC122455, doi:10.2760/6309",
+    "asOf": "2021-12-31",
+    "validUntil": null,
+    "access": [
+      "*"
+    ],
+    "version": 1,
+    "meta": {
+      "series": "JRC2021",
+      "item": "EPS-수율-신재대체율",
+      "period": "2021",
+      "url": "https://publications.jrc.ec.europa.eu/repository/bitstream/JRC122455/environmental_savings_from_plastic_waste_recycling_-_jrc_report_-_v9.pdf",
+      "retrievedAt": "2026-11-19T00:00:00.000Z",
+      "metric": "virgin",
+      "material": "EPS",
+      "column": "EPS",
+      "route": "recycle",
+      "baseline": null,
+      "region": "EU",
+      "country": "EU",
+      "year": 2021,
+      "table": "Table 2, p.17",
+      "originalUnit": "% · 대체율(무차원)",
+      "sortingRate": 65,
+      "recyclingRate": 84,
+      "substitutionFactor": 0.9,
+      "formula": "선별 수율 × 재활용 수율 × 신재 대체율",
+      "appliesTo": {
+        "origin": [
+          "PCR"
+        ],
+        "route": "기계적 재활용"
+      },
+      "conditions": [
+        "선별 수율은 수거한 폐기물에서 목표 재질이 선별장을 통과하는 비율, 재활용 수율은 재활용 공장의 투입 대비 산출 비율이다",
+        "신재 대체율은 PEF 방법의 기본값(PP·HDPE·PET 비정질 0.9, LDPE 0.75, PET 병급 1)이다"
+      ],
+      "caveats": [
+        "EU 소비 후 폐플라스틱의 평균 수율이다. 실제 업체의 회수수율을 받으면 그 값을 쓴다",
+        "같은 연구의 온실가스 순효과에 이 수율이 이미 들어 있다. 감축량에 다시 곱하지 않는다"
+      ]
+    }
+  },
+  {
+    "id": "ref:WARM16:PP-recycle-순에너지@2023-12",
+    "kind": "ref",
+    "label": "EPA WARM v16 · PP Recycling 순에너지",
+    "value": -44.5,
+    "unit": "MMBtu/short ton",
+    "excerpt": "Exhibit 7-12: Net Energy Impacts from Source Reduction and MSW Management Options (Million Btu/Ton)\nMaterial | Recycling | Combustion | Landfilling\nPP | (44.50) | (18.79) | 0.27",
+    "source": "US EPA (2023) WARM Version 16 · Management Practices Chapters",
+    "asOf": "2023-12-31",
+    "validUntil": null,
+    "access": [
+      "*"
+    ],
+    "version": 1,
+    "meta": {
+      "series": "WARM16",
+      "item": "PP-recycle-순에너지",
+      "period": "2023-12",
+      "url": "https://www.epa.gov/system/files/documents/2024-01/warm_management_practices_v16_dec.pdf",
+      "retrievedAt": "2026-11-19T00:00:00.000Z",
+      "metric": "energy",
+      "material": "PP",
+      "column": "PP",
+      "route": "recycle",
+      "baseline": null,
+      "region": "US",
+      "country": "미국",
+      "year": 2023,
+      "table": "Exhibit 7-12, p.7-14",
+      "originalUnit": "million Btu/short ton",
+      "sign": "음수가 에너지 절감(그 처리로 피하는 에너지)",
+      "appliesTo": {
+        "origin": [
+          "PCR"
+        ]
+      },
+      "conditions": [
+        "미국 전국 평균 조건의 도시 고형 폐기물(소비 후) 1 short ton 기준이며 원문 단위는 million Btu/short ton이다",
+        "재활용 값은 회수한 폐기물 투입 기준이라 회수·제조 단계 손실(예: PP 회수 91% × 제조 0.85)이 이미 들어 있다",
+        "소각(Combustion)은 전기를 회수하는 소각이며 회수한 전기가 미국 전력망을 대신한다고 본다",
+        "1 million Btu = 1.05505585262 GJ, 1 short ton = 0.90718474 t로 환산한다"
+      ],
+      "caveats": [
+        "미국 모델 값이다. EU JRC 탄소값과 서로 다른 참고 모델이며 같은 국내 현장 LCA 결과가 아니다",
+        "음수는 에너지 절감이다. 소각장 운영 전기나 배출 기업의 전기요금 절감액을 뜻하지 않는다",
+        "국내 공정 스크랩(PIR)이나 공정 내부 재투입에는 쓰지 않는다",
+        "다른 재질의 값(예: LDPE에 PP 값)을 대신 쓰지 않는다"
+      ]
+    }
+  },
+  {
+    "id": "ref:WARM16:PP-combustion-순에너지@2023-12",
+    "kind": "ref",
+    "label": "EPA WARM v16 · PP Combustion 순에너지",
+    "value": -18.79,
+    "unit": "MMBtu/short ton",
+    "excerpt": "Exhibit 7-12: Net Energy Impacts from Source Reduction and MSW Management Options (Million Btu/Ton)\nMaterial | Recycling | Combustion | Landfilling\nPP | (44.50) | (18.79) | 0.27",
+    "source": "US EPA (2023) WARM Version 16 · Management Practices Chapters",
+    "asOf": "2023-12-31",
+    "validUntil": null,
+    "access": [
+      "*"
+    ],
+    "version": 1,
+    "meta": {
+      "series": "WARM16",
+      "item": "PP-combustion-순에너지",
+      "period": "2023-12",
+      "url": "https://www.epa.gov/system/files/documents/2024-01/warm_management_practices_v16_dec.pdf",
+      "retrievedAt": "2026-11-19T00:00:00.000Z",
+      "metric": "energy",
+      "material": "PP",
+      "column": "PP",
+      "route": "combustion",
+      "baseline": null,
+      "region": "US",
+      "country": "미국",
+      "year": 2023,
+      "table": "Exhibit 7-12, p.7-14",
+      "originalUnit": "million Btu/short ton",
+      "sign": "음수가 에너지 절감(그 처리로 피하는 에너지)",
+      "appliesTo": {
+        "origin": [
+          "PCR"
+        ]
+      },
+      "conditions": [
+        "미국 전국 평균 조건의 도시 고형 폐기물(소비 후) 1 short ton 기준이며 원문 단위는 million Btu/short ton이다",
+        "재활용 값은 회수한 폐기물 투입 기준이라 회수·제조 단계 손실(예: PP 회수 91% × 제조 0.85)이 이미 들어 있다",
+        "소각(Combustion)은 전기를 회수하는 소각이며 회수한 전기가 미국 전력망을 대신한다고 본다",
+        "1 million Btu = 1.05505585262 GJ, 1 short ton = 0.90718474 t로 환산한다"
+      ],
+      "caveats": [
+        "미국 모델 값이다. EU JRC 탄소값과 서로 다른 참고 모델이며 같은 국내 현장 LCA 결과가 아니다",
+        "음수는 에너지 절감이다. 소각장 운영 전기나 배출 기업의 전기요금 절감액을 뜻하지 않는다",
+        "국내 공정 스크랩(PIR)이나 공정 내부 재투입에는 쓰지 않는다",
+        "다른 재질의 값(예: LDPE에 PP 값)을 대신 쓰지 않는다"
+      ]
+    }
+  },
+  {
+    "id": "ref:WARM16:PP-landfill-순에너지@2023-12",
+    "kind": "ref",
+    "label": "EPA WARM v16 · PP Landfilling 순에너지",
+    "value": 0.27,
+    "unit": "MMBtu/short ton",
+    "excerpt": "Exhibit 7-12: Net Energy Impacts from Source Reduction and MSW Management Options (Million Btu/Ton)\nMaterial | Recycling | Combustion | Landfilling\nPP | (44.50) | (18.79) | 0.27",
+    "source": "US EPA (2023) WARM Version 16 · Management Practices Chapters",
+    "asOf": "2023-12-31",
+    "validUntil": null,
+    "access": [
+      "*"
+    ],
+    "version": 1,
+    "meta": {
+      "series": "WARM16",
+      "item": "PP-landfill-순에너지",
+      "period": "2023-12",
+      "url": "https://www.epa.gov/system/files/documents/2024-01/warm_management_practices_v16_dec.pdf",
+      "retrievedAt": "2026-11-19T00:00:00.000Z",
+      "metric": "energy",
+      "material": "PP",
+      "column": "PP",
+      "route": "landfill",
+      "baseline": null,
+      "region": "US",
+      "country": "미국",
+      "year": 2023,
+      "table": "Exhibit 7-12, p.7-14",
+      "originalUnit": "million Btu/short ton",
+      "sign": "음수가 에너지 절감(그 처리로 피하는 에너지)",
+      "appliesTo": {
+        "origin": [
+          "PCR"
+        ]
+      },
+      "conditions": [
+        "미국 전국 평균 조건의 도시 고형 폐기물(소비 후) 1 short ton 기준이며 원문 단위는 million Btu/short ton이다",
+        "재활용 값은 회수한 폐기물 투입 기준이라 회수·제조 단계 손실(예: PP 회수 91% × 제조 0.85)이 이미 들어 있다",
+        "소각(Combustion)은 전기를 회수하는 소각이며 회수한 전기가 미국 전력망을 대신한다고 본다",
+        "1 million Btu = 1.05505585262 GJ, 1 short ton = 0.90718474 t로 환산한다"
+      ],
+      "caveats": [
+        "미국 모델 값이다. EU JRC 탄소값과 서로 다른 참고 모델이며 같은 국내 현장 LCA 결과가 아니다",
+        "음수는 에너지 절감이다. 소각장 운영 전기나 배출 기업의 전기요금 절감액을 뜻하지 않는다",
+        "국내 공정 스크랩(PIR)이나 공정 내부 재투입에는 쓰지 않는다",
+        "다른 재질의 값(예: LDPE에 PP 값)을 대신 쓰지 않는다"
+      ]
+    }
+  },
+  {
+    "id": "ref:WARM16:HDPE-recycle-순에너지@2023-12",
+    "kind": "ref",
+    "label": "EPA WARM v16 · HDPE Recycling 순에너지",
+    "value": -44.78,
+    "unit": "MMBtu/short ton",
+    "excerpt": "Exhibit 7-12: Net Energy Impacts from Source Reduction and MSW Management Options (Million Btu/Ton)\nMaterial | Recycling | Combustion | Landfilling\nHDPE | (44.78) | (18.83) | 0.27",
+    "source": "US EPA (2023) WARM Version 16 · Management Practices Chapters",
+    "asOf": "2023-12-31",
+    "validUntil": null,
+    "access": [
+      "*"
+    ],
+    "version": 1,
+    "meta": {
+      "series": "WARM16",
+      "item": "HDPE-recycle-순에너지",
+      "period": "2023-12",
+      "url": "https://www.epa.gov/system/files/documents/2024-01/warm_management_practices_v16_dec.pdf",
+      "retrievedAt": "2026-11-19T00:00:00.000Z",
+      "metric": "energy",
+      "material": "HDPE",
+      "column": "HDPE",
+      "route": "recycle",
+      "baseline": null,
+      "region": "US",
+      "country": "미국",
+      "year": 2023,
+      "table": "Exhibit 7-12, p.7-14",
+      "originalUnit": "million Btu/short ton",
+      "sign": "음수가 에너지 절감(그 처리로 피하는 에너지)",
+      "appliesTo": {
+        "origin": [
+          "PCR"
+        ]
+      },
+      "conditions": [
+        "미국 전국 평균 조건의 도시 고형 폐기물(소비 후) 1 short ton 기준이며 원문 단위는 million Btu/short ton이다",
+        "재활용 값은 회수한 폐기물 투입 기준이라 회수·제조 단계 손실(예: PP 회수 91% × 제조 0.85)이 이미 들어 있다",
+        "소각(Combustion)은 전기를 회수하는 소각이며 회수한 전기가 미국 전력망을 대신한다고 본다",
+        "1 million Btu = 1.05505585262 GJ, 1 short ton = 0.90718474 t로 환산한다"
+      ],
+      "caveats": [
+        "미국 모델 값이다. EU JRC 탄소값과 서로 다른 참고 모델이며 같은 국내 현장 LCA 결과가 아니다",
+        "음수는 에너지 절감이다. 소각장 운영 전기나 배출 기업의 전기요금 절감액을 뜻하지 않는다",
+        "국내 공정 스크랩(PIR)이나 공정 내부 재투입에는 쓰지 않는다",
+        "다른 재질의 값(예: LDPE에 PP 값)을 대신 쓰지 않는다"
+      ]
+    }
+  },
+  {
+    "id": "ref:WARM16:HDPE-combustion-순에너지@2023-12",
+    "kind": "ref",
+    "label": "EPA WARM v16 · HDPE Combustion 순에너지",
+    "value": -18.83,
+    "unit": "MMBtu/short ton",
+    "excerpt": "Exhibit 7-12: Net Energy Impacts from Source Reduction and MSW Management Options (Million Btu/Ton)\nMaterial | Recycling | Combustion | Landfilling\nHDPE | (44.78) | (18.83) | 0.27",
+    "source": "US EPA (2023) WARM Version 16 · Management Practices Chapters",
+    "asOf": "2023-12-31",
+    "validUntil": null,
+    "access": [
+      "*"
+    ],
+    "version": 1,
+    "meta": {
+      "series": "WARM16",
+      "item": "HDPE-combustion-순에너지",
+      "period": "2023-12",
+      "url": "https://www.epa.gov/system/files/documents/2024-01/warm_management_practices_v16_dec.pdf",
+      "retrievedAt": "2026-11-19T00:00:00.000Z",
+      "metric": "energy",
+      "material": "HDPE",
+      "column": "HDPE",
+      "route": "combustion",
+      "baseline": null,
+      "region": "US",
+      "country": "미국",
+      "year": 2023,
+      "table": "Exhibit 7-12, p.7-14",
+      "originalUnit": "million Btu/short ton",
+      "sign": "음수가 에너지 절감(그 처리로 피하는 에너지)",
+      "appliesTo": {
+        "origin": [
+          "PCR"
+        ]
+      },
+      "conditions": [
+        "미국 전국 평균 조건의 도시 고형 폐기물(소비 후) 1 short ton 기준이며 원문 단위는 million Btu/short ton이다",
+        "재활용 값은 회수한 폐기물 투입 기준이라 회수·제조 단계 손실(예: PP 회수 91% × 제조 0.85)이 이미 들어 있다",
+        "소각(Combustion)은 전기를 회수하는 소각이며 회수한 전기가 미국 전력망을 대신한다고 본다",
+        "1 million Btu = 1.05505585262 GJ, 1 short ton = 0.90718474 t로 환산한다"
+      ],
+      "caveats": [
+        "미국 모델 값이다. EU JRC 탄소값과 서로 다른 참고 모델이며 같은 국내 현장 LCA 결과가 아니다",
+        "음수는 에너지 절감이다. 소각장 운영 전기나 배출 기업의 전기요금 절감액을 뜻하지 않는다",
+        "국내 공정 스크랩(PIR)이나 공정 내부 재투입에는 쓰지 않는다",
+        "다른 재질의 값(예: LDPE에 PP 값)을 대신 쓰지 않는다"
+      ]
+    }
+  },
+  {
+    "id": "ref:WARM16:HDPE-landfill-순에너지@2023-12",
+    "kind": "ref",
+    "label": "EPA WARM v16 · HDPE Landfilling 순에너지",
+    "value": 0.27,
+    "unit": "MMBtu/short ton",
+    "excerpt": "Exhibit 7-12: Net Energy Impacts from Source Reduction and MSW Management Options (Million Btu/Ton)\nMaterial | Recycling | Combustion | Landfilling\nHDPE | (44.78) | (18.83) | 0.27",
+    "source": "US EPA (2023) WARM Version 16 · Management Practices Chapters",
+    "asOf": "2023-12-31",
+    "validUntil": null,
+    "access": [
+      "*"
+    ],
+    "version": 1,
+    "meta": {
+      "series": "WARM16",
+      "item": "HDPE-landfill-순에너지",
+      "period": "2023-12",
+      "url": "https://www.epa.gov/system/files/documents/2024-01/warm_management_practices_v16_dec.pdf",
+      "retrievedAt": "2026-11-19T00:00:00.000Z",
+      "metric": "energy",
+      "material": "HDPE",
+      "column": "HDPE",
+      "route": "landfill",
+      "baseline": null,
+      "region": "US",
+      "country": "미국",
+      "year": 2023,
+      "table": "Exhibit 7-12, p.7-14",
+      "originalUnit": "million Btu/short ton",
+      "sign": "음수가 에너지 절감(그 처리로 피하는 에너지)",
+      "appliesTo": {
+        "origin": [
+          "PCR"
+        ]
+      },
+      "conditions": [
+        "미국 전국 평균 조건의 도시 고형 폐기물(소비 후) 1 short ton 기준이며 원문 단위는 million Btu/short ton이다",
+        "재활용 값은 회수한 폐기물 투입 기준이라 회수·제조 단계 손실(예: PP 회수 91% × 제조 0.85)이 이미 들어 있다",
+        "소각(Combustion)은 전기를 회수하는 소각이며 회수한 전기가 미국 전력망을 대신한다고 본다",
+        "1 million Btu = 1.05505585262 GJ, 1 short ton = 0.90718474 t로 환산한다"
+      ],
+      "caveats": [
+        "미국 모델 값이다. EU JRC 탄소값과 서로 다른 참고 모델이며 같은 국내 현장 LCA 결과가 아니다",
+        "음수는 에너지 절감이다. 소각장 운영 전기나 배출 기업의 전기요금 절감액을 뜻하지 않는다",
+        "국내 공정 스크랩(PIR)이나 공정 내부 재투입에는 쓰지 않는다",
+        "다른 재질의 값(예: LDPE에 PP 값)을 대신 쓰지 않는다"
+      ]
+    }
+  },
+  {
+    "id": "ref:WARM16:LDPE-combustion-순에너지@2023-12",
+    "kind": "ref",
+    "label": "EPA WARM v16 · LDPE Combustion 순에너지",
+    "value": -18.72,
+    "unit": "MMBtu/short ton",
+    "excerpt": "Exhibit 7-12: Net Energy Impacts from Source Reduction and MSW Management Options (Million Btu/Ton)\nMaterial | Recycling | Combustion | Landfilling\nLDPE | NA | (18.72) | 0.27",
+    "source": "US EPA (2023) WARM Version 16 · Management Practices Chapters",
+    "asOf": "2023-12-31",
+    "validUntil": null,
+    "access": [
+      "*"
+    ],
+    "version": 1,
+    "meta": {
+      "series": "WARM16",
+      "item": "LDPE-combustion-순에너지",
+      "period": "2023-12",
+      "url": "https://www.epa.gov/system/files/documents/2024-01/warm_management_practices_v16_dec.pdf",
+      "retrievedAt": "2026-11-19T00:00:00.000Z",
+      "metric": "energy",
+      "material": "LDPE",
+      "column": "LDPE",
+      "route": "combustion",
+      "baseline": null,
+      "region": "US",
+      "country": "미국",
+      "year": 2023,
+      "table": "Exhibit 7-12, p.7-14",
+      "originalUnit": "million Btu/short ton",
+      "sign": "음수가 에너지 절감(그 처리로 피하는 에너지)",
+      "appliesTo": {
+        "origin": [
+          "PCR"
+        ]
+      },
+      "conditions": [
+        "미국 전국 평균 조건의 도시 고형 폐기물(소비 후) 1 short ton 기준이며 원문 단위는 million Btu/short ton이다",
+        "재활용 값은 회수한 폐기물 투입 기준이라 회수·제조 단계 손실(예: PP 회수 91% × 제조 0.85)이 이미 들어 있다",
+        "소각(Combustion)은 전기를 회수하는 소각이며 회수한 전기가 미국 전력망을 대신한다고 본다",
+        "1 million Btu = 1.05505585262 GJ, 1 short ton = 0.90718474 t로 환산한다"
+      ],
+      "caveats": [
+        "미국 모델 값이다. EU JRC 탄소값과 서로 다른 참고 모델이며 같은 국내 현장 LCA 결과가 아니다",
+        "음수는 에너지 절감이다. 소각장 운영 전기나 배출 기업의 전기요금 절감액을 뜻하지 않는다",
+        "국내 공정 스크랩(PIR)이나 공정 내부 재투입에는 쓰지 않는다",
+        "다른 재질의 값(예: LDPE에 PP 값)을 대신 쓰지 않는다"
+      ]
+    }
+  },
+  {
+    "id": "ref:WARM16:LDPE-landfill-순에너지@2023-12",
+    "kind": "ref",
+    "label": "EPA WARM v16 · LDPE Landfilling 순에너지",
+    "value": 0.27,
+    "unit": "MMBtu/short ton",
+    "excerpt": "Exhibit 7-12: Net Energy Impacts from Source Reduction and MSW Management Options (Million Btu/Ton)\nMaterial | Recycling | Combustion | Landfilling\nLDPE | NA | (18.72) | 0.27",
+    "source": "US EPA (2023) WARM Version 16 · Management Practices Chapters",
+    "asOf": "2023-12-31",
+    "validUntil": null,
+    "access": [
+      "*"
+    ],
+    "version": 1,
+    "meta": {
+      "series": "WARM16",
+      "item": "LDPE-landfill-순에너지",
+      "period": "2023-12",
+      "url": "https://www.epa.gov/system/files/documents/2024-01/warm_management_practices_v16_dec.pdf",
+      "retrievedAt": "2026-11-19T00:00:00.000Z",
+      "metric": "energy",
+      "material": "LDPE",
+      "column": "LDPE",
+      "route": "landfill",
+      "baseline": null,
+      "region": "US",
+      "country": "미국",
+      "year": 2023,
+      "table": "Exhibit 7-12, p.7-14",
+      "originalUnit": "million Btu/short ton",
+      "sign": "음수가 에너지 절감(그 처리로 피하는 에너지)",
+      "appliesTo": {
+        "origin": [
+          "PCR"
+        ]
+      },
+      "conditions": [
+        "미국 전국 평균 조건의 도시 고형 폐기물(소비 후) 1 short ton 기준이며 원문 단위는 million Btu/short ton이다",
+        "재활용 값은 회수한 폐기물 투입 기준이라 회수·제조 단계 손실(예: PP 회수 91% × 제조 0.85)이 이미 들어 있다",
+        "소각(Combustion)은 전기를 회수하는 소각이며 회수한 전기가 미국 전력망을 대신한다고 본다",
+        "1 million Btu = 1.05505585262 GJ, 1 short ton = 0.90718474 t로 환산한다"
+      ],
+      "caveats": [
+        "미국 모델 값이다. EU JRC 탄소값과 서로 다른 참고 모델이며 같은 국내 현장 LCA 결과가 아니다",
+        "음수는 에너지 절감이다. 소각장 운영 전기나 배출 기업의 전기요금 절감액을 뜻하지 않는다",
+        "국내 공정 스크랩(PIR)이나 공정 내부 재투입에는 쓰지 않는다",
+        "다른 재질의 값(예: LDPE에 PP 값)을 대신 쓰지 않는다"
+      ]
+    }
+  },
+  {
+    "id": "ref:WARM16:PET-recycle-순에너지@2023-12",
+    "kind": "ref",
+    "label": "EPA WARM v16 · PET Recycling 순에너지",
+    "value": -28.59,
+    "unit": "MMBtu/short ton",
+    "excerpt": "Exhibit 7-12: Net Energy Impacts from Source Reduction and MSW Management Options (Million Btu/Ton)\nMaterial | Recycling | Combustion | Landfilling\nPET | (28.59) | (9.99) | 0.27",
+    "source": "US EPA (2023) WARM Version 16 · Management Practices Chapters",
+    "asOf": "2023-12-31",
+    "validUntil": null,
+    "access": [
+      "*"
+    ],
+    "version": 1,
+    "meta": {
+      "series": "WARM16",
+      "item": "PET-recycle-순에너지",
+      "period": "2023-12",
+      "url": "https://www.epa.gov/system/files/documents/2024-01/warm_management_practices_v16_dec.pdf",
+      "retrievedAt": "2026-11-19T00:00:00.000Z",
+      "metric": "energy",
+      "material": "PET",
+      "column": "PET",
+      "route": "recycle",
+      "baseline": null,
+      "region": "US",
+      "country": "미국",
+      "year": 2023,
+      "table": "Exhibit 7-12, p.7-14",
+      "originalUnit": "million Btu/short ton",
+      "sign": "음수가 에너지 절감(그 처리로 피하는 에너지)",
+      "appliesTo": {
+        "origin": [
+          "PCR"
+        ]
+      },
+      "conditions": [
+        "미국 전국 평균 조건의 도시 고형 폐기물(소비 후) 1 short ton 기준이며 원문 단위는 million Btu/short ton이다",
+        "재활용 값은 회수한 폐기물 투입 기준이라 회수·제조 단계 손실(예: PP 회수 91% × 제조 0.85)이 이미 들어 있다",
+        "소각(Combustion)은 전기를 회수하는 소각이며 회수한 전기가 미국 전력망을 대신한다고 본다",
+        "1 million Btu = 1.05505585262 GJ, 1 short ton = 0.90718474 t로 환산한다"
+      ],
+      "caveats": [
+        "미국 모델 값이다. EU JRC 탄소값과 서로 다른 참고 모델이며 같은 국내 현장 LCA 결과가 아니다",
+        "음수는 에너지 절감이다. 소각장 운영 전기나 배출 기업의 전기요금 절감액을 뜻하지 않는다",
+        "국내 공정 스크랩(PIR)이나 공정 내부 재투입에는 쓰지 않는다",
+        "다른 재질의 값(예: LDPE에 PP 값)을 대신 쓰지 않는다"
+      ]
+    }
+  },
+  {
+    "id": "ref:WARM16:PET-combustion-순에너지@2023-12",
+    "kind": "ref",
+    "label": "EPA WARM v16 · PET Combustion 순에너지",
+    "value": -9.99,
+    "unit": "MMBtu/short ton",
+    "excerpt": "Exhibit 7-12: Net Energy Impacts from Source Reduction and MSW Management Options (Million Btu/Ton)\nMaterial | Recycling | Combustion | Landfilling\nPET | (28.59) | (9.99) | 0.27",
+    "source": "US EPA (2023) WARM Version 16 · Management Practices Chapters",
+    "asOf": "2023-12-31",
+    "validUntil": null,
+    "access": [
+      "*"
+    ],
+    "version": 1,
+    "meta": {
+      "series": "WARM16",
+      "item": "PET-combustion-순에너지",
+      "period": "2023-12",
+      "url": "https://www.epa.gov/system/files/documents/2024-01/warm_management_practices_v16_dec.pdf",
+      "retrievedAt": "2026-11-19T00:00:00.000Z",
+      "metric": "energy",
+      "material": "PET",
+      "column": "PET",
+      "route": "combustion",
+      "baseline": null,
+      "region": "US",
+      "country": "미국",
+      "year": 2023,
+      "table": "Exhibit 7-12, p.7-14",
+      "originalUnit": "million Btu/short ton",
+      "sign": "음수가 에너지 절감(그 처리로 피하는 에너지)",
+      "appliesTo": {
+        "origin": [
+          "PCR"
+        ]
+      },
+      "conditions": [
+        "미국 전국 평균 조건의 도시 고형 폐기물(소비 후) 1 short ton 기준이며 원문 단위는 million Btu/short ton이다",
+        "재활용 값은 회수한 폐기물 투입 기준이라 회수·제조 단계 손실(예: PP 회수 91% × 제조 0.85)이 이미 들어 있다",
+        "소각(Combustion)은 전기를 회수하는 소각이며 회수한 전기가 미국 전력망을 대신한다고 본다",
+        "1 million Btu = 1.05505585262 GJ, 1 short ton = 0.90718474 t로 환산한다"
+      ],
+      "caveats": [
+        "미국 모델 값이다. EU JRC 탄소값과 서로 다른 참고 모델이며 같은 국내 현장 LCA 결과가 아니다",
+        "음수는 에너지 절감이다. 소각장 운영 전기나 배출 기업의 전기요금 절감액을 뜻하지 않는다",
+        "국내 공정 스크랩(PIR)이나 공정 내부 재투입에는 쓰지 않는다",
+        "다른 재질의 값(예: LDPE에 PP 값)을 대신 쓰지 않는다"
+      ]
+    }
+  },
+  {
+    "id": "ref:WARM16:PET-landfill-순에너지@2023-12",
+    "kind": "ref",
+    "label": "EPA WARM v16 · PET Landfilling 순에너지",
+    "value": 0.27,
+    "unit": "MMBtu/short ton",
+    "excerpt": "Exhibit 7-12: Net Energy Impacts from Source Reduction and MSW Management Options (Million Btu/Ton)\nMaterial | Recycling | Combustion | Landfilling\nPET | (28.59) | (9.99) | 0.27",
+    "source": "US EPA (2023) WARM Version 16 · Management Practices Chapters",
+    "asOf": "2023-12-31",
+    "validUntil": null,
+    "access": [
+      "*"
+    ],
+    "version": 1,
+    "meta": {
+      "series": "WARM16",
+      "item": "PET-landfill-순에너지",
+      "period": "2023-12",
+      "url": "https://www.epa.gov/system/files/documents/2024-01/warm_management_practices_v16_dec.pdf",
+      "retrievedAt": "2026-11-19T00:00:00.000Z",
+      "metric": "energy",
+      "material": "PET",
+      "column": "PET",
+      "route": "landfill",
+      "baseline": null,
+      "region": "US",
+      "country": "미국",
+      "year": 2023,
+      "table": "Exhibit 7-12, p.7-14",
+      "originalUnit": "million Btu/short ton",
+      "sign": "음수가 에너지 절감(그 처리로 피하는 에너지)",
+      "appliesTo": {
+        "origin": [
+          "PCR"
+        ]
+      },
+      "conditions": [
+        "미국 전국 평균 조건의 도시 고형 폐기물(소비 후) 1 short ton 기준이며 원문 단위는 million Btu/short ton이다",
+        "재활용 값은 회수한 폐기물 투입 기준이라 회수·제조 단계 손실(예: PP 회수 91% × 제조 0.85)이 이미 들어 있다",
+        "소각(Combustion)은 전기를 회수하는 소각이며 회수한 전기가 미국 전력망을 대신한다고 본다",
+        "1 million Btu = 1.05505585262 GJ, 1 short ton = 0.90718474 t로 환산한다"
+      ],
+      "caveats": [
+        "미국 모델 값이다. EU JRC 탄소값과 서로 다른 참고 모델이며 같은 국내 현장 LCA 결과가 아니다",
+        "음수는 에너지 절감이다. 소각장 운영 전기나 배출 기업의 전기요금 절감액을 뜻하지 않는다",
+        "국내 공정 스크랩(PIR)이나 공정 내부 재투입에는 쓰지 않는다",
+        "다른 재질의 값(예: LDPE에 PP 값)을 대신 쓰지 않는다"
+      ]
+    }
+  },
+  {
+    "id": "ref:WARM16:PS-combustion-순에너지@2023-12",
+    "kind": "ref",
+    "label": "EPA WARM v16 · PS Combustion 순에너지",
+    "value": -16.96,
+    "unit": "MMBtu/short ton",
+    "excerpt": "Exhibit 7-12: Net Energy Impacts from Source Reduction and MSW Management Options (Million Btu/Ton)\nMaterial | Recycling | Combustion | Landfilling\nPS | NA | (16.96) | 0.27",
+    "source": "US EPA (2023) WARM Version 16 · Management Practices Chapters",
+    "asOf": "2023-12-31",
+    "validUntil": null,
+    "access": [
+      "*"
+    ],
+    "version": 1,
+    "meta": {
+      "series": "WARM16",
+      "item": "PS-combustion-순에너지",
+      "period": "2023-12",
+      "url": "https://www.epa.gov/system/files/documents/2024-01/warm_management_practices_v16_dec.pdf",
+      "retrievedAt": "2026-11-19T00:00:00.000Z",
+      "metric": "energy",
+      "material": "PS",
+      "column": "PS",
+      "route": "combustion",
+      "baseline": null,
+      "region": "US",
+      "country": "미국",
+      "year": 2023,
+      "table": "Exhibit 7-12, p.7-14",
+      "originalUnit": "million Btu/short ton",
+      "sign": "음수가 에너지 절감(그 처리로 피하는 에너지)",
+      "appliesTo": {
+        "origin": [
+          "PCR"
+        ]
+      },
+      "conditions": [
+        "미국 전국 평균 조건의 도시 고형 폐기물(소비 후) 1 short ton 기준이며 원문 단위는 million Btu/short ton이다",
+        "재활용 값은 회수한 폐기물 투입 기준이라 회수·제조 단계 손실(예: PP 회수 91% × 제조 0.85)이 이미 들어 있다",
+        "소각(Combustion)은 전기를 회수하는 소각이며 회수한 전기가 미국 전력망을 대신한다고 본다",
+        "1 million Btu = 1.05505585262 GJ, 1 short ton = 0.90718474 t로 환산한다"
+      ],
+      "caveats": [
+        "미국 모델 값이다. EU JRC 탄소값과 서로 다른 참고 모델이며 같은 국내 현장 LCA 결과가 아니다",
+        "음수는 에너지 절감이다. 소각장 운영 전기나 배출 기업의 전기요금 절감액을 뜻하지 않는다",
+        "국내 공정 스크랩(PIR)이나 공정 내부 재투입에는 쓰지 않는다",
+        "다른 재질의 값(예: LDPE에 PP 값)을 대신 쓰지 않는다"
+      ]
+    }
+  },
+  {
+    "id": "ref:WARM16:PS-landfill-순에너지@2023-12",
+    "kind": "ref",
+    "label": "EPA WARM v16 · PS Landfilling 순에너지",
+    "value": 0.27,
+    "unit": "MMBtu/short ton",
+    "excerpt": "Exhibit 7-12: Net Energy Impacts from Source Reduction and MSW Management Options (Million Btu/Ton)\nMaterial | Recycling | Combustion | Landfilling\nPS | NA | (16.96) | 0.27",
+    "source": "US EPA (2023) WARM Version 16 · Management Practices Chapters",
+    "asOf": "2023-12-31",
+    "validUntil": null,
+    "access": [
+      "*"
+    ],
+    "version": 1,
+    "meta": {
+      "series": "WARM16",
+      "item": "PS-landfill-순에너지",
+      "period": "2023-12",
+      "url": "https://www.epa.gov/system/files/documents/2024-01/warm_management_practices_v16_dec.pdf",
+      "retrievedAt": "2026-11-19T00:00:00.000Z",
+      "metric": "energy",
+      "material": "PS",
+      "column": "PS",
+      "route": "landfill",
+      "baseline": null,
+      "region": "US",
+      "country": "미국",
+      "year": 2023,
+      "table": "Exhibit 7-12, p.7-14",
+      "originalUnit": "million Btu/short ton",
+      "sign": "음수가 에너지 절감(그 처리로 피하는 에너지)",
+      "appliesTo": {
+        "origin": [
+          "PCR"
+        ]
+      },
+      "conditions": [
+        "미국 전국 평균 조건의 도시 고형 폐기물(소비 후) 1 short ton 기준이며 원문 단위는 million Btu/short ton이다",
+        "재활용 값은 회수한 폐기물 투입 기준이라 회수·제조 단계 손실(예: PP 회수 91% × 제조 0.85)이 이미 들어 있다",
+        "소각(Combustion)은 전기를 회수하는 소각이며 회수한 전기가 미국 전력망을 대신한다고 본다",
+        "1 million Btu = 1.05505585262 GJ, 1 short ton = 0.90718474 t로 환산한다"
+      ],
+      "caveats": [
+        "미국 모델 값이다. EU JRC 탄소값과 서로 다른 참고 모델이며 같은 국내 현장 LCA 결과가 아니다",
+        "음수는 에너지 절감이다. 소각장 운영 전기나 배출 기업의 전기요금 절감액을 뜻하지 않는다",
+        "국내 공정 스크랩(PIR)이나 공정 내부 재투입에는 쓰지 않는다",
+        "다른 재질의 값(예: LDPE에 PP 값)을 대신 쓰지 않는다"
+      ]
+    }
+  },
+  {
+    "id": "ref:WARM16:골판지-recycle-순에너지@2023-12",
+    "kind": "ref",
+    "label": "EPA WARM v16 · 골판지 Recycling 순에너지",
+    "value": -15.1,
+    "unit": "MMBtu/short ton",
+    "excerpt": "Exhibit 7-12: Net Energy Impacts from Source Reduction and MSW Management Options (Million Btu/Ton)\nMaterial | Recycling | Combustion | Landfilling\nCorrugated Containers | (15.10) | (6.63) | (0.21)",
+    "source": "US EPA (2023) WARM Version 16 · Management Practices Chapters",
+    "asOf": "2023-12-31",
+    "validUntil": null,
+    "access": [
+      "*"
+    ],
+    "version": 1,
+    "meta": {
+      "series": "WARM16",
+      "item": "골판지-recycle-순에너지",
+      "period": "2023-12",
+      "url": "https://www.epa.gov/system/files/documents/2024-01/warm_management_practices_v16_dec.pdf",
+      "retrievedAt": "2026-11-19T00:00:00.000Z",
+      "metric": "energy",
+      "material": "골판지",
+      "column": "Corrugated Containers",
+      "route": "recycle",
+      "baseline": null,
+      "region": "US",
+      "country": "미국",
+      "year": 2023,
+      "table": "Exhibit 7-12, p.7-14",
+      "originalUnit": "million Btu/short ton",
+      "sign": "음수가 에너지 절감(그 처리로 피하는 에너지)",
+      "appliesTo": {
+        "origin": [
+          "PCR"
+        ]
+      },
+      "conditions": [
+        "미국 전국 평균 조건의 도시 고형 폐기물(소비 후) 1 short ton 기준이며 원문 단위는 million Btu/short ton이다",
+        "재활용 값은 회수한 폐기물 투입 기준이라 회수·제조 단계 손실(예: PP 회수 91% × 제조 0.85)이 이미 들어 있다",
+        "소각(Combustion)은 전기를 회수하는 소각이며 회수한 전기가 미국 전력망을 대신한다고 본다",
+        "1 million Btu = 1.05505585262 GJ, 1 short ton = 0.90718474 t로 환산한다"
+      ],
+      "caveats": [
+        "미국 모델 값이다. EU JRC 탄소값과 서로 다른 참고 모델이며 같은 국내 현장 LCA 결과가 아니다",
+        "음수는 에너지 절감이다. 소각장 운영 전기나 배출 기업의 전기요금 절감액을 뜻하지 않는다",
+        "국내 공정 스크랩(PIR)이나 공정 내부 재투입에는 쓰지 않는다",
+        "다른 재질의 값(예: LDPE에 PP 값)을 대신 쓰지 않는다"
+      ]
+    }
+  },
+  {
+    "id": "ref:WARM16:골판지-combustion-순에너지@2023-12",
+    "kind": "ref",
+    "label": "EPA WARM v16 · 골판지 Combustion 순에너지",
+    "value": -6.63,
+    "unit": "MMBtu/short ton",
+    "excerpt": "Exhibit 7-12: Net Energy Impacts from Source Reduction and MSW Management Options (Million Btu/Ton)\nMaterial | Recycling | Combustion | Landfilling\nCorrugated Containers | (15.10) | (6.63) | (0.21)",
+    "source": "US EPA (2023) WARM Version 16 · Management Practices Chapters",
+    "asOf": "2023-12-31",
+    "validUntil": null,
+    "access": [
+      "*"
+    ],
+    "version": 1,
+    "meta": {
+      "series": "WARM16",
+      "item": "골판지-combustion-순에너지",
+      "period": "2023-12",
+      "url": "https://www.epa.gov/system/files/documents/2024-01/warm_management_practices_v16_dec.pdf",
+      "retrievedAt": "2026-11-19T00:00:00.000Z",
+      "metric": "energy",
+      "material": "골판지",
+      "column": "Corrugated Containers",
+      "route": "combustion",
+      "baseline": null,
+      "region": "US",
+      "country": "미국",
+      "year": 2023,
+      "table": "Exhibit 7-12, p.7-14",
+      "originalUnit": "million Btu/short ton",
+      "sign": "음수가 에너지 절감(그 처리로 피하는 에너지)",
+      "appliesTo": {
+        "origin": [
+          "PCR"
+        ]
+      },
+      "conditions": [
+        "미국 전국 평균 조건의 도시 고형 폐기물(소비 후) 1 short ton 기준이며 원문 단위는 million Btu/short ton이다",
+        "재활용 값은 회수한 폐기물 투입 기준이라 회수·제조 단계 손실(예: PP 회수 91% × 제조 0.85)이 이미 들어 있다",
+        "소각(Combustion)은 전기를 회수하는 소각이며 회수한 전기가 미국 전력망을 대신한다고 본다",
+        "1 million Btu = 1.05505585262 GJ, 1 short ton = 0.90718474 t로 환산한다"
+      ],
+      "caveats": [
+        "미국 모델 값이다. EU JRC 탄소값과 서로 다른 참고 모델이며 같은 국내 현장 LCA 결과가 아니다",
+        "음수는 에너지 절감이다. 소각장 운영 전기나 배출 기업의 전기요금 절감액을 뜻하지 않는다",
+        "국내 공정 스크랩(PIR)이나 공정 내부 재투입에는 쓰지 않는다",
+        "다른 재질의 값(예: LDPE에 PP 값)을 대신 쓰지 않는다"
+      ]
+    }
+  },
+  {
+    "id": "ref:WARM16:골판지-landfill-순에너지@2023-12",
+    "kind": "ref",
+    "label": "EPA WARM v16 · 골판지 Landfilling 순에너지",
+    "value": -0.21,
+    "unit": "MMBtu/short ton",
+    "excerpt": "Exhibit 7-12: Net Energy Impacts from Source Reduction and MSW Management Options (Million Btu/Ton)\nMaterial | Recycling | Combustion | Landfilling\nCorrugated Containers | (15.10) | (6.63) | (0.21)",
+    "source": "US EPA (2023) WARM Version 16 · Management Practices Chapters",
+    "asOf": "2023-12-31",
+    "validUntil": null,
+    "access": [
+      "*"
+    ],
+    "version": 1,
+    "meta": {
+      "series": "WARM16",
+      "item": "골판지-landfill-순에너지",
+      "period": "2023-12",
+      "url": "https://www.epa.gov/system/files/documents/2024-01/warm_management_practices_v16_dec.pdf",
+      "retrievedAt": "2026-11-19T00:00:00.000Z",
+      "metric": "energy",
+      "material": "골판지",
+      "column": "Corrugated Containers",
+      "route": "landfill",
+      "baseline": null,
+      "region": "US",
+      "country": "미국",
+      "year": 2023,
+      "table": "Exhibit 7-12, p.7-14",
+      "originalUnit": "million Btu/short ton",
+      "sign": "음수가 에너지 절감(그 처리로 피하는 에너지)",
+      "appliesTo": {
+        "origin": [
+          "PCR"
+        ]
+      },
+      "conditions": [
+        "미국 전국 평균 조건의 도시 고형 폐기물(소비 후) 1 short ton 기준이며 원문 단위는 million Btu/short ton이다",
+        "재활용 값은 회수한 폐기물 투입 기준이라 회수·제조 단계 손실(예: PP 회수 91% × 제조 0.85)이 이미 들어 있다",
+        "소각(Combustion)은 전기를 회수하는 소각이며 회수한 전기가 미국 전력망을 대신한다고 본다",
+        "1 million Btu = 1.05505585262 GJ, 1 short ton = 0.90718474 t로 환산한다"
+      ],
+      "caveats": [
+        "미국 모델 값이다. EU JRC 탄소값과 서로 다른 참고 모델이며 같은 국내 현장 LCA 결과가 아니다",
+        "음수는 에너지 절감이다. 소각장 운영 전기나 배출 기업의 전기요금 절감액을 뜻하지 않는다",
+        "국내 공정 스크랩(PIR)이나 공정 내부 재투입에는 쓰지 않는다",
+        "다른 재질의 값(예: LDPE에 PP 값)을 대신 쓰지 않는다"
+      ]
+    }
+  },
+  {
+    "id": "ref:worldsteel:철스크랩-철광석절감@2026-11",
+    "kind": "ref",
+    "label": "세계철강협회 · 철 스크랩 1톤을 철강 생산에 쓸 때 줄어드는 철광석",
+    "value": 1.4,
+    "unit": "t/t",
+    "excerpt": "Our life cycle inventory (LCI) calculations show that every tonne of scrap used for steel production avoids the emission of 1.5 tonnes of CO2 and the consumption of 1.4 tonnes of iron ore, 740 kg of coal, and 120 kg of limestone.",
+    "source": "worldsteel Association · About steel · Raw materials (Scrap)",
+    "asOf": "2026-11-19",
+    "validUntil": null,
+    "access": [
+      "*"
+    ],
+    "version": 1,
+    "meta": {
+      "series": "worldsteel",
+      "item": "철스크랩-철광석절감",
+      "period": "2026-11",
+      "url": "https://worldsteel.org/about-steel/raw-materials/",
+      "retrievedAt": "2026-11-19T00:00:00.000Z",
+      "metric": "resource",
+      "material": "철",
+      "resource": "철광석",
+      "route": "recycle",
+      "baseline": null,
+      "region": "세계",
+      "country": "세계 평균",
+      "year": null,
+      "table": "Raw materials 페이지 Scrap 절(표 번호 없음)",
+      "originalUnit": "1.4 tonnes of iron ore",
+      "appliesTo": {
+        "material": [
+          "철"
+        ],
+        "route": "철강 생산 원료"
+      },
+      "conditions": [
+        "철 스크랩이 철강 생산(전기로·고로)의 원료로 쓰일 때의 원료 절감이다"
+      ],
+      "caveats": [
+        "소각 대비 회피계수가 아니라 철강 생산 원료 대체의 참고값이다",
+        "기준 연도가 페이지에 없어 확인한 날을 기준일로 적었다",
+        "알루미늄·구리 등 다른 금속에는 쓰지 않는다"
+      ]
+    }
+  },
+  {
+    "id": "ref:worldsteel:철스크랩-석탄절감@2026-11",
+    "kind": "ref",
+    "label": "세계철강협회 · 철 스크랩 1톤을 철강 생산에 쓸 때 줄어드는 석탄",
+    "value": 740,
+    "unit": "kg/t",
+    "excerpt": "Our life cycle inventory (LCI) calculations show that every tonne of scrap used for steel production avoids the emission of 1.5 tonnes of CO2 and the consumption of 1.4 tonnes of iron ore, 740 kg of coal, and 120 kg of limestone.",
+    "source": "worldsteel Association · About steel · Raw materials (Scrap)",
+    "asOf": "2026-11-19",
+    "validUntil": null,
+    "access": [
+      "*"
+    ],
+    "version": 1,
+    "meta": {
+      "series": "worldsteel",
+      "item": "철스크랩-석탄절감",
+      "period": "2026-11",
+      "url": "https://worldsteel.org/about-steel/raw-materials/",
+      "retrievedAt": "2026-11-19T00:00:00.000Z",
+      "metric": "resource",
+      "material": "철",
+      "resource": "석탄",
+      "route": "recycle",
+      "baseline": null,
+      "region": "세계",
+      "country": "세계 평균",
+      "year": null,
+      "table": "Raw materials 페이지 Scrap 절(표 번호 없음)",
+      "originalUnit": "740 kg of coal",
+      "appliesTo": {
+        "material": [
+          "철"
+        ],
+        "route": "철강 생산 원료"
+      },
+      "conditions": [
+        "철 스크랩이 철강 생산(전기로·고로)의 원료로 쓰일 때의 원료 절감이다"
+      ],
+      "caveats": [
+        "소각 대비 회피계수가 아니라 철강 생산 원료 대체의 참고값이다",
+        "기준 연도가 페이지에 없어 확인한 날을 기준일로 적었다",
+        "알루미늄·구리 등 다른 금속에는 쓰지 않는다"
+      ]
+    }
+  },
+  {
+    "id": "ref:worldsteel:철스크랩-석회석절감@2026-11",
+    "kind": "ref",
+    "label": "세계철강협회 · 철 스크랩 1톤을 철강 생산에 쓸 때 줄어드는 석회석",
+    "value": 120,
+    "unit": "kg/t",
+    "excerpt": "Our life cycle inventory (LCI) calculations show that every tonne of scrap used for steel production avoids the emission of 1.5 tonnes of CO2 and the consumption of 1.4 tonnes of iron ore, 740 kg of coal, and 120 kg of limestone.",
+    "source": "worldsteel Association · About steel · Raw materials (Scrap)",
+    "asOf": "2026-11-19",
+    "validUntil": null,
+    "access": [
+      "*"
+    ],
+    "version": 1,
+    "meta": {
+      "series": "worldsteel",
+      "item": "철스크랩-석회석절감",
+      "period": "2026-11",
+      "url": "https://worldsteel.org/about-steel/raw-materials/",
+      "retrievedAt": "2026-11-19T00:00:00.000Z",
+      "metric": "resource",
+      "material": "철",
+      "resource": "석회석",
+      "route": "recycle",
+      "baseline": null,
+      "region": "세계",
+      "country": "세계 평균",
+      "year": null,
+      "table": "Raw materials 페이지 Scrap 절(표 번호 없음)",
+      "originalUnit": "120 kg of limestone",
+      "appliesTo": {
+        "material": [
+          "철"
+        ],
+        "route": "철강 생산 원료"
+      },
+      "conditions": [
+        "철 스크랩이 철강 생산(전기로·고로)의 원료로 쓰일 때의 원료 절감이다"
+      ],
+      "caveats": [
+        "소각 대비 회피계수가 아니라 철강 생산 원료 대체의 참고값이다",
+        "기준 연도가 페이지에 없어 확인한 날을 기준일로 적었다",
+        "알루미늄·구리 등 다른 금속에는 쓰지 않는다"
+      ]
+    }
+  }
+]

@@ -533,6 +533,9 @@ def test_rule1_sentences_written_by_code_carry_no_loose_numbers(confirmed_demo):
                 continue  # 공공데이터 명부를 원문 그대로 옮긴 식별 정보(ref 근거로 열린다). 수치가 아니다
             if ".permit" in f".{path}" and path.rsplit(".", 1)[-1] in PERMIT_DOCUMENT_KEYS:
                 continue  # 허가증 원문 표기(문서에 적힌 글 그대로). 코드가 쓴 문장이 아니다
+            if path.startswith("result.circular.sources."):
+                # 자원순환 효과의 출처 목록: ref 근거의 이름·출처·표 번호·적용 조건을 그대로 옮긴 것이다(근거로 열린다)
+                continue
             if path == "events.summary":
                 # 순번만 있다: "근거 확인 통과(1번째 작성)", "담당자 질문(2번째 묶음): …"
                 assert re.search(r"\d번째 (작성|묶음)", text), (viewer, text)

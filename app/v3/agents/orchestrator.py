@@ -54,7 +54,7 @@ from app.v3.evidence.validator import (
     validate_text,
 )
 from app.v3.intake.grade_model import GradeModelError, grade_stream
-from app.v3.judge import basis, negotiate, permits
+from app.v3.judge import basis, circular, negotiate, permits
 from app.v3.judge import pickup as pickup_terms
 from app.v3.judge.common import Recorder as JudgeRecorder
 from app.v3.judge.common import (
@@ -3373,6 +3373,8 @@ class Orchestrator:
             ),
             # 탄소를 가장 많이 줄이는 배정과의 비교(완전 탐색으로 풀었을 때만)
             "greenest": self._greenest_view(optimized, names, by_id),
+            # 자원순환 효과와 네 시나리오(배출 기업만 본다: 업체 뷰는 최상위 키를 싣지 않는다)
+            "circular": self._circular_view(optimized, by_id, org_id),
             "evidence": list(optimized.get("evidence") or []),
             # 가입하지 않은 업체 후보(배출 기업만 본다: 업체 뷰는 최상위 키를 싣지 않는다)
             "outsideVendors": work.get("outside"),
@@ -3380,6 +3382,157 @@ class Orchestrator:
             "improvements": self._improvements(org_id, streams, assignments, sorted(threads)),
             # ③ 규정 확인: 폐기물마다 경로 요건 체크리스트와 관련 조항(배출 기업만 본다)
             "regulation": self._regulation(work, streams),
+        }
+
+    def _circular_view(
+        self, optimized: dict[str, Any], by_id: dict[str, Any], org_id: str
+    ) -> dict[str, Any] | None:
+        """최적 배정이 낸 자원순환 효과(judge/circular.py)를 화면용으로. 숫자는 모두 claim이다.
+
+        세 지표(감축량·에너지 절감·신재 대체)는 합치지 않고, 산정 보류는 0으로 바꾸지 않는다. 출처는 근거 시드의
+        meta(자료명·국가·연도·표·단위·기준선·적용 조건)에서 만든다.
+        """
+        found = optimized["output"].get("circular")
+        if not found:
+            return None
+
+        def claim(key: str | None) -> dict[str, Any] | None:
+            return claim_in(optimized, key, key) if key else None
+
+        def name_of(sid: str | None) -> str | None:
+            return (by_id.get(sid) or {}).get("name") if sid else None
+
+        used: list[str] = []
+
+        def metric_view(item: dict[str, Any]) -> dict[str, Any]:
+            used.extend(e for e in item.get("basis") or [] if e.startswith("ref:"))
+            return {
+                "status": item["status"],
+                "method": item.get("method"),
+                "reason": item.get("reason") or "",
+                "value": claim(item.get("claim")),
+                # 이 값에 쓴 계수(문헌·현장 입력)의 근거 ID
+                "evidence": list(item.get("basis") or []),
+            }
+
+        scenarios = []
+        for scene in found["scenarios"]:
+            rows = []
+            for row in scene.get("rows") or []:
+                rows.append(
+                    {
+                        "streamId": row["streamId"],
+                        "streamName": name_of(row["streamId"]),
+                        "route": row["route"],
+                        "baseline": row["baseline"],
+                        "baselineAssumed": row["baselineAssumed"],
+                        **{m: metric_view(row[m]) for m in circular.METRICS},
+                        "virginMaterial": row.get("virginMaterial"),
+                        "resources": [
+                            {"name": r["name"], "value": claim(r["claim"])}
+                            for r in row.get("resources") or []
+                        ],
+                        "unconfirmed": list(row.get("unconfirmed") or []),
+                        "explain": row["explain"],
+                    }
+                )
+            totals = {}
+            for metric, total in (scene.get("totals") or {}).items():
+                totals[metric] = {
+                    "status": total["status"],
+                    "total": claim(total.get("claim")),
+                    "countedKg": claim(total.get("countedKg")),
+                    "heldKg": claim(total.get("heldKg")),
+                    "heldStreams": [
+                        {"streamId": sid, "streamName": name_of(sid)}
+                        for sid in total.get("heldStreams") or []
+                    ],
+                }
+            baseline = scene.get("baselineEmission") or {}
+            if baseline.get("claim"):
+                made = claim(baseline["claim"])
+                for part in (made or {}).get("evidence") or []:
+                    used.extend(
+                        e
+                        for c in optimized.get("claims") or []
+                        if c["evidence"][:1] == [part]
+                        for e in c["evidence"]
+                        if e.startswith("ref:")
+                    )
+            scenarios.append(
+                {
+                    "id": scene["id"],
+                    "label": scene["label"],
+                    "available": bool(scene.get("available", True)),
+                    "reason": scene.get("reason"),
+                    "money": claim(scene.get("money")),
+                    "moneyReason": scene.get("moneyReason"),
+                    "circularKg": claim(scene.get("circularKg")),
+                    "flows": [
+                        {"route": route, "kg": claim(key)}
+                        for route, key in (scene.get("flows") or {}).items()
+                        if key
+                    ],
+                    "totals": totals,
+                    "virginByMaterial": [
+                        {"material": m["material"], "total": claim(m["claim"])}
+                        for m in scene.get("virginByMaterial") or []
+                    ],
+                    "baselineEmission": claim(baseline.get("claim")),
+                    "rows": rows,
+                }
+            )
+        sources = []
+        for evidence_id in dict.fromkeys(used):
+            try:
+                evidence = self.registry.get(evidence_id, org_id)
+            except (EvidenceNotFound, EvidenceForbidden):
+                continue
+            meta = evidence.meta or {}
+            sources.append(
+                {
+                    "id": evidence.id,
+                    "title": evidence.label,
+                    "source": evidence.source,
+                    "region": meta.get("region")
+                    or ("한국" if "환경성적표지" in evidence.id else None),
+                    "country": meta.get("country")
+                    or ("한국" if "환경성적표지" in evidence.id else None),
+                    "year": meta.get("year"),
+                    "table": meta.get("table"),
+                    "unit": evidence.unit,
+                    "originalUnit": meta.get("originalUnit"),
+                    "metric": meta.get("metric"),
+                    "material": meta.get("material"),
+                    "route": meta.get("route"),
+                    "baseline": meta.get("baseline"),
+                    "conditions": list(meta.get("conditions") or []),
+                    "caveats": list(meta.get("caveats") or []),
+                    "url": meta.get("url"),
+                    "asOf": evidence.as_of,
+                }
+            )
+        bundle = found.get("bundle") or {}
+        return {
+            "scenarios": scenarios,
+            "baselines": dict(found.get("baselines") or {}),
+            "bundle": {
+                "available": bool(bundle.get("available")),
+                "streams": [
+                    {"streamId": sid, "streamName": name_of(sid)}
+                    for sid in bundle.get("streams") or []
+                ],
+                "kg": claim(bundle.get("kg")),
+            },
+            "excluded": [
+                {
+                    "streamId": x["streamId"],
+                    "streamName": name_of(x["streamId"]),
+                    "reason": x["reason"],
+                }
+                for x in found.get("excluded") or []
+            ],
+            "sources": sources,
         }
 
     def _greenest_view(

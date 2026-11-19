@@ -156,11 +156,15 @@ def test_result_sheet_assigns_every_stream(demo):
     assert value(totals["difference"]) == value(totals["monthlyAfter"]) - value(
         totals["monthlyNow"]
     )
-    # 탄소는 공식 배출계수(환경성적표지)로 낸다. 열분해는 그 표에 없어 문헌값(크레딧 전, 화학 원료 용도)을 쓴다
-    purge = by_stream["st_purge"]["carbonProcess"]
-    assert value(purge) < 0 and any("Petrik2025" in e for e in purge["evidence"])
+    # 탄소는 공식 배출계수(환경성적표지)로 낸다. 열분해는 공정 에너지·수율·열분해유 용도 근거가 없어 처리 방식
+    # 탄소를 산정 보류하고(2026-11-19 자원순환 효과 보강) 운송 배출만 합계에 넣는다
+    purge = by_stream["st_purge"]
+    assert purge["carbonProcess"] is None and purge["carbon"] is None
+    assert value(purge["carbonTransport"]) > 0
     assert value(totals["carbon"]) == pytest.approx(
-        sum(value(by_stream[s]["carbon"]) for s in ("st_sprue", "st_film", "st_defect", "st_purge"))
+        sum(value(by_stream[s]["carbon"]) for s in ("st_sprue", "st_film", "st_defect"))
+        + value(purge["carbonTransport"]),
+        abs=1e-5,
     )
     # 탄소 변화 = 처리 방식 탄소 변화 + 수거 운행 배출(이 폐기물의 몫)
     sprue_carbon = by_stream["st_sprue"]

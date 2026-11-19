@@ -7,6 +7,8 @@ CONTRACT_UNITS = [
     "km", "tkm/월", "m", "m3", "kg/m3", "tCO2e", "kgCO2e", "tCO2e/월", "kgCO2e/kg", "kgCO2e/tkm", "tCO2e/t",
     "회", "회/월",
     "일", "개",
+    # 자원순환 효과(2026-11-19): 문헌 원문 단위와 에너지
+    "kgCO2e/t", "GJ", "GJ/월", "GJ/t", "MMBtu/short ton", "t/t", "kg/t",
 ]  # fmt: skip
 
 
@@ -24,6 +26,9 @@ def test_unit_list_matches_contract():
         (600, "kg/월", "t/월", 0.6),
         (2, "tCO2e", "kgCO2e", 2000),
         (1.2, "kgCO2e/kg", "tCO2e/t", 1.2),
+        (-1796, "kgCO2e/t", "tCO2e/t", -1.796),
+        (25.71, "MMBtu/short ton", "GJ/t", 25.71 * 1.05505585262 / 0.90718474),
+        (740, "kg/t", "t/t", 0.74),
         (12500, "m", "km", 12.5),
         (7, "일", "일", 7),
     ],

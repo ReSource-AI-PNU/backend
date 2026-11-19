@@ -41,3 +41,7 @@
 - 원문을 확인하지 못한 법령과 기준값은 넣지 않는다. 팀이 정한 값은 `assumption`으로 넣는다.
 - 형식이 틀리면 파일 이름과 몇 번째 항목인지 밝힌 `ValueError`가 나고, 그 파일은 하나도 들어가지 않는다.
 - 한 파일 안에서 ID가 겹치면 오류다. 파일 사이에서 겹치면 나중 파일이 덮어쓰고 `version`이 오른다.
+
+## 자원순환 효과 계수 (`circular.json`, 2026-11-19)
+
+EU JRC 2021(Annex 5 (B)·(C), Table 2), US EPA WARM v16(Exhibit 7-12), 세계철강협회(Raw materials · Scrap)의 값을 원문 단위 그대로 넣었다. `meta`에 지표(`metric`), 재질, 경로, 기준선, 지역·국가·연도, 표 번호, 원문 단위, 적용 조건(`appliesTo`, `conditions`), 계수에 이미 든 것(`includes`), 주의(`caveats`)를 둔다. 기준값 키는 `judge/defaults.v1.json`의 `circular.<지표>.<재질>.<경로>[.<기준선>]`이고, 계산은 `judge/circular.py`가 한다. 해외 연구 시나리오 값이라 국내 사업장의 실측값이나 인증 감축량처럼 쓰지 않는다.

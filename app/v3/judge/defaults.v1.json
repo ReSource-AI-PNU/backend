@@ -52,14 +52,128 @@
     "labor.costPerHour": [
       "ref:최저임금:시간급@2026"
     ],
-    "emission.pyrolysis.폐플라스틱": [
-      "ref:문헌-Petrik2025:혼합폐플라스틱-열분해@2024-12"
-    ],
-    "emission.pyrolysis.포장재": [
-      "ref:문헌-Petrik2025:혼합폐플라스틱-열분해@2024-12"
-    ],
     "emission.transport.truck": [
       "ref:환경성적표지:트럭-운송@2024-09"
+    ],
+    "circular.ghg.PP.recycle.incineration": [
+      "ref:JRC2021:PP-재활용-소각대비@2021"
+    ],
+    "circular.ghg.PP.recycle.landfill": [
+      "ref:JRC2021:PP-재활용-매립대비@2021"
+    ],
+    "circular.yield.PP.recycle": [
+      "ref:JRC2021:PP-수율-신재대체율@2021"
+    ],
+    "circular.ghg.HDPE.recycle.incineration": [
+      "ref:JRC2021:HDPE-재활용-소각대비@2021"
+    ],
+    "circular.ghg.HDPE.recycle.landfill": [
+      "ref:JRC2021:HDPE-재활용-매립대비@2021"
+    ],
+    "circular.yield.HDPE.recycle": [
+      "ref:JRC2021:HDPE-수율-신재대체율@2021"
+    ],
+    "circular.ghg.LDPE.recycle.incineration": [
+      "ref:JRC2021:LDPE-재활용-소각대비@2021"
+    ],
+    "circular.ghg.LDPE.recycle.landfill": [
+      "ref:JRC2021:LDPE-재활용-매립대비@2021"
+    ],
+    "circular.yield.LDPE.recycle": [
+      "ref:JRC2021:LDPE-수율-신재대체율@2021"
+    ],
+    "circular.ghg.PET-비정질.recycle.incineration": [
+      "ref:JRC2021:PET-비정질-재활용-소각대비@2021"
+    ],
+    "circular.ghg.PET-비정질.recycle.landfill": [
+      "ref:JRC2021:PET-비정질-재활용-매립대비@2021"
+    ],
+    "circular.yield.PET-비정질.recycle": [
+      "ref:JRC2021:PET-비정질-수율-신재대체율@2021"
+    ],
+    "circular.ghg.PET-병급.recycle.incineration": [
+      "ref:JRC2021:PET-병급-재활용-소각대비@2021"
+    ],
+    "circular.ghg.PET-병급.recycle.landfill": [
+      "ref:JRC2021:PET-병급-재활용-매립대비@2021"
+    ],
+    "circular.yield.PET-병급.recycle": [
+      "ref:JRC2021:PET-병급-수율-신재대체율@2021"
+    ],
+    "circular.ghg.PS.recycle.incineration": [
+      "ref:JRC2021:PS-재활용-소각대비@2021"
+    ],
+    "circular.ghg.PS.recycle.landfill": [
+      "ref:JRC2021:PS-재활용-매립대비@2021"
+    ],
+    "circular.yield.PS.recycle": [
+      "ref:JRC2021:PS-수율-신재대체율@2021"
+    ],
+    "circular.ghg.EPS.recycle.incineration": [
+      "ref:JRC2021:EPS-재활용-소각대비@2021"
+    ],
+    "circular.ghg.EPS.recycle.landfill": [
+      "ref:JRC2021:EPS-재활용-매립대비@2021"
+    ],
+    "circular.yield.EPS.recycle": [
+      "ref:JRC2021:EPS-수율-신재대체율@2021"
+    ],
+    "circular.energy.PP.recycle": [
+      "ref:WARM16:PP-recycle-순에너지@2023-12"
+    ],
+    "circular.energy.PP.combustion": [
+      "ref:WARM16:PP-combustion-순에너지@2023-12"
+    ],
+    "circular.energy.PP.landfill": [
+      "ref:WARM16:PP-landfill-순에너지@2023-12"
+    ],
+    "circular.energy.HDPE.recycle": [
+      "ref:WARM16:HDPE-recycle-순에너지@2023-12"
+    ],
+    "circular.energy.HDPE.combustion": [
+      "ref:WARM16:HDPE-combustion-순에너지@2023-12"
+    ],
+    "circular.energy.HDPE.landfill": [
+      "ref:WARM16:HDPE-landfill-순에너지@2023-12"
+    ],
+    "circular.energy.LDPE.combustion": [
+      "ref:WARM16:LDPE-combustion-순에너지@2023-12"
+    ],
+    "circular.energy.LDPE.landfill": [
+      "ref:WARM16:LDPE-landfill-순에너지@2023-12"
+    ],
+    "circular.energy.PET.recycle": [
+      "ref:WARM16:PET-recycle-순에너지@2023-12"
+    ],
+    "circular.energy.PET.combustion": [
+      "ref:WARM16:PET-combustion-순에너지@2023-12"
+    ],
+    "circular.energy.PET.landfill": [
+      "ref:WARM16:PET-landfill-순에너지@2023-12"
+    ],
+    "circular.energy.PS.combustion": [
+      "ref:WARM16:PS-combustion-순에너지@2023-12"
+    ],
+    "circular.energy.PS.landfill": [
+      "ref:WARM16:PS-landfill-순에너지@2023-12"
+    ],
+    "circular.energy.골판지.recycle": [
+      "ref:WARM16:골판지-recycle-순에너지@2023-12"
+    ],
+    "circular.energy.골판지.combustion": [
+      "ref:WARM16:골판지-combustion-순에너지@2023-12"
+    ],
+    "circular.energy.골판지.landfill": [
+      "ref:WARM16:골판지-landfill-순에너지@2023-12"
+    ],
+    "circular.resource.철.철광석": [
+      "ref:worldsteel:철스크랩-철광석절감@2026-11"
+    ],
+    "circular.resource.철.석탄": [
+      "ref:worldsteel:철스크랩-석탄절감@2026-11"
+    ],
+    "circular.resource.철.석회석": [
+      "ref:worldsteel:철스크랩-석회석절감@2026-11"
     ]
   },
   "items": [

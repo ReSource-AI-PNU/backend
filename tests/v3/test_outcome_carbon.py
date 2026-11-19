@@ -95,9 +95,11 @@ def _change_method(app, stream_id):
     )
 
 
-def _change_vendor_process(app, _stream_id):
+def _change_vendor_process(app, _stream_id, process="매립"):
+    # 열분해는 산출물 용도·수율 근거가 없어 처리 단계 배출계수를 잇지 않는다(2026-11-19 자원순환 효과 보강).
+    # 계수가 있는 처리 방식으로 바꿔 "새 검수에는 새 조건"을 본다
     profile = app.store.get_vendor_profile(SAEGIL)
-    app.store.put_vendor_profile({**profile, "process": "열분해"})
+    app.store.put_vendor_profile({**profile, "process": process})
 
 
 def _change_factor_value(app, _stream_id):
@@ -127,8 +129,8 @@ def _change_factor_default(app, _stream_id):
 CHANGES = {
     # 매립 0.013203539 → 580 × (0.0186 − 0.013203539) ÷ 1000
     "current_method": (_change_method, 0.00313, "매립", "재활용"),
-    # 열분해 1.239 → 580 × (1.239 − 3.412554039) ÷ 1000
-    "vendor_process": (_change_vendor_process, -1.260661, "소각", "열분해(화학적 재활용)"),
+    # 매립 0.013203539 → 580 × (0.013203539 − 3.412554039) ÷ 1000
+    "vendor_process": (_change_vendor_process, -1.971623, "소각", "매립"),
     "factor_value": (_change_factor_value, -1.149212, "소각", "재활용"),
     "factor_default": (_change_factor_default, -1.439212, "소각", "재활용"),
 }
@@ -370,7 +372,7 @@ def test_correcting_the_process_fixes_a_new_basis_for_that_revision(restore_basi
 def test_correction_without_a_process_keeps_the_previous_one_not_todays_profile():
     app, sid, thread, stream_id = _confirmed()
     record = _record(app, sid, thread, stream_id, "2026-11-10")
-    _change_vendor_process(app, stream_id)  # 업체 정보를 열분해로 바꾼 뒤
+    _change_vendor_process(app, stream_id)  # 업체 정보의 처리 방식을 바꾼 뒤
     fixed = _correct(app, sid, record, "등급 기록", actualGrade="B")
     assert fixed["appliedProcess"] == record["appliedProcess"]
     assert _row(app, "2026-11-10")["process"] == "재활용"
@@ -424,3 +426,15 @@ def test_a_basis_saved_in_the_earlier_format_is_carried_over_as_recorded():
     assert row["carbon"]["value"] == pytest.approx(0.00313, abs=1e-6)
     assert any("이전 형식" in note for note in shown["notes"])
     assert shown["evidenceId"] == outcome_carbon.snapshot_id(legacy)
+
+
+def test_new_record_sent_to_pyrolysis_is_not_given_a_number():
+    """열분해로 보낸 새 검수는 탄소를 계산하지 않는다(공정 에너지·수율·열분해유 용도 근거가 없다)."""
+    app, sid, thread, stream_id = _confirmed()
+    _record(app, sid, thread, stream_id, "2026-11-10")
+    _change_vendor_process(app, stream_id, "열분해")
+    _record(app, sid, thread, stream_id, "2026-11-12")
+    fresh = _row(app, "2026-11-12")
+    assert fresh["process"] == "열분해(화학적 재활용)"
+    assert fresh["carbon"] is None
+    assert "배출계수가 없어" in fresh["carbonBasis"]["reason"]

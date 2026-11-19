@@ -36,6 +36,15 @@ UNITS: dict[str, tuple[str, float]] = {
     "kgCO2e/kg": ("co2/mass", 1.0),
     "tCO2e/t": ("co2/mass", 1.0),
     "kgCO2e/tkm": ("co2/freight", 1.0),
+    # 자원순환 효과(2026-11-19). 문헌값은 원문 단위 그대로 넣고 여기서 바꾼다
+    "kgCO2e/t": ("co2/mass", 0.001),
+    "GJ": ("energy", 1.0),
+    "GJ/월": ("energy/month", 1.0),
+    "GJ/t": ("energy/mass", 1.0),
+    # 1 million Btu = 1.05505585262 GJ, 1 short ton = 0.90718474 t (EPA WARM의 원문 단위)
+    "MMBtu/short ton": ("energy/mass", 1.05505585262 / 0.90718474),
+    "t/t": ("mass/mass", 1.0),
+    "kg/t": ("mass/mass", 0.001),
     "회": ("trip", 1.0),
     "회/월": ("trip/month", 1.0),
     "일": ("day", 1.0),

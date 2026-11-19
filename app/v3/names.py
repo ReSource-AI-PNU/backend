@@ -48,7 +48,12 @@ LABELS: dict[str, str] = {
     "difference": "현행 대비 차이",
     "sensitivity": "현행 가정이 다를 때의 차이",
     "carbon": "탄소 변화",
-    "carbonValue": "탄소 감축 환산액",
+    "carbonValue": "내부 탄소 가격 환산액(판단용)",
+    # 자원순환 효과(2026-11-19). 세 지표는 서로 다른 성과라 합치지 않는다
+    "ghgReduction": "예상 온실가스 감축량",
+    "energySaving": "예상 전 과정 에너지 절감량",
+    "virginDisplaced": "신재 원료 대체량",
+    "routedKg": "경로별 물량",
     "transport": "월 운반비",
     "labor": "전처리 인건비",
     "extraCost": "추가 운송비",
@@ -137,6 +142,13 @@ _KEYS: dict[str, tuple[str, str | None]] = {
     "priceDeviation": ("priceDeviation", None),
     "deviation": ("priceDeviation", None),
     "clause": ("clause", None),
+    # 자원순환 효과(judge/circular.py). 키 끝말로 role을 정한다
+    "ghgReduction": ("ghgReduction", None),
+    "energySaving": ("energySaving", None),
+    "virginDisplaced": ("virginDisplaced", None),
+    "routedKg": ("routedKg", None),
+    "bundleKg": ("routedKg", "묶음 수거로 재활용 경로에 드는 물량"),
+    "baselineEmission": ("carbon", "현행 처리 단계 배출"),
 }
 _ORDERED = sorted(_KEYS, key=len, reverse=True)
 _TAIL = re.compile(r"(?:_\d+|\d+)$")  # 풀이 겹침을 피하려고 붙인 번호, distanceKm0의 순번
