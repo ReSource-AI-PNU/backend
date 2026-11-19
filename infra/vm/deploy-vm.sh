@@ -157,6 +157,8 @@ if [ "$USE_OLLAMA" = h100 ]; then
   say "업체 측 오픈 모델: H100의 Ollama ($OLLAMA_URL)"
   put "$B" OLLAMA_BASE_URL "$OLLAMA_URL"
   put "$B" OLLAMA_FALLBACK 1
+  # 보관장 3D 스캔 재구성 서버(infra/h100/recon, 같은 H100의 8090). 답하지 않으면 화면이 스캔 올리기만 숨긴다
+  put "$B" V3_RECON_URL "${RECON_URL:-${OLLAMA_URL%:11434}:8090}"
 elif [ "$USE_OLLAMA" = gpu ]; then
   # GPU VM이 꺼져 있으면 켜고 Ollama가 답할 때까지 기다린다(시연 되돌리기가 실제 모델로 돈다). 실패해도 배포는 계속한다:
   # OLLAMA_FALLBACK=1이라 Ollama에 닿지 않는 차례는 Foundry가 답한다

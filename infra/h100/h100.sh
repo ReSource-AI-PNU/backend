@@ -66,7 +66,8 @@ point_app() {
     return
   fi
   say "앱의 Ollama 주소를 ${now:-없음} → $want 로 고치고 백엔드를 다시 띄운다"
-  app "sudo sed -i '/^OLLAMA_BASE_URL=/d;/^OLLAMA_FALLBACK=/d' /opt/rsai/env/backend.env && printf 'OLLAMA_BASE_URL=%s\nOLLAMA_FALLBACK=1\n' '$want' | sudo tee -a /opt/rsai/env/backend.env >/dev/null && cd /opt/rsai && sudo docker compose up -d --force-recreate backend >/dev/null 2>&1"
+  # 보관장 3D 스캔 재구성 서버(infra/h100/recon)도 같은 사설 주소의 8090이다
+  app "sudo sed -i '/^OLLAMA_BASE_URL=/d;/^OLLAMA_FALLBACK=/d;/^V3_RECON_URL=/d' /opt/rsai/env/backend.env && printf 'OLLAMA_BASE_URL=%s\nOLLAMA_FALLBACK=1\nV3_RECON_URL=http://%s:8090\n' '$want' '$1' | sudo tee -a /opt/rsai/env/backend.env >/dev/null && cd /opt/rsai && sudo docker compose up -d --force-recreate backend >/dev/null 2>&1"
 }
 
 case "${1:-status}" in
