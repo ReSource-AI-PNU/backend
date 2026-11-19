@@ -763,11 +763,17 @@ def _camera_path(W, D, path, ring, n_video, rng, start_south=False):
     walk: 벽을 따라 놓인 더미를 보며 둥근 사각형 길을 걷는다(바깥을 보되 걷는 쪽으로 15° 앞을 본다). 안내 문구가 시키는 찍는 법.
     inward: 가운데 더미 섬을 둘러보며 안쪽을 본다.
     spin: 방 가운데 작은 타원을 돌며 바깥을 본다(거의 제자리 회전). 안내 문구가 하지 말라는 찍는 법이고, 실패를 알아채는지 본다.
+    island: (시연 장면) 방 가운데 두 줄로 놓인 더미를 앞줄·뒷줄 모두 마주 보며 둥근 사각형 길로 한 바퀴 돈다. 가슴 높이 1.4m.
     """
-    ax, ay = ring
+    if path == "island":
+        ax, ay, cy, half_len = ring
+    else:
+        ax, ay = ring[:2]
     loops = rng.uniform(0.95, 1.1) if path != "walk" else rng.uniform(0.9, 1.0)
     th0 = -math.pi / 2 if start_south else rng.uniform(0, 2 * math.pi)
-    h0 = rng.uniform(1.4, 1.7)
+    h0 = 1.4 if path == "island" else rng.uniform(1.4, 1.7)
+    if path == "island":
+        loops = 1.04
     shake = np.cumsum(
         np.random.default_rng(rng.randrange(10**6)).normal(0, 1, (n_video, 5)), axis=0
     )
@@ -775,7 +781,7 @@ def _camera_path(W, D, path, ring, n_video, rng, start_south=False):
     shake = shake / (np.abs(shake).max(axis=0) + 1e-9)
     if path == "strafe":
         xr, y_cam = ring
-    if path == "walk":
+    if path in ("walk", "island"):
         pts, arc, total, tang, normal = _rounded_rect(ax, ay)
         s0 = arc[int(((th0 % (2 * math.pi)) / (2 * math.pi)) * len(arc)) % len(arc)]
     poses = []
@@ -795,6 +801,11 @@ def _camera_path(W, D, path, ring, n_video, rng, start_south=False):
             )
             dirv = Vector((math.sin(yaw), math.cos(yaw), 0))
             th = 0.0
+        elif path == "island":
+            sv = (s0 + loops * total * t) % total
+            k = int(np.searchsorted(arc, sv, side="right") - 1) % len(arc)
+            x, y = float(pts[k, 0]), float(pts[k, 1]) + cy
+            dirv = Vector((0, 0, 0))
         elif path == "walk":
             sv = (s0 + loops * total * t) % total
             k = int(np.searchsorted(arc, sv, side="right") - 1) % len(arc)
@@ -809,7 +820,9 @@ def _camera_path(W, D, path, ring, n_video, rng, start_south=False):
         z = h0 + 0.025 * math.sin(2 * math.pi * 1.8 * f / 30.0) + 0.03 * shake[f, 0]
         x += 0.04 * shake[f, 1]
         y += 0.04 * shake[f, 2]
-        if path == "strafe":
+        if path == "island":
+            look = Vector((max(-half_len, min(half_len, x)), cy, 0.4))
+        elif path == "strafe":
             look = Vector((x, y, 0)) + dirv * 2.6
             look.z = 0.4
         elif path in ("walk", "spin"):
@@ -841,15 +854,18 @@ def main() -> None:
     scene = bpy.context.scene
     demo = a["demo"]
     if demo:
-        W, D, mode, dark, portrait = 9.0, 7.0, "strafe", False, a["orient"] != "landscape"
+        # 잘 찍은 조건으로 연출한 시연 장면: 넓은 방, 벽에서 떨어진 두 줄 더미, 가로·가슴 높이로 한 바퀴
+        W, D, mode, dark, portrait = 11.0, 8.0, "island", False, a["orient"] == "portrait"
     else:
         W, D = rng.uniform(7.0, 11.0), rng.uniform(6.0, 9.0)
         mode = "inward" if a["seed"] % 3 == 0 else ("outward" if a["seed"] % 5 == 4 else "strafe")
         dark = a["seed"] % 4 == 2
         portrait = a["seed"] % 2 == 0
-    path = {"inward": "inward", "outward": "spin", "strafe": "strafe"}[mode]
-    n_frames = a["frames"] or (56 if demo else rng.choice([24, 32, 48, 64, 80]))
-    if path == "strafe":
+    path = {"inward": "inward", "outward": "spin", "strafe": "strafe", "island": "island"}[mode]
+    n_frames = a["frames"] or (72 if demo else rng.choice([24, 32, 48, 64, 80]))
+    if path == "island":
+        ring = (4.6, 3.3, 0.07, 1.8)
+    elif path == "strafe":
         ring = (W / 2 - 1.0, max(-D / 2 + 0.6, D / 2 - 1.6 - rng.uniform(2.2, 2.8)))
     elif path == "spin":
         ring = (max(1.0, W / 2 - 2.6), max(0.8, D / 2 - 2.6))
@@ -861,48 +877,19 @@ def main() -> None:
     builder = Builder(rng)
     truth_piles = []
     if demo:
-        # 한빛정밀 보관장: 뒷벽을 따라 섞여 놓였다(스프루 톤백·필름·불량 사출품 팔레트가 0.7m씩 떨어져 한 줄, 옆벽에 퍼지 드럼과 필름)
+        # 한빛정밀 보관장(연출): 벽에서 1.2m 넘게 떨어진 두 줄. 뒷줄 스프루 톤백·필름·퍼지 드럼, 앞줄 불량 사출품 팔레트·필름.
+        # 서로 다른 폐기물이 0.55~0.85m로 붙어 있어 섞일 위험이 있다(정리안이 나아지는 것이 보이게)
+        tonbag = {"kind": "tonbag", "n": 2, "a": 1.0, "b": 1.0, "h": 1.0, "w": 2.02, "d": 1.0}
+        film = {"kind": "film", "a": 1.1, "b": 0.8, "h": 0.7, "w": 1.1, "d": 0.8}
+        pallet = {"kind": "pallet", "layers": 2, "w": 1.1, "d": 1.1}
+        drums = {"kind": "drums", "nx": 2, "ny": 1, "w": 1.17, "d": 0.585}
+        film2 = {"kind": "film", "a": 0.9, "b": 0.7, "h": 0.6, "w": 0.9, "d": 0.7}
         layout = [
-            (
-                "sprue",
-                "st_sprue",
-                {"kind": "tonbag", "n": 2, "a": 1.0, "b": 1.0, "h": 1.0, "w": 2.02, "d": 1.0},
-                -2.6,
-                2.75,
-                0.0,
-            ),
-            (
-                "film",
-                "st_film",
-                {"kind": "film", "a": 1.1, "b": 0.8, "h": 0.7, "w": 1.1, "d": 0.8},
-                -0.34,
-                2.85,
-                0.0,
-            ),
-            (
-                "defect",
-                "st_defect",
-                {"kind": "pallet", "layers": 2, "w": 1.1, "d": 1.1},
-                1.46,
-                2.7,
-                0.0,
-            ),
-            (
-                "purge",
-                "st_purge",
-                {"kind": "drums", "nx": 2, "ny": 1, "w": 1.17, "d": 0.585},
-                3.3,
-                1.5,
-                math.pi / 2,
-            ),
-            (
-                "film2",
-                "st_film",
-                {"kind": "film", "a": 0.9, "b": 0.7, "h": 0.6, "w": 0.9, "d": 0.7},
-                -3.6,
-                0.6,
-                0.4,
-            ),
+            ("sprue", "st_sprue", tonbag, -1.7, 0.9, 0.0),
+            ("film", "st_film", film, 0.41, 0.9, 0.0),
+            ("purge", "st_purge", drums, 2.27, 0.9, 0.0),
+            ("defect", "st_defect", pallet, -1.2, -0.7, 0.0),
+            ("film2", "st_film", film2, 0.8, -0.7, 0.0),
         ]
         placed = [
             {"spec": s, "x": x, "y": y, "yaw": yaw, "name": nm, "stream": st}

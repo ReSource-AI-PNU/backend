@@ -292,10 +292,12 @@ def run(
     grid = _Grid(lo_xy, hi_xy, GRID)
     above = (Q[:, 2] > 0.03) & (Q[:, 2] < PILE_MAX_Z)
     top, count = grid.top(Q[above])
+    # 칸을 더미로 칠지는 바닥 점까지 넣은 높이 중앙값으로 정한다(더미 둘레의 떠 있는 점 몇 개로 자국이 부풀지 않게)
+    mid, _ = grid.top(Q[(Q[:, 2] > -0.05) & (Q[:, 2] < PILE_MAX_Z)], q=0.5)
     walls = _wall_cells(top, count, grid)
     top = np.where(walls, 0.0, top)
     count = np.where(walls, 0, count)
-    piles_mask = _pile_masks(top, count)
+    piles_mask = _pile_masks(np.where(walls, 0.0, mid), count)
     floor_cells = grid.occupancy(Q[np.abs(Q[:, 2]) < 0.03])
     piles = []
     labels_grid = np.zeros(grid.shape, np.int32)
@@ -387,15 +389,17 @@ def run(
     return {"result": result, "points": points, "debug": debug}
 
 
-def _smooth(depth: np.ndarray, rel: float = 0.04) -> np.ndarray:
-    """깊이 경계의 떠 있는 점(앞 물체와 뒤 벽 사이에 번진 점)을 지운다: 이웃 칸과 깊이가 4%보다 크게 다르면 버린다."""
-    d = depth
-    diff = np.zeros_like(d)
-    diff[:, 1:, :] = np.maximum(diff[:, 1:, :], np.abs(d[:, 1:, :] - d[:, :-1, :]))
-    diff[:, :-1, :] = np.maximum(diff[:, :-1, :], np.abs(d[:, 1:, :] - d[:, :-1, :]))
-    diff[:, :, 1:] = np.maximum(diff[:, :, 1:], np.abs(d[:, :, 1:] - d[:, :, :-1]))
-    diff[:, :, :-1] = np.maximum(diff[:, :, :-1], np.abs(d[:, :, 1:] - d[:, :, :-1]))
-    return diff < rel * np.maximum(d, 1e-6)
+def _smooth(depth: np.ndarray, rel: float = 0.05, size: int = 5) -> np.ndarray:
+    """깊이 경계의 떠 있는 점(앞 물체와 뒤 바닥·벽 사이에 번진 점)을 지운다.
+
+    5×5 칸 안의 깊이 최댓값과 최솟값 차가 그 칸 깊이의 5%를 넘으면 버린다. 신경망 깊이는 경계가 여러 칸에 걸쳐
+    부드럽게 이어지므로, 바로 옆 칸만 비교하면 경계 띠가 남아 더미 자국이 사방으로 부푼다.
+    """
+    from scipy import ndimage
+
+    hi = ndimage.maximum_filter(depth, size=(1, size, size))
+    lo = ndimage.minimum_filter(depth, size=(1, size, size))
+    return (hi - lo) < rel * np.maximum(depth, 1e-6)
 
 
 def _consistent(

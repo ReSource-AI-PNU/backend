@@ -1,10 +1,10 @@
 {
  "assign": {
-  "p1": "st_purge",
-  "p2": "st_defect",
-  "p3": "st_film",
-  "p4": "st_sprue",
-  "p5": "st_film"
+  "p1": "st_defect",
+  "p2": "st_film",
+  "p3": "st_sprue",
+  "p4": "st_film",
+  "p5": "st_purge"
  },
  "weighed": {},
  "note": "합성 장면 정답과 바닥 자국 IoU로 짝지은 결과",
@@ -12,47 +12,47 @@
   {
    "pred": "p1",
    "truth": "g4",
-   "kind": "drums",
-   "streamId": "st_purge",
-   "iou": 0.48,
-   "volumePred": 0.485,
-   "volumeTrue": 0.4633
+   "kind": "pallet",
+   "streamId": "st_defect",
+   "iou": 0.669,
+   "volumePred": 0.898,
+   "volumeTrue": 0.6471
   },
   {
    "pred": "p2",
-   "truth": "g3",
-   "kind": "pallet",
-   "streamId": "st_defect",
-   "iou": 0.775,
-   "volumePred": 0.756,
-   "volumeTrue": 0.7596
-  },
-  {
-   "pred": "p3",
-   "truth": "g2",
-   "kind": "film",
-   "streamId": "st_film",
-   "iou": 0.536,
-   "volumePred": 0.231,
-   "volumeTrue": 0.3272
-  },
-  {
-   "pred": "p4",
-   "truth": "g1",
-   "kind": "tonbag",
-   "streamId": "st_sprue",
-   "iou": 0.649,
-   "volumePred": 1.222,
-   "volumeTrue": 2.0677
-  },
-  {
-   "pred": "p5",
    "truth": "g5",
    "kind": "film",
    "streamId": "st_film",
-   "iou": 0.527,
-   "volumePred": 0.124,
-   "volumeTrue": 0.2043
+   "iou": 0.568,
+   "volumePred": 0.304,
+   "volumeTrue": 0.2022
+  },
+  {
+   "pred": "p3",
+   "truth": "g1",
+   "kind": "tonbag",
+   "streamId": "st_sprue",
+   "iou": 0.7,
+   "volumePred": 2.201,
+   "volumeTrue": 2.069
+  },
+  {
+   "pred": "p4",
+   "truth": "g2",
+   "kind": "film",
+   "streamId": "st_film",
+   "iou": 0.576,
+   "volumePred": 0.464,
+   "volumeTrue": 0.3263
+  },
+  {
+   "pred": "p5",
+   "truth": "g3",
+   "kind": "drums",
+   "streamId": "st_purge",
+   "iou": 0.606,
+   "volumePred": 0.765,
+   "volumeTrue": 0.4633
   }
  ]
 }
