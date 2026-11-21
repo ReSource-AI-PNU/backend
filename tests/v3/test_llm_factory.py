@@ -172,3 +172,22 @@ def test_devserver_main_reads_v3_llm_from_the_environment(monkeypatch):
     monkeypatch.delenv("ANTHROPIC_API_KEY_FILE", raising=False)
     with pytest.raises(SystemExit, match="ANTHROPIC_API_KEY"):
         devserver.main(["--port", "0"])
+
+
+def test_vendor_without_model_uses_ollama_when_address_is_set():
+    # 업체 측 기본 모델은 H100의 오픈 모델이다(2026-11-22). 회사 측과 foundry를 명시한 업체는 그대로다
+    env = {**FOUNDRY, "OLLAMA_BASE_URL": "http://10.72.0.4:11434"}
+    factory = build_llm_factory("foundry", env, strict=True)
+    default = factory("vendor", "org_new", None)
+    assert isinstance(default, OllamaChat) and default.model == "qwen2.5:32b"
+    assert isinstance(factory("vendor", "org_new", {}), OllamaChat)
+    assert isinstance(factory("company", "org_hanbit", None), FoundryChat)
+    assert isinstance(factory("vendor", "org_saegil", {"provider": "foundry"}), FoundryChat)
+    named = build_llm_factory(
+        "foundry", {**env, "V3_VENDOR_OLLAMA_MODEL": "qwen2.5:7b"}, strict=True
+    )
+    assert named("vendor", "org_new", None).model == "qwen2.5:7b"
+    # 주소가 없으면 기본값을 쓰지 않고 주 모델이 답한다
+    assert isinstance(
+        build_llm_factory("foundry", FOUNDRY, strict=True)("vendor", "org_new", None), FoundryChat
+    )

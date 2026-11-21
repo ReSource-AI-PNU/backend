@@ -110,6 +110,51 @@ def test_registry_org_filter(registry):
     assert registry.get(law.id, "org_b").value is None
 
 
+def test_registry_get_many_matches_get(registry):
+    """get_many는 get을 하나씩 부른 것과 같다: 없는 ID는 빠지고, 볼 수 없는 것은 None이다."""
+    mine = registry.put(evidence())
+    law = registry.put(evidence("law:폐기물관리법:제17조@2026-01-01", access=("*",)))
+    wanted = [mine.id, law.id, "measure:없는:것", mine.id]
+    seen = registry.get_many(wanted, "org_b")
+    assert seen == {mine.id: None, law.id: registry.get(law.id, "org_b")}
+    assert registry.get_many(wanted, "org_a") == {
+        mine.id: registry.get(mine.id, "org_a"),
+        law.id: registry.get(law.id, "org_a"),
+    }
+    assert registry.get_many([], "org_a") == {}
+
+
+def test_registry_list_feedback_filters_by_type(registry):
+    """list_feedback은 meta.feedback.type이 같은 근거만 ID 순서로 준다(list 전체를 거른 것과 같다)."""
+    registry.put(evidence())  # feedback 없음
+    registry.put(
+        evidence("human:org_a:교정:2", kind="human", meta={"feedback": {"type": "correction"}})
+    )
+    registry.put(
+        evidence("human:org_a:교정:1", kind="human", meta={"feedback": {"type": "correction"}})
+    )
+    registry.put(
+        evidence(
+            "human:org_v:결과:1",
+            kind="human",
+            access=("org_v",),
+            meta={"feedback": {"type": "outcome"}},
+        )
+    )
+    registry.put(evidence("calc:org_v:결과:1", kind="calc", meta={"feedback": "outcome"}))
+    for kind in ("correction", "outcome", "model_run"):
+        expected = [
+            e
+            for e in registry.list(org_id=None)
+            if isinstance(e.meta.get("feedback"), dict) and e.meta["feedback"].get("type") == kind
+        ]
+        assert registry.list_feedback(kind) == expected
+    assert [e.id for e in registry.list_feedback("correction")] == [
+        "human:org_a:교정:1",
+        "human:org_a:교정:2",
+    ]
+
+
 def test_registry_keeps_empty_access_private(registry):
     """access가 비어 있으면 어느 조직도 볼 수 없어야 한다(공개로 바뀌면 안 된다)."""
     hidden = registry.put(evidence("measure:org_a:st_a1:수분@2026-11-10", access=()))
@@ -303,3 +348,20 @@ def test_demo_seed_gives_same_state_in_both_stores(engine):
         assert sql_store.list_streams(org["id"]) == plain(memory_store.list_streams(org["id"]))
         mine = plain([e.to_dict() for e in memory_registry.list(org_id=org["id"])])
         assert plain([e.to_dict() for e in sql_registry.list(org_id=org["id"])]) == mine
+
+
+def test_sql_reads_are_not_shared(engine):
+    """SQL 구현은 읽을 때 복사하지 않고 행을 새로 읽는다. 읽은 값을 고쳐도 저장된 값은 그대로다."""
+    registry, store = SqlRegistry(engine), SqlStore(engine, clock)
+    saved = registry.put(evidence(meta={"row": 2, "columns": ["오염도"]}))
+    registry.get(saved.id).meta["columns"].append("바꿈")
+    registry.get_many([saved.id])[saved.id].meta["row"] = 99
+    registry.list()[0].meta["row"] = 98
+    assert registry.get(saved.id).meta == {"row": 2, "columns": ["오염도"]}
+
+    store.put_org({"id": "org_a", "name": "가", "role": "emitter"})
+    store.put_stream({"id": "st_a1", "orgId": "org_a", "monthlyKg": 600})
+    store.get_org("org_a")["name"] = "바꿈"
+    store.list_streams("org_a")[0]["monthlyKg"] = 0
+    assert store.get_org("org_a")["name"] == "가"
+    assert store.list_streams("org_a")[0]["monthlyKg"] == 600

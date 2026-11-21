@@ -27,7 +27,7 @@ from sqlalchemy.orm import Mapped, Session, mapped_column
 from app.platform.db import Base
 from app.v3.account_store import EmailTaken, iso, like_pattern, parse_iso, utc_now
 from app.v3.evidence.model import Evidence
-from app.v3.evidence.registry import EvidenceForbidden, EvidenceNotFound
+from app.v3.evidence.registry import EvidenceForbidden, EvidenceNotFound, is_feedback
 from app.v3.store import SHARED_THREAD_STATUSES, NotFound, VersionConflict, system_clock
 from app.v3.untrusted import numbered_label
 
@@ -143,7 +143,8 @@ def _to_evidence(row: EvidenceRow) -> Evidence:
         valid_until=row.valid_until,
         access=tuple(row.access or ()),
         version=int(row.version),
-        meta=copy.deepcopy(data.get("meta") or {}),
+        # 행의 JSON은 조회할 때마다 새로 읽힌 값이라 다른 곳과 나누지 않는다. 복사하지 않는다
+        meta=data.get("meta") or {},
     )
 
 
@@ -220,6 +221,29 @@ class SqlRegistry:
         with _transaction(self._engine) as db:
             items = [_to_evidence(row) for row in db.scalars(query).all()]
         return [item for item in sorted(items, key=lambda e: e.id) if item.visible_to(org_id)]
+
+    def get_many(
+        self, evidence_ids: Iterable[str], org_id: str | None = None
+    ) -> dict[str, Evidence | None]:
+        wanted = sorted(set(evidence_ids))
+        found: dict[str, Evidence | None] = {}
+        with _transaction(self._engine) as db:
+            for start in range(0, len(wanted), 500):
+                chunk = wanted[start : start + 500]
+                for row in db.scalars(select(EvidenceRow).where(EvidenceRow.id.in_(chunk))):
+                    item = _to_evidence(row)
+                    found[item.id] = item if item.visible_to(org_id) else None
+        return found
+
+    def list_feedback(self, feedback_type: str) -> list[Evidence]:
+        # 근거 표 전체를 읽지 않도록 DB에서 먼저 거른다. 같은 조건을 파이썬에서 한 번 더 본다
+        kind = EvidenceRow.payload[("meta", "feedback", "type")].as_string()
+        with _transaction(self._engine) as db:
+            rows = db.scalars(select(EvidenceRow).where(kind == feedback_type)).all()
+            items = [_to_evidence(row) for row in rows]
+        return [
+            item for item in sorted(items, key=lambda e: e.id) if is_feedback(item, feedback_type)
+        ]
 
 
 # ── 저장소 ───────────────────────────────────────────────────────────
@@ -341,7 +365,8 @@ class SqlStore:
             row = self._row(db, kind, key)
             if row is None:
                 raise NotFound(f"{kind}: {key}")
-            return copy.deepcopy(row.payload)
+            # 읽기만 하는 자리는 복사하지 않는다: 행의 JSON은 트랜잭션마다 DB에서 새로 읽힌 값이다
+            return row.payload
 
     def _put(self, kind: str, key: str, value: dict[str, Any]) -> dict[str, Any]:
         with _transaction(self._engine) as db:
@@ -350,12 +375,12 @@ class SqlStore:
 
     def _all(self, kind: str) -> list[dict[str, Any]]:
         with _transaction(self._engine) as db:
-            return [copy.deepcopy(row.payload) for row in self._rows(db, kind)]
+            return [row.payload for row in self._rows(db, kind)]
 
     def _per_session(self, kind: str, session_id: str) -> list[dict[str, Any]]:
         with _transaction(self._engine) as db:
             row = self._row(db, kind, session_id)
-            return copy.deepcopy(row.payload.get("items", [])) if row is not None else []
+            return row.payload.get("items", []) if row is not None else []
 
     def _upsert(self, kind: str, session_id: str, item: dict[str, Any]) -> dict[str, Any]:
         with _transaction(self._engine) as db:

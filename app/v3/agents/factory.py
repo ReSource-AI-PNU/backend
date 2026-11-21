@@ -14,15 +14,18 @@
 | OLLAMA_BASE_URL | 업체가 ollama를 골랐을 때 그 업체의 모델 주소 |
 | OLLAMA_NUM_CTX | Ollama 문맥 길이(기본 16384. 에이전트 입력이 기본값 2048~4096보다 길다) |
 | V3_LLM_ALL_VENDORS | 1이면 ollama를 고른 업체도(주소가 없을 때) 주 모델(foundry 또는 anthropic)이 답한다 |
+| V3_VENDOR_OLLAMA_MODEL | 모델을 정하지 않은 업체가 쓸 Ollama 모델(기본 qwen2.5:32b). OLLAMA_BASE_URL이 있을 때만 쓴다 |
 | OLLAMA_FALLBACK | 1이면 업체 측 모델을 만들 때 Ollama가 살아 있는지 먼저 보고(3초), 닿지 않으면 그 차례는 주 모델이 답한다 |
 
 - 돌려주는 값은 llm_factory(role, org_id, model) -> LLM | None 이다. None이면 service가 규칙 정책으로 돈다.
-- 업체가 ollama를 골랐는데 주소가 없으면 strict 서버는 설정 오류로 중단한다.
-  V3_LLM_ALL_VENDORS=1은 주 모델(foundry·anthropic)이 답하게 한다. GPU 없이
+- 업체 측 기본 모델은 Ollama(H100의 qwen2.5:32b)다(2026-11-22). 프로필에 모델이 없는 업체도 OLLAMA_BASE_URL이
+  있으면 Ollama로 답한다. foundry를 명시한 업체만 주 모델을 쓴다.
+- 업체가 ollama를 골랐는데 주소가 없으면 strict 서버는 설정 오류로 중단한다(다른 모델로 바꿔 부르지 않는다).
+  V3_LLM_ALL_VENDORS=1은 이 규칙을 풀어 주 모델(foundry·anthropic)이 답하게 한다. GPU 없이
   CPU로 도는 Ollama는 실시간 대화에 너무 느려(2026-11-18 측정: 6천 토큰 프롬프트에 qwen2.5:7b 8분 30초)
   배포에서는 Ollama 주소를 비우고 이 설정을 쓴다. 그때도 화면에는
   설정한 모델과 실제로 답한 모델이 따로 나온다.
-- OLLAMA_FALLBACK=1(배포의 USE_OLLAMA=gpu): Ollama는 East US의 GPU VM에 있고 쓰지 않을 때 꺼 둔다. 꺼져 있으면
+- OLLAMA_FALLBACK=1(배포의 USE_OLLAMA=h100·gpu): Ollama는 H100 계산 인스턴스(전에는 East US의 GPU VM)에 있고 쓰지 않을 때 꺼 둔다. 꺼져 있으면
   매 차례가 시간 초과(120초) 두 번 뒤 담당자에게 넘어가므로, 모델을 만들 때 /api/version을 3초 안에 물어 닿지 않으면
   처음부터 주 모델을 준다. 그래서 대화 기록의 "실제로 답한 모델"도 주 모델로 정확히 남는다(설정은 ollama 그대로).
 - 설정이 빠졌을 때: strict면 LlmConfigError로 멈춘다(로컬·HTTP 서버). 명시적 개발용
@@ -56,6 +59,7 @@ DEFAULT_REASONING_EFFORT = "low"
 DEFAULT_MAX_COMPLETION_TOKENS = 4000
 DEFAULT_OLLAMA_NUM_CTX = 16384
 OLLAMA_PROBE_TIMEOUT = 3.0
+DEFAULT_VENDOR_OLLAMA_MODEL = "qwen2.5:32b"
 
 
 def ollama_reachable(base_url: str, timeout: float = OLLAMA_PROBE_TIMEOUT) -> bool:
@@ -208,8 +212,13 @@ def build_llm_factory(
             logger.warning("%s 기본값으로 돈다", error)
             num_ctx = DEFAULT_OLLAMA_NUM_CTX
 
+    vendor_default = _value(env, "V3_VENDOR_OLLAMA_MODEL") or DEFAULT_VENDOR_OLLAMA_MODEL
+
     def factory(role: str, org_id: str, model: dict[str, Any] | None = None) -> Any:
         picked = model or {}
+        if role == "vendor" and not picked and ollama:
+            # 모델을 정하지 않은 업체는 H100의 오픈 모델로 답한다(업체 자료를 외부 모델 서비스로 보내지 않는다)
+            picked = {"provider": "ollama", "name": vendor_default}
         if role == "vendor" and picked.get("provider") == "ollama":
             if ollama and picked.get("name"):
                 if fallback and not probe(ollama):

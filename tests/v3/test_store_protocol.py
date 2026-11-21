@@ -42,7 +42,7 @@ def test_sql_store_has_everything_the_memory_store_has():
 @pytest.mark.parametrize("implementation", [(REGISTRY, "InMemoryRegistry"), (SQL, "SqlRegistry")])
 def test_registry_implementations_follow_the_protocol(implementation):
     protocol = wiring.class_methods(REGISTRY, "EvidenceRegistry")
-    assert set(protocol) == {"put", "get", "exists", "list"}
+    assert set(protocol) == {"put", "get", "exists", "list", "get_many", "list_feedback"}
     methods = wiring.class_methods(*implementation)
     for name, node in protocol.items():
         assert wiring.shape_of(methods[name]) == wiring.shape_of(node), name

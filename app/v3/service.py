@@ -1861,8 +1861,81 @@ def _result_view(session: dict[str, Any], viewer: str, owner: bool) -> dict[str,
 def _events_view(
     app: App, events: list[dict[str, Any]], viewer: str, owner: bool = True
 ) -> list[dict[str, Any]]:
-    seen: dict[str, bool] = {}
+    seen = _evidence_access(app, events, viewer)
     return [_event_view(app, event, viewer, seen, owner) for event in events]
+
+
+class _RememberedRegistry:
+    """뷰 하나를 만드는 동안 get 결과를 기억하는 레지스트리. 판단 그래프는 같은 근거를 여러 번 확인한다.
+
+    쓰기(put·delete·clear)는 그대로 넘기고 기억을 비운다. 나머지는 안쪽 레지스트리를 그대로 부른다.
+    """
+
+    def __init__(self, inner: Any) -> None:
+        self._inner = inner
+        self._seen: dict[tuple[str, str | None], Any] = {}
+
+    def __getattr__(self, name: str) -> Any:
+        found = getattr(self._inner, name)
+        if name in ("put", "delete", "clear"):
+
+            def write(*args: Any, **kwargs: Any) -> Any:
+                self._seen.clear()
+                return found(*args, **kwargs)
+
+            return write
+        return found
+
+    def get(self, evidence_id: str, org_id: str | None = None) -> Any:
+        key = (evidence_id, org_id)
+        if key not in self._seen:
+            try:
+                self._seen[key] = self._inner.get(evidence_id, org_id)
+            except (EvidenceNotFound, EvidenceForbidden) as error:
+                self._seen[key] = error
+        found = self._seen[key]
+        if isinstance(found, (EvidenceNotFound, EvidenceForbidden)):
+            raise type(found)(*found.args)
+        return found
+
+
+def _view_app(app: App) -> App:
+    """get_view가 쓰는 앱(얕은 복사). 근거 조회 결과를 뷰 하나 동안 기억한다."""
+    viewed = copy.copy(app)
+    viewed.registry = _RememberedRegistry(app.registry)
+    return viewed
+
+
+def _evidence_ids_in(node: Any, found: set[str]) -> set[str]:
+    """실행 기록 detail 안에 근거 ID처럼 생긴 키와 값을 모은다(_event_view가 거르는 자리와 같다)."""
+    if isinstance(node, dict):
+        for key, value in node.items():
+            if _is_evidence_id(key):
+                found.add(key)
+            _evidence_ids_in(value, found)
+    elif isinstance(node, list):
+        for value in node:
+            _evidence_ids_in(value, found)
+    elif _is_evidence_id(node):
+        found.add(node)
+    return found
+
+
+def _evidence_access(app: App, events: list[dict[str, Any]], viewer: str) -> dict[str, bool]:
+    """실행 기록에 실린 근거 ID마다 보는 조직이 열 수 있는지를 한 번에 읽어 둔다.
+
+    근거 ID마다 레지스트리를 따로 부르면 대화 하나에 조회가 천 번 넘게 나간다. 없는 ID는 근거가 아니라
+    표시이므로 열 수 있다고 본다(_event_view의 can_open과 같은 규칙). get_many가 없는 레지스트리는
+    can_open이 하나씩 확인한다.
+    """
+    get_many = getattr(app.registry, "get_many", None)
+    if get_many is None:
+        return {}
+    wanted: set[str] = set()
+    for event in events:
+        _evidence_ids_in(event.get("detail") or {}, wanted)
+    found = get_many(wanted, viewer) if wanted else {}
+    return {evidence_id: found.get(evidence_id, True) is not None for evidence_id in wanted}
 
 
 def _recheck(app: App, org_id: str) -> None:
@@ -1994,6 +2067,7 @@ def get_view(app: App, session_id: str, viewer: str) -> dict[str, Any]:
         # 저장소를 직접 고친 변경까지 잡으려고 뷰를 만들 때도 다시 확인한다(바뀐 것이 없으면 아무것도 쓰지 않는다).
         # 체험하기(읽기 전용)에서는 쓰지 않고, 진행이 돌고 있으면 그 진행에 맡긴다(같은 대화를 함께 고치지 않게)
         Orchestrator(app).recheck(session_id)
+    app = _view_app(app)
     me = app.store.get_org(viewer)
     work = session["work"]
     threads = _visible_threads(app, session, viewer)
@@ -2014,6 +2088,7 @@ def get_view(app: App, session_id: str, viewer: str) -> dict[str, Any]:
             if e.get("threadId") in thread_ids
             and (e["kind"] in VENDOR_EVENT_KINDS or (e.get("detail") or {}).get("orgId") == viewer)
         ]
+    questions = app.store.list_questions(session_id) if owner else []
     return {
         "session": {
             "id": session["id"],
@@ -2031,10 +2106,8 @@ def get_view(app: App, session_id: str, viewer: str) -> dict[str, Any]:
         "result": _outside_view(app, session, _result_view(session, viewer, owner))
         if owner and session["work"].get("result")
         else _result_view(session, viewer, owner),
-        "questions": [
-            _question_view(q) for q in (app.store.list_questions(session_id) if owner else [])
-        ],
-        "questionBatch": _question_batch(app.store.list_questions(session_id)) if owner else None,
+        "questions": [_question_view(q) for q in questions],
+        "questionBatch": _question_batch(questions) if owner else None,
         "unresolved": list(work.get("unresolved") or []) if owner else [],
         "approvals": [
             {

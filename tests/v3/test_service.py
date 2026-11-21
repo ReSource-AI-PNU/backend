@@ -316,7 +316,7 @@ def test_llm_factory_contract():
     view = to_approval(app)
     assert ("company", HANBIT, None) in asked
     assert ("vendor", NAMHAE, {"provider": "ollama", "name": "qwen2.5:32b"}) in asked
-    assert ("vendor", SAEGIL, {"provider": "foundry", "name": "gpt-5-mini"}) in asked
+    assert ("vendor", SAEGIL, {"provider": "ollama", "name": "qwen2.5:32b"}) in asked
     assert {role for role, _, _ in asked} == {"company", "vendor"}
     assert thread_of(view, SAEGIL)["vendorModel"]["provider"] == "rule"
 

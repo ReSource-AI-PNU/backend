@@ -33,6 +33,7 @@ from typing import Any
 
 from app.v3 import ids, outcome_carbon
 from app.v3.evidence.model import Evidence
+from app.v3.evidence.registry import is_feedback
 from app.v3.intake import grade_model
 from app.v3.judge.common import quality
 from app.v3.store import NotFound
@@ -152,11 +153,9 @@ def _with_origin(app: Any, record: dict[str, Any]) -> dict[str, Any]:
 
 def _feedback(app: Any, kind: str) -> list[Evidence]:
     """meta["feedback"]["type"]이 kind인 근거 전부(시스템 조회, ID 순서)."""
-    return [
-        item
-        for item in app.registry.list(org_id=None)
-        if isinstance(item.meta.get("feedback"), dict) and item.meta["feedback"].get("type") == kind
-    ]
+    listed = getattr(app.registry, "list_feedback", None)
+    found = listed(kind) if listed is not None else app.registry.list(org_id=None)
+    return [item for item in found if is_feedback(item, kind)]
 
 
 # ── 교정 ─────────────────────────────────────────────────────────────

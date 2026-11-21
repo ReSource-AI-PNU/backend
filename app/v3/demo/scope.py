@@ -21,7 +21,7 @@ from typing import Any
 
 from app.v3.a2a.policy import evidence_owner
 from app.v3.evidence.model import PUBLIC, Evidence
-from app.v3.evidence.registry import EvidenceForbidden
+from app.v3.evidence.registry import EvidenceForbidden, EvidenceNotFound, is_feedback
 from app.v3.service import ServiceError
 from app.v3.store import NotFound
 
@@ -196,6 +196,31 @@ class DemoRegistry:
     ) -> list[Evidence]:
         found = self._registry.list(kinds=kinds, org_id=org_id)
         return [self._trim(e) for e in found if self._shown(e)]
+
+    def get_many(
+        self, evidence_ids: Iterable[str], org_id: str | None = None
+    ) -> dict[str, Evidence | None]:
+        get_many = getattr(self._registry, "get_many", None)
+        if get_many is None:  # 한 번에 읽는 기능이 없는 레지스트리: get과 같은 규칙으로 하나씩
+            found: dict[str, Evidence | None] = {}
+            for evidence_id in set(evidence_ids):
+                try:
+                    found[evidence_id] = self.get(evidence_id, org_id)
+                except EvidenceForbidden:
+                    found[evidence_id] = None
+                except EvidenceNotFound:
+                    pass
+            return found
+        return {
+            evidence_id: self._trim(e) if e is not None and self._shown(e) else None
+            for evidence_id, e in get_many(evidence_ids, org_id).items()
+        }
+
+    def list_feedback(self, feedback_type: str) -> list[Evidence]:
+        listed = getattr(self._registry, "list_feedback", None)
+        if listed is None:
+            return [e for e in self.list(org_id=None) if is_feedback(e, feedback_type)]
+        return [self._trim(e) for e in listed(feedback_type) if self._shown(e)]
 
 
 def demo_app(app: Any) -> Any:

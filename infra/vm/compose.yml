@@ -46,8 +46,6 @@ services:
       APP_ROLE: api
     volumes:
       - backend_models:/app/models
-    depends_on:
-      - ollama
 
   # 사진·영상 탐지(app/ml/score_api.py). 백엔드의 V3_DETECTOR_ENDPOINT가 http://detector:8000/score 를 부른다
   detector:
@@ -68,19 +66,11 @@ services:
     profiles:
       - tools
 
-  # 업체 측 오픈 모델(qwen2.5:7b)과 bge-m3 임베딩. GPU가 없어 CPU로 돈다. 포트를 호스트에 열지 않는다.
-  ollama:
-    image: ollama/ollama:latest
-    restart: unless-stopped
-    environment:
-      # 쓰지 않으면 5분 뒤 모델을 메모리에서 내린다(앱과 탐지 모델이 같은 16GB를 쓴다)
-      OLLAMA_KEEP_ALIVE: 5m
-    volumes:
-      - ollama:/root/.ollama
+  # 업체 측 오픈 모델(Ollama)은 이 VM에 두지 않는다. Azure ML의 H100 계산 인스턴스(rsai-h100)에서 돌고,
+  # 백엔드가 VNet 피어링으로 사설 주소에 닿는다(OLLAMA_BASE_URL, deploy-vm.sh USE_OLLAMA=h100).
 
 volumes:
   caddy_data: {}
   caddy_config: {}
   frontend_db: {}
   backend_models: {}
-  ollama: {}
