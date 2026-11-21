@@ -2664,6 +2664,10 @@ class Orchestrator:
                 continue
             asks, claims, lines = [], [], []
             for sid in sids:
+                # 담당자가 범위를 좁혀 배출 기업이 수락한 가격을 임의의 요청 폭으로 다시 바꾸지 않는다.
+                raw = self.store.get_stream(sid)
+                if (raw.get("rangeDeals") or {}).get(thread.vendor_org):
+                    continue
                 offer = offers.get(sid)
                 if not offer:
                     continue
@@ -2952,7 +2956,14 @@ class Orchestrator:
         for sid in sorted(work["assigned"].get(thread.id) or []):
             stream = (inputs or {}).get(sid)
             if stream is None:
-                stream = without_emitter_only(self.store.get_stream(sid))
+                raw = self.store.get_stream(sid)
+                stream = without_emitter_only(raw)
+                deal = (raw.get("rangeDeals") or {}).get(thread.vendor_org)
+                if deal:
+                    from app.v3.survey import stream_hash
+
+                    stream["rangeDeals"] = {thread.vendor_org: deal}
+                    stream["_rangeSourceHash"] = stream_hash(raw)
             used[sid] = stream
             criterion, checks = best_criterion(stream, public, quality(stream))
             offer = offers.get(sid) or {}
@@ -3000,6 +3011,11 @@ class Orchestrator:
                     for c in profile.get("criteria") or []
                     if c.get("id") == profile.get("inspectionFallbackCriterionId")
                 ],
+                **(
+                    {"collectionPolicy": profile["collectionPolicy"]}
+                    if profile.get("collectionPolicy")
+                    else {}
+                ),
             }
         )
         # 이 공장의 수거 상태와 운반비 조건(노선, 운반 조건, 노선 밖 수거 조건). 근거 ID 없이 값만 견준다

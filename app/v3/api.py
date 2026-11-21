@@ -1127,3 +1127,77 @@ async def scenario_apply(session_id: str, request: Request):
 
     viewer = await viewer_of(request)
     return await call(adaptive.apply, session_id, await request.json(), viewer)
+# 설문 후속 입력과 사전 문의. 쓰기 권한과 사진 공개 범위는 survey 함수가 확인한다.
+@router.get("/survey")
+@guarded
+async def survey_view(request: Request):
+    from app.v3 import survey
+
+    return await call(survey.view, await viewer_of(request))
+
+
+@router.post("/survey/quotes")
+@guarded
+async def survey_quote(request: Request):
+    from app.v3 import survey
+
+    return await call(survey.start_quote, await viewer_of(request), await json_object(request))
+
+
+@router.post("/survey/quotes/{quote_id}/{action}")
+@guarded
+async def survey_quote_change(quote_id: str, action: str, request: Request):
+    from app.v3 import survey
+
+    if action not in ("narrow", "accept"):
+        raise service.ServiceError("NOT_FOUND", "그런 주소가 없습니다.", 404)
+
+    def change(app, viewer, body):
+        return survey.change_quote(app, viewer, quote_id, body, accept=action == "accept")
+
+    return await call(change, await viewer_of(request), await json_object(request))
+
+
+@router.post("/survey/weights")
+@guarded
+async def survey_weights(request: Request):
+    from app.v3 import survey
+
+    fields, filename, data = await read_upload(request, "계량기록.csv")
+    return await call(
+        survey.import_weights, await viewer_of(request), filename, data, fields.get("month", "")
+    )
+
+
+@router.post("/survey/photos")
+@guarded
+async def survey_photo_upload(request: Request):
+    from app.v3 import survey
+
+    fields, _, data = await read_upload(request, "사진")
+    return await call(
+        survey.upload_photo, await viewer_of(request), fields.get("streamId", ""), data
+    )
+
+
+@router.get("/survey/photos/{photo_id}")
+@guarded
+async def survey_photo_read(photo_id: str, request: Request):
+    from app.v3 import survey
+
+    return await call(survey.photo, await viewer_of(request), photo_id)
+
+
+@router.post("/survey/photos/{photo_id}")
+@guarded
+async def survey_photo_share(photo_id: str, request: Request):
+    from app.v3 import survey
+
+    body = await json_object(request)
+    if "sharedWith" not in body:
+        raise service.ServiceError("INVALID_VALUE", "공유할 업체를 선택해 주세요.", 422)
+
+    def share(app, viewer):
+        return survey.photo(app, viewer, photo_id, shared_with=body["sharedWith"])
+
+    return await call(share, await viewer_of(request))

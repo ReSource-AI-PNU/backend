@@ -57,6 +57,15 @@ class DemoStore:
             raise read_only()
         return getattr(self._store, name)
 
+    def list_survey_records(self):
+        return [r for r in self._store.list_survey_records() if r.get("orgId") in self._demo]
+
+    def get_survey_record(self, record_id):
+        record = self._store.get_survey_record(record_id)
+        if record.get("orgId") not in self._demo:
+            raise NotFound(record_id)
+        return record
+
     def _demo_session(self, session_id: str) -> bool:
         try:
             return self._store.get_session(session_id).get("emitterOrgId") in self._demo

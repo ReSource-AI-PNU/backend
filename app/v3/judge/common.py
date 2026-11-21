@@ -442,6 +442,9 @@ def criterion_checks(stream: dict, criterion: dict, q: dict) -> list[tuple]:
 def _ranked_criteria(stream: dict, vendor: dict, q: dict) -> list[tuple]:
     ranked = []
     for criterion in vendor.get("criteria") or []:
+        from app.v3.survey import effective_criterion
+
+        criterion = effective_criterion(stream, vendor, criterion)
         if criterion.get("material") != stream.get("material"):
             continue
         price = num(criterion.get("unitPriceKrwPerKg"))
@@ -774,6 +777,8 @@ def carbon_per_kg(rec: Recorder, stream: dict, vendor: dict, unit_price, method)
 # ── 배출 기업만의 흐름 항목 ─────────────────────────────────────────────
 # 현행 처리(계약 단가), 재투입 입력(신재 단가), 전처리 작업 시간과 인건비는 업체에 넘기지 않는다.
 EMITTER_ONLY_KEYS = (
+    "rangeDeals",
+    "_rangeSourceHash",
     "currentTreatment",
     "reuse",
     "pretreatHoursPerMonth",
@@ -791,7 +796,7 @@ VENDOR_ONLY_FLEET_KEYS = ("costPerKm",)
 
 def without_emitter_only(stream: dict) -> dict:
     """업체에 넘길 흐름. 배출 기업만의 항목(현행 처리비 답과 '모름' 표시 포함)을 뺀 새 dict."""
-    out = {k: v for k, v in stream.items() if k not in EMITTER_ONLY_KEYS}
+    out = {k: v for k, v in stream.items() if k not in (*EMITTER_ONLY_KEYS, "_rangeBasis")}
     answers = out.get("answers")
     if isinstance(answers, dict) and any(k in answers for k in EMITTER_ONLY_ANSWERS):
         out["answers"] = {k: v for k, v in answers.items() if k not in EMITTER_ONLY_ANSWERS}

@@ -143,7 +143,8 @@ def test_contract_routes_are_read():
     assert ("GET", "/vendors/{}/permit-catalog") in routes
     assert ("DELETE", "/vendors/{}/mcp-keys/{}") in routes  # 업체 MCP 연결 키 3개
     assert ("GET", "/sessions/{}/complex-plan") in routes  # 같은 단지 평면도
-    assert len(routes) == 53  # 업체 연결 8개, 조건 비교 3개, 같은 단지 평면도 포함
+    assert ("GET", "/survey") in routes and ("POST", "/survey/weights") in routes
+    assert len(routes) == 60  # 업체 연결 8개, 조건 비교 3개, 같은 단지 평면도, 설문 후속 7개 포함
 
 
 def test_devserver_routes_equal_the_contract():

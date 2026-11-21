@@ -741,7 +741,14 @@ def confirm_field_map(
 
 # ── 확인한 값 → 업체 프로필 ────────────────────────────────────
 
-CRITERION_KEYS = ("unitPriceKrwPerKg", "maxContaminationPct", "maxMoisturePct", "minMonthlyKg")
+CRITERION_KEYS = (
+    "priceLow",
+    "priceHigh",
+    "unitPriceKrwPerKg",
+    "maxContaminationPct",
+    "maxMoisturePct",
+    "minMonthlyKg",
+)
 
 
 def _known_material(value: Any) -> str | None:

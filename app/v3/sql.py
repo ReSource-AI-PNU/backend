@@ -19,7 +19,7 @@ from contextlib import contextmanager
 from dataclasses import replace
 from typing import Any
 
-from sqlalchemy import JSON, Integer, String, delete, func, or_, select
+from sqlalchemy import JSON, Integer, String, delete, func, or_, select, update
 from sqlalchemy.engine import Engine
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Mapped, Session, mapped_column
@@ -331,6 +331,11 @@ class SqlStore:
                 DOCUMENTS: sessions,
                 RUNS: sessions,
                 CRITERIA_DRAFTS: drafts,
+                "survey_records": {
+                    r.id
+                    for r in self._rows(db, "survey_records")
+                    if r.payload.get("orgId") in wanted or r.payload.get("vendorOrgId") in wanted
+                },
                 SCANS: scans,
                 SCAN_POINTS: scans,
             }
@@ -445,6 +450,31 @@ class SqlStore:
 
     def list_vendor_profiles(self) -> list[dict[str, Any]]:
         return self._all(VENDORS)
+
+    def put_survey_record(
+        self, record: dict[str, Any], expected_revision: int | None = None
+    ) -> dict[str, Any]:
+        if expected_revision is None:
+            return self._put("survey_records", record["id"], record)
+        with _transaction(self._engine) as db:
+            changed = db.execute(
+                update(RecordRow)
+                .where(
+                    RecordRow.kind == "survey_records",
+                    RecordRow.id == record["id"],
+                    RecordRow.payload["revision"].as_integer() == expected_revision,
+                )
+                .values(payload=record)
+            )
+            if changed.rowcount != 1:
+                raise VersionConflict("문의가 먼저 바뀌었습니다.")
+        return copy.deepcopy(record)
+
+    def get_survey_record(self, record_id: str) -> dict[str, Any]:
+        return self._get("survey_records", record_id)
+
+    def list_survey_records(self) -> list[dict[str, Any]]:
+        return self._all("survey_records")
 
     # ── 매입 기준표 판독 초안 ─────────────────────────────────────────
     def put_criteria_draft(self, draft: dict[str, Any]) -> dict[str, Any]:

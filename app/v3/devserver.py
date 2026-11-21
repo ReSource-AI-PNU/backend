@@ -290,6 +290,41 @@ def route(app: service.App, request: Request) -> Any:
             return mcp_keys.post_key(app, org_id, request.json(), viewer)
         case ("DELETE", ["vendors", org_id, "mcp-keys", key_id]):
             return mcp_keys.delete_key(app, org_id, key_id, viewer)
+        case ("GET", ["survey"]):
+            from app.v3 import survey
+
+            return survey.view(app, viewer)
+        case ("POST", ["survey", "quotes"]):
+            from app.v3 import survey
+
+            return survey.start_quote(app, viewer, request.json())
+        case ("POST", ["survey", "quotes", quote_id, action]) if action in ("narrow", "accept"):
+            from app.v3 import survey
+
+            return survey.change_quote(
+                app, viewer, quote_id, request.json(), accept=action == "accept"
+            )
+        case ("POST", ["survey", "weights"]):
+            from app.v3 import survey
+
+            fields, filename, data = request.upload("계량기록.csv")
+            return survey.import_weights(app, viewer, filename, data, fields.get("month", ""))
+        case ("POST", ["survey", "photos"]):
+            from app.v3 import survey
+
+            fields, _, data = request.upload("사진")
+            return survey.upload_photo(app, viewer, fields.get("streamId", ""), data)
+        case ("GET", ["survey", "photos", photo_id]):
+            from app.v3 import survey
+
+            return survey.photo(app, viewer, photo_id)
+        case ("POST", ["survey", "photos", photo_id]):
+            from app.v3 import survey
+
+            body = request.json()
+            if "sharedWith" not in body:
+                raise service.ServiceError("INVALID_VALUE", "공유할 업체를 선택해 주세요.", 422)
+            return survey.photo(app, viewer, photo_id, shared_with=body["sharedWith"])
         case ("POST", ["sessions"]):
             body = request.json()
             return service.create_session(app, str(body.get("emitterOrgId") or viewer), viewer)
