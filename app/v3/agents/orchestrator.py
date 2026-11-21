@@ -227,7 +227,14 @@ def clean_haul(raw: Any) -> dict[str, Any] | None:
     }
 
 
-HAUL_REASONS = ("route", "area", "distance", "offRoute", "conflict")
+HAUL_REASONS = (
+    "route",
+    "area",
+    "distance",
+    "offRoute",
+    "conflict",
+    *pickup_terms.ROUTE_CONFLICT_TEXT,
+)
 
 
 def _short_text(value: Any) -> str | None:
@@ -297,7 +304,7 @@ def haul_check(haul: dict[str, Any]) -> dict[str, Any]:
     area = haul.get("area")
     areas = [str(a) for a in haul.get("areas") or []]
     listed = ", ".join(areas[:3]) + (" 등" if len(areas) > 3 else "")
-    text = {
+    text = pickup_terms.route_conflict_detail(haul) or {
         "route": "업체가 밝힌 수거 노선이 이 공장 지역을 지나갑니다"
         + (f"(운행 요일 {', '.join(days)})." if days else "."),
         "visit": (
@@ -2509,7 +2516,7 @@ class Orchestrator:
             return None
         if not origin or not depot:
             return None
-        key = f"{float(depot[0]):.5f},{float(depot[1]):.5f}"
+        key = f"{float(origin[0]):.5f},{float(origin[1]):.5f}:{float(depot[0]):.5f},{float(depot[1]):.5f}"
         known = ((session.get("work") or {}).get("pickupKm") or {}).get(key)
         if known is not None:
             return float(known)
@@ -3646,9 +3653,14 @@ class Orchestrator:
         if fee is None and haul.get("fee"):
             # 금액은 밝혔지만 횟수가 없어 월 운반비를 못 낸 경우에도 업체가 밝힌 금액은 보인다
             fee = naming.annotate({**haul["fee"], "id": f"{tag}_transportFee"}, "transportFee")
+        detail = pickup_terms.route_conflict_detail(haul)
+        label = pickup_terms.STATUS_LABEL.get(str(haul.get("status")))
+        if detail and haul.get("status") == "check":
+            label = "주소 또는 수거 가능 여부 확인"
         return {
             "status": haul.get("status"),
-            "label": pickup_terms.STATUS_LABEL.get(str(haul.get("status"))),
+            "label": label,
+            **({"detail": detail} if detail else {}),
             "days": list(haul.get("days") or []),
             "basis": haul.get("basis"),
             "basisLabel": pickup_terms.BASIS_LABEL.get(str(haul.get("basis"))),

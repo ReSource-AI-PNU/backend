@@ -17,6 +17,9 @@
 노선 밖 조건이 있으면 그것, 없으면 노선 수거 조건), 밖이면 노선 밖 방문을 따로 밝히지 않은 한 수거 불가다. 최대
 거리만 밝혔는데 거리를 모르면 확인 필요다. reason에 무엇으로 정했는지(route, area, distance, offRoute)를 남긴다.
 
+기존 노선과 지역명이 일치해도 명시된 범위를 벗어난 근거가 있으면 수거와 운임을 확인한다.
+업체가 별도 방문을 명시한 경우에는 그 견적을 적용한다.
+
 운반비가 정해졌다(determined)는 것은 월 운반비를 원 단위로 낼 수 있다는 뜻이다: 단가에 포함이면 0원,
 별도이면 월 금액이 있거나 1회 금액과 월 수거 횟수가 모두 있을 때다. 정해지지 않았으면 월 손익은
 "별도 운반비 반영 전" 값이다(0원으로 확정하지 않는다).
@@ -41,6 +44,21 @@ UNIT_OF = {"per_pickup": "원/회", "per_month": "원/월"}
 WEEKDAY_ORDER = ("월", "화", "수", "목", "금", "토", "일")
 # 이 상태에서는 수거가 확인되지 않았다(결과는 조건부)
 UNCONFIRMED = ("check", "unknown")
+
+
+ROUTE_CONFLICT_TEXT = {
+    "routeDistanceConflict": "지역명은 기존 수거 노선과 일치하지만, 공장까지 거리가 업체가 밝힌 최대 수거 거리를 넘습니다.",
+    "routeAreaConflict": "지역명은 기존 수거 노선과 일치하지만, 공장이 업체가 밝힌 수거 가능 지역 밖에 있습니다.",
+}
+
+
+def route_conflict_detail(terms: dict[str, Any]) -> str | None:
+    conflict = ROUTE_CONFLICT_TEXT.get(str(terms.get("reason")))
+    if conflict is None:
+        return None
+    if terms.get("status") == "visit":
+        return f"{conflict} 업체가 별도 방문 수거를 확인했습니다."
+    return f"{conflict} 업체에 공장 주소, 수거 가능 여부와 운반비를 확인해야 합니다."
 
 
 def _num(value: Any) -> float | None:
@@ -213,9 +231,21 @@ def effective(
     off = transport.get("offRoute") if isinstance(transport.get("offRoute"), dict) else {}
     stance = off.get("status")
     out: dict[str, Any] = {"days": days, "routeBasis": general["basis"], "area": None, "areas": []}
-    if covered is True:
-        return {**out, "status": "route", "reason": "route", **general}
     reach = service_area(fleet, region, distance_km)
+    if covered is True:
+        reason = None
+        if reach is not None:
+            limit, km = reach["limit"], reach["km"]
+            if limit is not None and km is not None and km > limit:
+                reason = "routeDistanceConflict"
+            elif reach["areas"] and reach["area"] is None:
+                reason = "routeAreaConflict"
+        if reason is None:
+            return {**out, "status": "route", "reason": "route", **general}
+        # 기존 노선 요일과 운임을 이 주소에 적용할 수 없다.
+        if stance == "visit":
+            return {**out, "days": [], "status": "visit", "reason": reason, **fee_terms(off)}
+        return {**out, "days": [], "status": "check", "reason": reason, **fee_terms({})}
     if reach is not None:
         out.update(area=reach["area"], areas=reach["areas"])
         if reach["inside"] is True and stance == "unavailable":
@@ -259,7 +289,7 @@ def monthly(terms: dict[str, Any], pickups: float | None = None) -> float | None
 
     pickups는 조건에 횟수가 없을 때 쓸 다른 출처의 횟수(업체가 정한 월 최소 횟수 등)다.
     """
-    if terms.get("status") == "unavailable":
+    if terms.get("status") in ("check", "unavailable"):
         return None
     if terms.get("basis") == "included":
         return 0.0
@@ -311,7 +341,7 @@ def tool_transport(terms: dict[str, Any], **extra: Any) -> dict[str, Any]:
 def answer_line(terms: dict[str, Any], fee_ref: str | None, pickups_ref: str | None) -> str:
     """업체 측 조건 답에 붙이는 수거·운반 한 줄. 숫자는 {{claim ID}}로만 쓴다."""
     status, reason = terms.get("status"), terms.get("reason")
-    head = {
+    head = route_conflict_detail(terms) or {
         "route": "공장 지역이 기존 수거 노선에 들어 있어 노선으로 수거합니다.",
         "visit": "공장 지역이 수거 가능 지역 안이라 수거하러 갑니다(수거 요일은 따로 정합니다)."
         if reason in ("area", "distance")
