@@ -2516,8 +2516,20 @@ class Orchestrator:
             self._region(session),
             fleet,
             self._pickup_km(session, fleet, measure=measure),
+            self._straight_km(session, fleet),
         )
         return {**found, "source": "profile", "seq": None}
+
+    def _straight_km(self, session: dict[str, Any], fleet: dict[str, Any]) -> float | None:
+        """공장 → 업체 차고지 직선 거리(최대 수거 거리를 밝힌 업체만). 도로 거리의 하한으로만 쓴다."""
+        depot = fleet.get("depot")
+        if fleet.get("maxPickupKm") is None or not depot:
+            return None
+        try:
+            origin = self.store.get_org(session["emitterOrgId"]).get("location")
+        except NotFound:
+            return None
+        return haversine_km(origin, depot) if origin else None
 
     def _pickup_km(
         self, session: dict[str, Any], fleet: dict[str, Any], *, measure: bool = False

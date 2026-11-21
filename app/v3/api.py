@@ -245,7 +245,7 @@ def build_app() -> service.App:
         llm_factory=factory,
         vendor_gateway=make_vendor_gateway(),
         # V3_DISTANCE=kakao|azure|none. 비어 있으면 AZURE_MAPS_KEY가 있을 때 Azure Maps다.
-        # 고른 제공자의 키가 없으면 경고를 남기고 직선 거리 가정값 경로로 돈다
+        # 고른 제공자의 키가 없으면 경고를 남기고 도로 거리 없이 돈다(거리가 필요한 계산은 보류)
         distance_provider=distance_provider_from_env(
             {
                 "V3_DISTANCE": settings.v3_distance,

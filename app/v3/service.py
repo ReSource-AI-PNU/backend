@@ -449,7 +449,11 @@ def _demo_history(app: App) -> str | None:
         view = get_view(app, session_id, EMITTER)
         vendors = {t["id"]: t["vendorOrgId"] for t in view["threads"]}
         for item in view["approvals"]:
-            if item.get("blocked") or item.get("permitHold"):
+            if (
+                item.get("blocked")
+                or item.get("permitHold")
+                or (item.get("review") or {}).get("status") == "blocked"
+            ):
                 # 허가증 원문 대조가 끝나지 않은 경로는 확정하지 않는다(시연에서도 승인 대기로 남는다)
                 continue
             approve(app, session_id, item["threadId"], EMITTER)
@@ -3245,7 +3249,8 @@ def run_eval(app: App, viewer: str) -> dict[str, Any]:
 def _demo_eval(app: App) -> dict[str, Any]:
     """시연 시나리오(가상 데이터)를 따로 만든 저장소에서 처음부터 끝까지 돌려 본다.
 
-    담당자 질문에는 모두 "모름"으로 답한다. 검증기 통과율은 나간 메시지와 문서를 다시 검증해 센다.
+    담당자 질문에는 시연 답(seed.DEMO_ANSWERS, 가상 값)으로, 그 밖에는 "모름"으로 답한다. 계약 검토 담당이 막은
+    대화(예: 필수 운반비 미정)는 승인하지 않는다. 검증기 통과율은 나간 메시지와 문서를 다시 검증해 센다.
     """
     from app.v3.evidence.registry import InMemoryRegistry
 
@@ -3264,9 +3269,17 @@ def _demo_eval(app: App) -> dict[str, Any]:
             break
         for question in view["questions"]:
             if not question["answered"]:
-                answer_question(trial, session_id, question["id"], "unknown", EMITTER)
+                value = DEMO_ANSWERS.get((question["streamId"], question["field"]), "unknown")
+                answer_question(trial, session_id, question["id"], value, EMITTER)
         view = run_session(trial, session_id, EMITTER)
     for item in list(view["approvals"]):
+        if (
+            item.get("blocked")
+            or item.get("permitHold")
+            or (item.get("review") or {}).get("status") == "blocked"
+        ):
+            # 허가증 원문 대조 전이거나 계약 검토 담당이 막은 대화는 확정하지 않는다(_demo_history와 같다)
+            continue
         approve(trial, session_id, item["threadId"], EMITTER)
         vendor = next(t["vendorOrgId"] for t in view["threads"] if t["id"] == item["threadId"])
         approve(trial, session_id, item["threadId"], vendor)
@@ -3285,7 +3298,7 @@ def _demo_eval(app: App) -> dict[str, Any]:
             document["text"], document["claims"], trial.registry, org_id=EMITTER, today=trial.today
         ).ok
     return {
-        "scenario": "시연 시나리오(모두 가상 데이터, 담당자 질문에는 모두 '모름'으로 답함)",
+        "scenario": "시연 시나리오(모두 가상 데이터, 담당자 질문에는 시연 답 외에는 '모름'으로 답함, 검토가 막은 대화는 승인하지 않음)",
         "model": model_label(trial.llm_for("company", EMITTER, None)),
         "sessionStatus": view["session"]["status"],
         "checked": checked,

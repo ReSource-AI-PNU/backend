@@ -269,6 +269,14 @@ def reuse_checks(stream: dict, grade: str | None) -> list[tuple]:
                 "오염도와 수분의 측정값이 없어 품질을 확인하지 못했습니다.",
             )
         )
+    elif grade is None:
+        out.append(
+            (
+                "reuse_quality",
+                "conditional",
+                "측정값은 있지만 공통 품질 등급 기준이 검증되지 않아 재투입 품질을 확정하지 못했습니다.",
+            )
+        )
     elif grade == "A":
         out.append(("reuse_quality", "met", "측정값이 A등급 기준 안입니다."))
     else:

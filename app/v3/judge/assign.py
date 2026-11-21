@@ -1103,8 +1103,8 @@ def optimize_assignment(
         rec.check(
             "carbon",
             "conditional",
-            f"배출계수가 없는 처리 방식으로 가는 폐기물({', '.join(no_factor)})은 "
-            "탄소 계산에서 뺐습니다. 확인 필요.",
+            f"원문 경계를 확인한 처리 배출계수나 실제 운송 조건이 없는 폐기물({', '.join(no_factor)})은 "
+            "탄소 계산을 보류했습니다. 확인 필요.",
         )
     if any(a["currentAssumed"] for a in output["assignments"]):
         rec.check(

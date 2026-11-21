@@ -177,7 +177,7 @@ class AzureMapsDistance:
             self.last_error = str(error)
             if self.strict:
                 raise
-            logger.warning("도로 거리를 받지 못해 가정값 경로로 돈다: %s", error)
+            logger.warning("도로 거리를 받지 못해 거리를 보류한다: %s", error)
             return None
 
     def matrix(self, points: Sequence[Sequence[float]]) -> list[list[float]]:
@@ -215,7 +215,7 @@ class AzureMapsDistance:
 
 # ── 카카오모빌리티 자동차 길찾기 ─────────────────────────────────────
 KAKAO_ENDPOINT = "https://apis-navi.kakaomobility.com"
-KAKAO_MAX_POINTS = 8  # 고유 지점 8개면 56번 부른다. 그보다 많으면 묻지 않고 가정값 경로로 돈다
+KAKAO_MAX_POINTS = 8  # 고유 지점 8개면 56번 부른다. 그보다 많으면 묻지 않고 거리를 보류한다
 KAKAO_PRIORITIES = ("RECOMMEND", "TIME", "DISTANCE")
 KAKAO_SOURCE = "카카오모빌리티 자동차 길찾기 API (GET /v1/directions)"
 
@@ -297,7 +297,7 @@ class KakaoDistance:
             self.last_error = str(error)
             if self.strict:
                 raise
-            logger.warning("도로 거리를 받지 못해 가정값 경로로 돈다: %s", error)
+            logger.warning("도로 거리를 받지 못해 거리를 보류한다: %s", error)
             return None
 
     def matrix(self, points: Sequence[Sequence[float]]) -> list[list[float]]:

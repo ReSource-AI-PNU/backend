@@ -47,7 +47,7 @@ from app.v3.evidence.validator import validate_message
 from app.v3.fleet import INFO_KEYS
 from app.v3.judge import negotiate
 from app.v3.judge import pickup as pickup_terms
-from app.v3.judge.common import Recorder, vendor_distance, without_emitter_only
+from app.v3.judge.common import Recorder, haversine_km, vendor_distance, without_emitter_only
 from app.v3.untrusted import counterparty_stream, org_label, stream_label
 
 logger = logging.getLogger(__name__)
@@ -1122,6 +1122,11 @@ class VendorAgent:
             emitter.get("region"),
             fleet,
             self._pickup_km(vendor_org, fleet, emitter),
+            haversine_km(emitter["location"], fleet["depot"])
+            if fleet.get("maxPickupKm") is not None
+            and emitter.get("location")
+            and fleet.get("depot")
+            else None,
         )
         haul_refs = _haul_claims(pool, haul, vendor_org)
         if not any(m.seq == message.get("seq") for m in thread.messages):
