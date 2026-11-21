@@ -34,6 +34,14 @@ class EvidenceRegistry(Protocol):
     ) -> list[Evidence]:
         """org_id가 볼 수 있는 근거만. ID 순서로 정렬한다."""
 
+    def get_many(
+        self, evidence_ids: Iterable[str], org_id: str | None = None
+    ) -> dict[str, Evidence | None]:
+        """여러 근거를 한 번에. 있는 ID만 키로 넣고, 볼 수 없는 것은 값을 None으로 둔다."""
+
+    def list_feedback(self, feedback_type: str) -> list[Evidence]:
+        """meta["feedback"]["type"]이 feedback_type인 근거 전부(시스템 조회). ID 순서로 정렬한다."""
+
 
 class InMemoryRegistry:
     def __init__(self, items: Iterable[Evidence] = ()) -> None:
@@ -81,6 +89,25 @@ class InMemoryRegistry:
             for _, item in sorted(self._items.items())
             if (wanted is None or item.kind in wanted) and item.visible_to(org_id)
         ]
+
+    def get_many(
+        self, evidence_ids: Iterable[str], org_id: str | None = None
+    ) -> dict[str, Evidence | None]:
+        found: dict[str, Evidence | None] = {}
+        for evidence_id in set(evidence_ids):
+            item = self._items.get(evidence_id)
+            if item is not None:
+                found[evidence_id] = item if item.visible_to(org_id) else None
+        return found
+
+    def list_feedback(self, feedback_type: str) -> list[Evidence]:
+        return [item for _, item in sorted(self._items.items()) if is_feedback(item, feedback_type)]
+
+
+def is_feedback(evidence: Evidence, feedback_type: str) -> bool:
+    """meta["feedback"]["type"]이 feedback_type인 근거인지(교정·실제 결과·모델 실행 기록)."""
+    record = evidence.meta.get("feedback")
+    return isinstance(record, dict) and record.get("type") == feedback_type
 
 
 class JsonFileRegistry(InMemoryRegistry):

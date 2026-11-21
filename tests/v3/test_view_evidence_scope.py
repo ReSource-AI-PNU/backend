@@ -157,3 +157,45 @@ def test_scrub_handles_ids_in_any_position():
     }
     same = service._event_view(app, {"seq": 2, "detail": {"evidence": [open_id]}}, HANBIT, {})
     assert "hiddenEvidenceCount" not in same["detail"]
+
+
+class _OneByOneRegistry:
+    """get_many·list_feedback이 없는 레지스트리(하나씩 읽던 예전 경로)."""
+
+    def __init__(self, inner):
+        self._inner = inner
+
+    def get(self, evidence_id, org_id=None):
+        return self._inner.get(evidence_id, org_id)
+
+    def exists(self, evidence_id):
+        return self._inner.exists(evidence_id)
+
+    def list(self, *, kinds=None, org_id=None):
+        return self._inner.list(kinds=kinds, org_id=org_id)
+
+
+def test_batched_evidence_lookup_gives_the_same_view(world):
+    """근거를 한 번에 읽는 뷰(get_many·list_feedback)는 하나씩 읽던 뷰와 같다. 체험하기 앱에서도 같다."""
+    import copy
+
+    from app.v3.demo.scope import demo_app
+
+    app, hanbit_id, daon_id, _ = world
+    slow = copy.copy(app)
+    slow.registry = _OneByOneRegistry(app.registry)
+    hidden = 0
+    for session_id, emitter in ((hanbit_id, HANBIT), (daon_id, DAON)):
+        for viewer in (emitter, *VENDORS):
+            for fast_app, slow_app in ((app, slow), (demo_app(app), demo_app(slow))):
+                try:
+                    expected = service.get_view(slow_app, session_id, viewer)
+                except service.ServiceError as error:
+                    assert error.status == 404
+                    continue
+                shown = service.get_view(fast_app, session_id, viewer)
+                assert shown == expected, (session_id, viewer)
+                hidden += sum(
+                    (e.get("detail") or {}).get("hiddenEvidenceCount", 0) for e in shown["events"]
+                )
+    assert hidden > 0  # 숨길 근거가 실제로 있는 뷰를 비교했다
