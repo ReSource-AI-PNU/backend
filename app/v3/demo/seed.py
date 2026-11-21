@@ -742,7 +742,7 @@ def _vendors(s: _Seeder) -> list[dict[str, Any]]:
                 "minPickupsPerMonth": 2,
                 "autoDecline": ["PVC", "유해 물질"],
             },
-            "model": {"provider": "foundry", "name": "gpt-5-mini"},
+            "model": {"provider": "ollama", "name": "qwen2.5:32b"},
             "synthetic": True,
         },
         {
@@ -795,7 +795,8 @@ def _vendors(s: _Seeder) -> list[dict[str, Any]]:
                 "minPickupsPerMonth": 1,
                 "autoDecline": ["PVC", "금속 인서트"],
             },
-            # H100(Azure ML 계산 인스턴스)의 Ollama. 2026-11-19 시험셋 20사례(업체 측만 바꿈)에서 qwen2.5:7b는 10/20,
+            # 업체 측 AI는 모두 H100(Azure ML 계산 인스턴스)의 Ollama로 돈다(2026-11-22. 업체 자료가 외부 모델 서비스로
+            # 나가지 않는다). 2026-11-19 시험셋 20사례(업체 측만 바꿈)에서 qwen2.5:7b는 10/20,
             # qwen2.5:32b는 20/20(초안 첫 시도 통과 0.968, 담당자 인계 0)으로 Foundry gpt-5-mini(19/20)와 같은 수준이었다
             "model": {"provider": "ollama", "name": "qwen2.5:32b"},
             "synthetic": True,
@@ -837,7 +838,7 @@ def _vendors(s: _Seeder) -> list[dict[str, Any]]:
                 "minPickupsPerMonth": 1,
                 "autoDecline": ["PVC"],
             },
-            "model": {"provider": "foundry", "name": "gpt-5-mini"},
+            "model": {"provider": "ollama", "name": "qwen2.5:32b"},
             "synthetic": True,
         },
     ]

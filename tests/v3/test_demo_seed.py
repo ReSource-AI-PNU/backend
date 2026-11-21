@@ -78,8 +78,9 @@ def test_orgs_and_streams(demo):
 def test_vendor_profiles(demo):
     store, _, _ = demo
     vendors = {p["orgId"]: p for p in store.list_vendor_profiles()}
-    assert vendors["org_namhae"]["model"]["provider"] == "ollama"
-    assert vendors["org_saegil"]["model"] == {"provider": "foundry", "name": "gpt-5-mini"}
+    # 업체 측 AI는 모두 H100의 오픈 모델로 돈다(2026-11-22)
+    for org in ("org_saegil", "org_namhae", "org_miso"):
+        assert vendors[org]["model"] == {"provider": "ollama", "name": "qwen2.5:32b"}
 
     def permitted(org):
         return {(p["wasteItem"], m) for p in vendors[org]["permits"] for m in p["materials"]}

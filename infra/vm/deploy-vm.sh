@@ -19,20 +19,18 @@
 #   V3_AUTH          bff(기본. 실제 계정·조직: 프런트 서버만 V3_BFF_KEY로 부르고 사용자·소속을 확인한다)
 #                    | token(조직별 토큰) | header(시연 전용)
 #   AUTH_DEV_LOGIN   true(기본. 시연용 로그인) | false
-#   USE_OLLAMA       1이면 Ollama를 고른 업체(시연의 남해열분해)가 VM의 Ollama로 답한다. 기본은 비움: GPU 없이 CPU로는
-#                    6천 토큰 프롬프트에 qwen2.5:7b 8분 30초·3b 4분 10초가 걸려(2026-11-18 측정) 실시간 대화가 안 되므로,
-#                    Ollama 주소를 비우고 V3_LLM_ALL_VENDORS=1로 주 모델(Foundry)이 답하게 한다(운영 화면에는 설정과 실제가 따로 보인다)
-#                    gpu면 GPU VM(infra/gpu-vm.bicep, East US A10, infra/gpu/setup-ollama.sh로 준비)의 Ollama가 답한다.
-#                    꺼져 있으면 배포가 먼저 켜고(infra/gpu/gpu.sh up), 그 뒤로는 맥의 감시 작업이 쓸 때만 켜고 5분 안 쓰면 끈다(install-gpu-auto.sh).
-#                    꺼진 동안 Ollama 차례는 Foundry가 답한다(OLLAMA_FALLBACK=1).
-#                    주소는 GPU VM의 사설 IP로 자동으로 찾고(앱 VNet과 피어링), 앱 VM의 ollama 컨테이너는 쓰지 않는다.
-#                    임베딩은 근거 색인과 같은 Foundry 임베딩을 그대로 쓴다
+#   USE_OLLAMA       h100(기본) | gpu | off. 업체 측 AI는 모두 오픈 모델(qwen2.5:32b)로 답하고(2026-11-22),
+#                    그 모델은 앱 VM이 아니라 GPU에서 돈다. 앱 VM에는 Ollama를 두지 않는다(CPU로는 6천 토큰 프롬프트에
+#                    qwen2.5:7b가 8분 30초 걸려 실시간 대화가 안 된다. 2026-11-18 측정).
 #                    h100이면 H100 계산 인스턴스(Azure ML team-workspace의 rsai-h100, infra/h100/setup-ollama.sh로 준비)의
-#                    Ollama가 답한다(2026-11-19부터 기본으로 쓴다). 꺼져 있으면 배포가 먼저 켠다. 서비스하지 않을 때는
-#                    infra/h100/h100.sh down으로 끈다(조직위 요청). 꺼진 동안 Ollama 차례는 Foundry가 답한다
+#                    Ollama가 답한다. 꺼져 있으면 배포가 먼저 켠다. 서비스하지 않을 때는 infra/h100/h100.sh down으로 끈다
+#                    (조직위 요청). 꺼진 동안 Ollama 차례는 Foundry가 답하고(OLLAMA_FALLBACK=1), 화면에는 설정한 모델과
+#                    실제로 답한 모델이 따로 보인다.
+#                    gpu면 East US의 A10 GPU VM(infra/gpu-vm.bicep, 2026-11-19까지 쓰던 것).
+#                    off면 Ollama 주소를 비우고 V3_LLM_ALL_VENDORS=1로 주 모델(Foundry)이 모든 업체 차례에 답한다.
+#                    주소는 사설 IP로 자동으로 찾는다(앱 VNet과 피어링). 임베딩은 근거 색인과 같은 Foundry 임베딩을 쓴다
 #   OLLAMA_URL       USE_OLLAMA=gpu·h100에서 자동으로 찾은 주소 대신 쓸 Ollama 주소
 #   GPU_VM           USE_OLLAMA=gpu일 때 찾을 GPU VM 이름 (기본 vm-rsai-gpu)
-#   OLLAMA_MODELS    USE_OLLAMA=1일 때 VM에 받아 둘 Ollama 모델 (기본 "bge-m3 qwen2.5:7b")
 #   SSH_SOURCE       SSH를 허용할 공용 IP (기본: 지금 이 컴퓨터의 공용 IP. NSG 규칙과 다르면 맞춘다)
 #   SEED             1이면 배포 끝에 시연 데이터를 되돌린다. bff는 백엔드 컨테이너에서 scripts.v3.accounts_admin reset-demo,
 #                    token·header는 POST /api/v3/demo/reset 을 관리자 토큰(또는 X-Org-Id)으로 부른다
@@ -60,11 +58,10 @@ FRONTEND_REF="${FRONTEND_REF:-origin/main}"
 V3_LLM="${V3_LLM:-foundry}"
 V3_AUTH="${V3_AUTH:-bff}"
 AUTH_DEV_LOGIN="${AUTH_DEV_LOGIN:-true}"
-USE_OLLAMA="${USE_OLLAMA:-}"
+USE_OLLAMA="${USE_OLLAMA:-h100}"
 OLLAMA_URL="${OLLAMA_URL:-}"
 GPU_VM="${GPU_VM:-vm-rsai-gpu}"
-OLLAMA_MODELS="${OLLAMA_MODELS:-bge-m3 qwen2.5:7b}"
-[ "$USE_OLLAMA" = 1 ] || OLLAMA_MODELS=""
+case "$USE_OLLAMA" in h100|gpu|off) ;; *) echo "USE_OLLAMA는 h100, gpu, off 가운데 하나다 (앱 VM의 Ollama는 없앴다): $USE_OLLAMA" >&2; exit 1 ;; esac
 SEED="${SEED:-}"
 GRANT_ADMIN="${GRANT_ADMIN:-}"
 INDEX="${INDEX:-}"
@@ -171,9 +168,6 @@ elif [ "$USE_OLLAMA" = gpu ]; then
   say "업체 측 오픈 모델: GPU VM의 Ollama ($OLLAMA_URL)"
   put "$B" OLLAMA_BASE_URL "$OLLAMA_URL"
   put "$B" OLLAMA_FALLBACK 1
-elif [ "$USE_OLLAMA" = 1 ]; then
-  put "$B" OLLAMA_BASE_URL "http://ollama:11434"
-  put "$B" OLLAMA_EMBED_MODEL bge-m3
 else
   put "$B" V3_LLM_ALL_VENDORS 1
 fi
@@ -249,14 +243,10 @@ for repo in backend frontend; do
 done
 rm -f upload/*.tar.gz
 docker compose build --pull backend frontend
-docker compose up -d ollama
 docker compose run --rm -T migrate
 docker compose up -d --remove-orphans
-for m in $OLLAMA_MODELS; do
-  if ! docker compose exec -T ollama ollama show "$m" >/dev/null 2>&1; then
-    echo "[remote] Ollama $m 받는 중"; docker compose exec -T ollama ollama pull "$m" >/dev/null
-  fi
-done
+# 앱 VM의 Ollama는 2026-11-22에 없앴다(업체 측 모델은 H100). 남은 모델 볼륨(약 8GB)을 지운다
+docker volume rm rsai_ollama >/dev/null 2>&1 || true
 docker image prune -f >/dev/null
 docker compose ps --format '{{.Service}}\t{{.State}}\t{{.Status}}'
 REMOTE
@@ -286,7 +276,7 @@ say "파일 올리기"
 "${SCP[@]}" "$TMP/env/backend.env" "$TMP/env/frontend.env" "$ADMIN_USER@$FQDN:/opt/rsai/env/"
 
 say "빌드와 시작 (처음에는 이미지 빌드에 수 분이 걸린다)"
-"${SSH[@]}" "OLLAMA_MODELS='$OLLAMA_MODELS' bash /opt/rsai/upload/remote.sh && rm -f /opt/rsai/upload/remote.sh" </dev/null
+"${SSH[@]}" "bash /opt/rsai/upload/remote.sh && rm -f /opt/rsai/upload/remote.sh" </dev/null
 
 say "상태 확인: https://$FQDN (인증서를 처음 받을 때는 1~2분 걸린다)"
 for i in $(seq 1 30); do

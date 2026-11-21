@@ -62,9 +62,9 @@ def test_rule_policy_runs_without_network_and_writes_no_digits(monkeypatch):
             assert message["model"]["provider"] in ("rule", "code")
             # 본문의 숫자는 모두 자리표시자 안에 있다
             assert message["validation"]["ok"] is True
-    # 업체가 고른 모델 설정은 따로 남는다(남해열분해는 ollama를 골랐다)
+    # 업체가 고른 모델 설정은 따로 남는다(시연 업체는 모두 ollama를 골랐다)
     assert thread_of(view, NAMHAE)["vendorModel"]["configured"]["provider"] == "ollama"
-    assert thread_of(view, SAEGIL)["vendorModel"]["configured"]["provider"] == "foundry"
+    assert thread_of(view, SAEGIL)["vendorModel"]["configured"]["provider"] == "ollama"
 
 
 def test_rule_policy_asks_for_tools_before_writing():
