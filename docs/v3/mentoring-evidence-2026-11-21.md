@@ -29,7 +29,7 @@
 
 분류: ① 사용자 실측·증빙(사용자 입력은 미인증임을 별도 표시), ② 공식 자료, ③ 조건부 문헌 추정, ④ 가정, ⑤ 운영 정책, ⑥ 산정 보류. 원출처 분류와 현재 사용 가능 여부는 별개다. 예를 들어 공식기관 자료라도 계산 경계를 모르면 ② 자료의 계산은 ⑥이다.
 
-전체 수치 시드 및 코드/설정/문서의 관련 위치는 `evidence-audit-2026-11-21.json`에 있다. `python scripts/audit_evidence.py`로 재생성한다. 코드 검색 결과는 검토 위치 색인이며 각 줄을 독립 물리 계수로 해석하지 않는다. 테스트·평가용 가상 사례와 대용량 3D 점군 JSON은 물리 계수 목록에서 제외한다.
+수치 시드와 기본 설정 목록은 `evidence-audit-2026-11-21.json`에 있다. `python scripts/audit_evidence.py`로 재생성한다. `python scripts/audit_evidence.py --include-references`는 코드·설정·문서의 검색 위치를 더한 전체 목록을 Git에서 제외된 `.local-run/evidence-audit-full.json`에 만든다. 시험용 가상 사례와 대용량 3D 점군 JSON은 물리 계수 목록에서 제외한다.
 
 | 항목 | 기존 값/경로 및 분류 | 조치·필요 자료 |
 |---|---|---|
