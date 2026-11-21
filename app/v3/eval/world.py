@@ -38,6 +38,18 @@ FLEET_DEFAULTS = {"capacityKg": 5000, "capacityM3": 20, "costPerKm": 1200}
 # 시험하지 않을 때의 기본값. judge/pickup.py가 운반 조건이 비면 "별도 운반비 반영 전"으로 둔다). 사례가 "transport": null을
 # 적으면 업체가 운반 조건과 노선을 밝히지 않은 것이고, {"paidBy", "feePerPickupKrw"}를 적으면 그 조건을 쓴다
 TRANSPORT_DEFAULT = "vendor"
+# 현행 처리비 질문(currentCost)에 사례가 답을 적지 않았으면 담당자가 현행 위탁 계약(혼합 소각)의 kg당 단가를 답한 것으로
+# 둔다(사례가 현행 처리를 시험하지 않을 때의 기본값). 근거 없는 가정값으로 채우지 않는 정책(2026-11-21) 뒤로는 현행 처리비를
+# 모르면 그 흐름이 배정에서 빠지기 때문이다. 값은 이전 혼합 소각 가정값과 같은 가상 단가다. 현행을 모르는 장면은 사례가
+# answers에 "st_a.currentCost": "unknown"을 적는다
+CURRENT_COST_ANSWER = {"폐목재": 120}
+CURRENT_COST_FALLBACK = 250
+
+
+def current_cost_answer(stream: dict[str, Any]) -> float:
+    return CURRENT_COST_ANSWER.get(str(stream.get("wasteItem")), CURRENT_COST_FALLBACK)
+
+
 GUARD_DEFAULTS = {
     "days": ["화", "목"],
     "minPickupsPerMonth": 2,
@@ -62,6 +74,11 @@ def keyword_shield(keywords: list[str]) -> PromptShieldsClient:
 def _stream(seeder: _Seeder, org: str, spec: dict[str, Any]) -> dict[str, Any]:
     sid = spec["id"]
     stream = {**STREAM_DEFAULTS, **spec, "orgId": org}
+    if "pretreatHoursPerMonth" not in spec:
+        # 전처리 작업 시간을 적지 않은 사례는 담당자가 "전처리 작업 없음"(0시간)을 확인한 것으로 둔다. 작업비 미확인이면
+        # 월 손익이 잠정 금액이 되어(2026-11-21 정책) 사례가 보려는 판단과 섞이기 때문이다. 작업비 미확인 장면은
+        # 사례가 "pretreatHoursPerMonth": null을 적는다
+        stream["pretreatHoursPerMonth"] = 0
     stream.setdefault("name", sid)
     stream.setdefault("material", None)
     stream.setdefault("origin", None)

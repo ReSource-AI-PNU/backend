@@ -36,7 +36,7 @@ from app.v3 import service
 from app.v3.agents.factory import build_llm_factory, normalize_mode
 from app.v3.agents.llm import LLMError
 from app.v3.agents.policy_rule import RulePolicy
-from app.v3.demo.seed import EMITTER
+from app.v3.demo.seed import DEMO_ANSWERS, EMITTER
 from app.v3.evidence.registry import InMemoryRegistry
 from app.v3.store import InMemoryStore
 
@@ -162,8 +162,13 @@ def metered_factory(
 
 
 def _answer(field: str, stream_id: str | None = None, variant: dict[str, Any] | None = None):
+    """경우별 답 → 공통 답(ANSWERS) → 시연 담당자 답(DEMO_ANSWERS: 필름·퍼지 현행 처리비) → 모름."""
     own = ((variant or {}).get("answers") or {}).get(stream_id) or {}
-    return own[field] if field in own else ANSWERS.get(field, UNKNOWN)
+    if field in own:
+        return own[field]
+    if field in ANSWERS:
+        return ANSWERS[field]
+    return DEMO_ANSWERS.get((stream_id, field), UNKNOWN)
 
 
 def apply_variant(app: Any, emitter: str, variant: dict[str, Any] | None) -> None:

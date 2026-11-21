@@ -279,7 +279,10 @@
             "tool": "judge_route",
             "stream": "st_a",
             "vendor": "org_v1",
-            "status": "calculated"
+            "status": "conditional",
+            "checks": {
+              "current_cost": "conditional"
+            }
           }
         ],
         "assignments": {
@@ -301,7 +304,8 @@
           "why": "다른 배출 기업을 드러내지 않는다"
         }
       ],
-      "synthetic": true
+      "synthetic": true,
+      "note": "2026-11-21 정책: 근거 없는 가정값(혼합 소각 현행 처리비, 가정 운행 단가, 공통 등급 임계값)을 새 계산에 쓰지 않는다. 판단 도구만 부를 때는 현행 처리비가 없어 조건부(current_cost)다. 진단에서는 담당자 답으로 견준다."
     },
     {
       "id": "C46",

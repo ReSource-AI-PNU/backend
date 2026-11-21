@@ -69,29 +69,30 @@
           {
             "tool": "identify_stream",
             "stream": "st_a",
-            "status": "conditional",
-            "checks": {
-              "grade_disagreement": "conditional"
-            },
             "output": {
-              "grade": "A",
-              "basis": "measured",
-              "photoGrade": "C"
-            }
+              "grade": null,
+              "photoGrade": null,
+              "basis": "measured"
+            },
+            "absentChecks": [
+              "grade_disagreement",
+              "moisture"
+            ],
+            "noAsks": true
           }
         ],
         "questions": {
           "asked": [
             [
               "st_a",
-              "lotSame"
+              "currentCost"
             ]
           ]
         },
         "streams": {
           "st_a": {
-            "grade": "A",
-            "gradeBasis": "measured"
+            "grade": null,
+            "gradeBasis": null
           }
         },
         "assignments": {
@@ -109,7 +110,8 @@
           "why": "측정값이 있는데 오염도를 다시 묻지 않는다"
         }
       ],
-      "synthetic": true
+      "synthetic": true,
+      "note": "2026-11-21 정책: 근거 없는 가정값(공통 등급 임계값 포함)을 새 계산에 쓰지 않는다. 공통 등급을 내지 않으므로 측정 등급과 사진 추정 등급을 견주지 않고 같은 로트인지 묻는 질문(lotSame)도 하지 않는다. 측정 수분이 있으니 수분도 다시 묻지 않는다. 업체 매입 기준(오염도·수분 상한) 대조로 배정한다."
     },
     {
       "id": "C19",
