@@ -62,9 +62,32 @@ def numerical_history_app(**options):
     return app
 
 
+def trade_ready_app(llm_factory=None, **options):
+    """Supply explicit fixture costs and collection terms for agent tests."""
+    app = seeded_app(llm_factory, **options)
+    for sid in ("st_film", "st_purge"):
+        service.update_stream(
+            app,
+            HANBIT,
+            sid,
+            {"currentTreatment": {"method": "소각", "unitCostKrwPerKg": 250}},
+            HANBIT,
+        )
+    service.update_vendor(
+        app,
+        MISO,
+        {
+            "fleet": {"serviceAreas": ["부산"]},
+            "transport": {"offRoute": {"status": "visit", "basis": "included"}},
+        },
+        MISO,
+    )
+    return app
+
+
 def negotiation_app(**options):
-    app = seeded_app(**options)
-    # Explicit fixture decision: tests the approved-policy path, not a production default.
+    app = trade_ready_app(**options)
+    # Explicit fixture decision for the approved-policy path.
     from app.v3.judge import defaults
 
     policy = app.registry.get(defaults.default_id("negotiation.askPct"))
@@ -82,22 +105,5 @@ def negotiation_app(**options):
                 },
             },
         )
-    )
-    for sid in ("st_film", "st_purge"):
-        service.update_stream(
-            app,
-            HANBIT,
-            sid,
-            {"currentTreatment": {"method": "소각", "unitCostKrwPerKg": 250}},
-            HANBIT,
-        )
-    service.update_vendor(
-        app,
-        MISO,
-        {
-            "fleet": {"serviceAreas": ["부산"]},
-            "transport": {"offRoute": {"status": "visit", "basis": "included"}},
-        },
-        MISO,
     )
     return app

@@ -17,6 +17,7 @@ from app.v3.agents.draft import (
 from app.v3.agents.llm import FoundryChat, OllamaChat, strict_schema
 from app.v3.agents.policy_rule import RulePolicy
 from app.v3.evidence.validator import find_numbers
+from tests.v3.evidence_fixtures import trade_ready_app
 from tests.v3.runtime_fixtures import (
     NAMHAE,
     SAEGIL,
@@ -231,7 +232,7 @@ class OllamaFake:
 def test_ollama_vendor_gets_the_same_turn_schema_as_format():
     fake = OllamaFake()
     llm = OllamaChat("http://10.60.2.4:11434", "qwen2.5:7b", transport=fake)
-    app = make_app(only_for("vendor", NAMHAE, llm))
+    app = trade_ready_app(only_for("vendor", NAMHAE, llm))
     view = to_approval(app)
     thread = thread_of(view, NAMHAE)
     replies = [m for m in thread["messages"] if m["from"] == NAMHAE]

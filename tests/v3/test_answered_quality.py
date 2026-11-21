@@ -53,7 +53,7 @@ def test_answered_values_are_named_as_answers():
 
 def _qa_run():
     app = make_app()
-    app.store.put_org({"id": EMITTER, "name": "(주)QA정밀2202", "role": "emitter", "demo": False})
+    app.store.put_org({"id": EMITTER, "name": "(주)QA정밀2202", "role": "emitter", "demo": True})
     service.update_stream(
         app,
         EMITTER,
@@ -66,6 +66,7 @@ def _qa_run():
             "origin": "PIR",
             "form": "가공 전",
             "monthlyKg": 400,
+            "currentTreatment": {"method": "소각", "unitCostKrwPerKg": 250},
         },
         EMITTER,
     )
