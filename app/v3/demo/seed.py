@@ -27,7 +27,12 @@ OTHER_EMITTER = "org_daon"
 VENDORS = ("org_saegil", "org_namhae", "org_miso")
 ADMIN = "org_admin"
 # 시연 진단에서 담당자가 답하는 값(가상). (흐름 ID, 항목) -> 값. 없는 질문에는 "모름"으로 답한다
-DEMO_ANSWERS: dict[tuple[str, str], Any] = {("st_film", "moisturePct"): 2.0}
+DEMO_ANSWERS: dict[tuple[str, str], Any] = {
+    ("st_film", "moisturePct"): 2.0,
+    # 현행 처리비는 가정값으로 채우지 않는다. 시연 담당자가 계약대로 답하는 가상 값이다
+    ("st_film", "currentCost"): 250,
+    ("st_purge", "currentCost"): 250,
+}
 
 ORGS: list[dict[str, Any]] = [
     {

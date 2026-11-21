@@ -89,6 +89,7 @@ _KEYS: dict[str, tuple[str, str | None]] = {
     "totalNow": ("monthlyNow", "현행 월 손익 합계"),
     "difference": ("difference", None),
     "totalDifference": ("difference", "현행 대비 차이 합계"),
+    "bundleDifference": ("difference", "묶음 전체 현행 대비 차이"),
     "sensitivity": ("sensitivity", None),
     "carbon": ("carbon", None),
     "carbonDifference": ("carbon", "처리 방식 탄소 변화"),

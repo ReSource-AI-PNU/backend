@@ -3141,6 +3141,34 @@ class Orchestrator:
                 for u in work.get("unresolved") or []
                 if u["streamId"] == sid and u["field"] in questions.FIELDS
             ]
+            below = item.get("bundleBelowCurrent")
+            if below:
+                # 이 폐기물만 보면 현행보다 불리하지만 같은 업체 묶음 전체가 나아 함께 보낸다(assign.py가
+                # 비용이 모두 확인됐을 때만 허용한다). 손해와 묶음 전체 차이를 숫자로 밝히고 조건부로 둔다
+                loss = claim_in(optimized, below.get("loss"), f"{tag}_bundleLoss")
+                whole = claim_in(optimized, below.get("bundle"), f"{tag}_bundleDifference")
+                partners = [
+                    str(by_id[x].get("name") or x)
+                    for x in below.get("streamIds") or []
+                    if x in by_id
+                ]
+                status = "conditional"
+                if loss and whole:
+                    who = names.get(vendor_id) or "업체"
+                    checks.append(
+                        {
+                            "key": "bundle_below_current",
+                            "status": "conditional",
+                            "text": f"이 폐기물만 보면 현행 대비 차이가 한 달 {{{{{loss['id']}}}}}입니다. "
+                            f"{who}에 {josa(', '.join(partners) or '다른 폐기물', '와과')} 함께 보내야 "
+                            "최소 물량이나 운반비 조건이 맞아 묶음에 넣었고, 묶음 전체로는 현행 대비 한 달 "
+                            f"{{{{{whole['id']}}}}}입니다. 담당자 확인 필요.",
+                            "claims": [loss, whole],
+                            "evidence": list(
+                                dict.fromkeys([*loss["evidence"], *whole["evidence"]])
+                            ),
+                        }
+                    )
             thread = threads.get(vendor_id)
             if thread is not None:
                 # 최소 물량과 무게·부피 적재(check_loading). 실제로 배정된 흐름을 합친 값이 있으면 그것을,
@@ -3355,6 +3383,14 @@ class Orchestrator:
                 # 허가 근거의 수준(허가증·공공 명부 확인, 허가증 문서, 업체 입력, 공공 명부와 다름)
                 "permit": item.get("permit"),
                 "currentAssumed": bool(item.get("currentAssumed")),
+                # 묶음 때문에 현행보다 불리한 배정이면 손해·묶음 전체 차이(claim)와 함께 보내는 폐기물
+                "bundleBelowCurrent": {
+                    "loss": claim_in(optimized, below.get("loss"), f"{tag}_bundleLoss"),
+                    "bundle": claim_in(optimized, below.get("bundle"), f"{tag}_bundleDifference"),
+                    "streamIds": list(below.get("streamIds") or []),
+                }
+                if below
+                else None,
                 "checks": checks,
                 "alternatives": alternatives,
                 # 허가 확인 결과 이 경로로 진행할 수 없는 업체(사유와 함께). 예상 손익은 싣지 않는다

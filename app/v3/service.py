@@ -1827,6 +1827,8 @@ def _result_view(session: dict[str, Any], viewer: str, owner: bool) -> dict[str,
                 "carbonProcess": None,
                 "carbonTransport": None,
                 "transportKm": None,
+                # 묶음 손해 공개는 배출 기업의 현행 손익 비교다
+                "bundleBelowCurrent": None,
                 # 수거 상태와 운반비 방식만 보인다. 금액은 배출 기업 쪽 계산 근거라 빼고(업체 자신의 견적은 대화의
                 # 조건 답에 있다), 운반비 손익분기(배출 기업의 비교)도 뺀다
                 "pickup": {

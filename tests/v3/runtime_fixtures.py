@@ -8,6 +8,7 @@ from app.v3 import service
 from app.v3.a2a.message import Message
 from app.v3.agents.llm import ScriptedLLM
 from app.v3.agents.policy_rule import RulePolicy
+from app.v3.demo.seed import DEMO_ANSWERS
 from app.v3.evidence.registry import InMemoryRegistry
 from app.v3.evidence.validator import validate_message, validate_text
 from app.v3.store import InMemoryStore
@@ -17,7 +18,7 @@ CLOCK = "2026-11-17T00:00:00+00:00"
 HANBIT, DAON = "org_hanbit", "org_daon"
 SAEGIL, NAMHAE, MISO = "org_saegil", "org_namhae", "org_miso"
 ADMIN = "org_admin"  # 운영 조직(관리자 화면과 시연 되돌리기)
-FILM_MOISTURE = 2.0  # 시연에서 담당자가 답하는 가상 값
+FILM_MOISTURE = DEMO_ANSWERS[("st_film", "moisturePct")]  # 시연에서 담당자가 답하는 가상 값
 
 
 def make_app(llm_factory=None, **options):
@@ -66,13 +67,12 @@ def start(app, emitter=HANBIT):
 
 
 def answer_all(app, view, emitter=HANBIT):
-    """포장 필름의 수분만 값으로 답하고 나머지는 '모름'으로 답한다."""
+    """시연 담당자의 답(DEMO_ANSWERS: 포장 필름 수분, 필름·퍼지 현행 처리비)만 값으로 답하고 나머지는 '모름'."""
     sid = view["session"]["id"]
     for question in view["questions"]:
         if question["answered"]:
             continue
-        film_moisture = question["streamId"] == "st_film" and question["field"] == "moisturePct"
-        value = FILM_MOISTURE if film_moisture else "unknown"
+        value = DEMO_ANSWERS.get((question["streamId"], question["field"]), "unknown")
         service.answer_question(app, sid, question["id"], value, emitter)
     return service.run_session(app, sid, emitter)
 
