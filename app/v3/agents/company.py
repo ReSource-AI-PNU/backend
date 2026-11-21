@@ -30,6 +30,7 @@ from app.v3.agents.draft import (
     turn_schema,
 )
 from app.v3.agents.llm import LLM
+from app.v3.agents.mandate import prompt_mandate
 from app.v3.agents.pool import ClaimPool
 from app.v3.evidence.validator import validate_message
 from app.v3.untrusted import contaminant_labels, org_label, stream_label
@@ -97,6 +98,7 @@ EXAMPLES = (
 
 SYSTEM_PROMPT = "\n".join(
     [
+        *prompt_mandate("company"),
         "당신은 폐기물을 내보내는 배출 기업을 대변하는 회사 측 에이전트다.",
         "처리 업체를 대변하는 업체 측 에이전트와 대화해, 폐기물마다 맞는 업체와 조건을 찾는다.",
         "",

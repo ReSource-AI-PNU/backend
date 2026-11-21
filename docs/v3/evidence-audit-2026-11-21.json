@@ -2861,7 +2861,7 @@
     },
     {
       "file": "app/v3/judge/defaults.v1.json",
-      "version": "v2-evidence-20261121",
+      "version": "v3-no-unapproved-defaults-20261121",
       "key": "current.cost.폐플라스틱",
       "value": 250,
       "unit": "원/kg",
@@ -2875,7 +2875,7 @@
     },
     {
       "file": "app/v3/judge/defaults.v1.json",
-      "version": "v2-evidence-20261121",
+      "version": "v3-no-unapproved-defaults-20261121",
       "key": "current.cost.포장재",
       "value": 250,
       "unit": "원/kg",
@@ -2889,7 +2889,7 @@
     },
     {
       "file": "app/v3/judge/defaults.v1.json",
-      "version": "v2-evidence-20261121",
+      "version": "v3-no-unapproved-defaults-20261121",
       "key": "current.cost.금속 스크랩",
       "value": 250,
       "unit": "원/kg",
@@ -2903,7 +2903,7 @@
     },
     {
       "file": "app/v3/judge/defaults.v1.json",
-      "version": "v2-evidence-20261121",
+      "version": "v3-no-unapproved-defaults-20261121",
       "key": "current.cost.폐목재",
       "value": 120,
       "unit": "원/kg",
@@ -2917,7 +2917,7 @@
     },
     {
       "file": "app/v3/judge/defaults.v1.json",
-      "version": "v2-evidence-20261121",
+      "version": "v3-no-unapproved-defaults-20261121",
       "key": "current.alt.위탁재활용-무상",
       "value": 0,
       "unit": "원/kg",
@@ -2930,67 +2930,75 @@
     },
     {
       "file": "app/v3/judge/defaults.v1.json",
-      "version": "v2-evidence-20261121",
+      "version": "v3-no-unapproved-defaults-20261121",
       "key": "min.monthlyKg.폐플라스틱",
       "value": 1000,
       "unit": "kg/월",
       "label": "업체가 기준을 밝히지 않았을 때의 최소 물량 (폐플라스틱)",
-      "excerpt": "서비스 운영 정책값(가상 시연용)이며 실제 시세·법정 기준이 아닙니다. 업체가 밝히지 않았을 때 가상 최소 물량으로 씁니다.",
+      "excerpt": "기존 코드의 제안 정책값입니다. 실제 승인 주체·일자·이유·기록이 없어 자동 적용하지 않습니다.",
       "origin": "app/demo/synthetic.py의 minimum_kg",
-      "internalNote": "이전 시연 화면에서 쓰던 가상 최소 물량을 옮겼다.",
       "evidenceClass": "policy",
-      "decisionOwner": "Re:Source AI 서비스 운영자; 업체별 명시 설정 우선",
+      "decisionOwner": "승인 주체 미확인",
       "valueRange": null,
-      "updatedOn": "2026-11-21"
+      "updatedOn": "2026-11-21",
+      "policyApproval": {
+        "status": "proposed"
+      }
     },
     {
       "file": "app/v3/judge/defaults.v1.json",
-      "version": "v2-evidence-20261121",
+      "version": "v3-no-unapproved-defaults-20261121",
       "key": "min.monthlyKg.포장재",
       "value": 1000,
       "unit": "kg/월",
       "label": "업체가 기준을 밝히지 않았을 때의 최소 물량 (포장재)",
-      "excerpt": "서비스 운영 정책값(가상 시연용)이며 실제 시세·법정 기준이 아닙니다. 업체가 밝히지 않았을 때 가상 최소 물량으로 씁니다.",
+      "excerpt": "기존 코드의 제안 정책값입니다. 실제 승인 주체·일자·이유·기록이 없어 자동 적용하지 않습니다.",
       "origin": "app/demo/synthetic.py의 minimum_kg",
-      "internalNote": "이전 시연 화면에서 쓰던 가상 최소 물량을 옮겼다.",
       "evidenceClass": "policy",
-      "decisionOwner": "Re:Source AI 서비스 운영자; 업체별 명시 설정 우선",
+      "decisionOwner": "승인 주체 미확인",
       "valueRange": null,
-      "updatedOn": "2026-11-21"
+      "updatedOn": "2026-11-21",
+      "policyApproval": {
+        "status": "proposed"
+      }
     },
     {
       "file": "app/v3/judge/defaults.v1.json",
-      "version": "v2-evidence-20261121",
+      "version": "v3-no-unapproved-defaults-20261121",
       "key": "min.monthlyKg.금속 스크랩",
       "value": 300,
       "unit": "kg/월",
       "label": "업체가 기준을 밝히지 않았을 때의 최소 물량 (금속 스크랩)",
-      "excerpt": "서비스 운영 정책값(가상 시연용)이며 실제 시세·법정 기준이 아닙니다. 업체가 밝히지 않았을 때 가상 최소 물량으로 씁니다.",
+      "excerpt": "기존 코드의 제안 정책값입니다. 실제 승인 주체·일자·이유·기록이 없어 자동 적용하지 않습니다.",
       "origin": "app/demo/synthetic.py의 minimum_kg",
-      "internalNote": "이전 시연 화면에서 쓰던 가상 최소 물량을 옮겼다.",
       "evidenceClass": "policy",
-      "decisionOwner": "Re:Source AI 서비스 운영자; 업체별 명시 설정 우선",
+      "decisionOwner": "승인 주체 미확인",
       "valueRange": null,
-      "updatedOn": "2026-11-21"
+      "updatedOn": "2026-11-21",
+      "policyApproval": {
+        "status": "proposed"
+      }
     },
     {
       "file": "app/v3/judge/defaults.v1.json",
-      "version": "v2-evidence-20261121",
+      "version": "v3-no-unapproved-defaults-20261121",
       "key": "min.monthlyKg.폐목재",
       "value": 500,
       "unit": "kg/월",
       "label": "업체가 기준을 밝히지 않았을 때의 최소 물량 (폐목재)",
-      "excerpt": "서비스 운영 정책값(가상 시연용)이며 실제 시세·법정 기준이 아닙니다. 업체가 밝히지 않았을 때 가상 최소 물량으로 씁니다.",
+      "excerpt": "기존 코드의 제안 정책값입니다. 실제 승인 주체·일자·이유·기록이 없어 자동 적용하지 않습니다.",
       "origin": "app/demo/synthetic.py의 minimum_kg",
-      "internalNote": "이전 시연 화면에서 쓰던 가상 최소 물량을 옮겼다.",
       "evidenceClass": "policy",
-      "decisionOwner": "Re:Source AI 서비스 운영자; 업체별 명시 설정 우선",
+      "decisionOwner": "승인 주체 미확인",
       "valueRange": null,
-      "updatedOn": "2026-11-21"
+      "updatedOn": "2026-11-21",
+      "policyApproval": {
+        "status": "proposed"
+      }
     },
     {
       "file": "app/v3/judge/defaults.v1.json",
-      "version": "v2-evidence-20261121",
+      "version": "v3-no-unapproved-defaults-20261121",
       "key": "distance.detourFactor",
       "value": 1.3,
       "unit": null,
@@ -3003,7 +3011,7 @@
     },
     {
       "file": "app/v3/judge/defaults.v1.json",
-      "version": "v2-evidence-20261121",
+      "version": "v3-no-unapproved-defaults-20261121",
       "key": "transport.costPerKm",
       "value": 1200,
       "unit": "원/km",
@@ -3016,44 +3024,51 @@
     },
     {
       "file": "app/v3/judge/defaults.v1.json",
-      "version": "v2-evidence-20261121",
+      "version": "v3-no-unapproved-defaults-20261121",
       "key": "contract.priceBandPct",
       "value": 10,
       "unit": "%",
       "label": "단가를 다시 협의하는 기준 시세 변동 폭",
-      "excerpt": "서비스 운영 정책값입니다. 기준 시세(재활용가능자원 가격조사)가 합의할 때보다 이만큼 넘게 바뀌면 단가를 다시 협의하자는 이행 계획서의 조건입니다. 2026-11-19 배출 사업장 설문의 \"단가 상호불신으로 장기 계약이 어렵다\"는 답에 따라 두었습니다.",
-      "internalNote": "설문 자유 답(장기 계약, 단가 불신)에 맞춰 새로 둔 값이다.",
+      "excerpt": "기존 코드의 제안 정책값입니다. 실제 승인 주체·일자·이유·기록이 없어 자동 적용하지 않습니다.",
       "evidenceClass": "policy",
-      "decisionOwner": "Re:Source AI 서비스 운영자; 업체별 명시 설정 우선",
+      "decisionOwner": "승인 주체 미확인",
       "valueRange": null,
-      "updatedOn": "2026-11-21"
+      "updatedOn": "2026-11-21",
+      "policyApproval": {
+        "status": "proposed"
+      }
     },
     {
       "file": "app/v3/judge/defaults.v1.json",
-      "version": "v2-evidence-20261121",
+      "version": "v3-no-unapproved-defaults-20261121",
       "key": "negotiation.askPct",
       "value": 10,
       "unit": "%",
       "label": "합의 전에 한 번 더 요청하는 단가 폭",
-      "excerpt": "서비스 운영 정책값입니다. 회사 측 AI가 합의하기 전에 업체가 낸 단가보다 이만큼 나은 단가(매입이면 더 받고 처리비면 덜 내는 쪽)를 한 번 요청합니다. 업체 측 AI는 업체가 정한 단가 범위 안에서만 답합니다.",
-      "internalNote": "⑥ 단가 협상(2026-11-19). 업체 가드레일 상한이 있으면 그 안에서 받아들이고, 없으면 처음 제안을 그대로 둔다.",
+      "excerpt": "기존 코드의 제안 정책값입니다. 실제 승인 주체·일자·이유·기록이 없어 자동 적용하지 않습니다.",
       "evidenceClass": "policy",
-      "decisionOwner": "Re:Source AI 서비스 운영자; 업체별 명시 설정 우선",
+      "decisionOwner": "승인 주체 미확인",
       "valueRange": null,
-      "updatedOn": "2026-11-21"
+      "updatedOn": "2026-11-21",
+      "policyApproval": {
+        "status": "proposed"
+      }
     },
     {
       "file": "app/v3/judge/defaults.v1.json",
-      "version": "v2-evidence-20261121",
+      "version": "v3-no-unapproved-defaults-20261121",
       "key": "contract.pilotMonths",
       "value": 1,
       "unit": "개월",
       "label": "첫 거래 시범 기간",
-      "excerpt": "서비스 운영자가 첫 거래 확인을 위해 제안한 시범 기간 정책값입니다. 첫 반입 결과를 양측이 검토하도록 제안하며 과학적 상수가 아닙니다.",
+      "excerpt": "기존 코드의 제안 정책값입니다. 실제 승인 주체·일자·이유·기록이 없어 자동 적용하지 않습니다.",
       "evidenceClass": "policy",
-      "decisionOwner": "Re:Source AI 서비스 운영자",
+      "decisionOwner": "승인 주체 미확인",
       "valueRange": null,
-      "updatedOn": "2026-11-21"
+      "updatedOn": "2026-11-21",
+      "policyApproval": {
+        "status": "proposed"
+      }
     }
   ],
   "references": [
@@ -3869,22 +3884,22 @@
     },
     {
       "file": "app/v3/agents/company.py",
-      "line": 46,
+      "line": 47,
       "text": "\"cost_carbon\","
     },
     {
       "file": "app/v3/agents/company.py",
-      "line": 268,
+      "line": 270,
       "text": "if name == \"cost_carbon\":"
     },
     {
       "file": "app/v3/agents/company.py",
-      "line": 272,
+      "line": 274,
       "text": "if arguments.get(\"transportPaidBy\") in (\"vendor\", \"emitter\"):"
     },
     {
       "file": "app/v3/agents/company.py",
-      "line": 273,
+      "line": 275,
       "text": "real[\"transportPaidBy\"] = arguments[\"transportPaidBy\"]"
     },
     {
@@ -4389,8 +4404,13 @@
     },
     {
       "file": "app/v3/agents/orchestrator.py",
-      "line": 4431,
-      "text": "\"- 시범 기간에는 어느 쪽이든 앱에서 알리고 바로 거래를 멈출 수 있습니다.\""
+      "line": 4425,
+      "text": "f\"- 승인 기록이 있는 운영 정책에 따른 시범 기간: {token}. 양쪽 담당자가 적용 여부를 확인합니다.\""
+    },
+    {
+      "file": "app/v3/agents/orchestrator.py",
+      "line": 4427,
+      "text": "else \"- 시범 기간과 중단 조건은 별도 합의가 필요합니다. 승인된 정책이 없어 자동 기간·해지 조건을 넣지 않았습니다.\""
     },
     {
       "file": "app/v3/agents/policy_rule.py",
@@ -4529,52 +4549,52 @@
     },
     {
       "file": "app/v3/agents/vendor.py",
-      "line": 62,
+      "line": 63,
       "text": "\"cost_carbon\","
     },
     {
       "file": "app/v3/agents/vendor.py",
-      "line": 215,
+      "line": 217,
       "text": "for key in (\"transport\", \"process\", \"monthlyCapacityKg\"):"
     },
     {
       "file": "app/v3/agents/vendor.py",
-      "line": 486,
+      "line": 488,
       "text": "\"transport_fee\","
     },
     {
       "file": "app/v3/agents/vendor.py",
-      "line": 493,
+      "line": 495,
       "text": "field=\"transportFee\","
     },
     {
       "file": "app/v3/agents/vendor.py",
-      "line": 497,
+      "line": 499,
       "text": "\"transport_pickups\","
     },
     {
       "file": "app/v3/agents/vendor.py",
-      "line": 504,
+      "line": 506,
       "text": "field=\"transportPickups\","
     },
     {
       "file": "app/v3/agents/vendor.py",
-      "line": 638,
+      "line": 640,
       "text": "densities = [s.get(\"bulkDensityKgPerM3\") for s in chosen]"
     },
     {
       "file": "app/v3/agents/vendor.py",
-      "line": 659,
+      "line": 661,
       "text": "if name == \"cost_carbon\":"
     },
     {
       "file": "app/v3/agents/vendor.py",
-      "line": 665,
+      "line": 667,
       "text": "# 현행 처리 단가는 업체가 모르는 값이라 도구가 가정값을 쓴다. 그 값은 풀에 넣지 않는다"
     },
     {
       "file": "app/v3/agents/vendor.py",
-      "line": 1118,
+      "line": 1120,
       "text": "profile.get(\"transport\"),"
     },
     {
@@ -8979,37 +8999,42 @@
     },
     {
       "file": "app/v3/intake/grade_model.py",
-      "line": 16,
+      "line": 18,
       "text": "from app.v3.intake._http import Transport, default_transport"
     },
     {
       "file": "app/v3/intake/grade_model.py",
-      "line": 39,
+      "line": 41,
       "text": "\"\"\"등급 기준값 전체를 가리키는 assumption 근거. 화면에는 \"가정값\"으로 나온다.\"\"\""
     },
     {
       "file": "app/v3/intake/grade_model.py",
-      "line": 90,
+      "line": 92,
       "text": "\"값 뒤 괄호는 참고한 공개 규격이고, 괄호가 없는 값은 팀 가정값입니다. \""
     },
     {
       "file": "app/v3/intake/grade_model.py",
-      "line": 186,
+      "line": 188,
       "text": "transport: Transport | None = None,"
     },
     {
       "file": "app/v3/intake/grade_model.py",
-      "line": 191,
+      "line": 193,
       "text": "self.transport = transport or default_transport"
     },
     {
       "file": "app/v3/intake/grade_model.py",
-      "line": 219,
+      "line": 221,
       "text": "status, _, raw = self.transport(\"POST\", self.endpoint_url, headers, body)"
     },
     {
       "file": "app/v3/intake/grade_model.py",
-      "line": 313,
+      "line": 274,
+      "text": "\"label\": \"공통 등급 산정 보류\","
+    },
+    {
+      "file": "app/v3/intake/grade_model.py",
+      "line": 336,
       "text": "else f\"등급 기준값 규칙 {predicted['modelVersion']} (가정값)\""
     },
     {
@@ -10059,137 +10084,137 @@
     },
     {
       "file": "app/v3/judge/common.py",
-      "line": 488,
+      "line": 492,
       "text": "# 운반비는 업체가 밝힌 조건(profile[\"transport\"])을 따른다: 단가에 포함이면 0, 별도면 1회 운반비 × 월 횟수."
     },
     {
       "file": "app/v3/judge/common.py",
-      "line": 489,
+      "line": 493,
       "text": "# 전처리 인건비는 담당자가 넣은 월 작업 시간(stream[\"pretreatHoursPerMonth\"])이 있을 때만 계산한다."
     },
     {
       "file": "app/v3/judge/common.py",
-      "line": 496,
+      "line": 500,
       "text": "def transport_charge(vendor: dict, pickups=None) -> dict:"
     },
     {
       "file": "app/v3/judge/common.py",
-      "line": 509,
+      "line": 513,
       "text": "terms = vendor.get(\"transport\") or {}"
     },
     {
       "file": "app/v3/judge/common.py",
-      "line": 540,
+      "line": 544,
       "text": "def labor_cost(rec: Recorder, stream: dict):"
     },
     {
       "file": "app/v3/judge/common.py",
-      "line": 542,
+      "line": 546,
       "text": "hours = num(stream.get(\"pretreatHoursPerMonth\"))"
     },
     {
       "file": "app/v3/judge/common.py",
-      "line": 544,
+      "line": 548,
       "text": "return 0.0, list(stream.get(\"pretreatEvidence\") or []), 0.0, 0.0"
     },
     {
       "file": "app/v3/judge/common.py",
-      "line": 547,
+      "line": 551,
       "text": "\"labor_unknown\","
-    },
-    {
-      "file": "app/v3/judge/common.py",
-      "line": 552,
-      "text": "own = num(stream.get(\"laborCostKrwPerHour\"))"
-    },
-    {
-      "file": "app/v3/judge/common.py",
-      "line": 554,
-      "text": "return hours * own, list(stream.get(\"pretreatEvidence\") or []), hours, own"
     },
     {
       "file": "app/v3/judge/common.py",
       "line": 556,
+      "text": "own = num(stream.get(\"laborCostKrwPerHour\"))"
+    },
+    {
+      "file": "app/v3/judge/common.py",
+      "line": 558,
+      "text": "return hours * own, list(stream.get(\"pretreatEvidence\") or []), hours, own"
+    },
+    {
+      "file": "app/v3/judge/common.py",
+      "line": 560,
       "text": "\"labor_unknown\","
     },
     {
       "file": "app/v3/judge/common.py",
-      "line": 570,
+      "line": 574,
       "text": "CARBON_FORMULA = \"(옮긴 뒤 처리의 배출계수 − 현행 처리의 배출계수) × 월 발생량. 신재 대체 효과는 넣지 않았습니다.\""
     },
     {
       "file": "app/v3/judge/common.py",
-      "line": 571,
+      "line": 575,
       "text": "TRANSPORT_EF_KEY = \"emission.transport.truck\""
     },
     {
       "file": "app/v3/judge/common.py",
-      "line": 572,
+      "line": 576,
       "text": "TRANSPORT_CARBON_FORMULA = ("
     },
     {
       "file": "app/v3/judge/common.py",
-      "line": 576,
+      "line": 580,
       "text": "TOTAL_CARBON_FORMULA = \"처리 방식이 바뀌어 달라지는 배출 + 업체로 실어 가는 운송 배출\""
     },
     {
       "file": "app/v3/judge/common.py",
-      "line": 582,
+      "line": 586,
       "text": "도로 거리 제공자가 있으면 그 값, 없으면 직선 × 우회 계수(가정값). 위치를 모르면 known False이고 reason에"
     },
     {
       "file": "app/v3/judge/common.py",
-      "line": 603,
+      "line": 607,
       "text": "def transport_carbon(rec: Recorder, distance: dict, kg) -> dict:"
     },
     {
       "file": "app/v3/judge/common.py",
-      "line": 630,
+      "line": 634,
       "text": "factor = rec.basis(TRANSPORT_EF_KEY)"
     },
     {
       "file": "app/v3/judge/common.py",
-      "line": 683,
+      "line": 687,
       "text": "def carbon_per_kg(rec: Recorder, stream: dict, vendor: dict, unit_price, method):"
     },
     {
       "file": "app/v3/judge/common.py",
-      "line": 686,
+      "line": 690,
       "text": "if (stream.get(\"currentTreatment\") or {}).get(\"methodAssumed\"):"
     },
     {
       "file": "app/v3/judge/common.py",
-      "line": 694,
+      "line": 698,
       "text": "now_ef = rec.basis(f\"emission.{now_key}.{item}\")"
     },
     {
       "file": "app/v3/judge/common.py",
-      "line": 695,
+      "line": 699,
       "text": "after_ef = rec.basis(f\"emission.{after_key}.{item}\")"
     },
     {
       "file": "app/v3/judge/common.py",
-      "line": 720,
+      "line": 724,
       "text": "\"currentTreatment\","
     },
     {
       "file": "app/v3/judge/common.py",
-      "line": 722,
+      "line": 726,
       "text": "\"pretreatHoursPerMonth\","
     },
     {
       "file": "app/v3/judge/common.py",
-      "line": 723,
+      "line": 727,
       "text": "\"laborCostKrwPerHour\","
     },
     {
       "file": "app/v3/judge/common.py",
-      "line": 724,
+      "line": 728,
       "text": "\"pretreatEvidence\","
     },
     {
       "file": "app/v3/judge/defaults.py",
-      "line": 44,
+      "line": 45,
       "text": "\"\"\"기본 가정값을 레지스트리에 넣고 근거 ID 목록을 돌려준다. 여러 번 불러도 결과가 같다.\"\"\""
     },
     {
@@ -10399,67 +10424,62 @@
     },
     {
       "file": "app/v3/judge/defaults.v1.json",
-      "line": 258,
+      "line": 260,
       "text": "\"origin\": \"app/demo/synthetic.py의 minimum_kg\","
     },
     {
       "file": "app/v3/judge/defaults.v1.json",
-      "line": 271,
+      "line": 275,
       "text": "\"origin\": \"app/demo/synthetic.py의 minimum_kg\","
     },
     {
       "file": "app/v3/judge/defaults.v1.json",
-      "line": 284,
+      "line": 290,
       "text": "\"origin\": \"app/demo/synthetic.py의 minimum_kg\","
     },
     {
       "file": "app/v3/judge/defaults.v1.json",
-      "line": 292,
+      "line": 300,
       "text": "\"key\": \"distance.detourFactor\","
     },
     {
       "file": "app/v3/judge/defaults.v1.json",
-      "line": 296,
+      "line": 304,
       "text": "\"excerpt\": \"팀 가정값(가상 시연용)이며 실제 시세·법정 기준이 아닙니다. 기존 자료에 없어 새로 둔 값입니다.\","
     },
     {
       "file": "app/v3/judge/defaults.v1.json",
-      "line": 303,
+      "line": 311,
       "text": "\"key\": \"transport.costPerKm\","
     },
     {
       "file": "app/v3/judge/defaults.v1.json",
-      "line": 307,
+      "line": 315,
       "text": "\"excerpt\": \"팀 가정값(가상 시연용)이며 실제 시세·법정 기준이 아닙니다. 기존 자료에 없어 새로 둔 값입니다. 업체가 노선·차량 단가를 올리면 그 값을 씁니다.\","
     },
     {
       "file": "app/v3/judge/defaults.v1.json",
-      "line": 314,
+      "line": 322,
       "text": "\"key\": \"contract.priceBandPct\","
     },
     {
       "file": "app/v3/judge/defaults.v1.json",
-      "line": 326,
+      "line": 336,
       "text": "\"key\": \"negotiation.askPct\","
     },
     {
       "file": "app/v3/judge/defaults.v1.json",
-      "line": 338,
+      "line": 350,
       "text": "\"key\": \"contract.pilotMonths\","
     },
     {
       "file": "app/v3/judge/defaults.v1.json",
-      "line": 341,
+      "line": 353,
       "text": "\"label\": \"첫 거래 시범 기간\","
     },
     {
       "file": "app/v3/judge/defaults.v1.json",
-      "line": 342,
-      "text": "\"excerpt\": \"서비스 운영자가 첫 거래 확인을 위해 제안한 시범 기간 정책값입니다. 첫 반입 결과를 양측이 검토하도록 제안하며 과학적 상수가 아닙니다.\","
-    },
-    {
-      "file": "app/v3/judge/defaults.v1.json",
-      "line": 350,
+      "line": 365,
       "text": "\"emissionNote\": \"기존 환경성적표지 시드는 메타데이터만 확인했습니다. 원문 기능단위·계산 경계 확인 전 처리·운송 배출 산정을 보류합니다.\""
     },
     {
@@ -10925,17 +10945,12 @@
     {
       "file": "app/v3/judge/negotiate.py",
       "line": 3,
-      "text": "- 회사 측(ask_price): 받은 제안 단가에서 요청 폭(가정값 negotiation.askPct)만큼 나은 단가를 요청한다. \"나은\"은"
+      "text": "- 회사 측(ask_price): 승인 기록이 있는 사업 정책 negotiation.askPct가 있을 때만 요청 단가를 계산한다. \"나은\"은"
     },
     {
       "file": "app/v3/judge/negotiate.py",
       "line": 18,
       "text": "ASK_KEY = \"negotiation.askPct\""
-    },
-    {
-      "file": "app/v3/judge/negotiate.py",
-      "line": 52,
-      "text": "\"제안 단가 + |제안 단가| × 요청 폭(가정값). 매입이면 더 받고 처리비면 덜 내는 방향\","
     },
     {
       "file": "app/v3/judge/pickup.py",
@@ -11374,87 +11389,87 @@
     },
     {
       "file": "app/v3/outcome_carbon.py",
-      "line": 141,
+      "line": 137,
       "text": "current = stream.get(\"currentTreatment\") or {}"
     },
     {
       "file": "app/v3/outcome_carbon.py",
-      "line": 146,
+      "line": 142,
       "text": "assumed = (not method) or bool(current.get(\"methodAssumed\"))"
     },
     {
       "file": "app/v3/outcome_carbon.py",
-      "line": 181,
+      "line": 177,
       "text": "name = f\"emission.{key}.{item}\""
     },
     {
       "file": "app/v3/outcome_carbon.py",
-      "line": 408,
+      "line": 404,
       "text": "def carbon(snapshot: dict[str, Any], kg: Any) -> float | None:"
     },
     {
       "file": "app/v3/outcome_carbon.py",
-      "line": 419,
+      "line": 415,
       "text": "\"outcome_carbon_basis\"  # 2026-11-19 한때 쓴 기록 당시 기준의 형식(검수 기록마다 근거 하나)"
     },
     {
       "file": "app/v3/outcome_carbon.py",
-      "line": 425,
+      "line": 421,
       "text": "EARLIER_TOOL, {\"outcome\": record[\"id\"], \"emitter\": record[\"emitterOrgId\"]}, \"carbonBasis\""
     },
     {
       "file": "app/v3/outcome_carbon.py",
-      "line": 438,
+      "line": 434,
       "text": "old = (found.meta or {}).get(\"carbonBasis\")"
     },
     {
       "file": "app/v3/outcome_carbon.py",
-      "line": 444,
+      "line": 440,
       "text": "assumed = bool(old.get(\"currentMethodAssumed\"))"
     },
     {
       "file": "app/v3/outcome_carbon.py",
-      "line": 497,
+      "line": 493,
       "text": "\"\"\"배출계수 근거 ID → 처리(incinerate·recycle 등). defaults의 refs와 가정값 ID로 거꾸로 찾는다.\"\"\""
     },
     {
       "file": "app/v3/outcome_carbon.py",
-      "line": 501,
+      "line": 497,
       "text": "if len(parts) != 3 or parts[0] != \"emission\" or parts[1] == \"transport\":"
     },
     {
       "file": "app/v3/outcome_carbon.py",
-      "line": 537,
+      "line": 533,
       "text": "cited = list((assignment.get(\"carbonProcess\") or {}).get(\"evidence\") or [])"
     },
     {
       "file": "app/v3/outcome_carbon.py",
-      "line": 565,
+      "line": 561,
       "text": "current = deal_stream.get(\"currentTreatment\") or {}"
     },
     {
       "file": "app/v3/outcome_carbon.py",
-      "line": 567,
+      "line": 563,
       "text": "assumed = assumed or bool(current.get(\"methodAssumed\"))"
     },
     {
       "file": "app/v3/outcome_carbon.py",
-      "line": 594,
+      "line": 590,
       "text": "\"carbonPerMonth\": _number(calc.value),"
     },
     {
       "file": "app/v3/outcome_carbon.py",
-      "line": 602,
+      "line": 598,
       "text": "\"baseline\": {**now_f, \"key\": f\"emission.{base_key}.{item}\"},"
     },
     {
       "file": "app/v3/outcome_carbon.py",
-      "line": 603,
+      "line": 599,
       "text": "\"applied\": {**after_f, \"key\": f\"emission.{after_key}.{item}\"},"
     },
     {
       "file": "app/v3/outcome_carbon.py",
-      "line": 655,
+      "line": 651,
       "text": "{k: deal.get(k) for k in (\"computedOn\", \"monthlyKg\", \"carbonPerMonth\")}"
     },
     {
@@ -12626,6 +12641,36 @@
       "file": "docs/track-d-review.md",
       "line": 68,
       "text": "- [ ] 실제 Entra 로그인·외부 A/B/C·A2A·Azure Maps·기관 데이터: 실계정/서비스 연결 후 검증. 외부 응답은 MockTransport로 계약·실패 동작 검사"
+    },
+    {
+      "file": "docs/v3/agent-grounding-and-azure-2026-11-21.md",
+      "line": 13,
+      "text": "| 시범 기간·단가 변동폭 | 기본 1개월·정책 변동폭 | 승인 기록 없는 기간·폭은 계약에 넣지 않음. 기간·종료 조건 별도 합의 | `agents/orchestrator.py` |"
+    },
+    {
+      "file": "docs/v3/agent-grounding-and-azure-2026-11-21.md",
+      "line": 15,
+      "text": "| 공통 품질 등급 | 팀 임계값으로 A/B/C 등급 | 공통 등급 산정 보류. 업체가 등록한 매입 기준과 반입 검수는 별도 | `judge/common.py`, `intake/grade_model.py` |"
+    },
+    {
+      "file": "docs/v3/agent-grounding-and-azure-2026-11-21.md",
+      "line": 16,
+      "text": "| 실제 처리 방식 | 양수 단가이면 재활용 추정 경로 존재 | 업체가 명시한 공정이 없으면 미확인 | `outcome_carbon.py:applied_process` |"
+    },
+    {
+      "file": "docs/v3/agent-grounding-and-azure-2026-11-21.md",
+      "line": 21,
+      "text": "기존 가정값은 과거 근거를 재현할 수 있도록 저장소에서 지우지 않는다. 신규 계산에서는 선택되지 않는다. 테스트·시연 데이터가 존재한다는 사실을 실적이나 실제 업체의 자료처럼 설명하지 않는다. 자동 생성 시연 조직은 실제 계정의 거래 후보에서 제외한다."
+    },
+    {
+      "file": "docs/v3/agent-grounding-and-azure-2026-11-21.md",
+      "line": 54,
+      "text": "현재 실제 연결 상태와 최종 테스트 결과는 아래 검증 결과 절에 기록한다. 모의 transport 시험은 실제 Azure 연결 성공으로 집계하지 않는다."
+    },
+    {
+      "file": "docs/v3/agent-grounding-and-azure-2026-11-21.md",
+      "line": 68,
+      "text": "- 등급 모델 시험은 처음 5통과/5실패였다. 원자료 측정값이나 연결 가능한 모델이 있더라도 공통 등급 기준 자체가 검증되지 않으면 산정 보류해야 한다는 새 동작으로 기대값을 수정했다. 원시 시험용 분류기와 합성 데이터 시험은 실제 현장 정확도를 주장하지 않는다."
     },
     {
       "file": "docs/v3/CONTRACT.md",
@@ -16438,43 +16483,53 @@
       "text": "| C41 | 현행 처리를 입력하지 않은 경우(혼합 소각 가정값과 민감도) | 초안 | 일치 | 0건 | 2/2 |"
     },
     {
+      "file": "docs/v3/grounding-validation-2026-11-21.json",
+      "line": 6,
+      "text": "\"regressionFiles\": [\"test_no_unsupported_defaults.py\", \"test_azure_local_probe.py\", \"test_llm_factory.py\", \"test_api.py\", \"test_mentoring_evidence.py\", \"test_contract_review.py\", \"test_guardrails.py\", \"test_shared_calc_evidence.py\", \"test_view_evidence_scope.py\", \"test_render.py\", \"test_units.py\", \"test_scan.py\", \"test_scan_demo.py\", \"test_fix2_auth.py\", \"test_rules_adversarial.py\", \"test_circular.py\", \"test_report.py\", \"test_report_snapshot.py\", \"test_outcome_inspections.py\", \"test_outcome_carbon.py\", \"test_negotiation.py\", \"test_permit_level_transport_carbon.py\", \"test_permit_verification.py\", \"test_intake_grade.py\"],"
+    },
+    {
+      "file": "docs/v3/grounding-validation-2026-11-21.json",
+      "line": 8,
+      "text": "\"browser\": {\"status\": \"passed\", \"accounts\": 2, \"inputOrigin\": \"synthetic test companies and documents\", \"model\": \"rule\", \"unitPriceKrwPerKg\": 300, \"correctedKg\": 920, \"reportAndCsvKrw\": 276000, \"carbon\": \"held\", \"crossOrgPrivateAccess\": \"denied\", \"screenshots\": false, \"video\": false, \"trace\": false},"
+    },
+    {
       "file": "docs/v3/mentoring-evidence-2026-11-21.md",
-      "line": 15,
+      "line": 17,
       "text": "| 운반비 문서 | 실제 배정과 요청서 문구가 달라질 수 있었음 | 요청서·계획서·계약서가 동일 `transport_text`를 사용. 포함/별도/미정 구분. 요청서의 월 예상액은 합의 단가×물량인 매입액으로 표시 |"
     },
     {
       "file": "docs/v3/mentoring-evidence-2026-11-21.md",
-      "line": 16,
+      "line": 18,
       "text": "| 없는 다음 등급 | 고정 문구가 다음 등급 단가를 요구함 | 기본은 반입 보류·재협의. 업체가 명시 선택한 실제 등록 등급이며 재질·형태·단가·근거가 맞을 때만 참조. 선택/기준 변경은 합의 조건 지문에 포함 |"
     },
     {
       "file": "docs/v3/mentoring-evidence-2026-11-21.md",
-      "line": 22,
+      "line": 24,
       "text": "| 실적 화면 | 미산정 탄소가 ‘없음’으로 표시될 수 있었음 | ‘산정 보류’로 구분. 비교 가능한 탄소가 없으면 ‘탄소도 가장 많이 줄임’ 주장 제거 |"
     },
     {
       "file": "docs/v3/mentoring-evidence-2026-11-21.md",
-      "line": 28,
+      "line": 30,
       "text": "분류: ① 사용자 실측·증빙(사용자 입력은 미인증임을 별도 표시), ② 공식 자료, ③ 조건부 문헌 추정, ④ 가정, ⑤ 운영 정책, ⑥ 산정 보류. 원출처 분류와 현재 사용 가능 여부는 별개다. 예를 들어 공식기관 자료라도 계산 경계를 모르면 ② 자료의 계산은 ⑥이다."
     },
     {
       "file": "docs/v3/mentoring-evidence-2026-11-21.md",
-      "line": 46,
+      "line": 48,
       "text": "| 협상·시범기간·최소물량 | +10%, 시세변동 10%, 한 달, 업체 미입력 최소물량 ⑤ | 운영자·이유·설정 키 기록. `contract.pilotMonths`를 문서의 실제 기간에 연결. 자연법칙/시장 최적값으로 표현 금지 |"
     },
     {
       "file": "docs/v3/mentoring-evidence-2026-11-21.md",
-      "line": 47,
+      "line": 49,
       "text": "| 등급 모델 | 공개 업계 규격을 참고한 팀 임계값·합성 데이터 ④ | 기존 가정 표시는 유지. 모델 등급을 업체의 실제 등록 다음 등급/단가로 자동 연결하지 않음 |"
     },
     {
       "file": "docs/v3/mentoring-evidence-2026-11-21.md",
-      "line": 77,
+      "line": 79,
       "text": "레거시 경로와 문서의 과거 숫자도 점검 색인에 포함했다. 과거 설계 문서/평가 정답에 남은 가정값은 현재 서비스에서 채택한 공식 계수라는 뜻이 아니다. 역사 문서를 일괄 소급 수정하지 않으며, 이 문서와 현재 계산 코드가 이번 변경의 기준이다."
     },
     {
       "file": "docs/v3/mentoring-evidence-2026-11-21.md",
-      "line": 86,
+      "line": 88,
       "text": "4. 1:30–2:00: 하한100/상한90 저장 거부 또는 운반비 미정의 차단 사례를 보여 준다. 없는 다음 등급 대신 재협의/반입 보류 조항을 보여 준다."
     },
     {
@@ -16544,17 +16599,17 @@
     },
     {
       "file": "docs/v3/validation-results-2026-11-21.json",
-      "line": 13,
+      "line": 14,
       "text": "\"checks\": [\"signup and onboarding\", \"invalid price range rejected\", \"explicit process and pickup terms\", \"synthetic text permit and price table\", \"baseline and quality inputs\", \"rule negotiation\", \"permit comparison\", \"single approval pending\", \"dual approval and three documents\", \"inspection revision\", \"report and CSV amount 303600 KRW\", \"carbon held\", \"cross-org private endpoint denied\"]"
     },
     {
       "file": "docs/v3/verification-2026-11-21.md",
-      "line": 41,
+      "line": 43,
       "text": "| 다음 등급 | A등급 한 줄인데 다음 등급 단가 참조 | 없는 다음 등급 문구 없음. 반입 보류·재협의 기준 |"
     },
     {
       "file": "docs/v3/verification-2026-11-21.md",
-      "line": 57,
+      "line": 59,
       "text": "python -m pytest tests/v3/test_circular.py tests/v3/test_report.py tests/v3/test_report_snapshot.py tests/v3/test_outcome_inspections.py tests/v3/test_outcome_carbon.py tests/v3/test_negotiation.py tests/v3/test_permit_level_transport_carbon.py tests/v3/test_permit_verification.py -q -p no:cacheprovider"
     },
     {
@@ -16571,6 +16626,31 @@
       "file": "scripts/audit_evidence.py",
       "line": 13,
       "text": "r\"energy|virgin|emission|carbon|density|yield|substitution|detour|transport|pretreat|labor|currentTreatment|current_per_kg|minimum_kg|priceBand|askPct|pilotMonths|methodAssumed|산정 보류|가정값|시범 기간|다음 등급\","
+    },
+    {
+      "file": "scripts/check_azure_local.py",
+      "line": 13,
+      "text": "from app.v3.agents.llm import FoundryChat, LLMError, urllib_transport"
+    },
+    {
+      "file": "scripts/check_azure_local.py",
+      "line": 33,
+      "text": "def probe(env, *, auth=\"api-key\", az=\"az\", transport=urllib_transport):"
+    },
+    {
+      "file": "scripts/check_azure_local.py",
+      "line": 63,
+      "text": "return transport("
+    },
+    {
+      "file": "scripts/check_azure_local.py",
+      "line": 76,
+      "text": "wire = transport"
+    },
+    {
+      "file": "scripts/check_azure_local.py",
+      "line": 83,
+      "text": "transport=wire,"
     },
     {
       "file": "scripts/collect_public_data.py",

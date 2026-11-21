@@ -276,8 +276,8 @@ def register_model_run(app, run, viewer) -> dict                    # 재학습 
   - `foundry`: `FOUNDRY_ENDPOINT`, `FOUNDRY_DEPLOYMENT`, `FOUNDRY_API_KEY`가 모두 있어야 한다. `FOUNDRY_REASONING_EFFORT`는 `minimal | low | medium | high | none`(기본 `low`, `none`이면 보내지 않는다. 추론 모델이 아닌 배포), `FOUNDRY_MAX_COMPLETION_TOKENS`는 응답 토큰 상한(기본 4000, 추론 토큰 포함)이다. gpt-5 계열의 기본 추론 강도(medium)는 차례마다 추론 토큰을 3천~4천 개 써서, 한 번에 20~30초가 걸리고 상한 4000을 다 쓰면 본문이 빈 채로 돌아왔다(2026-11-18 배포 서버의 `INVALID_OUTPUT`).
   - `OLLAMA_NUM_CTX`: Ollama 문맥 길이(기본 16384).
   - `anthropic`: 키는 `ANTHROPIC_API_KEY`, 비어 있으면 `ANTHROPIC_API_KEY_FILE`이 가리키는 파일(키만 담은 글)에서 읽는다. 모델 이름은 `ANTHROPIC_MODEL`(기본 `claude-sonnet-5-5`)이다. 설계의 기본 모델은 Foundry gpt-5-mini이고, 이 선택지는 Foundry를 쓸 수 없을 때 실제 모델로 돌리려고 둔 것이다.
-  - 업체가 ollama를 골랐으면 `OLLAMA_BASE_URL`이 있을 때만 그 모델을 쓰고, 없으면 그 업체는 규칙 정책으로 돈다. `anthropic`에서 `V3_LLM_ALL_VENDORS=1`(설정에서는 `true`)을 주면 그 업체도 anthropic 모델이 답한다. 화면에는 설정한 모델과 실제로 답한 모델이 따로 나온다.
-  - 설정이 빠졌을 때 로컬 서버는 어떤 값이 없는지만 밝히고 멈춘다. FastAPI 경로는 경고를 남기고 규칙 정책으로 돈다(서버는 뜨고, 관리자 화면과 대화에 "규칙 정책(모델 미연결)"로 나온다). 키 값은 어느 쪽도 출력하거나 기록하지 않는다.
+  - 업체가 ollama를 골랐으면 `OLLAMA_BASE_URL`과 모델 이름이 필요하다. 없으면 설정 오류로 담당자 확인에 넘기며 규칙 응답으로 대체하지 않는다. `V3_LLM_ALL_VENDORS=1`을 명시한 경우에는 연결된 주 모델이 답한다. 화면에는 설정한 모델과 실제 답한 모델을 구분한다.
+  - 필수 모델 설정이 빠지면 로컬 서버와 FastAPI 모두 어떤 설정이 없는지만 밝히고 중단한다. 키 값은 출력하거나 기록하지 않는다. CLI 로그인만으로 앱의 API-key 설정이 자동 채워지지는 않는다. 로컬 Entra 연결 점검은 `scripts/check_azure_local.py --auth azure-cli`로 별도 수행한다.
   - `rule`이면 위 환경 변수를 읽지 않는다.
 - CORS는 기본으로 `http://localhost:3000`과 `http://127.0.0.1:3000`만 허용한다(`X-Org-Id`, `Authorization`, `Content-Type` 헤더, `OPTIONS` 처리). 다른 출처를 더하려면 `--cors-origins`나 환경 변수 `V3_CORS_ORIGINS`에 쉼표로 나눠 적는다(예: `http://localhost:3100`). `*`는 받지 않는다.
 - 요청한 조직은 기본으로 `X-Org-Id` 헤더에서 읽는다(`--auth header`). header 모드는 시연 전용이며 공개 주소에 그대로 두면 조직 경계가 지켜지지 않는다. `--auth token --org-tokens <JSON 파일>`을 주면 조직별 서비스 토큰(`Authorization: Bearer`)으로 정하고 `X-Org-Id`는 무시한다(계약 8장 "요청한 조직").

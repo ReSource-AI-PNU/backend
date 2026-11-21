@@ -1,6 +1,6 @@
 """⑥ 단가 협상: 합의 전에 회사 측이 한 번 더 나은 단가를 요청하고, 업체 측이 자기 범위 안에서 답한다(2026-11-19).
 
-- 회사 측(ask_price): 받은 제안 단가에서 요청 폭(가정값 negotiation.askPct)만큼 나은 단가를 요청한다. "나은"은
+- 회사 측(ask_price): 승인 기록이 있는 사업 정책 negotiation.askPct가 있을 때만 요청 단가를 계산한다. "나은"은
   배출 기업 쪽으로 좋은 방향이다: 매입이면 더 받고, 처리비면 덜 낸다(단가 부호는 +매입, −처리비). 요청 단가는
   계산 근거로 남고 업체도 본다.
 - 업체 측(reply_price): 요청 단가와 업체가 정한 단가 상한(가드레일 ceilingPriceKrwPerKg) 가운데 업체에 덜 불리한
@@ -39,17 +39,26 @@ def ask_price(registry, *, org_id, today, stream_id, offer, vendor_org):
     price = num(offer.get("value"))
     pct = rec.basis(ASK_KEY)
     output = {"streamId": stream_id, "asked": None}
-    if price is None or pct is None or not isinstance(pct.value, (int, float)):
-        rec.check("ask", "conditional", "요청 폭이나 제안 단가를 몰라 단가를 요청하지 않았습니다.")
+    if price is None or pct is None or num(pct.value) is None or not 0 <= pct.value <= 100:
+        rec.check(
+            "ask",
+            "conditional",
+            "승인 주체·이유·기록이 있는 요청 폭 또는 제안 단가가 없어 자동 단가 조정을 하지 않았습니다.",
+        )
         return rec.result("needs_information", output)
     asked = round(price + abs(price) * float(pct.value) / 100)
     if asked == price:
-        asked = price + 1  # 반올림으로 같아지면 한 단위만 더 요청한다
+        rec.check(
+            "ask",
+            "met",
+            "승인된 요청 폭의 계산 결과가 기존 단가와 같아 추가 인상을 요청하지 않았습니다.",
+        )
+        return rec.result("calculated", output)
     claim = rec.number(
         "askedPrice",
         asked,
         "원/kg",
-        "제안 단가 + |제안 단가| × 요청 폭(가정값). 매입이면 더 받고 처리비면 덜 내는 방향",
+        "제안 단가 + |제안 단가| × 명시적으로 승인된 요청 폭(사업 정책). 매입이면 더 받고 처리비면 덜 내는 방향",
         [*(offer.get("evidence") or [])[:1], pct.id],
         label="요청 단가 계산",
     )

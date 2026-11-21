@@ -110,17 +110,17 @@ def discoverable_profiles(store: Any, emitter: dict[str, Any]) -> dict[str, dict
 
     - 허가 품목이나 매입 기준이 하나도 없는 프로필(가입만 하고 아직 채우지 않은 업체)은 뺀다.
     - 시연 배출 기업(demo: true)은 시연 업체만 본다. 체험하기로 열리는 시연 진단에 실제 업체가 섞이지
-      않게 하려는 것이다. 실제 배출 기업은 시연 업체와 가입한 업체를 모두 본다.
+      않게 하려는 것이다. 실제 배출 기업에는 시연 업체를 후보로 제시하지 않는다.
     - 탈퇴한 업체(departed: true. 다른 회사와 확정한 거래 기록 때문에 프로필만 남았다)는 뺀다.
     """
     demo_only = bool(emitter.get("demo"))
-    demo_ids = {o["id"] for o in store.list_orgs() if o.get("demo")} if demo_only else set()
+    demo_ids = {o["id"] for o in store.list_orgs() if o.get("demo")}
     return {
         p["orgId"]: p
         for p in store.list_vendor_profiles()
         if (p.get("permits") or p.get("criteria"))
         and not p.get("departed")
-        and (not demo_only or p["orgId"] in demo_ids)
+        and ((p["orgId"] in demo_ids) == demo_only)
     }
 
 
@@ -4422,13 +4422,12 @@ class Orchestrator:
                     else None
                 )
                 lines.append(
-                    f"- 서비스 운영자가 첫 거래 확인을 위해 제안한 정책: {token or '기간 협의 필요'} 시범 운영. 과학적 상수가 아니며 양쪽 담당자의 검토 대상입니다."
+                    f"- 승인 기록이 있는 운영 정책에 따른 시범 기간: {token}. 양쪽 담당자가 적용 여부를 확인합니다."
+                    if token
+                    else "- 시범 기간과 중단 조건은 별도 합의가 필요합니다. 승인된 정책이 없어 자동 기간·해지 조건을 넣지 않았습니다."
                 )
                 lines.append(
                     "- 첫 반입 검수 기록을 양쪽이 앱에서 확인한 뒤에 이후 수거를 이어 갑니다."
-                )
-                lines.append(
-                    "- 시범 기간에는 어느 쪽이든 앱에서 알리고 바로 거래를 멈출 수 있습니다."
                 )
             terms = contract_lines(use)
             lines += head("단가 조정과 변경")

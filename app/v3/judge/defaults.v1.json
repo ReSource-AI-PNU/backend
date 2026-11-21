@@ -1,7 +1,7 @@
 {
-  "version": "v2-evidence-20261121",
+  "version": "v3-no-unapproved-defaults-20261121",
   "asOf": "2026-11-21",
-  "source": "Re:Source AI 운영 정책·가정 설정 v2 (과학적 상수가 아닙니다)",
+  "source": "기존 제안값 보관: 신규 계산 사용에는 원문 확인 또는 정책 승인 기록 필요",
   "sensitivity": [
     {
       "label": "현행이 무상 위탁 재활용일 때",
@@ -241,52 +241,60 @@
       "value": 1000,
       "unit": "kg/월",
       "label": "업체가 기준을 밝히지 않았을 때의 최소 물량 (폐플라스틱)",
-      "excerpt": "서비스 운영 정책값(가상 시연용)이며 실제 시세·법정 기준이 아닙니다. 업체가 밝히지 않았을 때 가상 최소 물량으로 씁니다.",
+      "excerpt": "기존 코드의 제안 정책값입니다. 실제 승인 주체·일자·이유·기록이 없어 자동 적용하지 않습니다.",
       "origin": "app/demo/synthetic.py의 minimum_kg",
-      "internalNote": "이전 시연 화면에서 쓰던 가상 최소 물량을 옮겼다.",
       "evidenceClass": "policy",
-      "decisionOwner": "Re:Source AI 서비스 운영자; 업체별 명시 설정 우선",
+      "decisionOwner": "승인 주체 미확인",
       "valueRange": null,
-      "updatedOn": "2026-11-21"
+      "updatedOn": "2026-11-21",
+      "policyApproval": {
+        "status": "proposed"
+      }
     },
     {
       "key": "min.monthlyKg.포장재",
       "value": 1000,
       "unit": "kg/월",
       "label": "업체가 기준을 밝히지 않았을 때의 최소 물량 (포장재)",
-      "excerpt": "서비스 운영 정책값(가상 시연용)이며 실제 시세·법정 기준이 아닙니다. 업체가 밝히지 않았을 때 가상 최소 물량으로 씁니다.",
+      "excerpt": "기존 코드의 제안 정책값입니다. 실제 승인 주체·일자·이유·기록이 없어 자동 적용하지 않습니다.",
       "origin": "app/demo/synthetic.py의 minimum_kg",
-      "internalNote": "이전 시연 화면에서 쓰던 가상 최소 물량을 옮겼다.",
       "evidenceClass": "policy",
-      "decisionOwner": "Re:Source AI 서비스 운영자; 업체별 명시 설정 우선",
+      "decisionOwner": "승인 주체 미확인",
       "valueRange": null,
-      "updatedOn": "2026-11-21"
+      "updatedOn": "2026-11-21",
+      "policyApproval": {
+        "status": "proposed"
+      }
     },
     {
       "key": "min.monthlyKg.금속 스크랩",
       "value": 300,
       "unit": "kg/월",
       "label": "업체가 기준을 밝히지 않았을 때의 최소 물량 (금속 스크랩)",
-      "excerpt": "서비스 운영 정책값(가상 시연용)이며 실제 시세·법정 기준이 아닙니다. 업체가 밝히지 않았을 때 가상 최소 물량으로 씁니다.",
+      "excerpt": "기존 코드의 제안 정책값입니다. 실제 승인 주체·일자·이유·기록이 없어 자동 적용하지 않습니다.",
       "origin": "app/demo/synthetic.py의 minimum_kg",
-      "internalNote": "이전 시연 화면에서 쓰던 가상 최소 물량을 옮겼다.",
       "evidenceClass": "policy",
-      "decisionOwner": "Re:Source AI 서비스 운영자; 업체별 명시 설정 우선",
+      "decisionOwner": "승인 주체 미확인",
       "valueRange": null,
-      "updatedOn": "2026-11-21"
+      "updatedOn": "2026-11-21",
+      "policyApproval": {
+        "status": "proposed"
+      }
     },
     {
       "key": "min.monthlyKg.폐목재",
       "value": 500,
       "unit": "kg/월",
       "label": "업체가 기준을 밝히지 않았을 때의 최소 물량 (폐목재)",
-      "excerpt": "서비스 운영 정책값(가상 시연용)이며 실제 시세·법정 기준이 아닙니다. 업체가 밝히지 않았을 때 가상 최소 물량으로 씁니다.",
+      "excerpt": "기존 코드의 제안 정책값입니다. 실제 승인 주체·일자·이유·기록이 없어 자동 적용하지 않습니다.",
       "origin": "app/demo/synthetic.py의 minimum_kg",
-      "internalNote": "이전 시연 화면에서 쓰던 가상 최소 물량을 옮겼다.",
       "evidenceClass": "policy",
-      "decisionOwner": "Re:Source AI 서비스 운영자; 업체별 명시 설정 우선",
+      "decisionOwner": "승인 주체 미확인",
       "valueRange": null,
-      "updatedOn": "2026-11-21"
+      "updatedOn": "2026-11-21",
+      "policyApproval": {
+        "status": "proposed"
+      }
     },
     {
       "key": "distance.detourFactor",
@@ -315,35 +323,42 @@
       "value": 10,
       "unit": "%",
       "label": "단가를 다시 협의하는 기준 시세 변동 폭",
-      "excerpt": "서비스 운영 정책값입니다. 기준 시세(재활용가능자원 가격조사)가 합의할 때보다 이만큼 넘게 바뀌면 단가를 다시 협의하자는 이행 계획서의 조건입니다. 2026-11-19 배출 사업장 설문의 \"단가 상호불신으로 장기 계약이 어렵다\"는 답에 따라 두었습니다.",
-      "internalNote": "설문 자유 답(장기 계약, 단가 불신)에 맞춰 새로 둔 값이다.",
+      "excerpt": "기존 코드의 제안 정책값입니다. 실제 승인 주체·일자·이유·기록이 없어 자동 적용하지 않습니다.",
       "evidenceClass": "policy",
-      "decisionOwner": "Re:Source AI 서비스 운영자; 업체별 명시 설정 우선",
+      "decisionOwner": "승인 주체 미확인",
       "valueRange": null,
-      "updatedOn": "2026-11-21"
+      "updatedOn": "2026-11-21",
+      "policyApproval": {
+        "status": "proposed"
+      }
     },
     {
       "key": "negotiation.askPct",
       "value": 10,
       "unit": "%",
       "label": "합의 전에 한 번 더 요청하는 단가 폭",
-      "excerpt": "서비스 운영 정책값입니다. 회사 측 AI가 합의하기 전에 업체가 낸 단가보다 이만큼 나은 단가(매입이면 더 받고 처리비면 덜 내는 쪽)를 한 번 요청합니다. 업체 측 AI는 업체가 정한 단가 범위 안에서만 답합니다.",
-      "internalNote": "⑥ 단가 협상(2026-11-19). 업체 가드레일 상한이 있으면 그 안에서 받아들이고, 없으면 처음 제안을 그대로 둔다.",
+      "excerpt": "기존 코드의 제안 정책값입니다. 실제 승인 주체·일자·이유·기록이 없어 자동 적용하지 않습니다.",
       "evidenceClass": "policy",
-      "decisionOwner": "Re:Source AI 서비스 운영자; 업체별 명시 설정 우선",
+      "decisionOwner": "승인 주체 미확인",
       "valueRange": null,
-      "updatedOn": "2026-11-21"
+      "updatedOn": "2026-11-21",
+      "policyApproval": {
+        "status": "proposed"
+      }
     },
     {
       "key": "contract.pilotMonths",
       "value": 1,
       "unit": "개월",
       "label": "첫 거래 시범 기간",
-      "excerpt": "서비스 운영자가 첫 거래 확인을 위해 제안한 시범 기간 정책값입니다. 첫 반입 결과를 양측이 검토하도록 제안하며 과학적 상수가 아닙니다.",
+      "excerpt": "기존 코드의 제안 정책값입니다. 실제 승인 주체·일자·이유·기록이 없어 자동 적용하지 않습니다.",
       "evidenceClass": "policy",
-      "decisionOwner": "Re:Source AI 서비스 운영자",
+      "decisionOwner": "승인 주체 미확인",
       "valueRange": null,
-      "updatedOn": "2026-11-21"
+      "updatedOn": "2026-11-21",
+      "policyApproval": {
+        "status": "proposed"
+      }
     }
   ],
   "referenceNote": "reference.price.* 는 가격조사 참고 시세다. 업체 매입 단가가 아니므로 손익 계산에는 쓰지 않는다.",

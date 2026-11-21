@@ -58,7 +58,7 @@ def test_deploy_gate_blocks_until_real_labels():
     assert deploy_gate(evaluate(wrong), 40)["allowed"] is False
 
 
-def test_measured_grade_wins_and_mismatch_asks():
+def test_measurements_do_not_validate_an_unproven_grade_standard():
     registry = InMemoryRegistry()
     result = grade_stream(
         registry,
@@ -70,40 +70,29 @@ def test_measured_grade_wins_and_mismatch_asks():
         None,
         TODAY,
     )
-    assert (result["grade"], result["basis"], result["label"]) == ("A", "measured", "측정 등급")
-    assert result["photoEstimate"]["grade"] == "B"
-    assert [c["key"] for c in result["checks"]] == ["grade_mismatch"]
-    evidence = registry.get(result["evidence"][0], "org_hanbit")
-    # 기준값 규칙이 낸 등급은 모델이 아니라 계산 근거다
-    assert evidence.kind == "calc" and evidence.value == "A"
-    assert evidence.meta["inputEvidence"] == ["measure:x:y:z@d", "assumption:등급기준@v2"]
+    assert (result["grade"], result["basis"], result["label"]) == (None, None, "공통 등급 산정 보류")
+    assert result["photoEstimate"] is None and result["evidence"] == []
+    assert [c["key"] for c in result["checks"]] == ["grade_standard"]
     assert registry.get("assumption:등급기준@v2", "org_other").kind == "assumption"
-    with pytest.raises(PermissionError):
-        registry.get(result["evidence"][0], "org_other")
 
 
-def test_photo_estimate_needs_asked_moisture():
+def test_answered_moisture_does_not_validate_an_unproven_grade_standard():
     registry = InMemoryRegistry()
     base = stream(photo={"contaminationPct": 2.0, "evidence": []})
     waiting = grade_stream(registry, "org_hanbit", base, None, TODAY)
-    assert waiting["grade"] is None and waiting["label"] == "확인 필요"
-    assert waiting["checks"][0]["key"] == "moisture_missing"
+    assert waiting["grade"] is None and waiting["label"] == "공통 등급 산정 보류"
+    assert waiting["checks"][0]["key"] == "grade_standard"
     answered = grade_stream(registry, "org_hanbit", base, None, TODAY, asked_moisture_pct=0.8)
-    assert (answered["grade"], answered["basis"], answered["label"]) == (
-        "B",
-        "photo_estimate",
-        "사진 추정",
-    )
-    assert answered["checks"] == []
-    assert len(answered["evidence"]) == 1
-    assert answered["evidence"][0].startswith("calc:grade_rules:")
-    assert answered["evidence"][0].endswith(":st_sprue-photo_estimate")
+    assert answered["grade"] is None and answered["basis"] is None
+    assert answered["checks"][0]["key"] == "grade_standard"
+    assert answered["evidence"] == []
 
 
-def test_no_inputs_asks_for_measurement():
+def test_no_inputs_explains_the_missing_grade_standard():
     result = grade_stream(InMemoryRegistry(), "org_hanbit", stream(), None, TODAY)
     assert result["grade"] is None
-    assert result["checks"][0]["key"] == "grade_inputs_missing"
+    assert result["checks"][0]["key"] == "grade_standard"
+    assert "업체의 실제 매입 기준" in result["checks"][0]["text"]
 
 
 def test_grade_stream_is_deterministic():
@@ -114,7 +103,7 @@ def test_grade_stream_is_deterministic():
     )
     one = grade_stream(InMemoryRegistry(), "org_hanbit", *args)
     two = grade_stream(InMemoryRegistry(), "org_hanbit", *args)
-    assert one == two and one["grade"] == "B"
+    assert one == two and one["grade"] is None
 
 
 def test_endpoint_client_uses_transport():
@@ -138,8 +127,9 @@ def test_endpoint_client_uses_transport():
         client,
         TODAY,
     )
-    assert graded["modelBasis"] == "endpoint"
-    assert graded["evidence"] == ["model:rsai-grade:3:st_sprue-measured"]
+    assert graded["modelBasis"] is None and graded["grade"] is None
+    assert graded["evidence"] == []
+    assert len(calls) == 1  # Endpoint availability alone is not validation of its grade standard.
 
 
 def test_endpoint_failure_is_not_silently_replaced():

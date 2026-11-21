@@ -108,7 +108,7 @@ def process_label(process: Any) -> str | None:
 
 
 def applied_process(declared: Any, profile: dict[str, Any] | None, unit_price: Any) -> dict:
-    """업체가 실제로 적용한 처리 방식. 검수 기록에 적은 것, 기록 당시 업체 정보, 값을 받고 사 간 것 순서로 본다.
+    """업체가 밝힌 처리 방식. 검수 기록, 기록 당시 업체 정보 순서이며 단가만으로 추정하지 않는다.
 
     {"value", "source", "assumed"}. 업체 쪽 정보라 업체와 나누는 검수 기록에 그대로 싣는다.
     """
@@ -117,10 +117,6 @@ def applied_process(declared: Any, profile: dict[str, Any] | None, unit_price: A
     process = str((profile or {}).get("process") or "").strip()
     if process:
         return {"value": process, "source": "vendor_profile", "assumed": False}
-    price = _number(unit_price)
-    if price is not None and price >= 0:
-        # judge.common.after_process와 같은 가정: 값을 주고 사 가면 재활용으로 본다
-        return {"value": "재활용", "source": "price", "assumed": True}
     return {"value": None, "source": "unknown", "assumed": False}
 
 

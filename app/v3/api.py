@@ -85,10 +85,10 @@ def make_llm_factory(
     - mode는 rule | foundry | anthropic. 그 밖의 값이면 ValueError.
     - rule이면 항상 None.
     - 업체가 ollama를 골랐으면 OLLAMA_BASE_URL이 있을 때만 OllamaChat을 준다. 주소가 없으면
-      다른 모델로 바꿔 부르지 않고 None을 준다(쓰지 않은 모델을 쓴 것처럼 보이지 않게).
+      설정이 없으면 오류로 중단한다(규칙 응답으로 연결 성공을 대신하지 않는다).
       V3_LLM=anthropic이고 V3_LLM_ALL_VENDORS=1일 때만 그 업체도 anthropic 모델이 답한다.
     - foundry는 FOUNDRY_* 세 값이 모두 있을 때, anthropic은 키(ANTHROPIC_API_KEY나
-      ANTHROPIC_API_KEY_FILE)가 있을 때 그 모델을 준다. 빠져 있으면 경고를 남기고 규칙 정책으로 돈다.
+      ANTHROPIC_API_KEY_FILE)가 있을 때 그 모델을 준다. 필수 설정이 빠지면 오류로 중단한다.
     """
     env = {
         "FOUNDRY_ENDPOINT": endpoint,
@@ -103,7 +103,7 @@ def make_llm_factory(
         "FOUNDRY_MAX_COMPLETION_TOKENS": max_completion_tokens,
         "OLLAMA_NUM_CTX": ollama_num_ctx,
     }
-    built = build_llm_factory(mode, env, strict=False)
+    built = build_llm_factory(mode, env, strict=True)
     if built is not None:
         return built
 

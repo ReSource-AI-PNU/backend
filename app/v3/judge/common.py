@@ -269,8 +269,12 @@ def _road_evidence(rec: Recorder, points, distance_provider) -> list[str]:
 
 
 def grade_of(rec: Recorder, material, contamination, moisture):
-    """(등급, 근거 ID). 등급 기준은 intake의 기준 파일(grade_thresholds) 하나만 쓴다."""
+    """Generic team thresholds are not an established material grading standard."""
     evidence = rec.registry.put(grade_model.thresholds_evidence())
+    from app.v3.evidence.acceptance import usable_basis
+
+    if not usable_basis(evidence):
+        return None, []
     result = grade_model.grade_by_thresholds(material, contamination, moisture)
     return result["grade"], [evidence.id]
 

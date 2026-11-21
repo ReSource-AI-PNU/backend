@@ -15,6 +15,7 @@ from app.v3 import devserver, feedback, ids, outcome_carbon, service
 from app.v3.evidence.model import Evidence
 from app.v3.evidence.validator import validate_text
 from tests.v3.evidence_fixtures import numerical_history_app as make_app
+from tests.v3.evidence_fixtures import simulated_legacy_factor_gate  # noqa: F401
 from tests.v3.runtime_fixtures import (
     DAON,
     HANBIT,

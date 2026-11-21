@@ -1,5 +1,7 @@
 # 로컬 검증 기록 — 2026-11-21
 
+이전 판 검증이다. [후속 검증](agent-grounding-and-azure-2026-11-21.md)이 현재 동작과 Azure 실제 연결 결과를 기록한다. 아래 330원/303,600원은 이전 정책 시험 결과다.
+
 브랜치: 백엔드와 프런트엔드 모두 `codex/mentoring-evidence-local-20261121`.
 기준: backend `dc32960`, frontend `04b0419`. 운영 서버의 현재 배포 SHA는 이번 로컬 작업에서 다시 조회하지 않았다. 사용자 제공 운영 재현 결과와 아래 로컬 실행 결과는 별개다. push, 배포, 운영 계정/자료 변경, 외부 메시지, 결제, 서명을 실행하지 않았다.
 
@@ -69,7 +71,7 @@ $env:NEXT_PUBLIC_API_BASE='/api/v3'
 $env:V3_BACKEND_URL='http://127.0.0.1:5800/api/v3'
 $env:V3_AUTH='bff'
 $env:V3_BFF_KEY='local-evidence-verification-only-20261121'
-$env:AUTH_SECRET='local-evidence-verification-auth-secret-only-20261121'
+$env:AUTH_SECRET=[guid]::NewGuid().ToString('N') + [guid]::NewGuid().ToString('N')
 $env:AUTH_TRUST_HOST='true'
 $env:AUTH_URL='http://127.0.0.1:5300'
 $env:AUTH_DEV_LOGIN='false'

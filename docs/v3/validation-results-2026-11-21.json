@@ -1,5 +1,6 @@
 {
   "date": "2026-11-21",
+  "supersededBy": "grounding-validation-2026-11-21.json",
   "branch": "codex/mentoring-evidence-local-20261121",
   "scope": "local selected regression and real browser UI; synthetic companies, evidence and rule policy",
   "backend": {"passed": 358, "failed": 0, "warnings": 3, "seconds": 182.21, "log": "../combined-final.log"},

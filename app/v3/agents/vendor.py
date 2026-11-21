@@ -40,6 +40,7 @@ from app.v3.agents.draft import (
     turn_schema,
 )
 from app.v3.agents.llm import LLM
+from app.v3.agents.mandate import prompt_mandate
 from app.v3.agents.pool import ClaimPool
 from app.v3.evidence.units import UnitError, convert
 from app.v3.evidence.validator import validate_message
@@ -154,6 +155,7 @@ EXAMPLES = (
 
 SYSTEM_PROMPT = "\n".join(
     [
+        *prompt_mandate("vendor"),
         "당신은 폐기물 처리 업체를 대변하는 업체 측 에이전트다.",
         "회사 측 에이전트의 문의에 question, answer, offer, conditional, counter, decline으로 답한다.",
         "",

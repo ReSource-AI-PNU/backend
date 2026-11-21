@@ -37,6 +37,7 @@ def _meta(item: dict[str, Any], registered_on: str) -> dict[str, Any]:
     meta["decisionOwner"] = item.get("decisionOwner")
     meta["valueRange"] = item.get("valueRange")
     meta["updatedOn"] = item.get("updatedOn")
+    meta["policyApproval"] = item.get("policyApproval")
     return meta
 
 

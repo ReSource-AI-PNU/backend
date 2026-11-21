@@ -7,6 +7,7 @@
 
 from __future__ import annotations
 
+from app.v3.evidence.acceptance import usable_basis
 from app.v3.evidence.model import Evidence
 from app.v3.evidence.registry import EvidenceForbidden, EvidenceNotFound
 from app.v3.judge import defaults
@@ -41,7 +42,9 @@ def candidates(key: str) -> list[str]:
 def resolve(registry, org_id: str | None, key: str) -> Evidence | None:
     for evidence_id in candidates(key):
         try:
-            return registry.get(evidence_id, org_id)
+            evidence = registry.get(evidence_id, org_id)
+            if usable_basis(evidence):
+                return evidence
         except (EvidenceNotFound, EvidenceForbidden):
             continue
     return None

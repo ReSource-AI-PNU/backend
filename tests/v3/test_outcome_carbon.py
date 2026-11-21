@@ -16,6 +16,7 @@ from app.v3.evidence.registry import EvidenceForbidden
 from app.v3.evidence.validator import validate_text
 from app.v3.judge import basis
 from tests.v3.evidence_fixtures import numerical_history_app as make_app
+from tests.v3.evidence_fixtures import simulated_legacy_factor_gate  # noqa: F401
 from tests.v3.runtime_fixtures import HANBIT, SAEGIL, answer_all, approve_all, start
 
 INCINERATE = "ref:환경성적표지:혼합폐플라스틱-소각@2024-09"
