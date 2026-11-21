@@ -154,6 +154,23 @@ def test_http_error_raises_without_leaking_key():
     assert "test-key" not in str(info.value)
 
 
+def test_semantic_quota_preserves_vector_and_access_filter(caplog):
+    transport = FakeTransport(
+        [
+            (402, b'{"error":{"message":"Free Query Semantic Usage exceeded for the month."}}'),
+            (200, json.dumps({"value": [hit(LAW), hit(SECRET)]}).encode()),
+        ]
+    )
+    results = client(transport, embed=fake_embed).search("재활용", org_id=None, top=2)
+    assert [result["evidence"]["id"] for result in results] == [LAW.id]
+    first, retry = (call[3] for call in transport.calls)
+    assert first["queryType"] == "semantic"
+    assert retry == {
+        k: v for k, v in first.items() if k not in {"queryType", "semanticConfiguration"}
+    }
+    assert "HTTP 402" in caplog.text
+
+
 def test_upsert_embeds_in_small_batches_cuts_long_text_and_waits_on_rate_limit():
     """2026-11-19 법령 374조 색인: 한 요청에 다 넣으면 429, 5만 자 조문은 입력 한도를 넘었다."""
     from app.v3.agents.llm import LLMError

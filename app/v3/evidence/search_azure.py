@@ -10,12 +10,15 @@ from __future__ import annotations
 
 import base64
 import json
+import logging
 import urllib.error
 import urllib.request
 from collections.abc import Callable, Iterable, Mapping, Sequence
 from typing import Any
 
 from app.v3.evidence.model import PUBLIC, Evidence
+
+logger = logging.getLogger(__name__)
 
 Transport = Callable[[str, str, dict[str, str], bytes | None], tuple[int, bytes]]
 Embed = Callable[[list[str]], list[list[float]]]
@@ -263,7 +266,18 @@ class AzureSearchClient:
         payload = query_payload(
             query, org_id=org_id, kinds=kinds, top=top, vector=vector, semantic=semantic
         )
-        response = self._call("POST", f"/indexes/{self.index}/docs/search", payload)
+        path = f"/indexes/{self.index}/docs/search"
+        try:
+            response = self._call("POST", path, payload)
+        except AzureSearchError as error:
+            if not semantic or error.status != 402:
+                raise
+            logger.warning(
+                "Azure Search 시맨틱 재정렬 사용 불가(HTTP 402). 텍스트·벡터 질의로 계속합니다."
+            )
+            payload.pop("queryType")
+            payload.pop("semanticConfiguration")
+            response = self._call("POST", path, payload)
         allowed = {PUBLIC} if org_id is None else {PUBLIC, org_id}
         results = []
         for hit in response.get("value", []):
