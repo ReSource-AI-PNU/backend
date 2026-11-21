@@ -228,7 +228,7 @@ def test_upload_progress_done_and_volume_evidence():
     assert view["layout"]["proposal"] is None and view["layout"]["unavailable"]
 
 
-def test_weight_from_stream_density_film_reference_and_weighing():
+def test_weight_from_stream_density_holds_unmatched_film_and_accepts_weighing():
     app, _ = scan_app()
     view = finished(app)
     sid = view["id"]
@@ -244,11 +244,8 @@ def test_weight_from_stream_density_film_reference_and_weighing():
     evidence_ok(app, piles["p1"]["weight"]["low"])
     calc = app.registry.get(piles["p1"]["weight"]["low"]["evidence"][0], HANBIT)
     assert calc.kind == "calc" and views._volume_id({"id": sid}, "p1") in calc.meta["inputEvidence"]
-    film = piles["p5"]["density"]
-    assert film["basis"] == "ref" and film["lowKgM3"] == pytest.approx(20.8, abs=0.05)
-    assert film["highKgM3"] == pytest.approx(89.0, abs=0.05)
-    assert all(app.registry.get(e, DAON).kind == "ref" for e in film["evidence"])  # 문헌값은 공개
-    assert view["summary"]["weightPending"] == 2 and view["summary"]["weight"]["low"]["value"] > 0
+    assert piles["p5"]["density"] is None and piles["p5"]["weight"] is None
+    assert view["summary"]["weightPending"] == 3 and view["summary"]["weight"]["low"]["value"] > 0
     # 계량 보정: 같은 폐기물의 다른 더미에 같은 밀도를 쓴다
     view = views.update_pile(app, HANBIT, sid, "p1", {"weighedKg": 400}, HANBIT)
     piles = {p["id"]: p for p in view["piles"]}

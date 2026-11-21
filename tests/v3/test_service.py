@@ -135,9 +135,11 @@ def test_evidence_chain_and_hidden_inputs(world):
     mine = service.get_evidence(app, offer_evidence, HANBIT)
     assert mine["evidence"]["meta"]["tool"] == "judge_route"
     assert mine["evidence"]["meta"]["inputs"] == {"hidden": True}  # 입력 원본은 계산한 조직만
-    assert [c["id"] for c in mine["chain"]] == ["doc:org_saegil:매입기준표:pc_saegil_pp_a-단가"] + [
-        c["id"] for c in mine["chain"][1:]
-    ]
+    # 계산 입력은 계산 당시의 고정본(doc:snapshot:…)으로 잇고, 고정본은 원 근거와 그 판을 가리킨다(2026-11-21)
+    first = mine["chain"][0]
+    assert first["id"].startswith("doc:snapshot:") and first["meta"]["frozen"] is True
+    assert first["meta"]["originalId"] == "doc:org_saegil:매입기준표:pc_saegil_pp_a-단가"
+    assert isinstance(first["meta"]["originalVersion"], int)
     theirs = service.get_evidence(app, offer_evidence, SAEGIL)
     assert theirs["evidence"]["meta"]["inputs"]["orgId"] == SAEGIL
     after = service.get_evidence(app, sprue["monthlyAfter"]["evidence"][0], HANBIT)
@@ -369,14 +371,18 @@ def test_csv_upload_registers_measures_and_updates_streams():
     assert stream["measure"]["contaminationPct"] == 2.5 and stream["monthlyKgBasis"] == "measured"
     view = start(app)
     defect = next(s for s in view["streams"] if s["id"] == "st_defect")
-    assert defect["grade"]["value"] == "B" and defect["grade"]["basis"] == "measured"
+    # 측정값이 있어도 공통 등급은 매기지 않는다(2026-11-21). 등급을 견주는 로트 확인 질문도 생기지 않는다
+    assert defect["grade"]["value"] is None and defect["grade"]["label"] == "공통 등급 산정 보류"
     assert (
         defect["contamination"]["evidence"][0] == "measure:org_hanbit:st_defect:오염도@2026-11-12"
     )
-    # 측정 등급(B)과 사진 추정 등급(C)이 달라 로트 확인 질문이 함께 나온다
     asked = [(q["streamId"], q["field"]) for q in view["questions"]]
-    assert asked[0] == ("st_defect", "lotSame")
-    assert [sid for sid, _ in asked] == ["st_defect", "st_film", "st_purge"]
+    # 측정값이 들어온 불량 사출품은 묻지 않고, 남은 자리에 필름의 현행 처리비 질문이 들어간다
+    assert asked == [
+        ("st_film", "moisturePct"),
+        ("st_purge", "moisturePct"),
+        ("st_film", "currentCost"),
+    ]
     raises("FORBIDDEN", 403, service.upload_csv, app, HANBIT, "a.csv", b"", DAON)
     raises("WRONG_ROLE", 403, service.upload_csv, app, SAEGIL, "a.csv", b"", SAEGIL)
 
@@ -486,11 +492,14 @@ def test_run_eval_reports_the_real_implementation():
     app = make_app()
     report = service.run_eval(app, ADMIN)
     assert report["model"] == {"provider": "rule", "name": "규칙 정책(모델 미연결)"}
-    assert report["sessionStatus"] == "confirmed" and report["validatorPassRate"] == 1.0
+    assert report["validatorPassRate"] == 1.0
     assert report["checked"] == report["passed"] > 15 and report["rewritten"] == 0
     assert app.store.list_sessions() == []  # 따로 만든 저장소에서 돌린다
     statuses = {t["vendorOrgId"]: t["status"] for t in report["threads"] if t["types"]}
-    assert set(statuses.values()) == {"confirmed"}
+    # 시드 그대로의 미소환경은 노선 밖 운반비가 미정이라 계약 검토 담당이 승인을 막는다. 사례 시험은 막힌 대화를
+    # 승인하려다 멈추지 않고 그 대화를 합의 상태로 남긴 채 결과를 낸다
+    assert statuses[SAEGIL] == "confirmed" and statuses[MISO] == "agreed"
+    assert report["sessionStatus"] == "awaiting_approval"
 
 
 def test_session_list_shows_only_what_the_viewer_takes_part_in():

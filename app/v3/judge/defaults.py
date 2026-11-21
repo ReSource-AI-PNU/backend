@@ -33,6 +33,11 @@ def _meta(item: dict[str, Any], registered_on: str) -> dict[str, Any]:
         meta["origin"] = item["origin"]  # 옮겨 온 값이면 그 원래 자리
     if item.get("internalNote"):
         meta["internalNote"] = item["internalNote"]  # 팀 기록(화면 글인 excerpt에는 두지 않는다)
+    meta["evidenceClass"] = item.get("evidenceClass", "assumption")
+    meta["decisionOwner"] = item.get("decisionOwner")
+    meta["valueRange"] = item.get("valueRange")
+    meta["updatedOn"] = item.get("updatedOn")
+    meta["policyApproval"] = item.get("policyApproval")
     return meta
 
 

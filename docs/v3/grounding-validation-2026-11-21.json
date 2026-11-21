@@ -1,0 +1,33 @@
+{
+  "date": "2026-11-21",
+  "branch": "codex/mentoring-evidence-local-20261121",
+  "backend": {"passed": 414, "failed": 0, "warnings": 3, "seconds": 195.15, "log": "../grounding-final.log"},
+  "additionalGradeTests": {"passed": 10, "failed": 0, "seconds": 0.27, "log": "../grounding-grade.log"},
+  "regressionFiles": ["test_no_unsupported_defaults.py", "test_azure_local_probe.py", "test_llm_factory.py", "test_api.py", "test_mentoring_evidence.py", "test_contract_review.py", "test_guardrails.py", "test_shared_calc_evidence.py", "test_view_evidence_scope.py", "test_render.py", "test_units.py", "test_scan.py", "test_scan_demo.py", "test_fix2_auth.py", "test_rules_adversarial.py", "test_circular.py", "test_report.py", "test_report_snapshot.py", "test_outcome_inspections.py", "test_outcome_carbon.py", "test_negotiation.py", "test_permit_level_transport_carbon.py", "test_permit_verification.py", "test_intake_grade.py"],
+  "frontend": {"passed": 261, "failed": 0, "skipped": 3, "build": "passed", "typescript": "passed", "changedFilesLint": "passed"},
+  "browser": {"status": "passed", "accounts": 2, "inputOrigin": "synthetic test companies and documents", "model": "rule", "unitPriceKrwPerKg": 300, "correctedKg": 920, "reportAndCsvKrw": 276000, "carbon": "held", "crossOrgPrivateAccess": "denied", "screenshots": false, "video": false, "trace": false},
+  "azure": {
+    "cliVersion": "2.93.0",
+    "login": "passed",
+    "resourceGroup": "team_AIBIC2026_03_RG_EUS2",
+    "resource": "aif-rsai-demo-o7xpbt",
+    "deployment": "gpt-5-mini",
+    "modelVersion": "2025-08-07",
+    "realInference": "passed",
+    "requests": 1,
+    "adapter": "FoundryChat",
+    "authentication": "Azure CLI Entra token",
+    "apiVersion": "2024-10-21",
+    "maxCompletionTokens": 1024,
+    "timeoutSeconds": 30,
+    "resourceMutations": false,
+    "businessDataSent": false,
+    "gpuVmState": "deallocated",
+    "applicationVmState": "running",
+    "fullApplicationIntegrationClaimed": false
+  },
+  "productionDeployed": false,
+  "pushed": false,
+  "fullRepositorySuiteClaimed": false,
+  "historyTests": "Synthetic source admission is mocked only in history test modules; production rejects testOnly evidence."
+}

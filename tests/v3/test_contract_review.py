@@ -127,6 +127,7 @@ def test_result_checks_service_area_and_vendor_screen_saves_it():
 
 def test_every_agreement_gets_a_review_both_sides_see():
     app = make_app()
+    service.update_vendor(app, MISO, {"fleet": {"serviceAreas": ["부산"]}}, MISO)
     view = to_approval(app)
     assert view["approvals"]
     for approval in view["approvals"]:
@@ -151,6 +152,7 @@ def test_every_agreement_gets_a_review_both_sides_see():
 
 def test_review_speaks_in_the_live_feed():
     app = make_app()
+    service.update_vendor(app, MISO, {"fleet": {"serviceAreas": ["부산"]}}, MISO)
     view = to_approval(app)
     sid = view["session"]["id"]
     entries = [e for e in app.store.list_activity(sid) if e.get("kind") == "review"]
@@ -168,7 +170,9 @@ def test_review_speaks_in_the_live_feed():
 
 
 def test_vendor_outside_its_service_area_cannot_be_approved():
-    app = make_app()
+    # 시드 그대로: 미소환경은 노선 밖 방문 수거 답이 없어 수거 가능 지역만으로 수거 여부가 정해진다
+    app = make_app(miso_visits=False)
+    service.update_vendor(app, MISO, {"fleet": {"serviceAreas": ["부산 강서구"]}}, MISO)
     view = to_approval(app)
     sid = view["session"]["id"]
     thread = next(
@@ -188,13 +192,10 @@ def test_vendor_outside_its_service_area_cannot_be_approved():
             service.approve(app, sid, thread["id"], org)
         assert caught.value.code == "APPROVAL_BLOCKED"
         assert "수거 가능 지역" in caught.value.message
-    # 업체가 지역을 넓히면 수거·운반 조건이 다시 바뀐 것이라(별도 수거 확인 → 업체 수거 가능) 다시 진행해
-    # 새 조건으로 합의한 뒤에 승인할 수 있다(PICKUP_TERMS_CHANGED)
+    # 이 사업장에 적용되는 기존 수거·운반 조건이 복원되면 검토도 다시 통과한다.
+    # 지역명 문자열 자체가 아닌 이 거래의 실효 조건을 비교한다.
     service.update_vendor(app, MISO, {"fleet": {"serviceAreas": ["부산"]}}, MISO)
-    with pytest.raises(service.ServiceError) as caught:
-        service.approve(app, sid, thread["id"], HANBIT)
-    assert caught.value.code == "APPROVAL_BLOCKED"
-    fresh = service.run_session(app, sid, HANBIT)
+    fresh = service.get_view(app, sid, HANBIT)
     again = next(a for a in fresh["approvals"] if a["threadId"] == thread["id"])
     assert not again["blocked"] and again["review"]["status"] != "blocked"
     service.approve(app, sid, thread["id"], HANBIT)

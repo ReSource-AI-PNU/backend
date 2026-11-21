@@ -65,13 +65,16 @@
             "tool": "judge_route",
             "stream": "st_a",
             "vendor": "org_v1",
-            "status": "calculated",
+            "status": "conditional",
             "claims": {
               "unitPrice": 260,
               "monthlyAfter": 130000
             },
             "output": {
               "route": "sell"
+            },
+            "checks": {
+              "current_cost": "conditional"
             }
           }
         ],
@@ -109,7 +112,8 @@
           "why": "문서는 요청서와 계획서로만 만든다(계약서라는 제목의 문서를 만들지 않는다)"
         }
       ],
-      "synthetic": true
+      "synthetic": true,
+      "note": "2026-11-21 정책: 근거 없는 가정값(혼합 소각 현행 처리비, 가정 운행 단가, 공통 등급 임계값)을 새 계산에 쓰지 않는다. 판단 도구만 부를 때는 현행 처리비가 없어 조건부(current_cost)다. 진단에서는 담당자 답으로 견준다."
     },
     {
       "id": "C12",
@@ -195,8 +199,8 @@
         },
         "streams": {
           "st_a": {
-            "grade": "B",
-            "gradeBasis": "photo_estimate"
+            "grade": null,
+            "gradeBasis": null
           }
         },
         "assignments": {
@@ -242,7 +246,7 @@
         }
       ],
       "synthetic": true,
-      "note": "설계 판단(확정): 사진 추정 오염 비율과 담당자가 답한 수분은 매입 기준 상한 안이어도 충족을 '확정'으로 두지 않는다. 측정값이 없으면 조건부이고 '반입 검수에서 확인' 조건이 붙는다(추정 물량과 같은 원칙)."
+      "note": "2026-11-21 정책: 근거 없는 가정값(혼합 소각 현행 처리비, 가정 운행 단가, 공통 등급 임계값)을 새 계산에 쓰지 않는다. 공통 등급 기준을 검증하지 못해 사진 추정 등급도 산정 보류(grade null)다. 업체 매입 기준 대조는 그대로다."
     },
     {
       "id": "C13",
@@ -533,7 +537,7 @@
             "vendor": null,
             "route": "keep",
             "status": "calculated",
-            "currentAssumed": true,
+            "currentAssumed": false,
             "monthlyNow": -72000,
             "unitPrice": null
           }
@@ -546,7 +550,8 @@
           "why": "허가 품목이 맞지 않는 업체와는 대화를 열지 않는다"
         }
       ],
-      "synthetic": true
+      "synthetic": true,
+      "note": "2026-11-21 정책: 근거 없는 가정값(혼합 소각 현행 처리비, 가정 운행 단가, 공통 등급 임계값)을 새 계산에 쓰지 않는다. 현행 처리비는 담당자가 질문에 답한 값(평가 세계 기본 답, 폐목재 kg당 120원)이다."
     },
     {
       "id": "C16",
@@ -611,7 +616,8 @@
             "stream": "st_a",
             "status": "conditional",
             "checks": {
-              "origin": "conditional"
+              "origin": "conditional",
+              "quality": "conditional"
             }
           }
         ],
@@ -648,7 +654,8 @@
           "why": "이미 아는 값을 다시 묻지 않는다"
         }
       ],
-      "synthetic": true
+      "synthetic": true,
+      "note": "2026-11-21 정책: 근거 없는 가정값(혼합 소각 현행 처리비, 가정 운행 단가, 공통 등급 임계값)을 새 계산에 쓰지 않는다. 공통 등급 산정 보류로 identify_stream은 등급을 내지 않아 needs_information이다."
     },
     {
       "id": "C17",

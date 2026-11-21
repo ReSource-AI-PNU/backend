@@ -48,8 +48,8 @@ def test_report_turns_inspected_outcomes_into_grounded_amounts_and_carbon(confir
     assert row["streamId"] == stream_id and row["inspectedOn"] == "2026-11-10"
     assert row["kg"]["value"] == 580 and row["unitPrice"]["value"] == 300
     assert row["amount"]["value"] == 174000
-    assert row["carbon"] is not None and row["carbon"]["value"] < 0  # 소각 대신 재활용: 탄소가 준다
-    for claim in (row["kg"], row["unitPrice"], row["amount"], row["carbon"]):
+    assert row["carbon"] is None  # 원문 경계 미확인 계수는 검수 실적으로 계산하지 않는다.
+    for claim in (row["kg"], row["unitPrice"], row["amount"]):
         assert _ok(app, claim), claim
     totals = report["totals"]
     assert (
@@ -57,7 +57,7 @@ def test_report_turns_inspected_outcomes_into_grounded_amounts_and_carbon(confir
         and totals["kg"]["value"] == 580
         and totals["revenue"]["value"] == 174000
     )
-    assert totals["fee"] is None and _ok(app, totals["carbon"])
+    assert totals["fee"] is None and totals["carbon"] is None
     # 확정한 합의는 예상으로 따로 실린다
     assert {p["streamId"] for p in report["planned"]} >= {stream_id}
 

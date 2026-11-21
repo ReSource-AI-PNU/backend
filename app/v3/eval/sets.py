@@ -31,6 +31,11 @@ LABEL_GUIDE = "v1"
 COUNT_KEYS = ("cases", "variants", "queries", "attacks", "probes", "items")
 # 동결된 판의 정오표. 기대가 틀렸다고 정한 사례와 이유다. 동결된 파일은 고치지 않으므로 그 판의
 # 결과에는 그대로 들어가고, 리포트가 이유를 함께 적는다. 다음 판에서 고친다(sets/README.md 정오표).
+GRADE_WITHHELD = (
+    "정책 변경(2026-11-21, test-v2에서 고친다): 공통 등급 기준을 검증하지 못해 공통 등급을 산정 보류하므로 "
+    "흐름의 gradeBasis(photo_estimate·measured)가 비어 있다. 업체 매입 기준(오염도·수분 상한) 대조와 배정 "
+    "기대는 그대로 맞다"
+)
 ERRATA: dict[str, dict[str, str]] = {
     "test-v1": {
         "T042": (
@@ -39,6 +44,49 @@ ERRATA: dict[str, dict[str, str]] = {
             "모른다고 답해도 확인할 것이 남지 않는다. 모르는 출처는 unresolved와 unknownFields에 "
             "남는다. st_b의 금지와 나머지 기대는 그대로 맞다"
         ),
+        "T009": GRADE_WITHHELD,
+        "T011": GRADE_WITHHELD,
+        "T012": GRADE_WITHHELD,
+        "T031": GRADE_WITHHELD,
+        "T036": GRADE_WITHHELD,
+        "T045": GRADE_WITHHELD,
+        "T052": GRADE_WITHHELD,
+        "T054": GRADE_WITHHELD,
+        "T060": GRADE_WITHHELD,
+        "T069": GRADE_WITHHELD,
+        "T010": (
+            "정책 변경(2026-11-21, test-v2에서 고친다): 현행 처리비를 혼합 소각 가정값으로 채우지 않는다. 평가 세계는 "
+            "현행 처리비 질문에 담당자가 현행 위탁 계약 단가로 답하므로(world.current_cost_answer) st_a의 "
+            "currentAssumed·current_assumed 확인 항목 기대가 맞지 않는다. 배정·단가·월 손익 기대는 그대로 맞다"
+        ),
+        "T041": (
+            "정책 변경(2026-11-21, test-v2에서 고친다): 담당자가 현행 처리비를 '모름'으로 답하면 혼합 소각 가정값으로 "
+            "견주지 않고 st_a를 배정에서 빼 '현행 처리 단가 확인 필요'로 남긴다(산정 보류). 그래서 st_a의 업체·판정과 "
+            "결과 판정 기대가 바뀐다. st_b의 기대는 그대로 맞다"
+        ),
+    },
+}
+# 정오표 사례가 기대와 달라도 되는 경로(이 밖의 경로가 어긋나면 시험이 실패한다)
+ERRATA_PATHS: dict[str, dict[str, tuple[str, ...]]] = {
+    "test-v1": {
+        "T009": ("streams.*.gradeBasis",),
+        "T011": ("streams.*.gradeBasis",),
+        "T012": ("streams.*.gradeBasis",),
+        "T031": ("streams.*.gradeBasis",),
+        "T036": ("streams.*.gradeBasis",),
+        "T045": ("streams.*.gradeBasis",),
+        "T052": ("streams.*.gradeBasis",),
+        "T054": ("streams.*.gradeBasis",),
+        "T060": ("streams.*.gradeBasis",),
+        "T069": ("streams.*.gradeBasis",),
+        "T010": ("assignments.st_a.currentAssumed", "assignments.st_a.checks"),
+        "T041": (
+            "result.status",
+            "assignments.st_a.vendor",
+            "assignments.st_a.status",
+            "assignments.st_a.currentAssumed",
+            "assignments.st_a.checks",
+        ),
     },
 }
 
@@ -46,6 +94,15 @@ ERRATA: dict[str, dict[str, str]] = {
 def errata(version: str = CURRENT_TEST) -> dict[str, str]:
     """그 판의 정오표 {사례 ID: 이유}."""
     return dict(ERRATA.get(version) or {})
+
+
+def errata_allows(case_id: str, path: str, version: str = CURRENT_TEST) -> bool:
+    """정오표 사례에서 이 기대 경로가 어긋나도 되는가. "streams.*.gradeBasis"처럼 흐름 자리는 *로 적는다."""
+    for allowed in (ERRATA_PATHS.get(version) or {}).get(case_id) or ():
+        head, _, tail = allowed.partition("*")
+        if path == allowed or (_ and path.startswith(head) and path.endswith(tail)):
+            return True
+    return False
 
 
 def set_dir(version: str) -> Path:

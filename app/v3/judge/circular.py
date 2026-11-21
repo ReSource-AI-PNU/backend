@@ -10,7 +10,7 @@
 방법(method)
 - literature(문헌 추정): 적용 조건이 맞는 물량 × 문헌 순계수. 문헌 계수에 수율·신재 대체·잔재 처리·평균 수거
   운송이 이미 들어 있으므로 다시 곱하거나 더하지 않는다(실제 거리의 운송 배출은 처리 단계 배출 변화에 따로 있다).
-- site(현장 추정): 담당자가 넣은 현장 값으로 낸다. 지금은 공정 재투입의 "다시 넣는 양"뿐이다.
+- site(현장 추정): 담당자가 연결한 증빙과 투입량·회수수율·품질 대체율·실제 용도로 신재 대체량을 낸다.
 - 자료가 없으면 0이 아니라 hold(산정 보류)다. 정의상 바뀌지 않는 것(현행 유지, 이미 재활용하던 물량의
   거래처만 바뀜)은 zero다.
 
@@ -29,7 +29,8 @@ import math
 from typing import Any
 
 from app.v3 import names
-from app.v3.evidence.units import convert
+from app.v3.evidence.provenance import compatible
+from app.v3.evidence.units import UnitError, convert
 from app.v3.judge.common import Recorder, current_process, num
 from app.v3.textutil import josa
 
@@ -124,6 +125,8 @@ def destination(choice: dict, after_process) -> str:
         return "reuse"
     if choice.get("vendor") is None:
         return "keep"
+    if choice["vendor"].get("process") == "재활용":
+        return "unknown"  # Generic recycling does not establish mechanical recycling.
     process = after_process(choice["vendor"], choice.get("price"))
     return {"recycle": "recycle", "pyrolysis": "pyrolysis"}.get(process or "", "unknown")
 
@@ -234,8 +237,19 @@ def ghg_effect(rec: Recorder, stream: dict, kg: float, baseline: str | None, des
             f"{material}의 온실가스 문헌 계수가 없어 계산하지 않았습니다.",
             ROUTE_NEEDS.get(dest, []),
         )
-    b = convert(float(vs_incineration.value), vs_incineration.unit, "tCO2e/t")
-    c = convert(float(vs_landfill.value), vs_landfill.unit, "tCO2e/t")
+    if (
+        not compatible(vs_incineration, vs_landfill, metric="ghg")
+        or vs_incineration.meta.get("material") != material
+    ):
+        return _hold(
+            "기능단위·계산 경계·자료 버전이 호환되지 않아 문헌을 혼용하지 않았습니다.",
+            ["호환되는 원문 계수"],
+        )
+    try:
+        b = convert(float(vs_incineration.value), vs_incineration.unit, "tCO2e/t")
+        c = convert(float(vs_landfill.value), vs_landfill.unit, "tCO2e/t")
+    except UnitError:
+        return _hold("탄소 계수의 단위가 호환되지 않습니다.", ["원문 단위 확인"])
     # 순효과(음수가 감축) B = 재활용 − 소각, C = 재활용 − 매립. 소각 대비 절감 s: 소각 0, 재활용 −B, 매립 C − B
     saving = {"incineration": 0.0, "recycle": -b, "landfill": c - b}
     per_t = saving[dest] - saving[baseline]
@@ -282,7 +296,17 @@ def energy_effect(rec: Recorder, stream: dict, kg: float, baseline: str | None, 
             f"원문 표(미국 환경보호청 WARM)에 {key} {word} 에너지 값이 없습니다(NA). 다른 재질의 값으로 대신하지 않았습니다.",
             ROUTE_NEEDS.get(dest, []),
         )
-    per_t = convert(float(before.value) - float(after.value), before.unit, "GJ/t")
+    if not compatible(before, after, metric="energy") or before.meta.get("material") != key:
+        return _hold(
+            "기능단위·에너지 종류·계산 경계가 호환되지 않아 합산하지 않았습니다.",
+            ["같은 에너지 기준의 원문 계수"],
+        )
+    try:
+        per_t = convert(float(before.value), before.unit, "GJ/t") - convert(
+            float(after.value), after.unit, "GJ/t"
+        )
+    except UnitError:
+        return _hold("에너지 계수의 단위가 호환되지 않습니다.", ["원문 단위 확인"])
     formula = (
         f"(현행 {BASELINE_LABEL[baseline]}의 순에너지 − {ROUTE_LABEL[dest]}의 순에너지) × 월 발생량(t). "
         "EPA WARM v16 Exhibit 7-12, million Btu/short ton × 1.05505585262 ÷ 0.90718474 = GJ/t. "
@@ -301,14 +325,20 @@ def virgin_effect(
     reuse_ev=(),
 ) -> dict:
     if dest == "reuse":
-        if reuse_kg is None:
-            return _hold("한 달에 다시 넣는 양이 없어 계산하지 않았습니다.", ROUTE_NEEDS["reuse"])
-        return _estimated(
-            float(reuse_kg),
-            "site",
-            list(reuse_ev),
-            "담당자가 넣은 한 달에 다시 넣는 양. 다시 넣는 만큼 신재 구입이 준다고 본 값으로 비용 계산과 같은 가정입니다. "
-            "배합 뒤 불량률이 늘면 실제 대체량은 줄어듭니다",
+        from app.v3.judge.recovery import displaced
+
+        reuse = stream.get("reuse") or {}
+        value = displaced(reuse, min(kg, reuse_kg)) if reuse_kg is not None else None
+        if value is not None and baseline in ("incineration", "landfill"):
+            return _estimated(
+                value,
+                "site",
+                list(dict.fromkeys([*reuse_ev, *reuse.get("recoveryEvidence", [])])),
+                "재투입량 × 현장 회수수율 × 품질·용도별 신재 대체율. 담당자가 연결한 계량·시험 증빙에 따른 추정이며 인증 실적이 아닙니다.",
+            )
+        return _hold(
+            "재투입량만으로 신재 대체량을 확정할 수 없습니다. 실제 신재 사용 감소와 수율·품질 증빙이 필요합니다.",
+            ROUTE_NEEDS["reuse"],
         )
     found = _common_hold("virgin", dest, baseline)
     if found is not None:
@@ -329,6 +359,19 @@ def virgin_effect(
         return _hold(f"{material}의 수율·신재 대체율 문헌값이 없습니다.", ROUTE_NEEDS["recycle"])
     rate = float(share.value) / 100
     meta = share.meta or {}
+    if not compatible(share, metric="virgin") or meta.get("material") != material:
+        return _hold("수율·대체율의 기능단위와 원문 확인이 필요합니다.", ROUTE_NEEDS["recycle"])
+    rates = [num(meta.get(k)) for k in ("sortingRate", "recyclingRate", "substitutionFactor")]
+    if any(v is None for v in rates) or not (
+        0 <= rates[0] <= 100 and 0 <= rates[1] <= 100 and 0 <= rates[2] <= 1
+    ):
+        return _hold("수율·대체율이 없거나 유효 범위를 벗어납니다.", ROUTE_NEEDS["recycle"])
+    rate = rates[0] / 100 * rates[1] / 100 * rates[2]
+    if share.unit != "%" or not math.isclose(rate * 100, float(share.value), abs_tol=1e-6):
+        return _hold(
+            "수율·대체율의 곱과 등록된 합성 계수 또는 단위가 일치하지 않습니다.",
+            ["계수 원문 재대조"],
+        )
     detail = (
         f"선별 수율 {meta.get('sortingRate')}% × 재활용 수율 {meta.get('recyclingRate')}% × "
         f"신재 대체율 {meta.get('substitutionFactor')}"
@@ -357,7 +400,7 @@ def resource_refs(rec: Recorder, stream: dict, kg: float, dest: str) -> list[dic
     out = []
     for name in ("철광석", "석탄", "석회석"):
         found = rec.basis(f"circular.resource.철.{name}")
-        if found is None:
+        if found is None or found.meta.get("verificationStatus") != "original_checked":
             continue
         per_kg = convert(float(found.value), found.unit, "t/t")
         out.append({"name": name, "value": per_kg * kg, "basis": [found.id]})
@@ -373,7 +416,7 @@ def explain(stream: dict, baseline: str | None, dest: str, effects: dict) -> dic
     )
     if dest == "reuse":
         effect = f"깨끗한 {material} 스크랩을 분쇄해 공정에 다시 넣으면 신재 {material} 투입 일부를 대신합니다."
-        why = "같은 공장의 같은 재질이라 선별·세척 없이 원료로 돌아가고, 그만큼 신재를 새로 사거나 만들 필요가 줄어듭니다."
+        why = "현장 수율·품질·실제 사용 용도에 따라 신재 사용을 줄일 수 있습니다. 필요한 선별·세척과 공정 에너지는 현장 자료로 확인합니다."
     elif dest == "recycle" and baseline == "recycle":
         effect = (
             "이미 재활용하던 물량이라 거래처만 바뀝니다. 재활용 효과는 새로 생기는 성과가 아닙니다."
@@ -463,7 +506,7 @@ def unconfirmed(
             out.append(line)
 
     if baseline_assumed:
-        add("현행 처리를 입력하지 않아 혼합 소각으로 가정했습니다")
+        add("현행 처리 방식이 확인되지 않아 환경 효과를 보류했습니다")
     literature = any(effects[m]["method"] == "literature" for m in METRICS)
     if literature and "incineration" in (baseline, dest):
         add("지금 소각장이 전기·열을 회수하는지와 그 효율(문헌값은 회수하는 소각을 가정합니다)")
@@ -491,6 +534,8 @@ def stream_effect(
     reuse_kg=None,
     reuse_ev=(),
 ) -> dict:
+    if baseline_assumed or (stream.get("currentTreatment") or {}).get("methodAssumed"):
+        baseline = None
     effects = {
         "ghg": ghg_effect(rec, stream, kg, baseline, dest),
         "energy": energy_effect(rec, stream, kg, baseline, dest),
@@ -697,13 +742,22 @@ def baseline_emission(rec: Recorder, rows: list[dict]) -> dict:
         stream, baseline = row["stream"], row["baseline"]
         process = KEITI_PROCESS.get(baseline or "")
         factor = rec.basis(f"emission.{process}.{stream.get('wasteItem')}") if process else None
-        if factor is None:
+        if (
+            row.get("baselineAssumed")
+            or (stream.get("currentTreatment") or {}).get("methodAssumed")
+            or not compatible(factor, metric="process_ghg")
+        ):
+            missing.append(stream.get("id"))
+            continue
+        try:
+            per_kg = convert(float(factor.value), factor.unit, "kgCO2e/kg")
+        except UnitError:
             missing.append(stream.get("id"))
             continue
         parts.append(
             rec.number(
                 f"ceC_s{len(parts)}BaselineEmission",
-                float(factor.value) * row["kg"] / 1000,
+                per_kg * row["kg"] / 1000,
                 "tCO2e/월",
                 f"현행 처리({BASELINE_LABEL[baseline]}) 배출계수 × 월 발생량. 처리 공정의 배출만이며 "
                 "신재 대체와 소각의 에너지 회수는 넣지 않았습니다",

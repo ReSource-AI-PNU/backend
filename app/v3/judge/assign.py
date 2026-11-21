@@ -164,6 +164,11 @@ def _fixed_transport(vendor: dict) -> float:
     return float(transport_charge(vendor)["monthly"] or 0.0)
 
 
+def _labor_pending(item: dict) -> bool:
+    """전처리 작업 시간이나 시간당 인건비를 몰라 이 흐름의 작업비를 확정하지 못했다."""
+    return item["hours"] is None or bool(item["hours"] and item["rate"] is None)
+
+
 def _tagged(label: str, tail: str) -> str:
     """calc 근거 이름의 " 계산" 앞에 꼬리표를 넣는다. "변경 뒤 월 손익(별도 운반비 반영 전) 계산"."""
     if not tail:
@@ -486,7 +491,7 @@ def optimize_assignment(
                     "carbon": process + (moved["tco2e"] or 0.0),
                     "process": process,
                     "carbon_ev": carbon_ev,
-                    "carbon_known": per_kg is not None,
+                    "carbon_known": per_kg is not None and moved["known"],
                     "moved": moved,
                     "permit": level,
                     "conditional": any(c[1] == "conditional" for c in checks),
@@ -509,6 +514,17 @@ def optimize_assignment(
 
     if not usable:
         return rec.result("needs_information", output)
+    if weight and any(
+        c["vendor"] and not c["carbon_known"] for choices in options for c in choices
+    ):
+        weight = 0.0
+        output["carbonInObjective"] = False
+        output["carbonPrice"] = None
+        rec.check(
+            "carbon_objective",
+            "conditional",
+            "후보의 탄소 경계가 모두 확인되지 않아 미산정을 무배출로 비교하지 않고 금액 기준으로만 배정했습니다.",
+        )
     too_many = math.prod(len(o) for o in options) > MAX_COMBINATIONS
     if cp_solver is _AUTO:
         cp_solver = cp_sat_pick if HAS_ORTOOLS else None
@@ -539,7 +555,34 @@ def optimize_assignment(
                 volume = math.fsum(usable[i]["kg"] / d for i, d in zip(members, dens, strict=True))
                 if volume / pickups > cap_m3 + 1e-9:
                     return False
+            if (
+                len(members) > 1
+                and _below_current(combo, members)
+                and not _bundle_pays(combo, members)
+            ):
+                return False
         return True
+
+    def _below_current(combo, members) -> list[int]:
+        """묶음 안에서 운반비 몫까지 빼면 현행 유지(options[i][0])보다 월 손익이 나쁜 흐름."""
+        fee = _fixed_transport(combo[members[0]]["vendor"])
+        total = math.fsum(usable[i]["kg"] for i in members)
+        return [
+            i
+            for i in members
+            if combo[i]["value"] - fee * usable[i]["kg"] / total < options[i][0]["value"] - 1e-9
+        ]
+
+    def _bundle_pays(combo, members) -> bool:
+        """현행보다 불리한 흐름을 묶음에 넣어도 되는가: 운반비·작업비가 모두 확인됐고 묶음 전체가 현행보다 낫다.
+
+        확인되지 않은 비용이 섞인 잠정 금액으로는 한 흐름의 손해를 다른 흐름의 이득으로 메우지 않는다.
+        """
+        vendor = combo[members[0]]["vendor"]
+        if transport_charge(vendor)["pending"] or any(_labor_pending(usable[i]) for i in members):
+            return False
+        gain = math.fsum(combo[i]["value"] - options[i][0]["value"] for i in members)
+        return gain - _fixed_transport(vendor) > 1e-9
 
     greenest = None
     unbundled = None  # 시나리오 B: 같은 업체로 합쳐 최소 물량을 채우는 묶음 없이 고른 배정
@@ -561,6 +604,7 @@ def optimize_assignment(
             money, carbon = _money_carbon(combo)
             objective = money - weight * carbon
             names = tuple(_name(c) for c in combo)
+            # 운반비 미정 업체는 운반비 반영 전 잠정 배정으로 두고, 손익분기(transportRoom)를 함께 보인다
             key = (-round(objective, 6), names)  # 동점이면 업체 ID 순서가 앞선 배정
             if best_key is None or key < best_key:
                 best, best_key = combo, key
@@ -703,6 +747,7 @@ def optimize_assignment(
 
     # 합계 계산 근거가 흐름별 계산 근거를 입력으로 잇게 한다(계산 사슬: 합계 → 흐름별 → 원 근거)
     parts: dict[str, list[str]] = {"now": [], "after": [], "difference": [], "carbon": []}
+    diffs: dict[int, dict] = {}  # 흐름별 현행 대비 차이 근거(묶음 손해 공개에 쓴다)
     for i, (item, choice) in enumerate(zip(usable, best, strict=True)):
         stream, kg = item["stream"], item["kg"]
         now = -item["cost"] * kg
@@ -792,7 +837,10 @@ def optimize_assignment(
                 after_ev.append(made["evidence"][0])
             after = choice["value"] - share.get(i, 0.0)
         pending = bool(choice["vendor"] and charge and charge["pending"])
-        tail = "(별도 운반비 반영 전)" if pending else ""
+        cost_pending = bool(choice["vendor"]) and _labor_pending(item)
+        tail = "(미확인 비용 반영 전 잠정 금액)" if pending or cost_pending else ""
+        if cost_pending:
+            after_formula += ". 전처리·선별·세척 비용 미확인으로 순손익을 확정하지 않았습니다"
         made = rec.number(
             f"{tag}MonthlyAfter",
             after,
@@ -812,6 +860,7 @@ def optimize_assignment(
             label=_tagged(names.calc_label("difference", who), tail),
         )
         parts["difference"].append(made["evidence"][0])
+        diffs[i] = made
         unconfirmed = bool(choice["vendor"] and charge and charge["status"] in UNCONFIRMED)
         haul = hauls.get(str(choice["vendor"].get("orgId"))) if choice["vendor"] else None
         entry = {
@@ -838,6 +887,7 @@ def optimize_assignment(
             "transportBasis": charge["basis"] if charge else None,
             "transportUnit": charge["unit"] if charge else None,
             "transportPending": pending,
+            "costPending": cost_pending,
             "transportFee": _claim_id(haul, "fee"),
             "transportPickups": _claim_id(haul, "pickups"),
             "transportMonthly": _claim_id(haul, "monthly"),
@@ -850,6 +900,8 @@ def optimize_assignment(
             "permit": None,
             "transportRoom": None,
             "transportRoomAgainst": None,
+            # 이 흐름만 보면 현행보다 불리하지만 같은 업체 묶음 전체가 나아 함께 보낸다(아래에서 채운다)
+            "bundleBelowCurrent": None,
         }
         if pending:
             # 운반비가 정해지지 않은 배정: 운반비가 한 달 얼마를 넘으면 다음으로 나은 선택지가 나은지 남긴다
@@ -939,10 +991,50 @@ def optimize_assignment(
                     entry["status"] = "conditional"
         output["assignments"].append(entry)
         now_total, after_total = now_total + now, after_total + after
+    # 같은 업체 묶음에 현행보다 불리한 흐름이 들어갔다면(비용이 모두 확인되고 묶음 전체가 나을 때만 허용된다,
+    # feasible) 그 까닭과 묶음 전체의 현행 대비 차이를 그 흐름에 밝히고 조건부로 둔다
+    for k, vendor_id in enumerate(sorted(groups)):
+        members = groups[vendor_id]
+        losing = [i for i in members if diffs[i]["value"] < -1e-9]
+        if len(members) < 2 or not losing:
+            continue
+        bundle = rec.number(
+            f"v{k}BundleDifference",
+            math.fsum(diffs[i]["value"] for i in members),
+            "원/월",
+            "같은 업체로 함께 보내는 폐기물의 현행 대비 차이 합",
+            [diffs[i]["evidence"][0] for i in members],
+            label=names.calc_label("bundleDifference"),
+        )
+        for i in losing:
+            entry = output["assignments"][i]
+            entry["status"] = "conditional"
+            entry["bundleBelowCurrent"] = {
+                "loss": diffs[i]["id"],
+                "bundle": bundle["id"],
+                "vendorOrgId": vendor_id,
+                "streamIds": [usable[m]["stream"].get("id") for m in members if m != i],
+            }
+            rec.check(
+                f"bundle_below_current:{entry['streamId']}",
+                "conditional",
+                "이 폐기물만 보면 현행보다 불리하지만, 같은 업체에 함께 보내야 최소 물량이나 운반비 조건이 "
+                "맞아 묶음에 넣었습니다. 묶음 전체로는 현행보다 낫습니다. 담당자 확인 필요.",
+                None,
+                [diffs[i]["evidence"][0], bundle["evidence"][0]],
+            )
     # 운반비를 정하지 못한 배정이 섞인 합계는 잠정값이다(이름과 계산식에 밝힌다)
-    pending_ids = [a["streamId"] for a in output["assignments"] if a.get("transportPending")]
-    note = ". 별도 운반비 반영 전 값이 섞여 있습니다" if pending_ids else ""
-    tail = "(별도 운반비 반영 전 포함)" if pending_ids else ""
+    pending_ids = [
+        a["streamId"]
+        for a in output["assignments"]
+        if a.get("transportPending") or a.get("costPending")
+    ]
+    note = (
+        ". 미확인 운반비·작업비 반영 전 잠정 금액이 포함되어 순손익이 아닙니다"
+        if pending_ids
+        else ""
+    )
+    tail = "(미확인 비용 반영 전 포함)" if pending_ids else ""
     rec.number("totalNow", now_total, "원/월", "폐기물별 현행 월 손익의 합", parts["now"])
     rec.number(
         "totalAfter",
@@ -981,7 +1073,11 @@ def optimize_assignment(
             "conditional",
             f"{'·'.join(dict.fromkeys(no_distance))} 운송 배출을 계산하지 못한 업체가 있습니다. 확인 필요.",
         )
-    output["greenest"] = _greenest(rec, usable, best, greenest)
+    output["greenest"] = (
+        _greenest(rec, usable, best, greenest)
+        if all(c["carbon_known"] for choices in options for c in choices)
+        else None
+    )
     # 자원순환 효과(현행 대비 감축량·에너지 절감·신재 대체)와 네 시나리오. 월 손익과 섞지 않는다
     money_b = None
     if unbundled is not None:
@@ -1007,8 +1103,8 @@ def optimize_assignment(
         rec.check(
             "carbon",
             "conditional",
-            f"배출계수가 없는 처리 방식으로 가는 폐기물({', '.join(no_factor)})은 "
-            "탄소 계산에서 뺐습니다. 확인 필요.",
+            f"원문 경계를 확인한 처리 배출계수나 실제 운송 조건이 없는 폐기물({', '.join(no_factor)})은 "
+            "탄소 계산을 보류했습니다. 확인 필요.",
         )
     if any(a["currentAssumed"] for a in output["assignments"]):
         rec.check(

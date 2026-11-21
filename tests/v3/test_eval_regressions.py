@@ -101,14 +101,18 @@ def test_a_vendor_or_stream_named_with_a_digit_can_still_negotiate():
 
 
 def test_identify_compares_measured_and_photo_grade_without_an_asked_moisture():
+    """측정 수분이 있으면 사진 판정을 위해 수분을 다시 묻지 않는다.
+
+    2026-11-21 정책: 공통 등급 기준을 검증하지 못해 측정·사진 어느 쪽으로도 공통 등급을 내지 않는다(산정 보류).
+    그래서 두 등급을 견주는 grade_disagreement도 없지만, 측정 수분이 있는데 사진만으로는 등급을 못 낸다며 수분을 묻는
+    질문이 나가면 안 된다(이 시험이 막던 회귀)."""
     reg = registry()
-    s = stream(photo={"contaminationPct": 6.0, "evidence": []})
-    r = run(reg, "identify_stream", stream=s)
-    assert r["output"]["grade"] == "A" and r["output"]["basis"] == "measured"
-    assert r["output"]["photoGrade"] == "C" and r["status"] == "conditional"
-    assert any(c["key"] == "grade_disagreement" and c["ask"] for c in r["checks"])
-    same = run(reg, "identify_stream", stream=stream(photo={"contaminationPct": 0.8}))
-    assert same["status"] == "calculated" and same["output"]["photoGrade"] == "A"
+    for photo in ({"contaminationPct": 6.0, "evidence": []}, {"contaminationPct": 0.8}):
+        r = run(reg, "identify_stream", stream=stream(photo=photo))
+        assert r["output"]["grade"] is None and r["output"]["photoGrade"] is None
+        assert r["output"]["basis"] == "measured"
+        assert not any(c["key"] in ("grade_disagreement", "moisture") for c in r["checks"])
+        assert not any(c.get("ask") for c in r["checks"])
 
 
 # ── 결과 한 장 ───────────────────────────────────────────────────────
@@ -125,10 +129,11 @@ def test_route_checks_and_sensitivity_survive_an_answer_given_mid_conversation()
         "moisturePct",
     ]
     assert item["status"] == "conditional" and item["vendorOrgId"] == "org_v1"
-    assert {"contaminationPct", "moisturePct", "current_assumed"} <= {
-        c["key"] for c in item["checks"]
-    }
-    assert result["sensitivity"]  # 현행이 가정값이면 민감도가 함께 나온다
+    checks = {c["key"]: c["status"] for c in item["checks"]}
+    assert checks["contaminationPct"] == checks["moisturePct"] == "conditional"
+    # 현행 처리비는 담당자가 답한 값이다(평가 세계 기본 답). 가정값이 아니므로 가정값 민감도는 나오지 않는다(2026-11-21 정책)
+    assert item["currentAssumed"] is False and "current_assumed" not in checks
+    assert result["sensitivity"] == []
 
 
 def test_a_stream_left_unassigned_because_of_unknown_values_is_not_shown_as_decided():

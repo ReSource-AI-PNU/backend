@@ -2,7 +2,8 @@
 
 import re
 
-from tests.v3.judge_fixtures import ORIGIN, assert_grounded, claim, registry, run, stream, vendor
+from tests.v3.judge_fixtures import ORIGIN, assert_grounded, claim, registry, run, vendor
+from tests.v3.judge_fixtures import answered_stream as stream
 
 PRESS = {
     "id": "pc_pp_press",
@@ -67,8 +68,15 @@ def test_c04_all_conditions_stated_needs_no_question():
     r = run(reg, "judge_route", stream=case(), vendor=buyer())
     assert r["status"] == "calculated" and asks(r) == []
     assert claim(r, "monthlyAfter")["value"] == 100000
-    assert any(c["key"] == "current_assumed" for c in r["checks"])  # 현행은 가정값이라고 표시
+    # 현행은 담당자가 답한 값이라 가정값 표시가 없다(가정값으로 채우지 않는다)
+    assert not any(c["key"] == "current_assumed" for c in r["checks"])
+    assert not r["output"]["current"]["assumed"]
     assert_grounded(reg, r)
+    # 현행 처리비를 모르면 가정값 대신 현행 대비를 보류한다. 묻는 것은 회사 쪽 질문(현행 처리비)이다
+    unknown = run(reg, "judge_route", stream=case(currentTreatment=None), vendor=buyer())
+    assert unknown["status"] == "conditional" and asks(unknown) == []
+    assert any(c["key"] == "current_cost" for c in unknown["checks"])
+    assert all(c["id"] not in ("monthlyNow", "difference") for c in unknown["claims"])
 
 
 def test_c05_estimated_material_is_kept_as_unconfirmed():
@@ -149,7 +157,7 @@ def test_c09_corrected_material_and_volume_replace_the_old_judgement():
     assert reg.get(before["evidence"][0]).version == 1
 
 
-def test_c10_transport_is_an_assumption_not_a_quote():
+def test_c10_transport_without_a_quote_is_pending_not_an_estimate():
     reg = registry()
     r = run(
         reg,
@@ -161,9 +169,20 @@ def test_c10_transport_is_an_assumption_not_a_quote():
         transportPaidBy="emitter",
     )
     transport = next(c for c in r["checks"] if c["key"] == "transport")
-    assert r["status"] == "conditional" and r["output"]["transportAssumed"] is True
-    assert "견적이 아닙니다" in transport["text"] and "견적" in transport["ask"]
-    assert any(e.startswith("assumption:") for e in claim(r, "monthlyTransport")["evidence"])
+    # 업체가 운반비를 밝히지 않았다: 거리 × 가정 운행 단가로 어림하지 않고 견적 전 잠정 금액으로 둔다
+    assert r["status"] == "conditional" and r["output"]["transportAssumed"] is None
+    assert r["output"]["transportPending"] is True
+    assert "가정 운행 단가" in transport["text"] and "반영 전" in transport["text"]
+    assert not any(c["id"] == "monthlyTransport" for c in r["claims"])
+    assert not any(e.startswith("assumption:") for c in r["claims"] for e in c["evidence"])
     nowhere = run(reg, "cost_carbon", stream=case(), vendor=buyer())
     assert not any(c["id"] == "monthlyTransport" for c in nowhere["claims"])
-    assert not re.search(r"\d", transport["ask"])
+    assert not re.search(r"\d", transport["text"])
+    # 업체가 1회 운반비를 밝히면 그 견적으로 뺀다
+    quoted = vendor(
+        criteria=[PRESS],
+        transport={"paidBy": "emitter", "feePerPickupKrw": 30000, "evidence": []},
+    )
+    fee = run(reg, "cost_carbon", stream=case(), vendor=quoted, origin=ORIGIN, pickupsPerMonth=2)
+    assert claim(fee, "monthlyTransport")["value"] == 60000
+    assert fee["output"]["transportAssumed"] is False

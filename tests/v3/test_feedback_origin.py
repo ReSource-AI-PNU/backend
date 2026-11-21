@@ -90,10 +90,11 @@ def test_outcome_between_real_companies_is_real():
 
 
 def test_a_demo_party_makes_the_record_demo():
-    # 실제 배출 기업이 시연 업체와 거래해도 업체 검수는 가상 회사가 적은 것이다
+    # 실제 배출 기업과 시연 업체는 이제 서로 거래 후보가 아니다(2026-11-21). 그 전에 확정된 거래가 남아 있어도
+    # 업체 검수는 가상 회사가 적은 것이다: 시연끼리 확정한 뒤 배출 기업을 실제 회사로 바꿔 그 경우를 만든다
     app = make_app()
-    _as_real(app, HANBIT)
     view = approve_all(app, to_approval(app))
+    _as_real(app, HANBIT)
     assert _record(app, view)["dataOrigin"] == "demo"
     assert feedback.gate_status(app)["realLabelCount"] == 0
 

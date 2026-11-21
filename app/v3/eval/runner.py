@@ -45,6 +45,17 @@ _MONEY_FIELDS = ("unitPrice", "monthlyAfter", "monthlyNow", "difference")
 # ── 실행 ─────────────────────────────────────────────────────────────
 
 
+def answer_for(app: service.App, question: dict[str, Any], answers: dict[str, Any]) -> Any:
+    """담당자 질문에 줄 답. 사례의 answers("흐름.항목", "*")에 없으면 "모름"이고, 현행 처리비(currentCost)만
+    평가 세계의 현행 위탁 계약 단가로 답한다(world.current_cost_answer)."""
+    key = f"{question['streamId']}.{question['field']}"
+    if key in answers:
+        return answers[key]
+    if question["field"] == "currentCost":
+        return worlds.current_cost_answer(app.store.get_stream(question["streamId"]))
+    return answers.get("*", "unknown")
+
+
 def _make_app(case: dict[str, Any], options: dict[str, Any]) -> service.App:
     store, registry, today, shield = worlds.build_world(
         case, registry_source=options.get("registry_source")
@@ -252,7 +263,9 @@ class _Session:
                 break
             for question in view["questions"]:
                 if not question["answered"]:
-                    service.answer_question(app, sid, question["id"], "unknown", org)
+                    service.answer_question(
+                        app, sid, question["id"], answer_for(app, question, {}), org
+                    )
             view = service.run_session(app, sid, org)
         vendors = {t["id"]: t["vendorOrgId"] for t in view["threads"]}
         for item in view["approvals"]:
@@ -274,8 +287,7 @@ class _Session:
             for question in self.view["questions"]:
                 if question["answered"]:
                     continue
-                key = f"{question['streamId']}.{question['field']}"
-                value = answers.get(key, answers.get("*", "unknown"))
+                value = answer_for(app, question, answers)
                 service.answer_question(app, self.sid, question["id"], value, emitter)
             self.view = service.run_session(app, self.sid, emitter)
         self._recheck()

@@ -14,6 +14,7 @@ from __future__ import annotations
 import contextlib
 import copy
 import logging
+import math
 from collections.abc import Iterator
 from dataclasses import replace
 from datetime import datetime, timedelta, timezone
@@ -296,7 +297,13 @@ def _human(app: App, org_id: str, key: str, label: str, value: float, unit: str 
             source="담당자 입력",
             as_of=app.today,
             access=(org_id,),
-            meta={"ownerOrgId": org_id, "key": key},
+            meta={
+                "ownerOrgId": org_id,
+                "key": key,
+                "evidenceClass": "measured",
+                "verificationStatus": "user_reported",
+                "caveats": ["담당자 제공 값이며 서비스가 실측 여부를 인증한 값이 아닙니다."],
+            },
         )
     )
     return evidence.id
@@ -442,7 +449,11 @@ def _demo_history(app: App) -> str | None:
         view = get_view(app, session_id, EMITTER)
         vendors = {t["id"]: t["vendorOrgId"] for t in view["threads"]}
         for item in view["approvals"]:
-            if item.get("blocked") or item.get("permitHold"):
+            if (
+                item.get("blocked")
+                or item.get("permitHold")
+                or (item.get("review") or {}).get("status") == "blocked"
+            ):
                 # 허가증 원문 대조가 끝나지 않은 경로는 확정하지 않는다(시연에서도 승인 대기로 남는다)
                 continue
             approve(app, session_id, item["threadId"], EMITTER)
@@ -703,7 +714,7 @@ def update_stream(
 
 def _amount(value: Any, message: str, *, positive: bool = False) -> float:
     bad = isinstance(value, bool) or not isinstance(value, (int, float))
-    if bad or value < 0 or (positive and value <= 0):
+    if bad or not math.isfinite(value) or value < 0 or (positive and value <= 0):
         raise ServiceError("INVALID_VALUE", message, 422)
     return float(value)
 
@@ -769,7 +780,7 @@ def _update_costs(app: App, org_id: str, stream_id: str, stream: dict, patch: di
         )
         regrind = reuse.get("regrindCostKrwPerKg")
         regrind = (
-            0.0 if regrind is None else _amount(regrind, "분쇄 비용은 0 이상의 숫자여야 합니다.")
+            None if regrind is None else _amount(regrind, "분쇄 비용은 0 이상의 숫자여야 합니다.")
         )
         evidence = [
             _grounded(app, org_id, f"{stream_id}-신재단가", "신재 구입 단가", virgin, "원/kg", old),
@@ -790,6 +801,46 @@ def _update_costs(app: App, org_id: str, stream_id: str, stream: dict, patch: di
             "regrindCostKrwPerKg": regrind,
             "evidence": [e for e in evidence if e],
         }
+        recovery = {}
+        for key in ("recoveryYieldPct", "virginSubstitutionPct"):
+            value = reuse.get(key)
+            if value is not None:
+                value = _amount(value, "수율·대체율은 0~100%의 유한한 수여야 합니다.")
+                if value > 100:
+                    raise ServiceError(
+                        "INVALID_VALUE", "수율·대체율은 100%를 넘을 수 없습니다.", 422
+                    )
+            recovery[key] = value
+        recovery["recoveryApplication"] = str(reuse.get("recoveryApplication") or "").strip()[:500]
+        proof = reuse.get("recoveryEvidence") or []
+        if not isinstance(proof, list) or len(proof) > 10:
+            raise ServiceError("INVALID_VALUE", "수율·품질 근거를 목록으로 선택해 주세요.", 422)
+        for eid in proof:
+            try:
+                record = app.registry.get(eid, org_id)
+            except (EvidenceNotFound, EvidenceForbidden, TypeError):
+                raise ServiceError(
+                    "EVIDENCE_NOT_FOUND", "수율·품질 근거를 확인할 수 없습니다.", 404
+                ) from None
+            if record.kind not in ("doc", "measure") or record.expired(app.today):
+                raise ServiceError(
+                    "INVALID_VALUE",
+                    "유효한 계량·품질 시험 문서 또는 측정 근거를 선택해 주세요.",
+                    422,
+                )
+            if record.meta.get("streamId") not in (None, stream_id):
+                raise ServiceError(
+                    "INVALID_VALUE", "다른 폐기물의 근거를 수율에 사용할 수 없습니다.", 422
+                )
+        recovery["recoveryEvidence"] = list(dict.fromkeys(proof))
+        residue_cost = reuse.get("recoveryResidueCostKrwPerKg")
+        recovery["recoveryResidueCostKrwPerKg"] = (
+            None
+            if residue_cost is None
+            else _amount(residue_cost, "잔재 처리비는 0 이상의 숫자여야 합니다.")
+        )
+        stream["reuse"].update(recovery)
+        stream["reuse"]["evidence"] += recovery["recoveryEvidence"]
 
 
 def _put_terms_evidence(app: App, org_id: str, evidence: Evidence) -> str:
@@ -919,6 +970,45 @@ def update_vendor(app: App, org_id: str, patch: dict[str, Any], viewer: str) -> 
         profile = app.store.get_vendor_profile(org_id)
     except NotFound:
         profile = {"orgId": org_id, "permits": [], "criteria": [], "fleet": {}, "guardrails": {}}
+    # Reject an invalid range before writing any process/terms evidence in this request.
+    if "guardrails" in patch:
+        if not isinstance(patch["guardrails"], dict):
+            raise ServiceError("INVALID_VALUE", "가드레일은 객체로 보내 주세요.", 422)
+        from app.v3.a2a.guardrails import validate_policy
+
+        merged = {**(profile.get("guardrails") or {}), **patch["guardrails"]}
+        try:
+            validate_policy(merged)
+        except ValueError as error:
+            raise ServiceError("INVALID_VALUE", str(error), 422) from None
+        profile["guardrails"] = merged
+    if "process" in patch:
+        process = patch["process"]
+        if process not in (None, "", "재활용", "물질 재활용", "열분해", "소각", "매립"):
+            raise ServiceError(
+                "INVALID_VALUE", "처리 방식은 목록에서 선택하거나 미확인으로 남겨 주세요.", 422
+            )
+        profile["process"] = process or None
+        if process:
+            proof = app.registry.put(
+                Evidence(
+                    id=ids.human_id(org_id, "처리방식-선언"),
+                    kind="human",
+                    source="업체 담당자 입력(실제 공정과 허가 범위 별도 확인)",
+                    excerpt=f"업체가 밝힌 처리 방식: {process}",
+                    label="업체 처리 방식 선언",
+                    as_of=app.today,
+                    access=(org_id,),
+                    meta={
+                        "ownerOrgId": org_id,
+                        "evidenceClass": "measured",
+                        "verificationStatus": "user_reported",
+                    },
+                )
+            )
+            profile["processEvidence"] = [proof.id]
+        else:
+            profile["processEvidence"] = []
     if "model" in patch:
         model = patch["model"] or {}
         if model.get("provider") not in MODEL_PROVIDERS or not model.get("name"):
@@ -926,10 +1016,6 @@ def update_vendor(app: App, org_id: str, patch: dict[str, Any], viewer: str) -> 
                 "INVALID_VALUE", "모델은 foundry 또는 ollama 가운데 고르고 이름을 적어 주세요.", 422
             )
         profile["model"] = {"provider": model["provider"], "name": str(model["name"])}
-    if "guardrails" in patch:
-        if not isinstance(patch["guardrails"], dict):
-            raise ServiceError("INVALID_VALUE", "가드레일은 객체로 보내 주세요.", 422)
-        profile["guardrails"] = {**(profile.get("guardrails") or {}), **patch["guardrails"]}
     if "permits" in patch:
         old = {p.get("wasteItem"): p for p in profile.get("permits") or []}
         permits = []
@@ -1008,6 +1094,15 @@ def update_vendor(app: App, org_id: str, patch: dict[str, Any], viewer: str) -> 
             profile["transport"] = terms
         else:
             profile.pop("transport", None)
+    if "inspectionFallbackCriterionId" in patch:
+        selected = patch["inspectionFallbackCriterionId"]
+        if selected is not None and not any(
+            c.get("id") == selected for c in profile.get("criteria") or []
+        ):
+            raise ServiceError(
+                "INVALID_VALUE", "등록된 등급 기준을 선택하거나 재협의로 두어야 합니다.", 422
+            )
+        profile["inspectionFallbackCriterionId"] = selected
     saved = app.store.put_vendor_profile(profile)
     _recheck(app, org_id)
     return {**saved, "name": app.store.get_org(org_id).get("name")}
@@ -1340,23 +1435,9 @@ def _stream_view(
         price = _claim(pool, facts.get("currentUnitPrice")) if sale else None
         cost = None if sale else _claim(pool, facts.get("currentUnitCost"))
         # 계약은 받았지만 월 발생량이 없어 kg당 환산이 비었다: 가정값이 아니라 계약을 그대로 보인다
-        pending = not sale and bool(current.get("billing"))
-        assumed = cost is None and price is None and not pending
-        if assumed:
-            found = basis.resolve(app.registry, viewer, f"current.cost.{stream.get('wasteItem')}")
-            if found is not None:
-                cost = naming.annotate(
-                    {
-                        "id": f"{stream['id']}_currentUnitCost",
-                        "kind": "number",
-                        "value": found.value,
-                        "unit": found.unit,
-                        "evidence": [found.id],
-                    },
-                    "currentUnitCost",
-                )
+        assumed = bool(current.get("methodAssumed"))
         view["currentTreatment"] = {
-            "method": "혼합 소각" if assumed else current.get("method"),
+            "method": current.get("method") or "미확인",
             "unitCost": cost,
             # 지금 팔고 있으면 받는 kg당 금액(현행 판매 단가). 그때 unitCost는 null이다
             "sale": sale and not assumed,
@@ -1364,7 +1445,7 @@ def _stream_view(
             "assumed": assumed,
             # 차량·횟수 단위나 월 정액으로 받은 계약(kg당으로 바꾼 원래 꼴). 없으면 null
             "billing": None
-            if assumed or not current.get("billing")
+            if not current.get("billing")
             else {**current["billing"], "text": current_cost.describe(current["billing"])},
         }
         # 순비용에 쓰는 배출 기업만의 입력(자료 화면에서 고친다). 업체 뷰에는 없다
@@ -1750,6 +1831,8 @@ def _result_view(session: dict[str, Any], viewer: str, owner: bool) -> dict[str,
                 "carbonProcess": None,
                 "carbonTransport": None,
                 "transportKm": None,
+                # 묶음 손해 공개는 배출 기업의 현행 손익 비교다
+                "bundleBelowCurrent": None,
                 # 수거 상태와 운반비 방식만 보인다. 금액은 배출 기업 쪽 계산 근거라 빼고(업체 자신의 견적은 대화의
                 # 조건 답에 있다), 운반비 손익분기(배출 기업의 비교)도 뺀다
                 "pickup": {
@@ -3239,7 +3322,8 @@ def run_eval(app: App, viewer: str) -> dict[str, Any]:
 def _demo_eval(app: App) -> dict[str, Any]:
     """시연 시나리오(가상 데이터)를 따로 만든 저장소에서 처음부터 끝까지 돌려 본다.
 
-    담당자 질문에는 모두 "모름"으로 답한다. 검증기 통과율은 나간 메시지와 문서를 다시 검증해 센다.
+    담당자 질문에는 시연 답(seed.DEMO_ANSWERS, 가상 값)으로, 그 밖에는 "모름"으로 답한다. 계약 검토 담당이 막은
+    대화(예: 필수 운반비 미정)는 승인하지 않는다. 검증기 통과율은 나간 메시지와 문서를 다시 검증해 센다.
     """
     from app.v3.evidence.registry import InMemoryRegistry
 
@@ -3258,9 +3342,17 @@ def _demo_eval(app: App) -> dict[str, Any]:
             break
         for question in view["questions"]:
             if not question["answered"]:
-                answer_question(trial, session_id, question["id"], "unknown", EMITTER)
+                value = DEMO_ANSWERS.get((question["streamId"], question["field"]), "unknown")
+                answer_question(trial, session_id, question["id"], value, EMITTER)
         view = run_session(trial, session_id, EMITTER)
     for item in list(view["approvals"]):
+        if (
+            item.get("blocked")
+            or item.get("permitHold")
+            or (item.get("review") or {}).get("status") == "blocked"
+        ):
+            # 허가증 원문 대조 전이거나 계약 검토 담당이 막은 대화는 확정하지 않는다(_demo_history와 같다)
+            continue
         approve(trial, session_id, item["threadId"], EMITTER)
         vendor = next(t["vendorOrgId"] for t in view["threads"] if t["id"] == item["threadId"])
         approve(trial, session_id, item["threadId"], vendor)
@@ -3279,7 +3371,7 @@ def _demo_eval(app: App) -> dict[str, Any]:
             document["text"], document["claims"], trial.registry, org_id=EMITTER, today=trial.today
         ).ok
     return {
-        "scenario": "시연 시나리오(모두 가상 데이터, 담당자 질문에는 모두 '모름'으로 답함)",
+        "scenario": "시연 시나리오(모두 가상 데이터, 담당자 질문에는 시연 답 외에는 '모름'으로 답함, 검토가 막은 대화는 승인하지 않음)",
         "model": model_label(trial.llm_for("company", EMITTER, None)),
         "sessionStatus": view["session"]["status"],
         "checked": checked,

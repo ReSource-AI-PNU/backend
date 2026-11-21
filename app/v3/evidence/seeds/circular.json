@@ -53,6 +53,21 @@
         "국내 공정 스크랩(PIR), 공정 내부 재투입, 혼합 재질 열분해에는 쓰지 않는다",
         "수율·신재 대체·잔재 처리가 이미 들어 있으므로 따로 곱하거나 더하지 않는다",
         "기업의 공식 배출량에서 빼거나 배출권으로 팔 수 있는 값이 아니다"
+      ],
+      "evidenceClass": "literature",
+      "verificationStatus": "original_checked",
+      "verifiedOn": "2026-11-21",
+      "datasetVersion": "JRC122455-2021",
+      "functionalUnit": "t input post-consumer polymer waste",
+      "systemBoundary": "JRC-system-expansion-net",
+      "energyType": null,
+      "publicationDate": "2021 (day unspecified)",
+      "dataYear": "mixed inventories; EU electricity 2012",
+      "valueRange": null,
+      "excludes": [
+        "국내 사업장 실측으로 해석",
+        "공장 전기요금 환산",
+        "다른 문헌 수율·운송·에너지 회수 중복 가산"
       ]
     }
   },
@@ -110,6 +125,21 @@
         "국내 공정 스크랩(PIR), 공정 내부 재투입, 혼합 재질 열분해에는 쓰지 않는다",
         "수율·신재 대체·잔재 처리가 이미 들어 있으므로 따로 곱하거나 더하지 않는다",
         "기업의 공식 배출량에서 빼거나 배출권으로 팔 수 있는 값이 아니다"
+      ],
+      "evidenceClass": "literature",
+      "verificationStatus": "original_checked",
+      "verifiedOn": "2026-11-21",
+      "datasetVersion": "JRC122455-2021",
+      "functionalUnit": "t input post-consumer polymer waste",
+      "systemBoundary": "JRC-system-expansion-net",
+      "energyType": null,
+      "publicationDate": "2021 (day unspecified)",
+      "dataYear": "mixed inventories; EU electricity 2012",
+      "valueRange": null,
+      "excludes": [
+        "국내 사업장 실측으로 해석",
+        "공장 전기요금 환산",
+        "다른 문헌 수율·운송·에너지 회수 중복 가산"
       ]
     }
   },
@@ -160,6 +190,21 @@
       "caveats": [
         "EU 소비 후 폐플라스틱의 평균 수율이다. 실제 업체의 회수수율을 받으면 그 값을 쓴다",
         "같은 연구의 온실가스 순효과에 이 수율이 이미 들어 있다. 감축량에 다시 곱하지 않는다"
+      ],
+      "evidenceClass": "literature",
+      "verificationStatus": "original_checked",
+      "verifiedOn": "2026-11-21",
+      "datasetVersion": "JRC122455-2021",
+      "functionalUnit": "t input post-consumer polymer waste",
+      "systemBoundary": "JRC-system-expansion-net",
+      "energyType": null,
+      "publicationDate": "2021 (day unspecified)",
+      "dataYear": "mixed inventories; EU electricity 2012",
+      "valueRange": null,
+      "excludes": [
+        "국내 사업장 실측으로 해석",
+        "공장 전기요금 환산",
+        "다른 문헌 수율·운송·에너지 회수 중복 가산"
       ]
     }
   },
@@ -217,6 +262,21 @@
         "국내 공정 스크랩(PIR), 공정 내부 재투입, 혼합 재질 열분해에는 쓰지 않는다",
         "수율·신재 대체·잔재 처리가 이미 들어 있으므로 따로 곱하거나 더하지 않는다",
         "기업의 공식 배출량에서 빼거나 배출권으로 팔 수 있는 값이 아니다"
+      ],
+      "evidenceClass": "literature",
+      "verificationStatus": "original_checked",
+      "verifiedOn": "2026-11-21",
+      "datasetVersion": "JRC122455-2021",
+      "functionalUnit": "t input post-consumer polymer waste",
+      "systemBoundary": "JRC-system-expansion-net",
+      "energyType": null,
+      "publicationDate": "2021 (day unspecified)",
+      "dataYear": "mixed inventories; EU electricity 2012",
+      "valueRange": null,
+      "excludes": [
+        "국내 사업장 실측으로 해석",
+        "공장 전기요금 환산",
+        "다른 문헌 수율·운송·에너지 회수 중복 가산"
       ]
     }
   },
@@ -274,6 +334,21 @@
         "국내 공정 스크랩(PIR), 공정 내부 재투입, 혼합 재질 열분해에는 쓰지 않는다",
         "수율·신재 대체·잔재 처리가 이미 들어 있으므로 따로 곱하거나 더하지 않는다",
         "기업의 공식 배출량에서 빼거나 배출권으로 팔 수 있는 값이 아니다"
+      ],
+      "evidenceClass": "literature",
+      "verificationStatus": "original_checked",
+      "verifiedOn": "2026-11-21",
+      "datasetVersion": "JRC122455-2021",
+      "functionalUnit": "t input post-consumer polymer waste",
+      "systemBoundary": "JRC-system-expansion-net",
+      "energyType": null,
+      "publicationDate": "2021 (day unspecified)",
+      "dataYear": "mixed inventories; EU electricity 2012",
+      "valueRange": null,
+      "excludes": [
+        "국내 사업장 실측으로 해석",
+        "공장 전기요금 환산",
+        "다른 문헌 수율·운송·에너지 회수 중복 가산"
       ]
     }
   },
@@ -324,6 +399,21 @@
       "caveats": [
         "EU 소비 후 폐플라스틱의 평균 수율이다. 실제 업체의 회수수율을 받으면 그 값을 쓴다",
         "같은 연구의 온실가스 순효과에 이 수율이 이미 들어 있다. 감축량에 다시 곱하지 않는다"
+      ],
+      "evidenceClass": "literature",
+      "verificationStatus": "original_checked",
+      "verifiedOn": "2026-11-21",
+      "datasetVersion": "JRC122455-2021",
+      "functionalUnit": "t input post-consumer polymer waste",
+      "systemBoundary": "JRC-system-expansion-net",
+      "energyType": null,
+      "publicationDate": "2021 (day unspecified)",
+      "dataYear": "mixed inventories; EU electricity 2012",
+      "valueRange": null,
+      "excludes": [
+        "국내 사업장 실측으로 해석",
+        "공장 전기요금 환산",
+        "다른 문헌 수율·운송·에너지 회수 중복 가산"
       ]
     }
   },
@@ -381,6 +471,21 @@
         "국내 공정 스크랩(PIR), 공정 내부 재투입, 혼합 재질 열분해에는 쓰지 않는다",
         "수율·신재 대체·잔재 처리가 이미 들어 있으므로 따로 곱하거나 더하지 않는다",
         "기업의 공식 배출량에서 빼거나 배출권으로 팔 수 있는 값이 아니다"
+      ],
+      "evidenceClass": "literature",
+      "verificationStatus": "original_checked",
+      "verifiedOn": "2026-11-21",
+      "datasetVersion": "JRC122455-2021",
+      "functionalUnit": "t input post-consumer polymer waste",
+      "systemBoundary": "JRC-system-expansion-net",
+      "energyType": null,
+      "publicationDate": "2021 (day unspecified)",
+      "dataYear": "mixed inventories; EU electricity 2012",
+      "valueRange": null,
+      "excludes": [
+        "국내 사업장 실측으로 해석",
+        "공장 전기요금 환산",
+        "다른 문헌 수율·운송·에너지 회수 중복 가산"
       ]
     }
   },
@@ -438,6 +543,21 @@
         "국내 공정 스크랩(PIR), 공정 내부 재투입, 혼합 재질 열분해에는 쓰지 않는다",
         "수율·신재 대체·잔재 처리가 이미 들어 있으므로 따로 곱하거나 더하지 않는다",
         "기업의 공식 배출량에서 빼거나 배출권으로 팔 수 있는 값이 아니다"
+      ],
+      "evidenceClass": "literature",
+      "verificationStatus": "original_checked",
+      "verifiedOn": "2026-11-21",
+      "datasetVersion": "JRC122455-2021",
+      "functionalUnit": "t input post-consumer polymer waste",
+      "systemBoundary": "JRC-system-expansion-net",
+      "energyType": null,
+      "publicationDate": "2021 (day unspecified)",
+      "dataYear": "mixed inventories; EU electricity 2012",
+      "valueRange": null,
+      "excludes": [
+        "국내 사업장 실측으로 해석",
+        "공장 전기요금 환산",
+        "다른 문헌 수율·운송·에너지 회수 중복 가산"
       ]
     }
   },
@@ -488,6 +608,21 @@
       "caveats": [
         "EU 소비 후 폐플라스틱의 평균 수율이다. 실제 업체의 회수수율을 받으면 그 값을 쓴다",
         "같은 연구의 온실가스 순효과에 이 수율이 이미 들어 있다. 감축량에 다시 곱하지 않는다"
+      ],
+      "evidenceClass": "literature",
+      "verificationStatus": "original_checked",
+      "verifiedOn": "2026-11-21",
+      "datasetVersion": "JRC122455-2021",
+      "functionalUnit": "t input post-consumer polymer waste",
+      "systemBoundary": "JRC-system-expansion-net",
+      "energyType": null,
+      "publicationDate": "2021 (day unspecified)",
+      "dataYear": "mixed inventories; EU electricity 2012",
+      "valueRange": null,
+      "excludes": [
+        "국내 사업장 실측으로 해석",
+        "공장 전기요금 환산",
+        "다른 문헌 수율·운송·에너지 회수 중복 가산"
       ]
     }
   },
@@ -545,6 +680,21 @@
         "국내 공정 스크랩(PIR), 공정 내부 재투입, 혼합 재질 열분해에는 쓰지 않는다",
         "수율·신재 대체·잔재 처리가 이미 들어 있으므로 따로 곱하거나 더하지 않는다",
         "기업의 공식 배출량에서 빼거나 배출권으로 팔 수 있는 값이 아니다"
+      ],
+      "evidenceClass": "literature",
+      "verificationStatus": "original_checked",
+      "verifiedOn": "2026-11-21",
+      "datasetVersion": "JRC122455-2021",
+      "functionalUnit": "t input post-consumer polymer waste",
+      "systemBoundary": "JRC-system-expansion-net",
+      "energyType": null,
+      "publicationDate": "2021 (day unspecified)",
+      "dataYear": "mixed inventories; EU electricity 2012",
+      "valueRange": null,
+      "excludes": [
+        "국내 사업장 실측으로 해석",
+        "공장 전기요금 환산",
+        "다른 문헌 수율·운송·에너지 회수 중복 가산"
       ]
     }
   },
@@ -602,6 +752,21 @@
         "국내 공정 스크랩(PIR), 공정 내부 재투입, 혼합 재질 열분해에는 쓰지 않는다",
         "수율·신재 대체·잔재 처리가 이미 들어 있으므로 따로 곱하거나 더하지 않는다",
         "기업의 공식 배출량에서 빼거나 배출권으로 팔 수 있는 값이 아니다"
+      ],
+      "evidenceClass": "literature",
+      "verificationStatus": "original_checked",
+      "verifiedOn": "2026-11-21",
+      "datasetVersion": "JRC122455-2021",
+      "functionalUnit": "t input post-consumer polymer waste",
+      "systemBoundary": "JRC-system-expansion-net",
+      "energyType": null,
+      "publicationDate": "2021 (day unspecified)",
+      "dataYear": "mixed inventories; EU electricity 2012",
+      "valueRange": null,
+      "excludes": [
+        "국내 사업장 실측으로 해석",
+        "공장 전기요금 환산",
+        "다른 문헌 수율·운송·에너지 회수 중복 가산"
       ]
     }
   },
@@ -652,6 +817,21 @@
       "caveats": [
         "EU 소비 후 폐플라스틱의 평균 수율이다. 실제 업체의 회수수율을 받으면 그 값을 쓴다",
         "같은 연구의 온실가스 순효과에 이 수율이 이미 들어 있다. 감축량에 다시 곱하지 않는다"
+      ],
+      "evidenceClass": "literature",
+      "verificationStatus": "original_checked",
+      "verifiedOn": "2026-11-21",
+      "datasetVersion": "JRC122455-2021",
+      "functionalUnit": "t input post-consumer polymer waste",
+      "systemBoundary": "JRC-system-expansion-net",
+      "energyType": null,
+      "publicationDate": "2021 (day unspecified)",
+      "dataYear": "mixed inventories; EU electricity 2012",
+      "valueRange": null,
+      "excludes": [
+        "국내 사업장 실측으로 해석",
+        "공장 전기요금 환산",
+        "다른 문헌 수율·운송·에너지 회수 중복 가산"
       ]
     }
   },
@@ -709,6 +889,21 @@
         "국내 공정 스크랩(PIR), 공정 내부 재투입, 혼합 재질 열분해에는 쓰지 않는다",
         "수율·신재 대체·잔재 처리가 이미 들어 있으므로 따로 곱하거나 더하지 않는다",
         "기업의 공식 배출량에서 빼거나 배출권으로 팔 수 있는 값이 아니다"
+      ],
+      "evidenceClass": "literature",
+      "verificationStatus": "original_checked",
+      "verifiedOn": "2026-11-21",
+      "datasetVersion": "JRC122455-2021",
+      "functionalUnit": "t input post-consumer polymer waste",
+      "systemBoundary": "JRC-system-expansion-net",
+      "energyType": null,
+      "publicationDate": "2021 (day unspecified)",
+      "dataYear": "mixed inventories; EU electricity 2012",
+      "valueRange": null,
+      "excludes": [
+        "국내 사업장 실측으로 해석",
+        "공장 전기요금 환산",
+        "다른 문헌 수율·운송·에너지 회수 중복 가산"
       ]
     }
   },
@@ -766,6 +961,21 @@
         "국내 공정 스크랩(PIR), 공정 내부 재투입, 혼합 재질 열분해에는 쓰지 않는다",
         "수율·신재 대체·잔재 처리가 이미 들어 있으므로 따로 곱하거나 더하지 않는다",
         "기업의 공식 배출량에서 빼거나 배출권으로 팔 수 있는 값이 아니다"
+      ],
+      "evidenceClass": "literature",
+      "verificationStatus": "original_checked",
+      "verifiedOn": "2026-11-21",
+      "datasetVersion": "JRC122455-2021",
+      "functionalUnit": "t input post-consumer polymer waste",
+      "systemBoundary": "JRC-system-expansion-net",
+      "energyType": null,
+      "publicationDate": "2021 (day unspecified)",
+      "dataYear": "mixed inventories; EU electricity 2012",
+      "valueRange": null,
+      "excludes": [
+        "국내 사업장 실측으로 해석",
+        "공장 전기요금 환산",
+        "다른 문헌 수율·운송·에너지 회수 중복 가산"
       ]
     }
   },
@@ -816,6 +1026,21 @@
       "caveats": [
         "EU 소비 후 폐플라스틱의 평균 수율이다. 실제 업체의 회수수율을 받으면 그 값을 쓴다",
         "같은 연구의 온실가스 순효과에 이 수율이 이미 들어 있다. 감축량에 다시 곱하지 않는다"
+      ],
+      "evidenceClass": "literature",
+      "verificationStatus": "original_checked",
+      "verifiedOn": "2026-11-21",
+      "datasetVersion": "JRC122455-2021",
+      "functionalUnit": "t input post-consumer polymer waste",
+      "systemBoundary": "JRC-system-expansion-net",
+      "energyType": null,
+      "publicationDate": "2021 (day unspecified)",
+      "dataYear": "mixed inventories; EU electricity 2012",
+      "valueRange": null,
+      "excludes": [
+        "국내 사업장 실측으로 해석",
+        "공장 전기요금 환산",
+        "다른 문헌 수율·운송·에너지 회수 중복 가산"
       ]
     }
   },
@@ -873,6 +1098,21 @@
         "국내 공정 스크랩(PIR), 공정 내부 재투입, 혼합 재질 열분해에는 쓰지 않는다",
         "수율·신재 대체·잔재 처리가 이미 들어 있으므로 따로 곱하거나 더하지 않는다",
         "기업의 공식 배출량에서 빼거나 배출권으로 팔 수 있는 값이 아니다"
+      ],
+      "evidenceClass": "literature",
+      "verificationStatus": "original_checked",
+      "verifiedOn": "2026-11-21",
+      "datasetVersion": "JRC122455-2021",
+      "functionalUnit": "t input post-consumer polymer waste",
+      "systemBoundary": "JRC-system-expansion-net",
+      "energyType": null,
+      "publicationDate": "2021 (day unspecified)",
+      "dataYear": "mixed inventories; EU electricity 2012",
+      "valueRange": null,
+      "excludes": [
+        "국내 사업장 실측으로 해석",
+        "공장 전기요금 환산",
+        "다른 문헌 수율·운송·에너지 회수 중복 가산"
       ]
     }
   },
@@ -930,6 +1170,21 @@
         "국내 공정 스크랩(PIR), 공정 내부 재투입, 혼합 재질 열분해에는 쓰지 않는다",
         "수율·신재 대체·잔재 처리가 이미 들어 있으므로 따로 곱하거나 더하지 않는다",
         "기업의 공식 배출량에서 빼거나 배출권으로 팔 수 있는 값이 아니다"
+      ],
+      "evidenceClass": "literature",
+      "verificationStatus": "original_checked",
+      "verifiedOn": "2026-11-21",
+      "datasetVersion": "JRC122455-2021",
+      "functionalUnit": "t input post-consumer polymer waste",
+      "systemBoundary": "JRC-system-expansion-net",
+      "energyType": null,
+      "publicationDate": "2021 (day unspecified)",
+      "dataYear": "mixed inventories; EU electricity 2012",
+      "valueRange": null,
+      "excludes": [
+        "국내 사업장 실측으로 해석",
+        "공장 전기요금 환산",
+        "다른 문헌 수율·운송·에너지 회수 중복 가산"
       ]
     }
   },
@@ -980,6 +1235,21 @@
       "caveats": [
         "EU 소비 후 폐플라스틱의 평균 수율이다. 실제 업체의 회수수율을 받으면 그 값을 쓴다",
         "같은 연구의 온실가스 순효과에 이 수율이 이미 들어 있다. 감축량에 다시 곱하지 않는다"
+      ],
+      "evidenceClass": "literature",
+      "verificationStatus": "original_checked",
+      "verifiedOn": "2026-11-21",
+      "datasetVersion": "JRC122455-2021",
+      "functionalUnit": "t input post-consumer polymer waste",
+      "systemBoundary": "JRC-system-expansion-net",
+      "energyType": null,
+      "publicationDate": "2021 (day unspecified)",
+      "dataYear": "mixed inventories; EU electricity 2012",
+      "valueRange": null,
+      "excludes": [
+        "국내 사업장 실측으로 해석",
+        "공장 전기요금 환산",
+        "다른 문헌 수율·운송·에너지 회수 중복 가산"
       ]
     }
   },
@@ -1037,6 +1307,21 @@
         "국내 공정 스크랩(PIR), 공정 내부 재투입, 혼합 재질 열분해에는 쓰지 않는다",
         "수율·신재 대체·잔재 처리가 이미 들어 있으므로 따로 곱하거나 더하지 않는다",
         "기업의 공식 배출량에서 빼거나 배출권으로 팔 수 있는 값이 아니다"
+      ],
+      "evidenceClass": "literature",
+      "verificationStatus": "original_checked",
+      "verifiedOn": "2026-11-21",
+      "datasetVersion": "JRC122455-2021",
+      "functionalUnit": "t input post-consumer polymer waste",
+      "systemBoundary": "JRC-system-expansion-net",
+      "energyType": null,
+      "publicationDate": "2021 (day unspecified)",
+      "dataYear": "mixed inventories; EU electricity 2012",
+      "valueRange": null,
+      "excludes": [
+        "국내 사업장 실측으로 해석",
+        "공장 전기요금 환산",
+        "다른 문헌 수율·운송·에너지 회수 중복 가산"
       ]
     }
   },
@@ -1094,6 +1379,21 @@
         "국내 공정 스크랩(PIR), 공정 내부 재투입, 혼합 재질 열분해에는 쓰지 않는다",
         "수율·신재 대체·잔재 처리가 이미 들어 있으므로 따로 곱하거나 더하지 않는다",
         "기업의 공식 배출량에서 빼거나 배출권으로 팔 수 있는 값이 아니다"
+      ],
+      "evidenceClass": "literature",
+      "verificationStatus": "original_checked",
+      "verifiedOn": "2026-11-21",
+      "datasetVersion": "JRC122455-2021",
+      "functionalUnit": "t input post-consumer polymer waste",
+      "systemBoundary": "JRC-system-expansion-net",
+      "energyType": null,
+      "publicationDate": "2021 (day unspecified)",
+      "dataYear": "mixed inventories; EU electricity 2012",
+      "valueRange": null,
+      "excludes": [
+        "국내 사업장 실측으로 해석",
+        "공장 전기요금 환산",
+        "다른 문헌 수율·운송·에너지 회수 중복 가산"
       ]
     }
   },
@@ -1144,6 +1444,21 @@
       "caveats": [
         "EU 소비 후 폐플라스틱의 평균 수율이다. 실제 업체의 회수수율을 받으면 그 값을 쓴다",
         "같은 연구의 온실가스 순효과에 이 수율이 이미 들어 있다. 감축량에 다시 곱하지 않는다"
+      ],
+      "evidenceClass": "literature",
+      "verificationStatus": "original_checked",
+      "verifiedOn": "2026-11-21",
+      "datasetVersion": "JRC122455-2021",
+      "functionalUnit": "t input post-consumer polymer waste",
+      "systemBoundary": "JRC-system-expansion-net",
+      "energyType": null,
+      "publicationDate": "2021 (day unspecified)",
+      "dataYear": "mixed inventories; EU electricity 2012",
+      "valueRange": null,
+      "excludes": [
+        "국내 사업장 실측으로 해석",
+        "공장 전기요금 환산",
+        "다른 문헌 수율·운송·에너지 회수 중복 가산"
       ]
     }
   },
@@ -1194,6 +1509,21 @@
         "음수는 에너지 절감이다. 소각장 운영 전기나 배출 기업의 전기요금 절감액을 뜻하지 않는다",
         "국내 공정 스크랩(PIR)이나 공정 내부 재투입에는 쓰지 않는다",
         "다른 재질의 값(예: LDPE에 PP 값)을 대신 쓰지 않는다"
+      ],
+      "evidenceClass": "literature",
+      "verificationStatus": "original_checked",
+      "verifiedOn": "2026-11-21",
+      "datasetVersion": "WARM-16-2023-12",
+      "functionalUnit": "short ton post-consumer material",
+      "systemBoundary": "WARM-net-energy-management",
+      "energyType": "life-cycle process and transport energy; utility fuel displacement",
+      "publicationDate": "2023-12",
+      "dataYear": "mixed inventory years; see WARM v16 chapters",
+      "valueRange": null,
+      "excludes": [
+        "국내 사업장 실측으로 해석",
+        "공장 전기요금 환산",
+        "다른 문헌 수율·운송·에너지 회수 중복 가산"
       ]
     }
   },
@@ -1244,6 +1574,21 @@
         "음수는 에너지 절감이다. 소각장 운영 전기나 배출 기업의 전기요금 절감액을 뜻하지 않는다",
         "국내 공정 스크랩(PIR)이나 공정 내부 재투입에는 쓰지 않는다",
         "다른 재질의 값(예: LDPE에 PP 값)을 대신 쓰지 않는다"
+      ],
+      "evidenceClass": "literature",
+      "verificationStatus": "original_checked",
+      "verifiedOn": "2026-11-21",
+      "datasetVersion": "WARM-16-2023-12",
+      "functionalUnit": "short ton post-consumer material",
+      "systemBoundary": "WARM-net-energy-management",
+      "energyType": "life-cycle process and transport energy; utility fuel displacement",
+      "publicationDate": "2023-12",
+      "dataYear": "mixed inventory years; see WARM v16 chapters",
+      "valueRange": null,
+      "excludes": [
+        "국내 사업장 실측으로 해석",
+        "공장 전기요금 환산",
+        "다른 문헌 수율·운송·에너지 회수 중복 가산"
       ]
     }
   },
@@ -1294,6 +1639,21 @@
         "음수는 에너지 절감이다. 소각장 운영 전기나 배출 기업의 전기요금 절감액을 뜻하지 않는다",
         "국내 공정 스크랩(PIR)이나 공정 내부 재투입에는 쓰지 않는다",
         "다른 재질의 값(예: LDPE에 PP 값)을 대신 쓰지 않는다"
+      ],
+      "evidenceClass": "literature",
+      "verificationStatus": "original_checked",
+      "verifiedOn": "2026-11-21",
+      "datasetVersion": "WARM-16-2023-12",
+      "functionalUnit": "short ton post-consumer material",
+      "systemBoundary": "WARM-net-energy-management",
+      "energyType": "life-cycle process and transport energy; utility fuel displacement",
+      "publicationDate": "2023-12",
+      "dataYear": "mixed inventory years; see WARM v16 chapters",
+      "valueRange": null,
+      "excludes": [
+        "국내 사업장 실측으로 해석",
+        "공장 전기요금 환산",
+        "다른 문헌 수율·운송·에너지 회수 중복 가산"
       ]
     }
   },
@@ -1344,6 +1704,21 @@
         "음수는 에너지 절감이다. 소각장 운영 전기나 배출 기업의 전기요금 절감액을 뜻하지 않는다",
         "국내 공정 스크랩(PIR)이나 공정 내부 재투입에는 쓰지 않는다",
         "다른 재질의 값(예: LDPE에 PP 값)을 대신 쓰지 않는다"
+      ],
+      "evidenceClass": "literature",
+      "verificationStatus": "original_checked",
+      "verifiedOn": "2026-11-21",
+      "datasetVersion": "WARM-16-2023-12",
+      "functionalUnit": "short ton post-consumer material",
+      "systemBoundary": "WARM-net-energy-management",
+      "energyType": "life-cycle process and transport energy; utility fuel displacement",
+      "publicationDate": "2023-12",
+      "dataYear": "mixed inventory years; see WARM v16 chapters",
+      "valueRange": null,
+      "excludes": [
+        "국내 사업장 실측으로 해석",
+        "공장 전기요금 환산",
+        "다른 문헌 수율·운송·에너지 회수 중복 가산"
       ]
     }
   },
@@ -1394,6 +1769,21 @@
         "음수는 에너지 절감이다. 소각장 운영 전기나 배출 기업의 전기요금 절감액을 뜻하지 않는다",
         "국내 공정 스크랩(PIR)이나 공정 내부 재투입에는 쓰지 않는다",
         "다른 재질의 값(예: LDPE에 PP 값)을 대신 쓰지 않는다"
+      ],
+      "evidenceClass": "literature",
+      "verificationStatus": "original_checked",
+      "verifiedOn": "2026-11-21",
+      "datasetVersion": "WARM-16-2023-12",
+      "functionalUnit": "short ton post-consumer material",
+      "systemBoundary": "WARM-net-energy-management",
+      "energyType": "life-cycle process and transport energy; utility fuel displacement",
+      "publicationDate": "2023-12",
+      "dataYear": "mixed inventory years; see WARM v16 chapters",
+      "valueRange": null,
+      "excludes": [
+        "국내 사업장 실측으로 해석",
+        "공장 전기요금 환산",
+        "다른 문헌 수율·운송·에너지 회수 중복 가산"
       ]
     }
   },
@@ -1444,6 +1834,21 @@
         "음수는 에너지 절감이다. 소각장 운영 전기나 배출 기업의 전기요금 절감액을 뜻하지 않는다",
         "국내 공정 스크랩(PIR)이나 공정 내부 재투입에는 쓰지 않는다",
         "다른 재질의 값(예: LDPE에 PP 값)을 대신 쓰지 않는다"
+      ],
+      "evidenceClass": "literature",
+      "verificationStatus": "original_checked",
+      "verifiedOn": "2026-11-21",
+      "datasetVersion": "WARM-16-2023-12",
+      "functionalUnit": "short ton post-consumer material",
+      "systemBoundary": "WARM-net-energy-management",
+      "energyType": "life-cycle process and transport energy; utility fuel displacement",
+      "publicationDate": "2023-12",
+      "dataYear": "mixed inventory years; see WARM v16 chapters",
+      "valueRange": null,
+      "excludes": [
+        "국내 사업장 실측으로 해석",
+        "공장 전기요금 환산",
+        "다른 문헌 수율·운송·에너지 회수 중복 가산"
       ]
     }
   },
@@ -1494,6 +1899,21 @@
         "음수는 에너지 절감이다. 소각장 운영 전기나 배출 기업의 전기요금 절감액을 뜻하지 않는다",
         "국내 공정 스크랩(PIR)이나 공정 내부 재투입에는 쓰지 않는다",
         "다른 재질의 값(예: LDPE에 PP 값)을 대신 쓰지 않는다"
+      ],
+      "evidenceClass": "literature",
+      "verificationStatus": "original_checked",
+      "verifiedOn": "2026-11-21",
+      "datasetVersion": "WARM-16-2023-12",
+      "functionalUnit": "short ton post-consumer material",
+      "systemBoundary": "WARM-net-energy-management",
+      "energyType": "life-cycle process and transport energy; utility fuel displacement",
+      "publicationDate": "2023-12",
+      "dataYear": "mixed inventory years; see WARM v16 chapters",
+      "valueRange": null,
+      "excludes": [
+        "국내 사업장 실측으로 해석",
+        "공장 전기요금 환산",
+        "다른 문헌 수율·운송·에너지 회수 중복 가산"
       ]
     }
   },
@@ -1544,6 +1964,21 @@
         "음수는 에너지 절감이다. 소각장 운영 전기나 배출 기업의 전기요금 절감액을 뜻하지 않는다",
         "국내 공정 스크랩(PIR)이나 공정 내부 재투입에는 쓰지 않는다",
         "다른 재질의 값(예: LDPE에 PP 값)을 대신 쓰지 않는다"
+      ],
+      "evidenceClass": "literature",
+      "verificationStatus": "original_checked",
+      "verifiedOn": "2026-11-21",
+      "datasetVersion": "WARM-16-2023-12",
+      "functionalUnit": "short ton post-consumer material",
+      "systemBoundary": "WARM-net-energy-management",
+      "energyType": "life-cycle process and transport energy; utility fuel displacement",
+      "publicationDate": "2023-12",
+      "dataYear": "mixed inventory years; see WARM v16 chapters",
+      "valueRange": null,
+      "excludes": [
+        "국내 사업장 실측으로 해석",
+        "공장 전기요금 환산",
+        "다른 문헌 수율·운송·에너지 회수 중복 가산"
       ]
     }
   },
@@ -1594,6 +2029,21 @@
         "음수는 에너지 절감이다. 소각장 운영 전기나 배출 기업의 전기요금 절감액을 뜻하지 않는다",
         "국내 공정 스크랩(PIR)이나 공정 내부 재투입에는 쓰지 않는다",
         "다른 재질의 값(예: LDPE에 PP 값)을 대신 쓰지 않는다"
+      ],
+      "evidenceClass": "literature",
+      "verificationStatus": "original_checked",
+      "verifiedOn": "2026-11-21",
+      "datasetVersion": "WARM-16-2023-12",
+      "functionalUnit": "short ton post-consumer material",
+      "systemBoundary": "WARM-net-energy-management",
+      "energyType": "life-cycle process and transport energy; utility fuel displacement",
+      "publicationDate": "2023-12",
+      "dataYear": "mixed inventory years; see WARM v16 chapters",
+      "valueRange": null,
+      "excludes": [
+        "국내 사업장 실측으로 해석",
+        "공장 전기요금 환산",
+        "다른 문헌 수율·운송·에너지 회수 중복 가산"
       ]
     }
   },
@@ -1644,6 +2094,21 @@
         "음수는 에너지 절감이다. 소각장 운영 전기나 배출 기업의 전기요금 절감액을 뜻하지 않는다",
         "국내 공정 스크랩(PIR)이나 공정 내부 재투입에는 쓰지 않는다",
         "다른 재질의 값(예: LDPE에 PP 값)을 대신 쓰지 않는다"
+      ],
+      "evidenceClass": "literature",
+      "verificationStatus": "original_checked",
+      "verifiedOn": "2026-11-21",
+      "datasetVersion": "WARM-16-2023-12",
+      "functionalUnit": "short ton post-consumer material",
+      "systemBoundary": "WARM-net-energy-management",
+      "energyType": "life-cycle process and transport energy; utility fuel displacement",
+      "publicationDate": "2023-12",
+      "dataYear": "mixed inventory years; see WARM v16 chapters",
+      "valueRange": null,
+      "excludes": [
+        "국내 사업장 실측으로 해석",
+        "공장 전기요금 환산",
+        "다른 문헌 수율·운송·에너지 회수 중복 가산"
       ]
     }
   },
@@ -1694,6 +2159,21 @@
         "음수는 에너지 절감이다. 소각장 운영 전기나 배출 기업의 전기요금 절감액을 뜻하지 않는다",
         "국내 공정 스크랩(PIR)이나 공정 내부 재투입에는 쓰지 않는다",
         "다른 재질의 값(예: LDPE에 PP 값)을 대신 쓰지 않는다"
+      ],
+      "evidenceClass": "literature",
+      "verificationStatus": "original_checked",
+      "verifiedOn": "2026-11-21",
+      "datasetVersion": "WARM-16-2023-12",
+      "functionalUnit": "short ton post-consumer material",
+      "systemBoundary": "WARM-net-energy-management",
+      "energyType": "life-cycle process and transport energy; utility fuel displacement",
+      "publicationDate": "2023-12",
+      "dataYear": "mixed inventory years; see WARM v16 chapters",
+      "valueRange": null,
+      "excludes": [
+        "국내 사업장 실측으로 해석",
+        "공장 전기요금 환산",
+        "다른 문헌 수율·운송·에너지 회수 중복 가산"
       ]
     }
   },
@@ -1744,6 +2224,21 @@
         "음수는 에너지 절감이다. 소각장 운영 전기나 배출 기업의 전기요금 절감액을 뜻하지 않는다",
         "국내 공정 스크랩(PIR)이나 공정 내부 재투입에는 쓰지 않는다",
         "다른 재질의 값(예: LDPE에 PP 값)을 대신 쓰지 않는다"
+      ],
+      "evidenceClass": "literature",
+      "verificationStatus": "original_checked",
+      "verifiedOn": "2026-11-21",
+      "datasetVersion": "WARM-16-2023-12",
+      "functionalUnit": "short ton post-consumer material",
+      "systemBoundary": "WARM-net-energy-management",
+      "energyType": "life-cycle process and transport energy; utility fuel displacement",
+      "publicationDate": "2023-12",
+      "dataYear": "mixed inventory years; see WARM v16 chapters",
+      "valueRange": null,
+      "excludes": [
+        "국내 사업장 실측으로 해석",
+        "공장 전기요금 환산",
+        "다른 문헌 수율·운송·에너지 회수 중복 가산"
       ]
     }
   },
@@ -1794,6 +2289,21 @@
         "음수는 에너지 절감이다. 소각장 운영 전기나 배출 기업의 전기요금 절감액을 뜻하지 않는다",
         "국내 공정 스크랩(PIR)이나 공정 내부 재투입에는 쓰지 않는다",
         "다른 재질의 값(예: LDPE에 PP 값)을 대신 쓰지 않는다"
+      ],
+      "evidenceClass": "literature",
+      "verificationStatus": "original_checked",
+      "verifiedOn": "2026-11-21",
+      "datasetVersion": "WARM-16-2023-12",
+      "functionalUnit": "short ton post-consumer material",
+      "systemBoundary": "WARM-net-energy-management",
+      "energyType": "life-cycle process and transport energy; utility fuel displacement",
+      "publicationDate": "2023-12",
+      "dataYear": "mixed inventory years; see WARM v16 chapters",
+      "valueRange": null,
+      "excludes": [
+        "국내 사업장 실측으로 해석",
+        "공장 전기요금 환산",
+        "다른 문헌 수율·운송·에너지 회수 중복 가산"
       ]
     }
   },
@@ -1844,6 +2354,21 @@
         "음수는 에너지 절감이다. 소각장 운영 전기나 배출 기업의 전기요금 절감액을 뜻하지 않는다",
         "국내 공정 스크랩(PIR)이나 공정 내부 재투입에는 쓰지 않는다",
         "다른 재질의 값(예: LDPE에 PP 값)을 대신 쓰지 않는다"
+      ],
+      "evidenceClass": "literature",
+      "verificationStatus": "original_checked",
+      "verifiedOn": "2026-11-21",
+      "datasetVersion": "WARM-16-2023-12",
+      "functionalUnit": "short ton post-consumer material",
+      "systemBoundary": "WARM-net-energy-management",
+      "energyType": "life-cycle process and transport energy; utility fuel displacement",
+      "publicationDate": "2023-12",
+      "dataYear": "mixed inventory years; see WARM v16 chapters",
+      "valueRange": null,
+      "excludes": [
+        "국내 사업장 실측으로 해석",
+        "공장 전기요금 환산",
+        "다른 문헌 수율·운송·에너지 회수 중복 가산"
       ]
     }
   },
@@ -1894,6 +2419,21 @@
         "음수는 에너지 절감이다. 소각장 운영 전기나 배출 기업의 전기요금 절감액을 뜻하지 않는다",
         "국내 공정 스크랩(PIR)이나 공정 내부 재투입에는 쓰지 않는다",
         "다른 재질의 값(예: LDPE에 PP 값)을 대신 쓰지 않는다"
+      ],
+      "evidenceClass": "literature",
+      "verificationStatus": "original_checked",
+      "verifiedOn": "2026-11-21",
+      "datasetVersion": "WARM-16-2023-12",
+      "functionalUnit": "short ton post-consumer material",
+      "systemBoundary": "WARM-net-energy-management",
+      "energyType": "life-cycle process and transport energy; utility fuel displacement",
+      "publicationDate": "2023-12",
+      "dataYear": "mixed inventory years; see WARM v16 chapters",
+      "valueRange": null,
+      "excludes": [
+        "국내 사업장 실측으로 해석",
+        "공장 전기요금 환산",
+        "다른 문헌 수율·운송·에너지 회수 중복 가산"
       ]
     }
   },
@@ -1944,6 +2484,21 @@
         "음수는 에너지 절감이다. 소각장 운영 전기나 배출 기업의 전기요금 절감액을 뜻하지 않는다",
         "국내 공정 스크랩(PIR)이나 공정 내부 재투입에는 쓰지 않는다",
         "다른 재질의 값(예: LDPE에 PP 값)을 대신 쓰지 않는다"
+      ],
+      "evidenceClass": "literature",
+      "verificationStatus": "original_checked",
+      "verifiedOn": "2026-11-21",
+      "datasetVersion": "WARM-16-2023-12",
+      "functionalUnit": "short ton post-consumer material",
+      "systemBoundary": "WARM-net-energy-management",
+      "energyType": "life-cycle process and transport energy; utility fuel displacement",
+      "publicationDate": "2023-12",
+      "dataYear": "mixed inventory years; see WARM v16 chapters",
+      "valueRange": null,
+      "excludes": [
+        "국내 사업장 실측으로 해석",
+        "공장 전기요금 환산",
+        "다른 문헌 수율·운송·에너지 회수 중복 가산"
       ]
     }
   },
@@ -1990,7 +2545,17 @@
         "소각 대비 회피계수가 아니라 철강 생산 원료 대체의 참고값이다",
         "기준 연도가 페이지에 없어 확인한 날을 기준일로 적었다",
         "알루미늄·구리 등 다른 금속에는 쓰지 않는다"
-      ]
+      ],
+      "evidenceClass": "literature",
+      "verificationStatus": "not_rechecked",
+      "verifiedOn": null,
+      "valueRange": null,
+      "publicationDate": null,
+      "dataYear": null,
+      "functionalUnit": null,
+      "systemBoundary": null,
+      "datasetVersion": "worldsteel@2026-11",
+      "excludes": []
     }
   },
   {
@@ -2036,7 +2601,17 @@
         "소각 대비 회피계수가 아니라 철강 생산 원료 대체의 참고값이다",
         "기준 연도가 페이지에 없어 확인한 날을 기준일로 적었다",
         "알루미늄·구리 등 다른 금속에는 쓰지 않는다"
-      ]
+      ],
+      "evidenceClass": "literature",
+      "verificationStatus": "not_rechecked",
+      "verifiedOn": null,
+      "valueRange": null,
+      "publicationDate": null,
+      "dataYear": null,
+      "functionalUnit": null,
+      "systemBoundary": null,
+      "datasetVersion": "worldsteel@2026-11",
+      "excludes": []
     }
   },
   {
@@ -2082,7 +2657,17 @@
         "소각 대비 회피계수가 아니라 철강 생산 원료 대체의 참고값이다",
         "기준 연도가 페이지에 없어 확인한 날을 기준일로 적었다",
         "알루미늄·구리 등 다른 금속에는 쓰지 않는다"
-      ]
+      ],
+      "evidenceClass": "literature",
+      "verificationStatus": "not_rechecked",
+      "verifiedOn": null,
+      "valueRange": null,
+      "publicationDate": null,
+      "dataYear": null,
+      "functionalUnit": null,
+      "systemBoundary": null,
+      "datasetVersion": "worldsteel@2026-11",
+      "excludes": []
     }
   }
 ]

@@ -78,7 +78,18 @@ def test_rule_policy_reaches_the_expected_end_state_on_test_v1(outcome):
         for t in outcome["trials"]
         if not t["success"] and not t["open"]
     }
-    assert failed == {}
+    # 정책 변경(2026-11-21)으로 동결된 기대가 바뀐 사례는 정오표(sets.ERRATA)에 이유와 함께 적은 경로만 어긋날 수 있다
+    errata = sets.errata()
+    unexpected = {
+        cid: (paths, kinds, error)
+        for cid, (paths, kinds, error) in failed.items()
+        if cid not in errata
+        or kinds
+        or error
+        or not all(sets.errata_allows(cid, path) for path in paths)
+    }
+    assert unexpected == {}
+    assert set(failed) <= set(sets.ERRATA_PATHS["test-v1"])
     opened = sorted(t["caseId"] for t in outcome["trials"] if t["open"])
     assert opened == ["T042"]  # 설계 판단 필요(scenarios.json의 triage)
     checked = sum(t["outgoing"]["checked"] for t in outcome["trials"])

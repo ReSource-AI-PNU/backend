@@ -99,8 +99,17 @@ class Recorder:
         value = rnd(value)
         inputs = self.visible(input_evidence)
         own = bool(private and self.org_id)
-        recorded = self.inputs if own else self.shared_inputs
-        evidence_id = ids.calc_id(self.tool, recorded, key)
+        from copy import deepcopy
+
+        recorded = deepcopy(self.inputs if own else self.shared_inputs)
+        from app.v3.evidence.provenance import freeze_inputs
+
+        inputs = freeze_inputs(self.registry, inputs, (self.org_id,) if own else self.access)
+        evidence_id = ids.calc_id(
+            self.tool,
+            {"inputs": recorded, "factors": inputs, "value": value, "formula": formula},
+            key,
+        )
         self.registry.put(
             Evidence(
                 id=evidence_id,
@@ -117,6 +126,8 @@ class Recorder:
                     "inputs": recorded,
                     "formula": formula,
                     "inputEvidence": inputs,
+                    "frozen": True,
+                    "calculationVersion": "2026-11-21.1",
                 },
             )
         )
@@ -164,13 +175,17 @@ class Recorder:
         ID는 입력에서만 나오므로 같은 입력이면 같은 기록이다. 판정과 검사 결과를 담고, 검사에 쓴
         근거(허가증, 조항 등)와 이 호출이 낸 계산 근거를 입력 근거로 잇는다.
         """
-        evidence_id = ids.calc_id(self.tool, self.shared_inputs, CALL_KEY)
         # 나누는 기록에는 상대가 볼 수 있는 검사와 근거만 잇는다(부른 조직만 볼 계산 근거의 ID는
         # 입력 원본의 지문이라 싣지 않는다)
         checks = [c for c in self.checks if not any(c is p for p in self._private_checks)]
         checked = [e for check in checks for e in check.get("evidence") or []]
         created = [e for e in self.created if e not in self._private_ids]
         linked = list(dict.fromkeys([*created, *self.visible(checked)]))
+        evidence_id = ids.calc_id(
+            self.tool,
+            {"inputs": self.shared_inputs, "linked": linked, "status": status, "checks": checks},
+            CALL_KEY,
+        )
         summary = ", ".join(f"{c['key']}={c['status']}" for c in checks)
         text = f"판정 {status}" + (f". 검사: {summary}" if summary else "")
         self.registry.put(
@@ -254,8 +269,12 @@ def _road_evidence(rec: Recorder, points, distance_provider) -> list[str]:
 
 
 def grade_of(rec: Recorder, material, contamination, moisture):
-    """(등급, 근거 ID). 등급 기준은 intake의 기준 파일(grade_thresholds) 하나만 쓴다."""
+    """Generic team thresholds are not an established material grading standard."""
     evidence = rec.registry.put(grade_model.thresholds_evidence())
+    from app.v3.evidence.acceptance import usable_basis
+
+    if not usable_basis(evidence):
+        return None, []
     result = grade_model.grade_by_thresholds(material, contamination, moisture)
     return result["grade"], [evidence.id]
 
@@ -525,25 +544,32 @@ def transport_charge(vendor: dict, pickups=None) -> dict:
 def labor_cost(rec: Recorder, stream: dict):
     """(월 전처리 인건비 | None, 근거 ID, 시간, 시간당 단가). 작업 시간을 넣지 않았으면 None."""
     hours = num(stream.get("pretreatHoursPerMonth"))
-    if hours is None or hours <= 0:
+    if hours == 0:
+        return 0.0, list(stream.get("pretreatEvidence") or []), 0.0, 0.0
+    if hours is None or hours < 0:
+        rec.check(
+            "labor_unknown",
+            "conditional",
+            "전처리·선별·세척 작업비 미확인: 표시 금액은 이 비용 반영 전이며 순손익이 아닙니다. 작업이 불필요함을 확인했다면 작업이 없다고 명시해 주세요.",
+        )
         return None, [], None, None
     own = num(stream.get("laborCostKrwPerHour"))
     if own is not None:
         return hours * own, list(stream.get("pretreatEvidence") or []), hours, own
-    rate = rec.basis("labor.costPerHour")
-    if rate is None:
-        return None, [], hours, None
-    evidence = [*list(stream.get("pretreatEvidence") or []), rate.id]
-    return hours * float(rate.value), evidence, hours, float(rate.value)
+    rec.check(
+        "labor_unknown",
+        "conditional",
+        "전처리 인건비 미정: 최저임금을 실제 작업비로 대입하지 않았습니다. 월 손익은 이 비용 반영 전입니다.",
+    )
+    return None, [], hours, None
 
 
 # ── 탄소 ───────────────────────────────────────────────────────────────
 # 탄소 변화 = 처리 방식이 바뀌어 달라지는 배출 + 업체로 실어 가는 운송 배출.
 # 처리 배출 = (옮긴 뒤 처리의 배출계수 − 현행 처리의 배출계수) × 월 발생량.
 # 운송 배출 = 트럭 운송 배출계수(kgCO2e/ton·km) × 월 발생량(t) × 공장 → 업체 거리(km).
-# 계수는 모두 환경성적표지 평가계수(한국환경산업기술원, 공식값)다. 트럭 운송 계수는 국가 LCI의 화물 1톤을 1km
-# 실어 나를 때의 값이라 빈 차로 돌아오는 몫이 들어 있다. 지금 처리의 운송 배출은 알 수 없어 빼지 않는다(옮기는 쪽을
-# 불리하게 본다). 신재 대체 효과는 넣지 않는다.
+# 원문 경계가 확인된 계수만 허용한다. 기존 환경성적표지 시드는 메타데이터만 확인되어 보류한다.
+# 빈 차 회송·적재율 포함 여부를 추측하지 않는다. 신재 대체 효과는 넣지 않는다.
 _AFTER_PROCESS = {"재활용": "recycle", "물질 재활용": "recycle", "열분해": "pyrolysis"}
 CARBON_FORMULA = "(옮긴 뒤 처리의 배출계수 − 현행 처리의 배출계수) × 월 발생량. 신재 대체 효과는 넣지 않았습니다."
 TRANSPORT_EF_KEY = "emission.transport.truck"
@@ -569,6 +595,11 @@ def vendor_distance(rec: Recorder, vendor: dict, origin, distance_provider=None)
     if matrix is None:
         out["reason"] = "거리를 계산할 근거가 없어"
         return out
+    if float(matrix[0][1]) <= 0:
+        out["reason"] = (
+            "같은 좌표 또는 산업단지 중심점 사이 거리여서 실제 운송 거리를 확인해야 하므로"
+        )
+        return out
     out.update(known=True, km=float(matrix[0][1]), assumed=assumed, evidence=list(evidence))
     return out
 
@@ -582,14 +613,47 @@ def transport_carbon(rec: Recorder, distance: dict, kg) -> dict:
     if not distance.get("known"):
         out["reason"] = distance.get("reason") or "거리를 몰라"
         return out
+    km_value, mass_value = num(distance.get("km")), num(kg)
+    if (
+        km_value is None
+        or mass_value is None
+        or not math.isfinite(km_value)
+        or not math.isfinite(mass_value)
+        or km_value <= 0
+        or mass_value < 0
+    ):
+        out["reason"] = "유효한 실제 거리와 운송 중량이 필요하여"
+        return out
+    if (
+        not distance.get("km")
+        or distance.get("assumed")
+        or not distance.get("actualSiteAddressesConfirmed")
+    ):
+        out["reason"] = "실제 사업장 도로 거리와 차량·적재·왕복 조건 확인이 필요하여"
+        return out
     factor = rec.basis(TRANSPORT_EF_KEY)
     if factor is None:
         out["reason"] = "트럭 운송 배출계수가 없어"
         return out
+    if factor.meta.get("verificationStatus") != "original_checked" or not factor.meta.get(
+        "loadAndReturnBoundary"
+    ):
+        out["reason"] = "운송계수의 적재율·빈차 회송 포함 여부를 원문에서 확인하지 못하여"
+        return out
+    from app.v3.evidence.units import UnitError, convert
+
+    try:
+        per_tkm = convert(float(factor.value), factor.unit, "kgCO2e/tkm")
+    except (UnitError, ValueError, TypeError):
+        out["reason"] = "운송계수의 단위가 확인되지 않아"
+        return out
+    if not math.isfinite(per_tkm) or per_tkm < 0:
+        out["reason"] = "운송계수가 유효 범위를 벗어나"
+        return out
     tkm = float(kg) / 1000 * float(distance["km"])
     out.update(
         known=True,
-        tco2e=tkm * float(factor.value) / 1000,
+        tco2e=tkm * per_tkm / 1000,
         tkm=tkm,
         km=float(distance["km"]),
         factor=factor.id,
@@ -603,22 +667,28 @@ def current_process(method) -> str | None:
         return "incinerate"
     if "매립" in text:
         return "landfill"
+    if "열분해" in text:
+        return "pyrolysis"
+    if "재활용" in text:
+        return "recycle"
     if "판매" in text:  # 지금 재활용 업체에 팔고 있다(current_cost.SALE_METHOD)
         return "recycle"
     return None
 
 
 def after_process(vendor: dict, unit_price: float | None) -> str | None:
-    """업체의 처리 방식. 프로필에 없으면 값을 주고 사 가는 경우만 재활용으로 본다."""
+    """업체가 명시한 처리 방식. 매입 단가만 보고 재활용 공정으로 추정하지 않는다."""
     process = vendor.get("process")
     if process:
         return _AFTER_PROCESS.get(str(process))
-    return "recycle" if unit_price is not None and unit_price >= 0 else None
+    return None
 
 
 def carbon_per_kg(rec: Recorder, stream: dict, vendor: dict, unit_price, method):
     """(kg당 탄소 변화 tCO2e | None, 근거 ID, 계산하지 못한 이유)."""
     item = stream.get("wasteItem")
+    if (stream.get("currentTreatment") or {}).get("methodAssumed"):
+        return None, [], "현행 처리 방식이 담당자에게 확인되지 않아 탄소 비교를 보류합니다."
     now_key = current_process(method)
     if now_key is None:
         return None, [], "현행 처리 방식의 배출계수가 없어 탄소를 계산하지 않았습니다. 확인 필요."
@@ -629,7 +699,23 @@ def carbon_per_kg(rec: Recorder, stream: dict, vendor: dict, unit_price, method)
     after_ef = rec.basis(f"emission.{after_key}.{item}")
     if now_ef is None or after_ef is None:
         return None, [], "배출계수가 없어 탄소를 계산하지 않았습니다. 확인 필요."
-    return (float(after_ef.value) - float(now_ef.value)) / 1000, [now_ef.id, after_ef.id], None
+    from app.v3.evidence.provenance import compatible
+
+    if not compatible(now_ef, after_ef, metric="process_ghg"):
+        return (
+            None,
+            [],
+            "원문 계산 경계·기준량·지역의 호환성이 확인되지 않아 처리 배출 비교를 보류합니다.",
+        )
+    from app.v3.evidence.units import UnitError, convert
+
+    try:
+        delta = convert(float(after_ef.value), after_ef.unit, "kgCO2e/kg") - convert(
+            float(now_ef.value), now_ef.unit, "kgCO2e/kg"
+        )
+    except (UnitError, TypeError, ValueError):
+        return None, [], "처리 배출계수의 단위가 호환되지 않아 비교를 보류합니다."
+    return delta / 1000, [now_ef.id, after_ef.id], None
 
 
 # ── 배출 기업만의 흐름 항목 ─────────────────────────────────────────────

@@ -19,7 +19,7 @@ from app.v3.judge.common import (
 
 
 def current_cost(rec: Recorder, stream: dict):
-    """(kg당 처리비, 근거 ID, 가정 여부, 방식). 입력이 없으면 혼합 소각 가정값.
+    """(kg당 처리비, 근거 ID, 가정 여부, 방식). 입력이 없으면 산정 보류.
 
     지금 팔고 있으면 처리비는 −판매 단가다(현행 월 손익 = −처리비 × 월 발생량 = +판매 단가 × 월 발생량).
     """
@@ -34,10 +34,7 @@ def current_cost(rec: Recorder, stream: dict):
     if current.get("billing"):
         # 계약(월 정액·회당)은 받았는데 월 발생량이 없어 kg당으로 못 바꿨다. 혼합 소각 가정값으로 바꾸지 않는다
         return None, list(current.get("evidence") or []), False, current.get("method") or "현행"
-    assumed = rec.basis(f"current.cost.{stream.get('wasteItem')}")
-    if assumed is None:
-        return None, [], True, "혼합 소각"
-    return float(assumed.value), [assumed.id], True, "혼합 소각"
+    return None, list(current.get("evidence") or []), False, current.get("method") or "미확인"
 
 
 def now_formula(stream: dict) -> str:
@@ -93,7 +90,7 @@ def baseline(rec: Recorder, stream: dict, kg: float, after: float | None, prefix
         rec.check(
             "current_method",
             "met",
-            "현행 처리 방법은 답을 받지 않아 혼합 소각으로 보았습니다.",
+            "현행 처리 방법이 확인되지 않아 처리 방식별 환경 효과는 보류했습니다.",
             None,
             cost_ev,
         )
@@ -272,6 +269,14 @@ def reuse_checks(stream: dict, grade: str | None) -> list[tuple]:
                 "오염도와 수분의 측정값이 없어 품질을 확인하지 못했습니다.",
             )
         )
+    elif grade is None:
+        out.append(
+            (
+                "reuse_quality",
+                "conditional",
+                "측정값은 있지만 공통 품질 등급 기준이 검증되지 않아 재투입 품질을 확정하지 못했습니다.",
+            )
+        )
     elif grade == "A":
         out.append(("reuse_quality", "met", "측정값이 A등급 기준 안입니다."))
     else:
@@ -282,16 +287,26 @@ def reuse_checks(stream: dict, grade: str | None) -> list[tuple]:
 def reuse_numbers(stream: dict, kg: float, cost: float):
     """재투입 입력이 다 있으면 (다시 넣는 양, 절감액, 남는 양의 현행 처리비, 변경 뒤 월 손익), 없으면 None.
 
-    절감액 = 다시 넣는 양 × (신재 구입 단가 − 분쇄 비용). 다시 넣지 못하는 양은 현행대로 처리한다.
+    절감액 = 재투입량 × 회수수율 × 대체율 × 신재 단가 − 재투입량 × 분쇄비.
+    수율 손실의 처리비도 확인해야 한다. 공정에 넣지 않은 나머지는 기존 처리 단가로 비교한다.
     """
     reuse = stream.get("reuse") or {}
     virgin, limit = num(reuse.get("virginPriceKrwPerKg")), num(reuse.get("reusableKgPerMonth"))
     if virgin is None or limit is None or limit <= 0:
         return None
-    regrind = num(reuse.get("regrindCostKrwPerKg")) or 0.0
+    from app.v3.judge.recovery import displaced
+
+    regrind = num(reuse.get("regrindCostKrwPerKg"))
     used = min(kg, limit)
-    saving = used * (virgin - regrind)
-    rest_cost = (kg - used) * cost
+    avoided = displaced(reuse, used)
+    if regrind is None or avoided is None:
+        return None
+    saving = avoided * virgin - used * regrind
+    residue = used * (1 - float(reuse["recoveryYieldPct"]) / 100)
+    residue_cost = num(reuse.get("recoveryResidueCostKrwPerKg"))
+    if residue > 0 and residue_cost is None:
+        return None
+    rest_cost = (kg - used) * cost + residue * (residue_cost or 0)
     return used, saving, rest_cost, saving - rest_cost
 
 
@@ -327,10 +342,10 @@ def judge_reuse(registry, *, org_id, today, stream):
         rec.check(
             "reuse_inputs",
             "conditional",
-            "신재 구입 단가와 한 달에 다시 넣을 수 있는 양이 없어 금액을 계산하지 않았습니다.",
+            "신재 단가·재투입량·분쇄비·수율·품질 대체율·실제 용도·계량/시험 증빙과 수율 손실의 처리비가 필요합니다. 미정 비용을 무료로 두지 않았습니다.",
         )
         output["reason"] = (
-            "재투입 후보입니다. 신재 구입 단가와 다시 넣을 수 있는 양을 넣으면 계산합니다."
+            "재투입 후보입니다. 수율·대체율과 용도의 증빙, 신재 단가·분쇄비를 확인하면 계산합니다."
         )
         return rec.result("needs_information", output)
     used, saving, _, after = numbers
@@ -349,7 +364,7 @@ def judge_reuse(registry, *, org_id, today, stream):
         "monthlyRevenue",
         saving,
         "원/월",
-        "다시 넣는 양 × (신재 구입 단가 − 분쇄 비용)",
+        "재투입량 × 수율 × 신재 대체율 × 신재 단가 − 재투입량 × 분쇄 비용",
         reuse_ev,
         private=True,
     )
@@ -357,7 +372,7 @@ def judge_reuse(registry, *, org_id, today, stream):
         "monthlyAfter",
         after,
         "원/월",
-        "신재 절감액 − 다시 넣지 못하는 양의 현행 처리비",
+        "신재 절감액 − 재투입하지 않은 양의 현행 처리비 − 수율 손실 잔재의 확인된 처리비",
         [*reuse_ev, *cost_ev],
         private=True,
     )

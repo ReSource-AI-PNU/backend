@@ -73,6 +73,7 @@ APPLIED_SOURCES = {
 }
 BASELINE_SOURCES = {
     "stream": "기록 당시 폐기물 자료",
+    "unknown": "기록 당시 현행 처리 방식 미확인",
     "assumed": "기록 당시 현행 처리 입력이 없어 혼합 소각으로 가정",
     "deal": "합의 당시 판단",
     "deal_assumed": "합의 당시 현행 처리 입력이 없어 혼합 소각으로 가정",
@@ -107,7 +108,7 @@ def process_label(process: Any) -> str | None:
 
 
 def applied_process(declared: Any, profile: dict[str, Any] | None, unit_price: Any) -> dict:
-    """업체가 실제로 적용한 처리 방식. 검수 기록에 적은 것, 기록 당시 업체 정보, 값을 받고 사 간 것 순서로 본다.
+    """업체가 밝힌 처리 방식. 검수 기록, 기록 당시 업체 정보 순서이며 단가만으로 추정하지 않는다.
 
     {"value", "source", "assumed"}. 업체 쪽 정보라 업체와 나누는 검수 기록에 그대로 싣는다.
     """
@@ -116,10 +117,6 @@ def applied_process(declared: Any, profile: dict[str, Any] | None, unit_price: A
     process = str((profile or {}).get("process") or "").strip()
     if process:
         return {"value": process, "source": "vendor_profile", "assumed": False}
-    price = _number(unit_price)
-    if price is not None and price >= 0:
-        # judge.common.after_process와 같은 가정: 값을 주고 사 가면 재활용으로 본다
-        return {"value": "재활용", "source": "price", "assumed": True}
     return {"value": None, "source": "unknown", "assumed": False}
 
 
@@ -143,8 +140,8 @@ def _baseline_now(stream: dict[str, Any]) -> dict[str, Any]:
     if sale:
         method = current_costs.sale_method(method)
     assumed = (not method) or bool(current.get("methodAssumed"))
-    method = method or DEFAULT_METHOD
-    source = "assumed" if assumed else "stream"
+    method = method or "미확인"
+    source = "unknown" if method == "미확인" else "assumed" if assumed else "stream"
     return {
         "method": method,
         "assumed": assumed,
@@ -166,9 +163,10 @@ def _factor_of(found: Evidence, name: str | None) -> dict[str, Any] | None:
         "label": found.label,
         "value": value,
         "unit": found.unit,
-        "version": found.version,
+        "version": found.meta.get("originalVersion", found.version),
         "asOf": found.as_of,
         "source": found.source,
+        "meta": dict(found.meta),
     }
 
 
@@ -191,6 +189,19 @@ def _difference(snapshot: dict[str, Any]) -> dict[str, Any]:
         reason = "업체가 실제로 적용한 처리 방식을 몰라"
     elif factors.get("baseline") is None or factors.get("applied") is None:
         reason = "그 처리 방식의 공인된 배출계수가 없어"
+    elif base.get("assumed") or applied.get("assumed"):
+        reason = "기존 또는 실제 처리 방식이 확인되지 않아"
+    elif any(
+        factors[k].get("meta", {}).get("verificationStatus") != "original_checked"
+        for k in ("baseline", "applied")
+    ):
+        reason = "처리계수의 원문 계산 경계를 확인하지 못해"
+    elif any(
+        not factors["baseline"]["meta"].get(k)
+        or factors["baseline"]["meta"].get(k) != factors["applied"]["meta"].get(k)
+        for k in ("datasetVersion", "functionalUnit", "systemBoundary", "country", "material")
+    ):
+        reason = "처리계수의 계산 경계가 서로 달라"
     if reason is not None:
         if snapshot["status"] == RECORDED:
             snapshot["status"] = NOT_COMPUTED
@@ -468,6 +479,13 @@ def from_earlier_basis(app: Any, record: dict[str, Any]) -> dict[str, Any] | Non
     elif old.get("reason"):
         snapshot["reason"] = str(old["reason"])
     snapshot["notes"] = ["검수를 기록할 때 남긴 계산 기준(이전 형식)을 옮겼습니다."]
+    if len(factors) == 2 and _number(old.get("perKg")) is not None and not old.get("reason"):
+        # Preserve an already recorded historical calculation, not a new factor adoption.
+        snapshot["perKg"] = round(factors[1]["value"] - factors[0]["value"], 9)
+        snapshot["notes"].append(
+            "과거 기록의 수치를 보존했습니다. 현재 원문 검증 기준을 충족했다는 뜻이 아니며, 새 계산과 구분해야 합니다."
+        )
+        return snapshot
     return _difference(snapshot)
 
 
@@ -533,7 +551,9 @@ def reconstruct(app: Any, record: dict[str, Any]) -> dict[str, Any]:
         None,
     )
     processes = _factor_processes()
-    base_key, after_key = processes.get(factors[0].id), processes.get(factors[1].id)
+    base_key, after_key = (
+        processes.get(factor.meta.get("originalId", factor.id)) for factor in factors
+    )
     now_f, after_f = _factor_of(factors[0], None), _factor_of(factors[1], None)
     deal_kg = _number((deal_stream or {}).get("monthlyKg"))
     if deal_kg is None or not (base_key and after_key and now_f and after_f):

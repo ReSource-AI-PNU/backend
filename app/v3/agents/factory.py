@@ -20,16 +20,16 @@
 - 돌려주는 값은 llm_factory(role, org_id, model) -> LLM | None 이다. None이면 service가 규칙 정책으로 돈다.
 - 업체 측 기본 모델은 Ollama(H100의 qwen2.5:32b)다(2026-11-22). 프로필에 모델이 없는 업체도 OLLAMA_BASE_URL이
   있으면 Ollama로 답한다. foundry를 명시한 업체만 주 모델을 쓴다.
-- 업체가 ollama를 골랐는데 주소가 없으면 다른 모델로 바꿔 부르지 않고 None을 준다(쓰지 않은 모델을
-  쓴 것처럼 보이지 않게). V3_LLM_ALL_VENDORS=1은 이 규칙을 풀어 주 모델(foundry·anthropic)이 답하게 한다. GPU 없이
+- 업체가 ollama를 골랐는데 주소가 없으면 strict 서버는 설정 오류로 중단한다(다른 모델로 바꿔 부르지 않는다).
+  V3_LLM_ALL_VENDORS=1은 이 규칙을 풀어 주 모델(foundry·anthropic)이 답하게 한다. GPU 없이
   CPU로 도는 Ollama는 실시간 대화에 너무 느려(2026-11-18 측정: 6천 토큰 프롬프트에 qwen2.5:7b 8분 30초)
   배포에서는 Ollama 주소를 비우고 이 설정을 쓴다. 그때도 화면에는
   설정한 모델과 실제로 답한 모델이 따로 나온다.
 - OLLAMA_FALLBACK=1(배포의 USE_OLLAMA=h100·gpu): Ollama는 H100 계산 인스턴스(전에는 East US의 GPU VM)에 있고 쓰지 않을 때 꺼 둔다. 꺼져 있으면
   매 차례가 시간 초과(120초) 두 번 뒤 담당자에게 넘어가므로, 모델을 만들 때 /api/version을 3초 안에 물어 닿지 않으면
   처음부터 주 모델을 준다. 그래서 대화 기록의 "실제로 답한 모델"도 주 모델로 정확히 남는다(설정은 ollama 그대로).
-- 설정이 빠졌을 때: strict면 LlmConfigError로 멈추고(로컬 서버), 아니면 경고를 남기고 규칙 정책으로
-  돈다(배포 경로. 서버는 뜨고, 관리자 화면과 대화에 "규칙 정책(모델 미연결)"로 나온다).
+- 설정이 빠졌을 때: strict면 LlmConfigError로 멈춘다(로컬·HTTP 서버). 명시적 개발용
+  strict=False에서만 경고 후 규칙 정책을 허용한다.
 - 키 값은 예외 문구와 기록에 싣지 않는다.
 """
 
@@ -229,6 +229,8 @@ def build_llm_factory(
                     return make_main()
                 return OllamaChat(ollama, str(picked["name"]), num_ctx=num_ctx)
             if not all_vendors:
+                if strict:
+                    raise LlmConfigError("업체가 선택한 Ollama 주소 또는 모델 이름이 없습니다.")
                 logger.warning("%s: Ollama 주소나 모델 이름이 없어 규칙 정책으로 돈다", org_id)
                 return None
         return make_main() if make_main is not None else None

@@ -1,7 +1,8 @@
-"""등급 모델. 측정값이 있으면 측정 등급을 우선하고, 없으면 사진 추정으로 낸다.
+"""등급 모델 연구 도구와 근거 검증된 서비스 진입점.
 
 기준값(grade_thresholds.v1.json)은 팀 가정값이다. 합성 데이터는 이 기준값에서 만들기 때문에
 합성 데이터 점수는 모델이 기준값을 얼마나 따라 하는지만 보여 주고, 실제 등급 정확도가 아니다.
+서비스 grade_stream은 검증되지 않은 팀 임계값으로 등급을 부여하지 않는다.
 """
 
 from __future__ import annotations
@@ -12,6 +13,7 @@ from pathlib import Path
 from typing import Any
 
 from app.v3 import ids
+from app.v3.evidence.acceptance import usable_basis
 from app.v3.evidence.model import Evidence
 from app.v3.intake._http import Transport, default_transport
 from app.v3.textutil import josa
@@ -264,6 +266,27 @@ def grade_stream(
     if asked_moisture_pct is None:
         asked_moisture_pct = stream.get("askedMoisturePct")
     assumption = registry.put(thresholds_evidence())
+    if not usable_basis(assumption):
+        return {
+            "streamId": stream_id,
+            "grade": None,
+            "basis": None,
+            "label": "공통 등급 산정 보류",
+            "modelBasis": None,
+            "evidence": [],
+            "measured": None,
+            "photoEstimate": None,
+            "assumptions": [],
+            "checks": [
+                {
+                    "key": "grade_standard",
+                    "status": "conditional",
+                    "text": "팀이 만든 등급 임계값을 실측 등급으로 사용하지 않습니다. 업체의 실제 매입 기준과 반입 검수로 확인해야 합니다.",
+                    "ask": None,
+                    "evidence": [],
+                }
+            ],
+        }
     checks: list[dict[str, Any]] = []
 
     def run(basis: str, contamination: float, moisture: float | None, inputs: list[str]) -> dict:

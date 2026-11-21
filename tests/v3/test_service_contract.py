@@ -44,6 +44,15 @@ def error_of(call, *args):
     return error
 
 
+def review_blocked(view):
+    """계약 검토 담당이 막은 대화(예: 노선 밖 운반비 미정). 양쪽 모두 승인할 수 없다."""
+    return {
+        a["threadId"]
+        for a in view["approvals"]
+        if (a.get("review") or {}).get("status") == "blocked"
+    }
+
+
 def run_to_approval(app, session_id):
     """test_api.run_to_approval과 같은 순서: 멈출 때마다 모든 질문에 "모름"으로 답한다."""
     view = None
@@ -150,7 +159,17 @@ def test_demo_scenario_with_unknown_answers_reaches_confirmation(app):
     for approval in view["approvals"]:
         assert {"threadId", "emitter", "vendor", "blocked", "blockedReason"} <= set(approval)
     blocked = {a["threadId"] for a in view["approvals"] if a["blocked"]}
-    agreed = [t for t in view["threads"] if t["status"] == "agreed" and t["id"] not in blocked]
+    # 시드 그대로면 미소환경은 노선 밖 운반비가 정해지지 않아 계약 검토 담당이 승인을 막는다(필수 운반비 미정)
+    stopped = review_blocked(view)
+    for approval in view["approvals"]:
+        if approval["threadId"] in stopped:
+            items = {i["key"]: i for i in approval["review"]["items"]}
+            assert items["transport"]["status"] == "block"
+            refused = error_of(service.approve, app, session_id, approval["threadId"], EMITTER)
+            assert refused.code == "REVIEW_BLOCKED" and refused.status == 409
+    agreed = [
+        t for t in view["threads"] if t["status"] == "agreed" and t["id"] not in blocked | stopped
+    ]
     assert agreed, "전부 '모름'으로 답해도 합의된 스레드가 하나 이상 나와야 한다"
     for thread in agreed:
         service.approve(app, session_id, thread["id"], EMITTER)
@@ -193,7 +212,8 @@ def test_first_document_appears_only_after_both_sides_approve(app):
     """
     session_id = service.create_session(app, EMITTER, EMITTER)["session"]["id"]
     view = run_to_approval(app, session_id)
-    agreed = [t for t in view["threads"] if t["status"] == "agreed"]
+    stopped = review_blocked(view)
+    agreed = [t for t in view["threads"] if t["status"] == "agreed" and t["id"] not in stopped]
     first = agreed[0]
     service.approve(app, session_id, first["id"], EMITTER)
     assert service.get_view(app, session_id, EMITTER)["documents"] == []

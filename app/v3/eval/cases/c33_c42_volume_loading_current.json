@@ -588,7 +588,10 @@
             "monthlyKg": 500,
             "monthlyKgBasis": "measured",
             "bulkDensityKgPerM3": 250,
-            "measure": null
+            "measure": null,
+            "currentTreatment": {
+              "unitCostKrwPerKg": 250
+            }
           },
           {
             "id": "st_b",
@@ -599,7 +602,10 @@
             "monthlyKg": 500,
             "monthlyKgBasis": "measured",
             "bulkDensityKgPerM3": 250,
-            "measure": null
+            "measure": null,
+            "currentTreatment": {
+              "unitCostKrwPerKg": 250
+            }
           },
           {
             "id": "st_c",
@@ -610,7 +616,10 @@
             "monthlyKg": 500,
             "monthlyKgBasis": "measured",
             "bulkDensityKgPerM3": 250,
-            "measure": null
+            "measure": null,
+            "currentTreatment": {
+              "unitCostKrwPerKg": 250
+            }
           }
         ],
         "vendors": [
@@ -658,7 +667,8 @@
           "why": "모르는 값이 남았는데 전체 판정을 확정으로 두지 않는다"
         }
       ],
-      "synthetic": true
+      "synthetic": true,
+      "note": "질문 한도(3개씩 2묶음)를 본다. 현행 처리비는 질문 순위가 낮아 한도 안에 들지 않으므로 담당자가 미리 입력해 둔 것으로 둔다(2026-11-21 정책: 근거 없는 가정값(혼합 소각 현행 처리비, 가정 운행 단가, 공통 등급 임계값)을 새 계산에 쓰지 않는다. 현행 처리비를 모르면 배정에서 빠진다)."
     },
     {
       "id": "C39",
@@ -842,12 +852,12 @@
     },
     {
       "id": "C41",
-      "title": "현행 처리를 입력하지 않은 경우(혼합 소각 가정값과 민감도)",
+      "title": "현행 처리를 입력하지 않은 경우(가정값 없이 산정 보류)",
       "review": "초안",
       "tags": [
         "PP",
         "현행 없음",
-        "가정값"
+        "산정 보류"
       ],
       "world": {
         "streams": [
@@ -899,28 +909,41 @@
             "tool": "judge_route",
             "stream": "st_a",
             "vendor": "org_v1",
+            "status": "conditional",
             "checks": {
-              "current_assumed": "met"
+              "current_cost": "conditional"
             },
             "claims": {
-              "currentUnitCost": 250,
-              "monthlyNow": -125000,
-              "sensitivityA": 100000
-            }
+              "monthlyAfter": 100000
+            },
+            "absentClaims": [
+              "currentUnitCost",
+              "monthlyNow",
+              "sensitivityA"
+            ]
           }
         ],
+        "questions": {
+          "asked": [
+            [
+              "st_a",
+              "currentCost"
+            ]
+          ]
+        },
         "result": {
-          "status": "calculated",
-          "sensitivity": true
+          "status": "needs_information",
+          "sensitivity": false
         },
         "assignments": {
           "st_a": {
-            "vendor": "org_v1",
-            "currentAssumed": true,
-            "monthlyNow": -125000,
-            "difference": 225000,
+            "vendor": null,
+            "status": "needs_information",
+            "currentAssumed": false,
+            "monthlyNow": null,
+            "difference": null,
             "checks": [
-              "current_assumed"
+              "skipped"
             ]
           }
         }
@@ -930,9 +953,18 @@
           "kind": "evidence_cited",
           "evidence": "doc:org_eval:위탁계약서",
           "why": "없는 계약서를 근거로 대지 않는다"
+        },
+        {
+          "kind": "evidence_cited",
+          "evidence": "assumption:current.cost",
+          "why": "현행 처리비를 모르면 혼합 소각 가정값으로 채우지 않는다"
         }
       ],
-      "synthetic": true
+      "synthetic": true,
+      "answers": {
+        "st_a.currentCost": "unknown"
+      },
+      "note": "2026-11-21 정책: 근거 없는 가정값을 새 계산에 쓰지 않는다. 담당자가 현행 처리비를 '모름'으로 답하면 혼합 소각 가정값으로 견주지 않고, 현행 대비를 낼 수 없어 이 폐기물을 배정에서 빼고 '현행 처리 단가 확인 필요'로 남긴다."
     },
     {
       "id": "C42",

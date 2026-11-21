@@ -3,6 +3,7 @@
 from app.v3 import service
 from app.v3.a2a.message import Message
 from app.v3.evidence.validator import validate_message
+from tests.v3.evidence_fixtures import negotiation_app as make_app
 from tests.v3.runtime_fixtures import (
     HANBIT,
     MISO,
@@ -10,7 +11,6 @@ from tests.v3.runtime_fixtures import (
     SAEGIL,
     TODAY,
     approve_all,
-    make_app,
     to_approval,
 )
 
@@ -55,7 +55,12 @@ def test_negotiated_prices_flow_into_the_result_without_a_price_mismatch():
         assert all(c["key"] != "price_differs" for c in assignment["checks"])
         first = assignment["unitPrice"]["evidence"][0]
         assert first.startswith("calc:negotiate_reply:"), first
-    assert any(a["id"] == "assumption:negotiation.askPct@v1" for a in view["result"]["assumptions"])
+    assert any(
+        app.registry.get(a["id"])
+        .meta.get("originalId", a["id"])
+        .startswith("assumption:negotiation.askPct@")
+        for a in view["result"]["assumptions"]
+    )
     # 상한은 업체만의 값이다. 협상 단가 계산의 입력에 싣지 않는다
     reply = app.registry.get(by_stream(view)["st_sprue"]["unitPrice"]["evidence"][0], HANBIT)
     assert (

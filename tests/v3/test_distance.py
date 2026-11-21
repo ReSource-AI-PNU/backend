@@ -135,7 +135,7 @@ def test_http_errors_and_bad_input():
         distance.urllib_transport("POST", "http://atlas.microsoft.com/route/matrix", {}, b"{}")
 
 
-def test_judge_tool_uses_road_distance_and_falls_back_to_assumption():
+def test_judge_tool_uses_road_distance_and_holds_without_it():
     registry = InMemoryRegistry()
     register_defaults(registry, TODAY)
     v = vendor()
@@ -157,6 +157,8 @@ def test_judge_tool_uses_road_distance_and_falls_back_to_assumption():
     assert road["output"]["distanceAssumed"] is False
     assert not [c for c in road["checks"] if c["key"] == "distance"]
     failed = run(distance.AzureMapsDistance("test-key", transport=FakeMaps(status=500)))
-    assert failed["output"]["distanceAssumed"] is True  # 실패하면 가정값이라고 밝힌다
+    # 실패하면 직선 × 우회 계수(가정값)로 채우지 않고 거리를 보류한다
+    assert failed["status"] == "needs_information" and failed["claims"] == []
+    assert failed["output"]["distanceAssumed"] is None
     assert [c for c in failed["checks"] if c["key"] == "distance"]
     assert failed["output"] == run(None)["output"]

@@ -274,7 +274,7 @@ def apply_answer(
             stream,
             value["billing"],
             today,
-            method=current.get("method") or "혼합 소각",
+            method=current.get("method") or "미확인",
             source="담당자 질문 답변",
         )
         stream["currentTreatment"] = {**treatment, "methodAssumed": not current.get("method")}
@@ -310,10 +310,10 @@ def apply_answer(
             # 계약(월 정액·회당)으로 받은 현행 처리비는 새 월 발생량으로 kg당 환산을 다시 한다
             current_cost.refresh(registry, stream, today)
         if field == "currentCost":
-            # 처리 방법은 묻지 않았다. 자료 화면에서 넣기 전까지는 혼합 소각으로 본다
+            # 단가만 답했으므로 처리 방법은 별도 확인 전까지 미확인이다.
             current = dict(stream.get("currentTreatment") or {})
             stream["currentTreatment"] = {
-                "method": current.get("method") or "혼합 소각",
+                "method": current.get("method") or "미확인",
                 "methodAssumed": not current.get("method"),
                 "unitCostKrwPerKg": float(value),
                 "evidence": [evidence.id],

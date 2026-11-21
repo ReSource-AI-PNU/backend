@@ -26,6 +26,7 @@ from app.v3.a2a.policy import (
 from app.v3.a2a.thread import Thread, ThreadError
 from app.v3.agents import questions, reviewer
 from app.v3.agents.company import CompanyAgent
+from app.v3.agents.contract_terms import INSPECTION_HOLD, inspection_fallback, transport_text
 from app.v3.agents.draft import (
     ACCEPT,
     ASK_USER,
@@ -109,17 +110,17 @@ def discoverable_profiles(store: Any, emitter: dict[str, Any]) -> dict[str, dict
 
     - 허가 품목이나 매입 기준이 하나도 없는 프로필(가입만 하고 아직 채우지 않은 업체)은 뺀다.
     - 시연 배출 기업(demo: true)은 시연 업체만 본다. 체험하기로 열리는 시연 진단에 실제 업체가 섞이지
-      않게 하려는 것이다. 실제 배출 기업은 시연 업체와 가입한 업체를 모두 본다.
+      않게 하려는 것이다. 실제 배출 기업에는 시연 업체를 후보로 제시하지 않는다.
     - 탈퇴한 업체(departed: true. 다른 회사와 확정한 거래 기록 때문에 프로필만 남았다)는 뺀다.
     """
     demo_only = bool(emitter.get("demo"))
-    demo_ids = {o["id"] for o in store.list_orgs() if o.get("demo")} if demo_only else set()
+    demo_ids = {o["id"] for o in store.list_orgs() if o.get("demo")}
     return {
         p["orgId"]: p
         for p in store.list_vendor_profiles()
         if (p.get("permits") or p.get("criteria"))
         and not p.get("departed")
-        and (not demo_only or p["orgId"] in demo_ids)
+        and ((p["orgId"] in demo_ids) == demo_only)
     }
 
 
@@ -363,6 +364,11 @@ def comparison_scope(assignments: list[dict[str, Any]]) -> list[dict[str, str]]:
                 ". 운반비가 정해지지 않은 곳은 별도 운반비 반영 전 값입니다."
                 if any(a.get("transportPending") for a in moved)
                 else "."
+            )
+            + (
+                " 전처리·선별·세척 비용 미확인 항목이 포함되어 잠정 금액이며 순손익이 아닙니다."
+                if any(a.get("costPending") for a in moved)
+                else ""
             ),
         }
     ]
@@ -1216,15 +1222,30 @@ class Orchestrator:
     def _fingerprints(self, message: Message) -> dict[str, str]:
         """메시지가 인용한 근거의 지금 내용. 나중에 근거가 바뀌었는지 볼 때 쓴다."""
         marks: dict[str, str] = {}
+        seen: set[str] = set()
+
+        def visit(evidence_id):
+            if evidence_id in seen:
+                return
+            seen.add(evidence_id)
+            try:
+                found = self.registry.get(evidence_id, None)
+            except EvidenceNotFound:
+                return
+            marks[evidence_id] = ids.digest(
+                [found.value, found.unit, found.excerpt, found.valid_until]
+            )
+            # Calculations retain immutable inputs. Pending agreements must still
+            # notice changes to their live sources; confirmed records stay frozen.
+            original = found.meta.get("originalId")
+            if original:
+                visit(original)
+            for dependency in found.meta.get("inputEvidence", []):
+                visit(dependency)
+
         for claim in message.claims:
             for evidence_id in claim.evidence:
-                try:
-                    found = self.registry.get(evidence_id, None)
-                except EvidenceNotFound:
-                    continue
-                marks[evidence_id] = ids.digest(
-                    [found.value, found.unit, found.excerpt, found.valid_until]
-                )
+                visit(evidence_id)
         return marks
 
     def _append(self, session, thread: Thread, message: Message, actor: str) -> None:
@@ -2495,8 +2516,20 @@ class Orchestrator:
             self._region(session),
             fleet,
             self._pickup_km(session, fleet, measure=measure),
+            self._straight_km(session, fleet),
         )
         return {**found, "source": "profile", "seq": None}
+
+    def _straight_km(self, session: dict[str, Any], fleet: dict[str, Any]) -> float | None:
+        """공장 → 업체 차고지 직선 거리(최대 수거 거리를 밝힌 업체만). 도로 거리의 하한으로만 쓴다."""
+        depot = fleet.get("depot")
+        if fleet.get("maxPickupKm") is None or not depot:
+            return None
+        try:
+            origin = self.store.get_org(session["emitterOrgId"]).get("location")
+        except NotFound:
+            return None
+        return haversine_km(origin, depot) if origin else None
 
     def _pickup_km(
         self, session: dict[str, Any], fleet: dict[str, Any], *, measure: bool = False
@@ -2880,6 +2913,13 @@ class Orchestrator:
                 "minPickupsPerMonth": guard.get("minPickupsPerMonth"),
                 "capacityKg": fleet.get("capacityKg"),
                 "capacityM3": fleet.get("capacityM3"),
+                "process": profile.get("process"),
+                "inspectionFallback": profile.get("inspectionFallbackCriterionId"),
+                "inspectionCriteria": [
+                    c
+                    for c in profile.get("criteria") or []
+                    if c.get("id") == profile.get("inspectionFallbackCriterionId")
+                ],
             }
         )
         # 이 공장의 수거 상태와 운반비 조건(노선, 운반 조건, 노선 밖 수거 조건). 근거 ID 없이 값만 견준다
@@ -3113,6 +3153,34 @@ class Orchestrator:
                 for u in work.get("unresolved") or []
                 if u["streamId"] == sid and u["field"] in questions.FIELDS
             ]
+            below = item.get("bundleBelowCurrent")
+            if below:
+                # 이 폐기물만 보면 현행보다 불리하지만 같은 업체 묶음 전체가 나아 함께 보낸다(assign.py가
+                # 비용이 모두 확인됐을 때만 허용한다). 손해와 묶음 전체 차이를 숫자로 밝히고 조건부로 둔다
+                loss = claim_in(optimized, below.get("loss"), f"{tag}_bundleLoss")
+                whole = claim_in(optimized, below.get("bundle"), f"{tag}_bundleDifference")
+                partners = [
+                    str(by_id[x].get("name") or x)
+                    for x in below.get("streamIds") or []
+                    if x in by_id
+                ]
+                status = "conditional"
+                if loss and whole:
+                    who = names.get(vendor_id) or "업체"
+                    checks.append(
+                        {
+                            "key": "bundle_below_current",
+                            "status": "conditional",
+                            "text": f"이 폐기물만 보면 현행 대비 차이가 한 달 {{{{{loss['id']}}}}}입니다. "
+                            f"{who}에 {josa(', '.join(partners) or '다른 폐기물', '와과')} 함께 보내야 "
+                            "최소 물량이나 운반비 조건이 맞아 묶음에 넣었고, 묶음 전체로는 현행 대비 한 달 "
+                            f"{{{{{whole['id']}}}}}입니다. 담당자 확인 필요.",
+                            "claims": [loss, whole],
+                            "evidence": list(
+                                dict.fromkeys([*loss["evidence"], *whole["evidence"]])
+                            ),
+                        }
+                    )
             thread = threads.get(vendor_id)
             if thread is not None:
                 # 최소 물량과 무게·부피 적재(check_loading). 실제로 배정된 흐름을 합친 값이 있으면 그것을,
@@ -3310,6 +3378,7 @@ class Orchestrator:
                 else None,
                 # 운반비가 정해지지 않아 이 줄의 한 달 값은 별도 운반비 반영 전이다
                 "transportPending": bool(item.get("transportPending")),
+                "costPending": bool(item.get("costPending")),
                 "reuse": reuse_view((work.get("reuse") or {}).get(sid), tag),
                 # 탄소 변화 = 처리 방식이 바뀌어 달라지는 배출 + 수거 운행 배출(같은 업체로 가는 폐기물끼리 나눈 몫)
                 "carbon": claim_in(optimized, item.get("carbon"), f"{tag}_carbon"),
@@ -3326,6 +3395,14 @@ class Orchestrator:
                 # 허가 근거의 수준(허가증·공공 명부 확인, 허가증 문서, 업체 입력, 공공 명부와 다름)
                 "permit": item.get("permit"),
                 "currentAssumed": bool(item.get("currentAssumed")),
+                # 묶음 때문에 현행보다 불리한 배정이면 손해·묶음 전체 차이(claim)와 함께 보내는 폐기물
+                "bundleBelowCurrent": {
+                    "loss": claim_in(optimized, below.get("loss"), f"{tag}_bundleLoss"),
+                    "bundle": claim_in(optimized, below.get("bundle"), f"{tag}_bundleDifference"),
+                    "streamIds": list(below.get("streamIds") or []),
+                }
+                if below
+                else None,
                 "checks": checks,
                 "alternatives": alternatives,
                 # 허가 확인 결과 이 경로로 진행할 수 없는 업체(사유와 함께). 예상 손익은 싣지 않는다
@@ -3680,7 +3757,7 @@ class Orchestrator:
     def _process_of(self, vendor_id: str | None, stream: dict[str, Any]) -> str | None:
         """받는 곳의 처리 방식. 업체면 프로필의 process, 지금 방식 그대로면 현행 처리(없으면 혼합 소각 가정)."""
         if not vendor_id:
-            return str((stream.get("currentTreatment") or {}).get("method") or "혼합 소각")
+            return str((stream.get("currentTreatment") or {}).get("method") or "미확인")
         try:
             process = self.store.get_vendor_profile(vendor_id).get("process")
         except NotFound:
@@ -4042,6 +4119,13 @@ class Orchestrator:
                 validation=result.to_dict(),
                 rendered=render_text(document["text"], document["claims"]),
                 createdAt=self.store.now(),
+                agreementVersion=ids.digest(
+                    {
+                        "basis": work.get("agreedBasis", {}).get(thread.id),
+                        "terms": work.get("agreedTerms", {}).get(thread.id),
+                    }
+                ),
+                status="draft",
             )
             self.store.put_document(session["id"], document)
             self._event(
@@ -4071,6 +4155,25 @@ class Orchestrator:
         vendor = self.store.get_org(thread.vendor_org)
         streams = {sid: self.store.get_stream(sid) for sid in assigned}
         loading = memo_result(memo, "check_loading", streamIds=sorted(assigned))
+        inspection_profile = self.store.get_vendor_profile(thread.vendor_org)
+
+        def inspection_lines(use):
+            lines = ["- " + INSPECTION_HOLD]
+            for sid in assigned:
+                criterion = inspection_fallback(inspection_profile, streams[sid])
+                if criterion:
+                    claim = {
+                        "id": "fallback",
+                        "kind": "number",
+                        "value": criterion["unitPriceKrwPerKg"],
+                        "unit": "원/kg",
+                        "evidence": criterion["evidence"],
+                    }
+                    price = use(claim, f"{safe_id(sid)}_fallbackPrice")
+                    lines.append(
+                        f"- {stream_label(streams[sid])}: 업체가 명시 선택한 {criterion['grade']}등급 대안 단가 {price}. 해당 등급 품질·물량 조건을 다시 확인하고 양쪽이 재승인한 뒤 적용합니다."
+                    )
+            return lines
 
         def build(kind: str, title: str, lines_for, footer: str | None = None) -> dict[str, Any]:
             claims: list[dict[str, Any]] = []
@@ -4093,6 +4196,17 @@ class Orchestrator:
                 "",
                 footer or "이 문서는 앱 안에서만 쓰는 문서이며 계약서나 관청 제출 서류가 아닙니다.",
             ]
+            from app.v3.evidence.provenance import freeze_inputs
+
+            for claim in claims:
+                classes = {
+                    self.registry.get(eid).meta.get("evidenceClass") for eid in claim["evidence"]
+                }
+                if classes == {"policy"}:
+                    claim["evidenceClass"] = "policy"
+                claim["evidence"] = freeze_inputs(
+                    self.registry, claim["evidence"], (thread.emitter_org,)
+                )
             return {
                 "kind": kind,
                 "threadId": thread.id,
@@ -4133,13 +4247,13 @@ class Orchestrator:
                 fee = bool(offer) and offer["unitPriceKrwPerKg"] < 0
                 agreed = "합의 처리비" if fee else "합의 단가"  # 처리비는 크기로 적힌다(render)
                 parts.append(f"{agreed} {price}" if price else "단가 확인 필요")
-                route = memo_result(memo, "judge_route", streamId=sid)
-                after = use(claim_in(route, "monthlyAfter", "x"), f"{tag}_monthlyAfter")
+                after = use((rows.get(sid) or {}).get("revenue"), f"{tag}_revenue")
                 if after:
-                    parts.append(f"월 예상 금액 {after}(운송비 제외)")
+                    parts.append(f"월 예상 거래대금 {after}(합의 단가 × 월 물량)")
                 # 문서는 업체와 함께 본다. 흐름은 보이는 이름으로 적는다(업체 조건의 머리도 같다)
                 label = stream_label(stream)
                 lines.append(f"{number}. {label}: {' / '.join(parts)}")
+                lines.append(f"   운반 조건: {transport_text(rows.get(sid) or {})}")
                 for text in (offer or {}).get("conditions") or []:
                     head = f"{label}:"
                     if text.startswith(head):
@@ -4176,6 +4290,8 @@ class Orchestrator:
                 for check in (route or {}).get("checks") or []:
                     if check["status"] == "conditional" and check["key"] not in CURRENT_CHECKS:
                         lines.append(f"   반입 전 확인: {check['text']}")
+            for sid in assigned:
+                lines.append(f"운반 조건: {transport_text(rows.get(sid) or {})}")
             lines.append("반입 검수 결과가 조건과 다르면 앱에서 다시 협의합니다.")
             lines.extend(contract_lines(use))
             lines.extend(law_lines(use))
@@ -4221,12 +4337,19 @@ class Orchestrator:
                 if band is not None and isinstance(band.value, (int, float))
                 else None
             )
-            moved = use(band_claim, "contractPriceBand") if band_claim else None
+            moved = None
             materials = sorted({str(streams[sid].get("material") or "") for sid in assigned} - {""})
             # 재질마다 시세 하나(폐기물에 가까운 형태 순: 압축품, 플레이크, 펠렛)
             order = {"압축": 0, "플레이크": 1, "펠렛": 2}
             picked: dict[str, dict[str, Any]] = {}
             for found in basis.reference_prices(self.registry, org, materials):
+                # A processed commodity index is not a raw-waste contract price.
+                if not any(
+                    streams[s].get("material") == found["material"]
+                    and streams[s].get("form") == found["form"]
+                    for s in assigned
+                ):
+                    continue
                 best = picked.get(found["material"])
                 if best is None or order.get(found["form"], 9) < order.get(best["form"], 9):
                     picked[found["material"]] = found
@@ -4244,17 +4367,18 @@ class Orchestrator:
                     },
                     f"reference_{safe_id(found['key'])}",
                 )
-                out.append(f"- 합의할 때의 기준 시세({evidence.label}): {price}")
+                out.append(
+                    f"- 참고 시세({evidence.label}): {price}. 지역·품질·물량·운반비 조건은 별도 대조하며 실제 합의 단가가 아닙니다."
+                )
+            moved = use(band_claim, "contractPriceBand") if band_claim and picked else None
             if moved:
                 out.append(
                     f"- 기준 시세가 합의할 때보다 {moved} 넘게 오르거나 내리면 단가를 다시 협의합니다."
                 )
-            out.append(
-                "- 반입 검수에서 오염도나 수분이 합의한 매입 기준의 상한을 넘으면 그 업체 매입 기준표의 다음 등급 단가를 따릅니다."
-            )
+            out.extend(inspection_lines(use))
             out.append("- 검수할 때마다 무게·등급·단가를 앱에 기록하고, 양쪽이 같은 기록을 봅니다.")
             out.append(
-                "- 어느 쪽이든 조건을 바꾸려면 한 달 전에 앱에서 알리고, 그동안은 지금 조건을 지킵니다."
+                "- 조건 변경은 앱에서 알리고 양쪽 담당자가 새 조건을 승인한 뒤에 적용합니다."
             )
             return out
 
@@ -4311,21 +4435,13 @@ class Orchestrator:
             pickups = use(claim_in(loading, "pickupsPerMonth", "x"), "pickupsPerMonth")
             if pickups:
                 lines.append(f"- 한 달 수거 횟수: {pickups}")
-            payers = {(rows.get(sid) or {}).get("transportPaidBy") for sid in assigned}
-            if payers == {"vendor"}:
-                lines.append("- 운반비: 받는 곳이 부담합니다(단가에 포함).")
-            elif payers == {"emitter"}:
-                lines.append("- 운반비: 보내는 곳이 부담합니다.")
-            else:
-                lines.append("- 운반비: 부담 주체를 정해 적어야 합니다(확인 필요).")
+            for sid in assigned:
+                lines.append(f"- 운반비: {transport_text(rows.get(sid) or {})}")
             where = next((i for i in review["items"] if i["key"] == "pickup"), None)
             if where:
                 lines.append(f"- 수거 가능 지역: {where['text']}")
             lines += head("반입 검수와 등급")
-            lines.append(
-                "- 반입 검수에서 오염도나 수분이 합의한 매입 기준의 상한을 넘으면 받는 곳 매입 기준표의 "
-                "다음 등급 단가를 따릅니다."
-            )
+            lines.extend(inspection_lines(use))
             lines.append(
                 "- 검수 결과가 조건과 다르면 앱에서 다시 협의하고, 합의 전까지는 지금 조건을 지킵니다."
             )
@@ -4339,12 +4455,27 @@ class Orchestrator:
                 lines.append(f"- 확인할 것: {permit['text']}")
             if pilot:
                 lines += head("시범 기간")
-                lines.append("- 두 회사가 처음 거래하므로 첫 한 달을 시범 기간으로 합니다.")
-                lines.append(
-                    "- 첫 반입 검수 기록을 양쪽이 앱에서 확인한 뒤에 다음 달 수거를 이어 갑니다."
+                duration = basis.resolve(self.registry, thread.emitter_org, "contract.pilotMonths")
+                token = (
+                    use(
+                        {
+                            "kind": "number",
+                            "value": duration.value,
+                            "unit": duration.unit,
+                            "evidence": [duration.id],
+                        },
+                        "pilotMonths",
+                    )
+                    if duration
+                    else None
                 )
                 lines.append(
-                    "- 시범 기간에는 어느 쪽이든 앱에서 알리고 바로 거래를 멈출 수 있습니다."
+                    f"- 승인 기록이 있는 운영 정책에 따른 시범 기간: {token}. 양쪽 담당자가 적용 여부를 확인합니다."
+                    if token
+                    else "- 시범 기간과 중단 조건은 별도 합의가 필요합니다. 승인된 정책이 없어 자동 기간·해지 조건을 넣지 않았습니다."
+                )
+                lines.append(
+                    "- 첫 반입 검수 기록을 양쪽이 앱에서 확인한 뒤에 이후 수거를 이어 갑니다."
                 )
             terms = contract_lines(use)
             lines += head("단가 조정과 변경")

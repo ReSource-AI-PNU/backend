@@ -132,11 +132,15 @@ def in_area(area: Any, region: Any) -> bool:
     return not (named and there and not set(named) & set(there))
 
 
-def service_area(fleet: Any, region: Any, distance_km: Any = None) -> dict[str, Any] | None:
+def service_area(
+    fleet: Any, region: Any, distance_km: Any = None, min_km: Any = None
+) -> dict[str, Any] | None:
     """업체가 밝힌 수거 가능 지역·최대 수거 거리와 공장의 대조. 둘 다 밝히지 않았으면 None.
 
     {"inside": True | False | None(거리를 몰라 대조 못 함), "area": 맞은 지역 | None, "areas": 밝힌 지역,
      "limit": 최대 거리 | None, "km": 거리 | None, "by": "area" | "distance"}
+    min_km는 도로 거리를 모를 때 쓰는 좌표 사이 직선 거리(도로 거리의 하한)다. 이것만으로 최대 거리를 넘으면
+    도로 거리도 넘으므로 km 자리에 넣어 넘었다고 본다. 넘지 않으면 아무것도 확정하지 않는다(가정값을 쓰지 않는다).
     """
     fleet = fleet if isinstance(fleet, dict) else {}
     areas = [str(a).strip() for a in fleet.get("serviceAreas") or [] if str(a).strip()]
@@ -144,6 +148,9 @@ def service_area(fleet: Any, region: Any, distance_km: Any = None) -> dict[str, 
     if not areas and limit is None:
         return None
     km = _num(distance_km)
+    floor = _num(min_km)
+    if km is None and limit is not None and floor is not None and floor > limit:
+        km = floor
     hit = next((a for a in areas if in_area(a, region)), None)
     out = {"area": hit, "areas": areas, "limit": limit, "km": km}
     if hit:
@@ -217,13 +224,19 @@ def _ids(value: Any) -> list[str]:
 
 
 def effective(
-    transport: Any, routes: Any, region: Any, fleet: Any = None, distance_km: Any = None
+    transport: Any,
+    routes: Any,
+    region: Any,
+    fleet: Any = None,
+    distance_km: Any = None,
+    min_km: Any = None,
 ) -> dict[str, Any]:
     """이 공장에 적용되는 수거 상태와 운반비 조건.
 
     {"status", "reason", "days", "basis", "paidBy", "amount", "unit", "pickups", "evidence", "routeBasis", "area"}.
     routeBasis는 노선 수거의 운반비 조건이다(노선 밖이라 그대로 쓰지 않았을 때 참고로 보인다). fleet은 수거 가능
     지역·최대 수거 거리를 읽는 노선·차량이고, distance_km는 공장 → 업체 차고지 거리다(최대 거리와 견준다).
+    min_km는 도로 거리를 모를 때의 직선 거리 하한이다(service_area 참고).
     """
     transport = transport if isinstance(transport, dict) else {}
     covered, days = route_cover(routes, region)
@@ -231,7 +244,7 @@ def effective(
     off = transport.get("offRoute") if isinstance(transport.get("offRoute"), dict) else {}
     stance = off.get("status")
     out: dict[str, Any] = {"days": days, "routeBasis": general["basis"], "area": None, "areas": []}
-    reach = service_area(fleet, region, distance_km)
+    reach = service_area(fleet, region, distance_km, min_km)
     if covered is True:
         reason = None
         if reach is not None:

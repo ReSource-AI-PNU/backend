@@ -1,5 +1,7 @@
 """ScriptedLLM으로 초안이 거부·재작성·handoff 되는 길을 확인한다."""
 
+import re
+
 import pytest
 
 from app.v3 import service
@@ -150,7 +152,10 @@ def test_guardrails_block_terms_outside_the_vendor_limits():
     assert thread["status"] == "handoff"
     assert set(codes(thread["messages"][-1])) == {"GUARDRAIL_PRICE_BELOW_FLOOR"}
     # 가드레일 수치는 배출 기업이 보는 기록에 남지 않는다
-    assert str(floor) not in str(view["events"]) and str(floor) not in str(view["threads"])
+    # Content-addressed evidence IDs can coincidentally contain the decimal digits.
+    private_amount = re.compile(rf"(?<![0-9a-f]){floor}(?![0-9a-f])")
+    assert not private_amount.search(str(view["events"]))
+    assert not private_amount.search(str(view["threads"]))
     assert not [a for a in view["result"]["assignments"] if a["vendorOrgId"] == SAEGIL]
 
 

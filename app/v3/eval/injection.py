@@ -281,8 +281,7 @@ class _Run(runner._Session):
             for question in self.view["questions"]:
                 if question["answered"]:
                     continue
-                key = f"{question['streamId']}.{question['field']}"
-                self._answer(question, answers.get(key, answers.get("*", "unknown")))
+                self._answer(question, runner.answer_for(app, question, answers))
             self.view = service.run_session(app, self.sid, emitter)
         self._recheck()
         if self.view["session"]["status"] == "awaiting_approval":
@@ -978,9 +977,7 @@ def run_layer(
         )
     if reached:
         notes.append(
-            "발견: 목표에 닿은 공격 "
-            + ", ".join(f"{r['id']}({r['goal']})" for r in reached)
-            + "."
+            "발견: 목표에 닿은 공격 " + ", ".join(f"{r['id']}({r['goal']})" for r in reached) + "."
         )
     other = [i for i in items if i["otherOrgHits"]]
     if other:

@@ -58,15 +58,22 @@ def test_first_stop_is_a_batch_of_questions(demo):
     assert asked["stages"][0]["status"] == "running"
     assert {s["status"] for s in asked["stages"][1:]} == {"waiting"}
     sprue = asked["streams"][-1]
-    grade_evidence = sprue["grade"].pop("evidence")
-    assert sprue["grade"] == {"value": "A", "basis": "measured", "label": "측정 등급"}
-    # 기준값 규칙이 낸 등급은 계산 근거다(모델처럼 보이지 않게)
-    assert len(grade_evidence) == 1 and grade_evidence[0].startswith("calc:grade_rules:")
+    # 공통 품질 등급 기준이 검증되지 않아 측정값이 있어도 등급을 매기지 않는다(2026-11-21). 업체가 등록한
+    # 매입 기준과 반입 검수는 따로 본다
+    assert sprue["grade"] == {
+        "value": None,
+        "basis": None,
+        "label": "공통 등급 산정 보류",
+        "evidence": [],
+    }
     assert value(sprue["monthlyKg"]) == 600 and sprue["monthlyKg"]["evidence"]
     assert sprue["currentTreatment"]["assumed"] is False
+    assert value(sprue["currentTreatment"]["unitCost"]) == 250
     film = asked["streams"][1]
-    assert film["grade"]["value"] is None and film["currentTreatment"]["assumed"] is True
-    assert film["currentTreatment"]["unitCost"]["evidence"][0].startswith("assumption:")
+    # 현행 처리비를 아직 답하지 않았다. 혼합 소각 가정값으로 채우지 않는다
+    assert film["grade"]["value"] is None and film["currentTreatment"]["assumed"] is False
+    assert film["currentTreatment"]["unitCost"] is None
+    assert film["currentTreatment"]["method"] == "미확인"
 
 
 def test_film_does_not_open_with_miso_and_says_why(demo):
@@ -156,48 +163,37 @@ def test_result_sheet_assigns_every_stream(demo):
     assert value(totals["difference"]) == value(totals["monthlyAfter"]) - value(
         totals["monthlyNow"]
     )
-    # 탄소는 공식 배출계수(환경성적표지)로 낸다. 열분해는 공정 에너지·수율·열분해유 용도 근거가 없어 처리 방식
-    # 탄소를 산정 보류하고(2026-11-19 자원순환 효과 보강) 운송 배출만 합계에 넣는다
-    purge = by_stream["st_purge"]
-    assert purge["carbonProcess"] is None and purge["carbon"] is None
-    assert value(purge["carbonTransport"]) > 0
-    assert value(totals["carbon"]) == pytest.approx(
-        sum(value(by_stream[s]["carbon"]) for s in ("st_sprue", "st_film", "st_defect"))
-        + value(purge["carbonTransport"]),
-        abs=1e-5,
-    )
-    # 탄소 변화 = 처리 방식 탄소 변화 + 수거 운행 배출(이 폐기물의 몫)
+    # 탄소: 원문 경계를 확인하지 못한 배출계수(기존 환경성적표지 시드)와 가정 우회 계수로 낸 거리는 쓰지 않는다
+    # (2026-11-21). 처리 방식·운송 배출 모두 산정 보류이고 0으로 채우지 않으며, 그 까닭을 확인 항목에 남긴다
+    assert value(totals["carbon"]) is None
+    for item in result["assignments"]:
+        assert item["carbonProcess"] is None and item["carbon"] is None
+        assert item["carbonTransport"] is None and item["transportKm"] is None
+        keys = {c["key"]: c for c in item["checks"]}
+        assert keys["carbon"]["status"] == "conditional"
+        assert keys["transport_carbon"]["status"] == "conditional"
     sprue_carbon = by_stream["st_sprue"]
-    assert value(sprue_carbon["carbonProcess"]) == pytest.approx(
-        (0.0186 - 3.412554039) * 600 / 1000, abs=1e-6
-    )
-    assert value(sprue_carbon["carbonTransport"]) > 0
-    assert value(sprue_carbon["carbon"]) == pytest.approx(
-        value(sprue_carbon["carbonProcess"]) + value(sprue_carbon["carbonTransport"]), abs=2e-6
-    )
+    assert "배출계수" in {c["key"]: c for c in sprue_carbon["checks"]}["carbon"]["text"]
     # 시험 시드(conftest.py, V3_DEMO_PERMITS=verified)는 한빛정밀 담당자가 허가증 원문을 대조해 둔 상태다
     assert sprue_carbon["permit"]["level"] == "verified"
     assert (
         sprue_carbon["permit"]["source"] == "check" and sprue_carbon["permit"]["check"]["page"] == 1
     )
-    # 순비용의 내역: 매각 수익(처리비면 음수) − 운반비 − 전처리 인건비
+    # 순비용의 내역: 매각 수익(처리비면 음수) − 운반비 − 전처리 인건비. 작업 시간을 모르면 인건비를 0이나 최저임금
+    # 으로 채우지 않고 "미확인 비용 반영 전"(costPending)으로 둔다
     assert sprue["transportPaidBy"] == "vendor" and value(sprue["transport"]) == 0
     assert value(sprue["revenue"]) == 320 * 600 and sprue["labor"] is None
+    assert all(a["costPending"] for a in result["assignments"])
     purge = by_stream["st_purge"]
     assert purge["transportPaidBy"] == "emitter" and value(purge["transport"]) == 30000
     assert value(purge["revenue"]) == -80 * 250
     assert value(purge["monthlyAfter"]) == -80 * 250 - 30000
-    assert by_stream["st_purge"]["currentAssumed"] is True
-    assumed = {a["id"]: a for a in result["assumptions"]}
-    assert all(set(a) == {"id", "label", "value", "unit"} for a in result["assumptions"])
-    assert "assumption:등급기준@v2" in assumed
-    cost = next(a for key, a in assumed.items() if key.startswith("assumption:current.cost."))
-    assert cost["label"] and cost["unit"] == "원/kg" and cost["value"] > 0
-    assert cost["value"] == app.registry.get(cost["id"], HANBIT).value
-    assert {s["streamId"] for s in result["sensitivity"]} == {"st_film", "st_purge"}
-    # 참고 시세는 보여 주기만 한다
-    assert [p["form"] for p in result["referencePrices"]] == ["압축", "펠렛", "플레이크"]
-    assert all("손익 계산에는 쓰지" in p["note"] for p in result["referencePrices"])
+    # 필름·퍼지의 현행 처리비는 담당자가 답한 값(DEMO_ANSWERS)이다. 가정값이 아니다
+    assert value(purge["monthlyNow"]) == -250 * 250 and purge["currentAssumed"] is False
+    assert all(a["currentAssumed"] is False for a in result["assignments"])
+    assert result["assumptions"] == [] and result["sensitivity"] == []
+    # 참고 시세는 원문을 확인하지 못해 보이지 않는다(손익 계산에는 원래 쓰지 않았다)
+    assert result["referencePrices"] == []
 
     # 결과 한 장의 모든 claim이 검증기를 통과한다
     claims = []
@@ -378,8 +374,15 @@ def test_question_policy_three_per_batch_two_batches():
     assert len(final["questions"]) == 6 and all(
         q["answered"] and q["unknown"] for q in final["questions"]
     )
-    # 현행 처리비는 몰라도 가정값으로 견주므로 "확인 필요"로 남기지 않는다
-    assert all(u["field"] != "currentCost" for u in final["unresolved"])
+    # 현행 처리비를 모르면 혼합 소각 가정값으로 견주지 않는다(2026-11-21). 그 폐기물은 배정에서 빠지고
+    # 결과에 "현행 처리 단가 확인 필요"로 남는다(현행 유지를 확정처럼 보이지 않는다)
+    held = {a["streamId"]: a for a in final["result"]["assignments"] if a["vendorOrgId"] is None}
+    assert set(held) == {"st_film", "st_purge"}
+    for item in held.values():
+        assert item["status"] == "needs_information" and item["difference"] is None
+        assert [(c["key"], c["text"]) for c in item["checks"]] == [
+            ("skipped", "현행 처리 단가 확인 필요")
+        ]
     assert {(u["streamId"], u["field"]) for u in final["unresolved"]} >= {
         ("st_sprue", "contaminationPct")
     }
@@ -395,7 +398,13 @@ def test_answered_moisture_becomes_evidence_and_grade():
     film = next(s for s in view["streams"] if s["id"] == "st_film")
     assert value(film["moisture"]) == FILM_MOISTURE
     assert film["moisture"]["evidence"] == ["human:org_hanbit:st_film-수분"]
-    assert film["grade"]["value"] == "B" and film["grade"]["basis"] == "photo_estimate"
+    # 답한 수분은 근거가 되지만 공통 등급은 매기지 않는다(2026-11-21, 업체 매입 기준 대조는 따로 한다)
+    assert film["grade"] == {
+        "value": None,
+        "basis": None,
+        "label": "공통 등급 산정 보류",
+        "evidence": [],
+    }
     defect = next(s for s in view["streams"] if s["id"] == "st_defect")
     assert defect["moisture"] is None and defect["unknownFields"] == ["moisturePct"]
     inquiry = thread_of(view, SAEGIL)["messages"][0]

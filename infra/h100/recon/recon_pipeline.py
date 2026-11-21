@@ -738,7 +738,9 @@ def _measure(
     size = sorted(
         [float(np.linalg.norm(e0)) + grid.g, float(np.linalg.norm(e1)) + grid.g], reverse=True
     )
-    err = math.sqrt((3.0 * spread / 100.0) ** 2 + 0.05**2)
+    # Observed scale spread propagated to cubic volume (first-order sensitivity).
+    # No arbitrary fixed ±5% error floor; this is a scenario, not a confidence interval.
+    err = 3.0 * spread / 100.0
     lo_v = volume_seen * max(0.0, 1.0 - err)
     hi_v = (volume_seen + volume_hidden) * (1.0 + err)
     return {
@@ -750,6 +752,7 @@ def _measure(
         "maxHeightM": round(float(h_in.max()), 3),
         "volumeM3": round(volume, 3),
         "volumeRangeM3": [round(lo_v, 3), round(hi_v, 3)],
+        "rangeMethod": "observed-scale-sensitivity-and-hidden-geometry; not a confidence interval",
         "coverage": round(min(coverage, 1.0), 3),
         "points": int(count[mask].sum()),
     }

@@ -207,7 +207,22 @@ def test_demo_scenario_to_confirmation(client):
     assert view["documents"] == []  # 승인 전에는 문서를 만들지 않는다
 
     blocked = {a["threadId"] for a in view["approvals"] if a["blocked"]}
-    agreed = [t for t in view["threads"] if t["status"] == "agreed" and t["id"] not in blocked]
+    # 계약 검토 담당이 막은 대화(시드의 미소환경: 노선 밖 운반비 미정)는 409 REVIEW_BLOCKED로 승인을 받지 않는다
+    stopped = {
+        a["threadId"]
+        for a in view["approvals"]
+        if (a.get("review") or {}).get("status") == "blocked"
+    }
+    for thread_id in stopped:
+        refused = client.post(
+            f"/api/v3/sessions/{session_id}/approvals",
+            headers=org(EMITTER),
+            json={"threadId": thread_id},
+        )
+        assert refused.status_code == 409 and refused.json()["error"]["code"] == "REVIEW_BLOCKED"
+    agreed = [
+        t for t in view["threads"] if t["status"] == "agreed" and t["id"] not in blocked | stopped
+    ]
     assert agreed, "시연 시나리오에는 합의된 스레드가 하나 이상 있어야 한다"
     for thread in agreed:
         body = {"threadId": thread["id"]}
@@ -308,17 +323,16 @@ def test_llm_factory_never_swaps_models():
     assert api.make_llm_factory("rule")("company", EMITTER, None) is None
     with pytest.raises(ValueError, match="V3_LLM"):
         api.make_llm_factory("gpt")
-    unset = api.make_llm_factory("foundry")
-    assert unset("company", EMITTER, None) is None  # 설정이 없으면 규칙 정책
+    with pytest.raises(ValueError):
+        api.make_llm_factory("foundry")  # 실제 연결 설정 누락을 규칙 모델로 숨기지 않는다.
     factory = api.make_llm_factory(
         "foundry", endpoint="https://example.invalid", deployment="chat", api_key="test-key"
     )
     company = factory("company", EMITTER, None)
     assert isinstance(company, FoundryChat) and company.model == "chat"
     ollama = {"provider": "ollama", "name": "open-model"}
-    assert (
-        factory("vendor", "org_namhae", ollama) is None
-    )  # 주소가 없으면 다른 모델로 바꾸지 않는다
+    with pytest.raises(ValueError, match="Ollama"):
+        factory("vendor", "org_namhae", ollama)
     with_ollama = api.make_llm_factory(
         "foundry",
         endpoint="https://example.invalid",
@@ -347,9 +361,9 @@ def test_llm_factory_never_swaps_models():
 
 
 def test_llm_factory_anthropic_option_matches_the_dev_server(tmp_path):
-    """배포 경로에서도 V3_LLM=anthropic을 고를 수 있다. 키가 없으면 규칙 정책으로 돈다."""
-    unset = api.make_llm_factory("anthropic")
-    assert unset("company", EMITTER, None) is None
+    """실제 모델을 선택했는데 키가 없으면 설정 오류로 중단한다."""
+    with pytest.raises(ValueError):
+        api.make_llm_factory("anthropic")
     key_file = tmp_path / "key"
     key_file.write_text("not-a-real-key\n", encoding="utf-8")
     from_file = api.make_llm_factory("anthropic", anthropic_api_key_file=str(key_file))
@@ -357,7 +371,8 @@ def test_llm_factory_anthropic_option_matches_the_dev_server(tmp_path):
     assert isinstance(company, AnthropicChat) and company.model == "claude-sonnet-5-5"
     assert "not-a-real-key" not in repr(company)
     ollama = {"provider": "ollama", "name": "open-model"}
-    assert from_file("vendor", "org_namhae", ollama) is None  # 다른 모델로 바꾸지 않는다
+    with pytest.raises(ValueError, match="Ollama"):
+        from_file("vendor", "org_namhae", ollama)
     everyone = api.make_llm_factory(
         "anthropic",
         anthropic_api_key="not-a-real-key",
@@ -379,9 +394,8 @@ def test_build_app_reads_the_anthropic_settings(monkeypatch):
     built = api.build_app()
     company = built.llm_for("company", EMITTER, None)
     assert (company.provider, company.model) == ("anthropic", "claude-sonnet-5-5")
-    assert built.llm_for("vendor", "org_namhae", {"provider": "ollama", "name": "x"}).provider == (
-        "rule"
-    )
+    with pytest.raises(ValueError, match="Ollama"):
+        built.llm_for("vendor", "org_namhae", {"provider": "ollama", "name": "x"})
     fields = Settings(v3_llm="anthropic", anthropic_api_key_file="/run/secrets/key")
     assert fields.anthropic_api_key_file == "/run/secrets/key" and not fields.v3_llm_all_vendors
 

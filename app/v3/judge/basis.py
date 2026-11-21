@@ -7,6 +7,7 @@
 
 from __future__ import annotations
 
+from app.v3.evidence.acceptance import usable_basis
 from app.v3.evidence.model import Evidence
 from app.v3.evidence.registry import EvidenceForbidden, EvidenceNotFound
 from app.v3.judge import defaults
@@ -41,7 +42,9 @@ def candidates(key: str) -> list[str]:
 def resolve(registry, org_id: str | None, key: str) -> Evidence | None:
     for evidence_id in candidates(key):
         try:
-            return registry.get(evidence_id, org_id)
+            evidence = registry.get(evidence_id, org_id)
+            if usable_basis(evidence):
+                return evidence
         except (EvidenceNotFound, EvidenceForbidden):
             continue
     return None
@@ -49,7 +52,8 @@ def resolve(registry, org_id: str | None, key: str) -> Evidence | None:
 
 REFERENCE_PRICE_PREFIX = "reference.price."
 REFERENCE_PRICE_NOTE = (
-    "가격조사 참고 시세입니다. 업체 매입 단가가 아니며 손익 계산에는 쓰지 않았습니다."
+    "가격조사 참고 시세입니다. 폐플라스틱은 중간가공 후 판매가격이므로 가공 전 폐기물 매입가와 다릅니다. "
+    "재질·형태·지역·시점·품질·물량·운반비 조건을 별도 확인해야 하며 손익 계산에는 쓰지 않았습니다."
 )
 
 

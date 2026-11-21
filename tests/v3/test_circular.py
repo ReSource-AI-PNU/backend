@@ -137,9 +137,25 @@ def test_pet_and_pe_need_the_form_or_grade(reg):
 
 def test_reuse_counts_site_input_only(reg):
     found = circular.stream_effect(
-        rec(reg), stream(), 600, "incineration", False, "reuse", 400, ["human:x"]
+        rec(reg),
+        stream(
+            reuse={
+                "recoveryYieldPct": 80,
+                "virginSubstitutionPct": 90,
+                "recoveryApplication": "가상 동일 제품 재투입",
+                "recoveryEvidence": ["human:x"],
+            }
+        ),
+        600,
+        "incineration",
+        False,
+        "reuse",
+        400,
+        ["human:x"],
     )
-    assert found["virgin"]["method"] == "site" and found["virgin"]["value"] == 400
+    assert found["virgin"]["method"] == "site" and found["virgin"]["value"] == pytest.approx(
+        400 * 0.8 * 0.9
+    )
     assert found["ghg"]["status"] == "hold" and "분쇄 전력" in found["ghg"]["needs"]
 
 
@@ -208,7 +224,8 @@ def _pooled_world(reg):
                 "evidence": [f"doc:{VENDOR}:매입기준표:필름"],
             },
         ],
-        process="재활용",
+        process="물질 재활용",
+        transport={"status": "visit", "basis": "included"},
     )
     current = {
         "method": "혼합 소각",
@@ -222,8 +239,8 @@ def _pooled_world(reg):
         "evidence": [f"measure:{EMITTER}:st_sprue:오염도@2026-11-10"],
     }
     streams = [
-        stream(currentTreatment=current),
-        film(currentTreatment=current, measure=measure),
+        stream(currentTreatment=current, pretreatHoursPerMonth=0),
+        film(currentTreatment=current, measure=measure, pretreatHoursPerMonth=0),
     ]
     return streams, [seller]
 
@@ -249,7 +266,7 @@ def test_bundle_scenario_shows_what_pooling_adds(reg):
     assert claim(result, b["money"])["value"] < claim(result, a["money"])["value"]
     assert c["money"] is None and d["money"] is None and d["moneyReason"]
     assert all(t["status"] == "zero" for t in c["totals"].values())
-    assert claim(result, c["baselineEmission"]["claim"])["value"] > 0
+    assert c["baselineEmission"]["claim"] is None
 
 
 def test_pyrolysis_is_not_added_to_process_carbon(reg):
@@ -261,11 +278,11 @@ def test_pyrolysis_is_not_added_to_process_carbon(reg):
 
 def test_greenest_never_trades_an_unknown_process_carbon():
     """열분해처럼 처리 방식 배출계수를 모르는 배정을 소각으로 되돌리면 탄소가 준다고 말하지 않는다."""
-    from tests.v3.runtime_fixtures import make_app, to_approval
+    from tests.v3.evidence_fixtures import negotiation_app as make_app
+    from tests.v3.runtime_fixtures import to_approval
 
     result = to_approval(make_app())["result"]
     purge = next(a for a in result["assignments"] if a["streamId"] == "st_purge")
     assert purge["route"] == "treat" and purge["carbonProcess"] is None
     greenest = result["greenest"]
-    assert greenest is not None
-    assert all(change["streamId"] != "st_purge" for change in greenest["changes"])
+    assert greenest is None

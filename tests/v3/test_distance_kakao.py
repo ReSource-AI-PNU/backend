@@ -108,7 +108,7 @@ def test_http_errors_missing_key_and_too_many_points(caplog):
         with caplog.at_level(logging.WARNING):
             assert provider([DEPOT, PLANT]) is None
         assert provider.last_error and KEY not in provider.last_error and KEY not in caplog.text
-    assert "가정값 경로" in caplog.text
+    assert "거리를 보류" in caplog.text
 
     def down(method, url, headers, body):
         raise distance.DistanceError(f"연결 실패 {headers}")  # 키가 든 문구를 내도 옮기지 않는다
@@ -159,7 +159,7 @@ def test_evidence_is_a_looked_up_value_with_the_query_date():
     assert registry.put(go).id == go.id and registry.get(go.id, VENDOR).value == 10.793
 
 
-def test_judge_tool_uses_kakao_distance_and_falls_back_to_assumption():
+def test_judge_tool_uses_kakao_distance_and_holds_without_it():
     registry = InMemoryRegistry()
     register_defaults(registry, TODAY)
     profile = vendor()
@@ -185,7 +185,9 @@ def test_judge_tool_uses_kakao_distance_and_falls_back_to_assumption():
     assert road["output"]["distanceAssumed"] is False
     broken, _ = fake(status=500, raw=b"{}")
     straight = run(distance.KakaoDistance(KEY, transport=broken))
-    assert straight["output"]["distanceAssumed"] is True  # 실패하면 가정값 경로이고 그렇게 남는다
+    # 실패하면 직선 × 우회 계수(가정값)로 채우지 않고 거리를 보류한다
+    assert straight["status"] == "needs_information" and straight["claims"] == []
+    assert straight["output"]["distanceAssumed"] is None
     assert any(c["key"] == "distance" for c in straight["checks"])
 
 

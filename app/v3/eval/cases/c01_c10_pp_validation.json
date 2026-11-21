@@ -402,13 +402,13 @@
             "tool": "judge_route",
             "stream": "st_a",
             "vendor": "org_press",
-            "status": "calculated",
+            "status": "conditional",
             "noAsks": true,
             "claims": {
               "monthlyAfter": 100000
             },
             "checks": {
-              "current_assumed": "met"
+              "current_cost": "conditional"
             }
           }
         ],
@@ -423,7 +423,7 @@
             "vendor": "org_press",
             "route": "sell",
             "status": "calculated",
-            "currentAssumed": true,
+            "currentAssumed": false,
             "unitPrice": 200
           }
         },
@@ -438,7 +438,8 @@
           "why": "품질 인증, 현재 시세·견적, 운임 포함으로 말하지 않는다"
         }
       ],
-      "synthetic": true
+      "synthetic": true,
+      "note": "2026-11-21 정책: 근거 없는 가정값(혼합 소각 현행 처리비, 가정 운행 단가, 공통 등급 임계값)을 새 계산에 쓰지 않는다. 도구 수준에서는 현행 처리비가 없어 현행 대비를 내지 못해 조건부이고, 진단에서는 담당자가 현행 처리비 질문에 답한 값(평가 세계 기본 답)으로 견준다."
     },
     {
       "id": "C05",
@@ -1130,13 +1131,11 @@
               "transport": "conditional"
             },
             "output": {
-              "transportAssumed": true
+              "transportPending": true
             },
             "textContains": [
-              "견적이 아닙니다"
-            ],
-            "askContains": [
-              "견적"
+              "운반비 견적 미정",
+              "가정 운행 단가를 거래 비용으로 대입하지 않았"
             ]
           },
           {
@@ -1169,7 +1168,8 @@
           "why": "가정 운임을 실제 견적으로 내지 않는다"
         }
       ],
-      "synthetic": true
+      "synthetic": true,
+      "note": "2026-11-21 정책: 근거 없는 가정값(혼합 소각 현행 처리비, 가정 운행 단가, 공통 등급 임계값)을 새 계산에 쓰지 않는다. 운반비 견적이 없으면 가정 운행 단가로 채우지 않고 월 손익을 '운반비 반영 전'으로 둔다(transportPending). 이전에는 가정값임을 밝히고 견적을 물었다."
     }
   ]
 }

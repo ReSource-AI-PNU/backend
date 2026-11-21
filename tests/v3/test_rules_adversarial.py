@@ -48,7 +48,6 @@ from tests.v3.runtime_fixtures import (
     approve_all,
     briefing_of,
     draft,
-    make_app,
     only_for,
     rule_fallback,
     scripted,
@@ -56,9 +55,42 @@ from tests.v3.runtime_fixtures import (
     thread_of,
     to_approval,
 )
+from tests.v3.runtime_fixtures import (
+    make_app as seeded_app,
+)
 
 ROOT = Path(__file__).resolve().parents[2]
 VENDORS = (SAEGIL, NAMHAE, MISO)
+
+
+def make_app(*args, **options):
+    """Security scenarios need explicit costs; production no longer invents them."""
+    app = seeded_app(*args, **options)
+    for sid in ("st_film", "st_purge"):
+        service.update_stream(
+            app,
+            HANBIT,
+            sid,
+            {
+                "currentTreatment": {
+                    "method": "소각",
+                    "unitCostKrwPerKg": 250,
+                }
+            },
+            HANBIT,
+        )
+    service.update_vendor(
+        app,
+        MISO,
+        {
+            "fleet": {"serviceAreas": ["부산"]},
+            "transport": {"offRoute": {"status": "visit", "basis": "included"}},
+        },
+        MISO,
+    )
+    return app
+
+
 PRICE = "pc_saegil_pp_a_unitPrice"
 # 모델이 지어낸 값의 표식. 시연 데이터와 근거 어디에도 없는 수다
 FAKE = ("13,579", "１３５７９", "만삼천")
@@ -433,7 +465,10 @@ def test_rule1_values_without_evidence_stay_null_and_cannot_be_filled_in():
     by_id = {s["id"]: s for s in view["streams"]}
     for sid in ("st_defect", "st_purge"):
         assert by_id[sid]["moisture"] is None and "moisturePct" in by_id[sid]["unknownFields"]
-        assert by_id[sid]["grade"]["value"] is None and by_id[sid]["grade"]["label"] == "확인 필요"
+        assert (
+            by_id[sid]["grade"]["value"] is None
+            and by_id[sid]["grade"]["label"] == "공통 등급 산정 보류"
+        )
         assert {"streamId": sid, "field": "moisturePct"} in view["unresolved"]
     assert view["stages"][0]["status"] == "needs_check"
     # 모르는 값이 걸린 배정은 확정이 아니다
@@ -491,7 +526,7 @@ TEXT_KEYS_SKIPPED = {
     "documentId", "questionId", "rendered", "lot", "streamIds", "assignedStreamIds", "key", "from",
     "to", "orgId", "vendorOrgId", "emitterOrgId", "claimId", "name", "streamId",
     # 허가증 업로드·원문 대조 시각
-    "checkedAt", "uploadedAt",
+    "checkedAt", "uploadedAt", "agreementVersion",
 }  # fmt: skip
 
 # 허가 확인 상태(permit)에서 허가증 원문을 옮긴 칸(쪽마다의 원문 표기, 상호·소재지, 문서 이름). 근거로 열린다
@@ -559,7 +594,7 @@ def test_rule1_assumptions_are_shown_as_assumptions(confirmed_demo):
     app, session_id = confirmed_demo
     view = service.get_view(app, session_id, HANBIT)
     listed = {a["id"] for a in view["result"]["assumptions"]}
-    assert listed and all(i.startswith("assumption:") for i in listed)
+    assert not listed  # 승인 없는 기본 가정값은 신규 결과에 사용하지 않는다.
     for item in view["result"]["assumptions"]:
         assert app.registry.get(item["id"], HANBIT).kind == "assumption" and item["label"]
     # 결과 한 장의 claim이 직접 또는 계산 사슬로 기댄 가정값은 모두 목록에 있다
@@ -567,16 +602,17 @@ def test_rule1_assumptions_are_shown_as_assumptions(confirmed_demo):
     for claim in claims_in(view["result"]):
         for evidence_id in claim["evidence"]:
             used |= _assumptions_behind(app, evidence_id)
-    assert used and used <= listed, used - listed
+    assert used <= listed, used - listed
     for stream in view["streams"]:
         current = stream["currentTreatment"]
-        assumed = current["unitCost"]["evidence"][0].startswith("assumption:")
+        assumed = bool(
+            current["unitCost"] and current["unitCost"]["evidence"][0].startswith("assumption:")
+        )
         assert current["assumed"] is assumed
         if assumed:
             assert current["method"] == "혼합 소각"
     # 근거 패널에서도 가정값이라고 나온다
-    panel = service.get_evidence(app, min(listed), HANBIT)["evidence"]
-    assert panel["kind"] == "assumption" and panel["kindLabel"] == "가정값"
+    assert not used
 
 
 def _assumptions_behind(app, evidence_id, depth=6):
@@ -770,6 +806,8 @@ def test_rule3_three_states_reach_the_view_consistently():
     assert result["status"] == max(statuses, key=order.index)  # 가장 나쁜 상태가 전체 상태다
     by_vendor = {t["vendorOrgId"]: t for t in view["threads"] if t["status"] != "not_opened"}
     for item in result["assignments"]:
+        if item["vendorOrgId"] is None:
+            continue
         thread = by_vendor[item["vendorOrgId"]]
         route = orchestrator_module.memo_result(
             session["work"]["threadTools"][thread["id"]], "judge_route", streamId=item["streamId"]
@@ -811,28 +849,34 @@ def test_rule3_needs_information_is_not_shown_as_decided():
     )
 
 
-def test_rule4_missing_current_treatment_uses_mixed_incineration_and_sensitivity():
-    app = make_app()
-    view = to_approval(app)
+def test_rule4_missing_current_treatment_holds_instead_of_inventing_incineration():
+    app = seeded_app()
+    # 담당자가 현행 처리비 질문에도 모두 "모름"으로 답한다(시연 답 DEMO_ANSWERS를 쓰지 않는다)
+    view = start(app)
+    for _ in range(3):
+        if view["session"]["status"] != "awaiting_answers":
+            break
+        for question in view["questions"]:
+            if not question["answered"]:
+                service.answer_question(
+                    app, view["session"]["id"], question["id"], "unknown", HANBIT
+                )
+        view = service.run_session(app, view["session"]["id"], HANBIT)
+    assert view["session"]["status"] == "awaiting_approval"
     streams = {s["id"]: s for s in view["streams"]}
     assumed = {"st_film", "st_purge"}  # 시연 데이터에서 현행 처리 입력이 없는 흐름
     for sid, stream in streams.items():
         current = stream["currentTreatment"]
-        assert current["assumed"] is (sid in assumed)
+        assert current["assumed"] is False
         if sid in assumed:
-            assert current["method"] == "혼합 소각"
-            assert current["unitCost"]["evidence"][0].startswith("assumption:current.cost.")
+            assert current["method"] == "미확인"
+            assert current["unitCost"] is None
     result = view["result"]
     for item in result["assignments"]:
-        assert item["currentAssumed"] is (item["streamId"] in assumed)
-        keys = [c["key"] for c in item["checks"]]
-        assert ("current_assumed" in keys) is (item["streamId"] in assumed)
-    assert {s["streamId"] for s in result["sensitivity"]} == assumed
-    for item in result["sensitivity"]:
-        assert item["difference"]["value"] is not None and item["difference"]["evidence"]
-        assert "현행" in item["label"]
-    labels = [a["label"] for a in result["assumptions"]]
-    assert any("혼합 소각" in label for label in labels)
+        assert item["currentAssumed"] is False
+        if item["streamId"] in assumed:
+            assert item["monthlyNow"] is None and item["difference"] is None
+    assert result["sensitivity"] == []
     # 업체에게는 현행 처리와 민감도가 보이지 않는다
     for vendor in VENDORS:
         seen = service.get_view(app, view["session"]["id"], vendor)
@@ -1336,7 +1380,7 @@ def test_rule7_permit_lost_between_offer_and_optimisation_drops_only_those_offer
             reply = service.handle_vendor_message(self.app, vendor_org, message, context)
             if vendor_org == SAEGIL:
                 self.count += 1
-                if self.count == 2:  # 두 번째(마지막) 답을 낸 뒤
+                if reply.get("type") in ("offer", "conditional", "counter"):
                     _drop_plastic_permit(self.app)
             return reply
 
@@ -2256,7 +2300,7 @@ def test_chapter4_nothing_is_sent_outside_the_app():
         # 도로 거리 조회(읽기 전용: 좌표 두 개를 보내고 거리를 받는다. V3_DISTANCE=kakao일 때만 부른다)
         r"kakaomobility\.com|"
         # 인용 출처(부르지 않는다): 보관장 3D 스캔의 필름 겉보기 밀도(US EPA 2016 환산표)
-        r"epa\.gov)$"
+        r"epa\.gov|nvlpubs\.nist\.gov|developers\.google\.com)$"
     )
     assert sorted(h for h in hosts if not allowed.search(h.rstrip("."))) == []
     # 올바로시스템은 연동하지 않는다고 적은 글 말고는 나오지 않는다
@@ -2320,7 +2364,11 @@ def test_rule12_no_randomness_or_wall_clock_in_the_judgement_path():
     # 판단 도구와 근거 검증기, 대화 규칙은 시계를 아예 읽지 않는다(날짜는 today 인자로 받는다)
     for path in CORE:
         if path.relative_to(ROOT / "app/v3").parts[0] in ("judge", "evidence", "a2a", "agents"):
-            assert "datetime" not in _imports(path) and "time" not in _imports(path), path
+            if path.name == "acceptance.py":
+                # date.fromisoformat parses the supplied policy date; clock reads remain banned above.
+                assert "time" not in _imports(path)
+            else:
+                assert "datetime" not in _imports(path) and "time" not in _imports(path), path
     import inspect
 
     for name, spec in TOOLS.items():

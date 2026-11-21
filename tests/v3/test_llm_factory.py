@@ -95,7 +95,8 @@ def test_anthropic_missing_key_strict_stops_lenient_runs_rule(tmp_path, caplog):
 def test_ollama_vendor_is_never_swapped_unless_asked():
     env = {"ANTHROPIC_API_KEY": KEY}
     factory = build_llm_factory("anthropic", env, strict=True)
-    assert factory("vendor", "org_namhae", OLLAMA_MODEL) is None  # 주소가 없으면 규칙 정책
+    with pytest.raises(LlmConfigError, match="Ollama"):
+        factory("vendor", "org_namhae", OLLAMA_MODEL)
     everyone = build_llm_factory("anthropic", {**env, "V3_LLM_ALL_VENDORS": "1"}, strict=True)
     assert isinstance(everyone("vendor", "org_namhae", OLLAMA_MODEL), AnthropicChat)
     with_ollama = build_llm_factory(
@@ -106,10 +107,8 @@ def test_ollama_vendor_is_never_swapped_unless_asked():
     local = with_ollama("vendor", "org_namhae", OLLAMA_MODEL)
     assert isinstance(local, OllamaChat) and local.model == "qwen2.5:7b"
     # foundry에서도 V3_LLM_ALL_VENDORS=1이면 Ollama 주소가 없는 업체를 Foundry가 맡는다
-    assert (
+    with pytest.raises(LlmConfigError, match="Ollama"):
         build_llm_factory("foundry", FOUNDRY, strict=True)("vendor", "org_namhae", OLLAMA_MODEL)
-        is None
-    )
     foundry = build_llm_factory("foundry", {**FOUNDRY, "V3_LLM_ALL_VENDORS": "1"}, strict=True)
     assert isinstance(foundry("vendor", "org_namhae", OLLAMA_MODEL), FoundryChat)
     # 주 모델이 없으면(rule) 이 설정도 아무것도 바꾸지 않는다(모두 규칙 정책)
@@ -157,7 +156,8 @@ def test_devserver_uses_the_shared_builder_and_stops_on_missing_key(tmp_path):
     )
     company = app.llm_for("company", "org_hanbit", None)
     assert (company.provider, company.model) == ("anthropic", ANTHROPIC_DEFAULT_MODEL)
-    assert app.llm_for("vendor", "org_namhae", OLLAMA_MODEL).provider == "rule"
+    with pytest.raises(LlmConfigError, match="Ollama"):
+        app.llm_for("vendor", "org_namhae", OLLAMA_MODEL)
     with pytest.raises(SystemExit, match="V3_LLM"):
         devserver.build_app(llm="gpt", today=TODAY, env={})
 

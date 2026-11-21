@@ -299,8 +299,12 @@ def test_demo_view_reads_demo_orgs_only_and_only_with_get(world):
     streams = client.get(f"/api/v3/orgs/{HANBIT}/streams", headers=demo(HANBIT))
     assert streams.status_code == 200 and len(streams.json()) == 4
     sessions = client.get("/api/v3/sessions", headers=demo(HANBIT)).json()
-    # 맨 앞은 승인 대기의 시연 진단, 그 뒤는 확정하고 검수까지 마친 지난 거래(실적 리포트용)
-    assert [s["status"] for s in sessions] == ["awaiting_approval", "confirmed"]
+    # 맨 앞은 승인 대기의 시연 진단, 그 뒤는 확정하고 검수까지 마친 지난 거래(실적 리포트용). 지난 거래에서도
+    # 미소환경은 노선 밖 운반비가 정해지지 않아 계약 검토 담당이 막으므로 진단 전체는 승인 대기로 남는다
+    assert [s["status"] for s in sessions] == ["awaiting_approval", "awaiting_approval"]
+    past = client.get(f"/api/v3/sessions/{sessions[1]['id']}", headers=demo(HANBIT)).json()
+    settled = {t["vendorOrgId"]: t["status"] for t in past["threads"] if t["messages"]}
+    assert settled[SAEGIL] == "confirmed" and settled[MISO] == "agreed"
     view = client.get(f"/api/v3/sessions/{sessions[0]['id']}", headers=demo(HANBIT))
     assert view.status_code == 200 and view.json()["session"]["status"] == "awaiting_approval"
     assert client.get("/api/v3/sessions", headers=demo(SAEGIL)).status_code == 200
@@ -387,7 +391,7 @@ def make_new_vendor(client):
     return user, org
 
 
-def test_new_emitter_discovers_seed_vendors_and_a_signed_up_vendor(world):
+def test_new_emitter_discovers_the_signed_up_vendor_but_not_demo_vendors(world):
     client, _, _ = world
     empty_user = signup(client, "empty-vendor@example.com")
     empty_vendor = new_org(client, empty_user, "(주)빈프로필", "vendor")["id"]
@@ -419,7 +423,7 @@ def test_new_emitter_discovers_seed_vendors_and_a_signed_up_vendor(world):
     session_id = created.json()["session"]["id"]
     view = answer_until_settled(client, session_id, headers)
     vendors = {thread["vendorOrgId"] for thread in view["threads"]}
-    assert {SAEGIL, NAMHAE, MISO, vendor} <= vendors
+    assert vendors == {vendor}
     assert empty_vendor not in vendors  # 허가 품목도 매입 기준도 없는 업체는 탐색에 나오지 않는다
     opened = next(t for t in view["threads"] if t["vendorOrgId"] == vendor)
     assert opened["status"] != "not_opened", opened["statusReason"]
@@ -445,10 +449,10 @@ def test_new_emitter_discovers_seed_vendors_and_a_signed_up_vendor(world):
         found = client.get("/api/v3/evidence", params={"q": "런너"}, headers=demo(demo_vendor))
         assert all(org not in item["evidence"]["id"] for item in found.json())
         assert all(org not in item["evidence"].get("access", []) for item in found.json())
-    # 시연 업체의 허가증 근거는 실제 배출 기업에도 열렸지만 체험하기에서도 그대로 보인다
+    # 시연 업체의 허가증 근거는 시연에서 볼 수 있고 실제 배출 기업에는 열리지 않는다.
     permit = client.get(f"/api/v3/vendors/{SAEGIL}", headers=demo(SAEGIL)).json()["permits"][0]
     evidence_id = permit["evidence"][0]
-    assert client.get(f"/api/v3/evidence/{evidence_id}", headers=headers).status_code == 200
+    assert client.get(f"/api/v3/evidence/{evidence_id}", headers=headers).status_code in (403, 404)
     shown = client.get(f"/api/v3/evidence/{evidence_id}", headers=demo(SAEGIL))
     assert shown.status_code == 200 and org not in shown.text
     hanbit = client.get("/api/v3/sessions", headers=demo(HANBIT)).json()[0]["id"]
@@ -485,7 +489,8 @@ def test_demo_reset_keeps_real_data_and_leaves_a_demo_diagnosis(world):
 
     hanbit = client.get("/api/v3/sessions", headers=demo(HANBIT)).json()
     assert hanbit[0]["id"] == reset.json()["demoSessionId"]
-    assert [s["status"] for s in hanbit] == ["awaiting_approval", "confirmed"]
+    # 지난 거래도 미소환경 대화는 운반비 미정으로 막혀 진단 전체는 승인 대기다(확정한 대화의 검수는 있다)
+    assert [s["status"] for s in hanbit] == ["awaiting_approval", "awaiting_approval"]
     report = client.get(f"/api/v3/orgs/{HANBIT}/report", headers=demo(HANBIT)).json()
     assert "records" in report, report
     assert report["records"] and report["totals"]["kg"]["value"] > 0

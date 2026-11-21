@@ -14,7 +14,8 @@ EMITTER = "org_no_location"
 
 def test_vendors_answer_when_the_emitter_has_no_location():
     app = make_app()
-    app.store.put_org({"id": EMITTER, "name": "(주)위치없음", "role": "emitter", "demo": False})
+    # 시연 업체와만 대화할 수 있으므로(실제·시연 조직 분리) 이 배출 기업도 시연 조직이다
+    app.store.put_org({"id": EMITTER, "name": "(주)위치없음", "role": "emitter", "demo": True})
     service.update_stream(
         app,
         EMITTER,
@@ -37,11 +38,15 @@ def test_vendors_answer_when_the_emitter_has_no_location():
             break
         for question in view["questions"]:
             if not question["answered"]:
-                service.answer_question(app, session_id, question["id"], "모름", EMITTER)
+                # 현행 처리비는 가정값으로 채우지 않으므로 담당자가 계약대로 답한다(가상 값)
+                value = 250 if question["field"] == "currentCost" else "모름"
+                service.answer_question(app, session_id, question["id"], value, EMITTER)
         view = service.run_session(app, session_id, EMITTER)
     assert view["session"]["status"] == "awaiting_approval"
     assert view["threads"] and all(t["status"] != "handoff" for t in view["threads"])
     codes = [
-        code for entry in app.store.list_activity(session_id, 0) for code in entry.get("codes") or []
+        code
+        for entry in app.store.list_activity(session_id, 0)
+        for code in entry.get("codes") or []
     ]
     assert "TOO_MANY_TOOL_ROUNDS" not in codes

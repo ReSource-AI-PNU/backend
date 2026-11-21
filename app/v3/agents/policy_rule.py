@@ -12,6 +12,7 @@ import re
 from typing import Any
 
 from app.v3.evidence.render import format_value
+from app.v3.judge.common import PRIVATE_CHECKS
 from app.v3.textutil import josa, particle
 
 PROVIDER = "rule"
@@ -362,11 +363,7 @@ class _Vendor(_Base):
 
         offered = set(state.get("offered") or [])
         todo = [sid for sid in acceptable if sid not in offered]
-        firm = [
-            sid
-            for sid in todo
-            if (self.result("judge_route", streamId=sid) or {}).get("status") == "calculated"
-        ]
+        firm = [sid for sid in todo if self._firm(sid)]
         if firm:
             rest = [sid for sid in todo if sid not in firm]
             return self.terms("offer", firm, acceptable, excluded, rest)
@@ -405,6 +402,18 @@ class _Vendor(_Base):
             "asks": need,
         }
 
+    def _firm(self, stream_id: str) -> bool:
+        """조건 없이 제안할 수 있는가. 배출 기업만 보는 검사(현행 처리비·탄소, PRIVATE_CHECKS)는 업체가 내거는
+        조건이 아니므로 그것만 남은 conditional은 확정 제안이다(조건 목록 _conditions도 같은 검사를 뺀다)."""
+        route = self.result("judge_route", streamId=stream_id) or {}
+        if route.get("status") == "calculated":
+            return True
+        return route.get("status") == "conditional" and all(
+            check.get("key") in PRIVATE_CHECKS
+            for check in route.get("checks") or []
+            if check.get("status") != "met"
+        )
+
     def _criterion(self, stream_id: str) -> dict[str, str]:
         route = self.result("judge_route", streamId=stream_id) or {}
         cid = (route.get("output") or {}).get("criterionId")
@@ -417,6 +426,8 @@ class _Vendor(_Base):
         stream = self.streams[stream_id]
         out = []
         for check in route.get("checks") or []:
+            if check.get("key") in PRIVATE_CHECKS:
+                continue
             if check.get("status") != "conditional":
                 continue
             key = _BASIS_KEYS.get(check.get("key"), check.get("key"))

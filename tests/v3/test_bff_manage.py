@@ -18,6 +18,7 @@ from app.v3 import accounts, api, service
 from app.v3.account_store import InMemoryAccounts
 from app.v3.evidence.registry import InMemoryRegistry
 from app.v3.store import InMemoryStore
+from tests.v3.runtime_fixtures import MISO, NAMHAE
 from tests.v3.test_bff_accounts import (
     ADMIN,
     HANBIT,
@@ -273,6 +274,8 @@ def _emitter_with_session(client, email="gone-emitter@example.com", material="PP
             "form": "가공 전",
             "monthlyKg": 800,
             "bulkDensityKgPerM3": 250,
+            # 현행 처리비가 없으면 가정값으로 채우지 않고 배정에서 빼므로(2026-11-21) 계약대로 적어 둔다(가상)
+            "currentTreatment": {"method": "소각", "unitCostKrwPerKg": 200},
         },
     )
     assert put.status_code == 200, put.text
@@ -414,7 +417,8 @@ def test_deleting_a_vendor_closes_open_threads_and_keeps_other_orgs_consistent(w
     fresh = client.post("/api/v3/sessions", headers=headers, json={}).json()["session"]["id"]
     again = answer_until_settled(client, fresh, headers)
     assert vendor not in {t["vendorOrgId"] for t in again["threads"]}
-    assert {SAEGIL} <= {t["vendorOrgId"] for t in again["threads"]}
+    # 실제 배출 기업은 시연 업체와 거래 후보가 되지 않는다(2026-11-21, 실제·시연 조직 양방향 분리)
+    assert not {SAEGIL, NAMHAE, MISO} & {t["vendorOrgId"] for t in again["threads"]}
 
 
 def _only_vendor_for_pc(client):
@@ -437,6 +441,8 @@ def _only_vendor_for_pc(client):
         ],
         "fleet": {"depot": [128.97, 35.09], "capacityKg": 3000, "capacityM3": 15, "costPerKm": 900},
         "guardrails": {"floorPriceKrwPerKg": 100, "ceilingPriceKrwPerKg": 300},
+        # 운반비 조건이 없으면 필수 운반비 미정이라 계약 검토 담당이 확정을 막는다(2026-11-21). 단가에 포함(가상)
+        "transport": {"paidBy": "vendor"},
     }
     saved = client.put(f"/api/v3/vendors/{org}", headers=bff(user, org), json=profile)
     assert saved.status_code == 200, saved.text

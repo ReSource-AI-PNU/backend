@@ -387,6 +387,13 @@ def _register_volumes(app: App, scan: dict[str, Any]) -> None:
                     "scanId": scan["id"],
                     "pileId": pile["id"],
                     "volumeRangeM3": [lo, hi],
+                    "rangeMethod": pile.get(
+                        "rangeMethod", "legacy model scenario; uncertainty not validated"
+                    ),
+                    "evidenceClass": "assumption",
+                    "caveats": [
+                        "부피 범위는 모델의 크기 퍼짐과 가림 시나리오이며 실측으로 검증한 신뢰구간이 아닙니다."
+                    ],
                     "coverage": pile["coverage"],
                     "heightM": pile["heightM"],
                     "sizeM": pile["sizeM"],
@@ -427,7 +434,12 @@ def _density(
     piles: dict[str, dict[str, Any]],
     day: str,
 ) -> dict[str, Any] | None:
-    """폐기물 하나의 무게 기준: 계량 > 회사가 적은 겉보기 밀도 > 필름 문헌값 > 없음."""
+    """폐기물 하나의 무게 기준: 계량 > 회사가 적은 겉보기 밀도 > 보류.
+
+    EPA 2016 p.5의 loose/compacted는 서로 다른 상태이며 오차 구간이 아니다.
+    원문 p.1은 2차 자료 편집임을 밝히며 LDPE의 원출처 13은 업체 글이다.
+    재질·압축 상태가 확인되지 않은 필름에 자동 적용하지 않는다.
+    """
     org = scan["orgId"]
     sid = stream["id"]
     weighed = [
@@ -491,34 +503,6 @@ def _density(
             "highKgM3": float(declared),
             "label": "회사가 적은 겉보기 밀도",
             "evidence": [hid],
-        }
-    if "필름" in str(stream.get("form") or "") or "필름" in str(stream.get("name") or ""):
-        refs, values = [], []
-        for key, lb, text in EPA_FILM:
-            value = round(lb * LB_PER_YD3, 1)
-            values.append(value)
-            refs.append(
-                _put(
-                    app,
-                    Evidence(
-                        id=ids.ref_id("EPA부피무게환산", f"LDPE필름-{key}", "2016-04"),
-                        kind="ref",
-                        label=f"필름 겉보기 밀도({key})",
-                        value=value,
-                        unit="kg/m³",
-                        excerpt=f"{text} = {_fmt(value, 1)} kg/m³",
-                        source=EPA_SOURCE,
-                        as_of="2016-04-19",
-                        access=(PUBLIC,),
-                    ),
-                )
-            )
-        return {
-            "basis": "ref",
-            "lowKgM3": min(values),
-            "highKgM3": max(values),
-            "label": "필름 문헌값(흩어짐~압축)",
-            "evidence": refs,
         }
     return None
 
@@ -864,7 +848,7 @@ def view(app: App, scan: dict[str, Any]) -> dict[str, Any]:
                 "density": extra.get("density"),
                 "weight": extra.get("weight"),
                 "weighedKg": extra.get("weighedKg"),
-                "note": "바닥 자국의 일부만 찍혀 부피 범위가 넓습니다." if pile["coverage"] < LOW_COVERAGE else None,
+                "note": "무게 산정 보류: 이 재질·압축 상태의 겉보기 밀도 또는 같은 더미의 계량값이 필요합니다." if sid and not extra.get("weight") else ("부피 범위는 관측·가림 시나리오이며 검증된 신뢰구간이 아닙니다." if pile["coverage"] < LOW_COVERAGE else None),
                 "excluded": pid in excluded,
             }
         )  # fmt: skip

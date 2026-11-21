@@ -96,4 +96,5 @@ def test_rule_policy_asks_for_tools_before_writing():
             assert set(call["arguments"]) <= {"streamId", "streamIds"}
     written = [o for _, _, o in seen if o["text"]]
     assert written and all(find_numbers(o["text"]) == [] for o in written)
-    assert {o["type"] for o in written} >= {"inquiry", "offer", "question", "conditional"}
+    # The fixture lacks verified pickup information, so the offer can be conditional.
+    assert {o["type"] for o in written} >= {"inquiry", "conditional"}

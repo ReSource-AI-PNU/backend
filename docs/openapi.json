@@ -3403,6 +3403,46 @@
         }
       }
     },
+    "/api/v3/orgs/{org_id}/report": {
+      "get": {
+        "tags": [
+          "v3"
+        ],
+        "summary": "Org Report",
+        "operationId": "org_report_api_v3_orgs__org_id__report_get",
+        "parameters": [
+          {
+            "name": "org_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Org Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v3/orgs/{org_id}/streams/{stream_id}": {
       "put": {
         "tags": [
@@ -3606,6 +3646,46 @@
         }
       }
     },
+    "/api/v3/sessions/{session_id}/quote-request": {
+      "get": {
+        "tags": [
+          "v3"
+        ],
+        "summary": "Quote Request",
+        "operationId": "quote_request_api_v3_sessions__session_id__quote_request_get",
+        "parameters": [
+          {
+            "name": "session_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Session Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v3/sessions/{session_id}/run": {
       "post": {
         "tags": [
@@ -3766,6 +3846,47 @@
         }
       }
     },
+    "/api/v3/sessions/{session_id}/permit-checks": {
+      "post": {
+        "tags": [
+          "v3"
+        ],
+        "summary": "Record Permit Check",
+        "description": "배출 기업 담당자가 업체가 올린 허가증 원문에서 품목과 처리 방법을 대조한 기록(service.record_permit_check).",
+        "operationId": "record_permit_check_api_v3_sessions__session_id__permit_checks_post",
+        "parameters": [
+          {
+            "name": "session_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Session Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v3/sessions/{session_id}/corrections": {
       "post": {
         "tags": [
@@ -3821,6 +3942,55 @@
             "schema": {
               "type": "string",
               "title": "Session Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v3/sessions/{session_id}/outcomes/{inspection_id}": {
+      "put": {
+        "tags": [
+          "v3"
+        ],
+        "summary": "Correct Outcome",
+        "operationId": "correct_outcome_api_v3_sessions__session_id__outcomes__inspection_id__put",
+        "parameters": [
+          {
+            "name": "session_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Session Id"
+            }
+          },
+          {
+            "name": "inspection_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Inspection Id"
             }
           }
         ],
@@ -3969,6 +4139,290 @@
         ],
         "summary": "Upload Media",
         "operationId": "upload_media_api_v3_intake_media_post",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v3/intake/scan": {
+      "post": {
+        "tags": [
+          "v3"
+        ],
+        "summary": "Upload Scan",
+        "operationId": "upload_scan_api_v3_intake_scan_post",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v3/orgs/{org_id}/scans": {
+      "get": {
+        "tags": [
+          "v3"
+        ],
+        "summary": "Scan List",
+        "operationId": "scan_list_api_v3_orgs__org_id__scans_get",
+        "parameters": [
+          {
+            "name": "org_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Org Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v3/orgs/{org_id}/scans/{scan_id}": {
+      "get": {
+        "tags": [
+          "v3"
+        ],
+        "summary": "Scan View",
+        "operationId": "scan_view_api_v3_orgs__org_id__scans__scan_id__get",
+        "parameters": [
+          {
+            "name": "org_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Org Id"
+            }
+          },
+          {
+            "name": "scan_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Scan Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v3/orgs/{org_id}/scans/{scan_id}/points": {
+      "get": {
+        "tags": [
+          "v3"
+        ],
+        "summary": "Scan Points",
+        "operationId": "scan_points_api_v3_orgs__org_id__scans__scan_id__points_get",
+        "parameters": [
+          {
+            "name": "org_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Org Id"
+            }
+          },
+          {
+            "name": "scan_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Scan Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v3/orgs/{org_id}/scans/{scan_id}/piles/{pile_id}": {
+      "put": {
+        "tags": [
+          "v3"
+        ],
+        "summary": "Scan Pile",
+        "operationId": "scan_pile_api_v3_orgs__org_id__scans__scan_id__piles__pile_id__put",
+        "parameters": [
+          {
+            "name": "org_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Org Id"
+            }
+          },
+          {
+            "name": "scan_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Scan Id"
+            }
+          },
+          {
+            "name": "pile_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Pile Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v3/orgs/{org_id}/scans/{scan_id}/layout": {
+      "put": {
+        "tags": [
+          "v3"
+        ],
+        "summary": "Scan Layout",
+        "operationId": "scan_layout_api_v3_orgs__org_id__scans__scan_id__layout_put",
+        "parameters": [
+          {
+            "name": "org_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Org Id"
+            }
+          },
+          {
+            "name": "scan_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Scan Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v3/intake/criteria/confirm": {
+      "post": {
+        "tags": [
+          "v3"
+        ],
+        "summary": "Confirm Criteria",
+        "description": "매입 기준표 검토 화면에서 담당자가 확인·고친 행을 저장한다(service.confirm_criteria).",
+        "operationId": "confirm_criteria_api_v3_intake_criteria_confirm_post",
         "responses": {
           "200": {
             "description": "Successful Response",

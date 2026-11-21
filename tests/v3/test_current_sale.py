@@ -8,6 +8,7 @@ import pytest
 
 from app.v3 import current_cost, service
 from app.v3.agents import questions
+from app.v3.judge import route
 from app.v3.judge.common import current_process
 from tests.v3.runtime_fixtures import HANBIT, SAEGIL, make_app, to_approval
 
@@ -42,9 +43,13 @@ def test_selling_now_is_the_baseline_and_the_gain_is_only_the_price_difference()
         sprue["monthlyAfter"]["value"] - 300 * SPRUE_KG
     )
     assert sprue["currentAssumed"] is False
-    # 재활용 업체를 바꾸는 것이라 처리 방식의 탄소 변화는 0이다(현행 = 재활용). 수거 운행 배출은 따로 더한다
-    assert sprue["carbonProcess"]["value"] == 0
-    assert sprue["carbon"]["value"] == pytest.approx(sprue["carbonTransport"]["value"])
+    # 지금 판매는 재활용으로 견준다(현행 처리 방식은 확인됨). 원문을 확인한 처리 배출계수가 없어 탄소는 0으로
+    # 두지 않고 보류한다
+    stream = app.store.get_stream("st_sprue", HANBIT)
+    assert current_process(route.current_cost(None, stream)[3]) == "recycle"
+    assert sprue["carbonProcess"] is None and sprue["carbon"] is None
+    carbon = next(c for c in sprue["checks"] if c["key"] == "carbon")
+    assert carbon["status"] == "conditional" and "현행 처리 방식" not in carbon["text"]
 
 
 def test_a_buyer_paying_less_than_today_is_not_recommended():
@@ -127,10 +132,14 @@ def test_a_paying_method_left_in_the_form_is_stored_as_selling():
     stream = app.store.get_stream("st_sprue", HANBIT)
     stream["currentTreatment"]["method"] = "혼합 소각"
     app.store.put_stream(stream)
-    assert assignment(to_approval(app))["carbonProcess"]["value"] == 0
+    assert current_process(route.current_cost(None, stream)[3]) == "recycle"
+    # 원문 확인 배출계수가 없어 처리 탄소는 보류(0으로도, 소각 대비 감축으로도 두지 않는다)
+    assert assignment(to_approval(app))["carbonProcess"] is None
 
 
 def test_carbon_reads_selling_as_recycling_but_leaves_other_methods_alone():
     assert current_process(current_cost.SALE_METHOD) == "recycle"
-    assert current_process("위탁 재활용") is None
+    # 처리 방법 이름에 재활용·열분해가 적혀 있으면 그대로 읽는다. 무엇인지 모르는 이름은 읽지 않는다
+    assert current_process("위탁 재활용") == "recycle"
+    assert current_process("위탁 처리") is None
     assert current_process("혼합 소각") == "incinerate"

@@ -179,7 +179,8 @@ def test_every_named_claim_in_the_view_follows_the_rules(demo):
     sprue = next(a for a in result["assignments"] if a["streamId"] == "st_sprue")
     assert sprue["unitPrice"]["label"] == "매입 단가"
     assert sprue["difference"]["label"] == "현행 대비 차이"
-    assert sprue["carbon"]["role"] == "carbon"
+    # 시드 배출계수는 원문 경계 미확인이라 탄소는 산정 보류다(이름 붙은 0을 만들지 않는다)
+    assert sprue["carbon"] is None
     purge = next(a for a in result["assignments"] if a["streamId"] == "st_purge")
     assert purge["unitPrice"]["role"] == "treatmentFee" and purge["unitPrice"]["value"] < 0
     assert result["totals"]["difference"]["label"] == "현행 대비 차이 합계"
@@ -200,7 +201,8 @@ def test_calc_evidence_has_korean_labels(demo):
         assert evidence.label.endswith(" 계산"), evidence.label
         assert evidence.label.isascii() is False
     labels = {e.label for e in calc}
-    assert "스프루·런너 현행 대비 차이 계산" in labels
+    # 작업비 미확인이라 잠정 금액이라는 꼬리표가 " 계산" 앞에 붙는다
+    assert "스프루·런너 현행 대비 차이(미확인 비용 반영 전 잠정 금액) 계산" in labels
     assert not labels & {"unitPrice", "s0Difference", "monthlyAfter", "totalNow"}
 
 
@@ -221,7 +223,9 @@ def test_graph_criterion_nodes_are_named_by_material_grade_form(demo):
 def test_assumptions_are_objects_with_names_and_values(demo):
     app, waiting, _ = demo
     assumed = waiting["result"]["assumptions"]
-    assert assumed and all(set(a) == {"id", "label", "value", "unit"} for a in assumed)
+    # 근거 없는 가정값을 새 계산에 쓰지 않으므로 시연 결과에 쓴 가정값이 없다
+    assert assumed == []
+    assert all(set(a) == {"id", "label", "value", "unit"} for a in assumed)
     for item in assumed:
         evidence = app.registry.get(item["id"], HANBIT)
         assert evidence.kind == "assumption" and item["label"] == evidence.label

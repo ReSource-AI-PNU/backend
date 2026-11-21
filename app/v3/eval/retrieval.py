@@ -30,6 +30,7 @@ S1의 동의어 표와 무게는 개발 질의(dev)만 보고 정했다. 시험 
 from __future__ import annotations
 
 import argparse
+import functools
 import hashlib
 import itertools
 import json
@@ -110,14 +111,44 @@ Ranking = list[tuple[str, float]]  # (근거 ID, 점수), 점수 내림차순
 
 
 def load_queries(split: str) -> list[dict[str, Any]]:
-    """split: dev | test | all. 질의마다 split을 붙여 돌려준다."""
+    """split: dev | test | all. 질의마다 split을 붙여 돌려준다.
+
+    정답 근거 ID는 판(@ 뒤)까지 적혀 있다. 말뭉치에서 같은 근거가 새 판으로 바뀌었으면(예: 2026-11-21 가정값을
+    새 계산에 쓰지 않는다는 표시를 단 `@v3-no-unapproved-defaults-20261121`) 그 새 판을 정답으로 본다(current_gold).
+    동결된 시험셋 파일은 고치지 않는다.
+    """
     names = ["dev", "test"] if split == "all" else [split]
     out: list[dict[str, Any]] = []
     for name in names:
         if name not in QUERY_FILES:
             raise ValueError(f"split은 dev, test, all 가운데 하나다: {split}")
         data = json.loads(QUERY_FILES[name].read_text(encoding="utf-8"))
-        out.extend({**q, "split": name} for q in data["queries"])
+        out.extend(
+            {**q, "relevant": current_gold(q.get("relevant") or {}), "split": name}
+            for q in data["queries"]
+        )
+    return out
+
+
+@functools.lru_cache(maxsize=1)
+def _corpus_versions() -> tuple[frozenset[str], dict[str, str]]:
+    """(말뭉치 근거 ID들, 판을 뗀 ID → 말뭉치의 지금 판 ID). 판이 둘 이상인 근거는 이어 주지 않는다."""
+    known = frozenset(e.id for e in corpus(corpus_registry()))
+    bases: dict[str, list[str]] = {}
+    for eid in known:
+        if "@" in eid:
+            bases.setdefault(eid.rsplit("@", 1)[0], []).append(eid)
+    return known, {base: ids[0] for base, ids in bases.items() if len(ids) == 1}
+
+
+def current_gold(relevant: dict[str, int]) -> dict[str, int]:
+    """말뭉치에 없는 정답 ID를 같은 근거의 지금 판 ID로 바꾼다. 이어 줄 판이 없으면 그대로 둔다(시험이 잡는다)."""
+    known, latest = _corpus_versions()
+    out: dict[str, int] = {}
+    for eid, grade in relevant.items():
+        if eid not in known and "@" in eid:
+            eid = latest.get(eid.rsplit("@", 1)[0], eid)
+        out[eid] = max(grade, out.get(eid, 0))
     return out
 
 

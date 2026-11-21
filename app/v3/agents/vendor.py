@@ -40,13 +40,14 @@ from app.v3.agents.draft import (
     turn_schema,
 )
 from app.v3.agents.llm import LLM
+from app.v3.agents.mandate import prompt_mandate
 from app.v3.agents.pool import ClaimPool
 from app.v3.evidence.units import UnitError, convert
 from app.v3.evidence.validator import validate_message
 from app.v3.fleet import INFO_KEYS
 from app.v3.judge import negotiate
 from app.v3.judge import pickup as pickup_terms
-from app.v3.judge.common import Recorder, vendor_distance, without_emitter_only
+from app.v3.judge.common import Recorder, haversine_km, vendor_distance, without_emitter_only
 from app.v3.untrusted import counterparty_stream, org_label, stream_label
 
 logger = logging.getLogger(__name__)
@@ -154,6 +155,7 @@ EXAMPLES = (
 
 SYSTEM_PROMPT = "\n".join(
     [
+        *prompt_mandate("vendor"),
         "당신은 폐기물 처리 업체를 대변하는 업체 측 에이전트다.",
         "회사 측 에이전트의 문의에 question, answer, offer, conditional, counter, decline으로 답한다.",
         "",
@@ -1120,6 +1122,11 @@ class VendorAgent:
             emitter.get("region"),
             fleet,
             self._pickup_km(vendor_org, fleet, emitter),
+            haversine_km(emitter["location"], fleet["depot"])
+            if fleet.get("maxPickupKm") is not None
+            and emitter.get("location")
+            and fleet.get("depot")
+            else None,
         )
         haul_refs = _haul_claims(pool, haul, vendor_org)
         if not any(m.seq == message.get("seq") for m in thread.messages):

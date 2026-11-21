@@ -107,6 +107,9 @@ def read_result(payload: Any) -> dict[str, Any]:
                 ),
                 "volumeM3": round(volume, 4),
                 "volumeRangeM3": [round(lo, 4), round(hi, 4)],
+                "rangeMethod": str(
+                    raw.get("rangeMethod") or "legacy model scenario; uncertainty not validated"
+                ),
                 "coverage": round(_num(raw.get("coverage"), "coverage", low=0, high=1), 3),
                 "points": int(_num(raw.get("points", 0), "points", low=0, high=1e8)),
                 "thumbnail": _thumbnail(raw.get("thumbnail")),
