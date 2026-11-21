@@ -12,6 +12,7 @@ import re
 from typing import Any
 
 from app.v3.evidence.render import format_value
+from app.v3.judge.common import PRIVATE_CHECKS
 from app.v3.textutil import josa, particle
 
 PROVIDER = "rule"
@@ -417,6 +418,8 @@ class _Vendor(_Base):
         stream = self.streams[stream_id]
         out = []
         for check in route.get("checks") or []:
+            if check.get("key") in PRIVATE_CHECKS:
+                continue
             if check.get("status") != "conditional":
                 continue
             key = _BASIS_KEYS.get(check.get("key"), check.get("key"))

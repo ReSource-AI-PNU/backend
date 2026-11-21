@@ -14,13 +14,13 @@ import pytest
 from app.v3 import devserver, feedback, ids, outcome_carbon, service
 from app.v3.evidence.model import Evidence
 from app.v3.evidence.validator import validate_text
+from tests.v3.evidence_fixtures import numerical_history_app as make_app
 from tests.v3.runtime_fixtures import (
     DAON,
     HANBIT,
     MISO,
     SAEGIL,
     approve_all,
-    make_app,
     thread_of,
     to_approval,
 )
@@ -366,8 +366,8 @@ def test_legacy_date_keyed_record_is_still_read_once_and_kept(confirmed):
     assert totals(app)[:3] == (2, 680, 204000)
 
 
-def test_legacy_record_is_rebuilt_from_the_agreement_and_correction_keeps_it(confirmed):
-    """기준이 없는 이전 기록은 확정한 합의의 계산으로 기준을 되살리고(지금 설정이 아니다), 정정해도 그 기준을 잇는다."""
+def test_legacy_without_computed_agreement_stays_held_after_correction(confirmed):
+    """합의에 탄소 계산이 없으면 오늘 설정으로 과거 수치를 만들지 않는다."""
     app, view = confirmed
     sid = view["session"]["id"]
     key, _ = _legacy_outcome(app, view, "2026-11-15", 500, 300)
@@ -379,9 +379,7 @@ def test_legacy_record_is_rebuilt_from_the_agreement_and_correction_keeps_it(con
         HANBIT,
     )
     (row,) = service.get_report(app, HANBIT, HANBIT)["records"]
-    assert row["carbonBasis"]["status"] == "reconstructed" and row["currentMethod"] == "혼합 소각"
-    assert row["carbon"] is not None and ok(app, row["carbon"])
-    before = row["carbon"]["value"]
+    assert row["carbonBasis"]["status"] == "unverified" and row["carbon"] is None
     service.correct_outcome(
         app,
         sid,
@@ -394,9 +392,8 @@ def test_legacy_record_is_rebuilt_from_the_agreement_and_correction_keeps_it(con
         SAEGIL,
     )
     (row,) = service.get_report(app, HANBIT, HANBIT)["records"]
-    assert row["revision"] == 2 and row["carbonBasis"]["status"] == "reconstructed"
-    assert row["currentMethod"] == "혼합 소각"
-    assert abs(row["carbon"]["value"] - before * 480 / 500) <= 1e-6
+    assert row["revision"] == 2 and row["carbonBasis"]["status"] == "unverified"
+    assert row["carbon"] is None and row["amount"]["value"] == 480 * 300
 
 
 def test_demo_history_still_records_its_inspections():

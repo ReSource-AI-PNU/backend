@@ -175,8 +175,11 @@ def cost_carbon(
             charge["evidence"],
         )
     else:
-        transport = _estimated_transport(
-            rec, output, vendor, origin, pickupsPerMonth, distance_provider
+        output["transportPending"] = True
+        rec.check(
+            "transport",
+            "conditional",
+            "운반비 견적 미정입니다. 가정 운행 단가를 거래 비용으로 대입하지 않았으며 월 손익은 이 비용 반영 전입니다.",
         )
     borne = transport if (transport is not None and paid_by == "emitter") else 0.0
     labor, labor_ev, hours, rate = labor_cost(rec, stream)
@@ -197,13 +200,17 @@ def cost_carbon(
             "monthlyLabor", labor, "원/월", "월 작업 시간 × 시간당 인건비", labor_ev, private=True
         )
     after = revenue - borne - (labor or 0.0)
+    output["costPending"] = labor is None or output["transportPending"]
     rec.number(
         "monthlyAfter",
         after,
         "원/월",
-        "월 매입액 − 배출 기업이 내는 운반비 − 전처리 인건비",
+        "월 매입액 − 확인된 운반비 − 확인된 전처리 인건비"
+        + (
+            ". 미확인 비용 반영 전 잠정 금액이며 순손익이 아닙니다" if output["costPending"] else ""
+        ),
         [*crit_ev, *labor_ev],
-        private=labor is not None,
+        private=True,
     )
     output["current"], _ = baseline(rec, stream, kg, after)
 

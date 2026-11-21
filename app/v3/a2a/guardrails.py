@@ -17,6 +17,7 @@ term_words.py에 있고, 해당하는 terms 항목이나 claim이 없으면 UNBA
 
 from __future__ import annotations
 
+import math
 from collections.abc import Iterable
 from dataclasses import dataclass, field
 from typing import Any
@@ -51,7 +52,22 @@ class GuardrailViolation(ValueError):
 def _number(value: Any) -> float | None:
     if isinstance(value, bool) or not isinstance(value, (int, float)):
         return None
-    return float(value)
+    return float(value) if math.isfinite(value) else None
+
+
+def validate_policy(guardrails: dict[str, Any]) -> None:
+    """null is an unset bound; signed disposal prices are valid. Never repair conflicts."""
+    for key in ("floorPriceKrwPerKg", "ceilingPriceKrwPerKg", "minPickupsPerMonth"):
+        value = guardrails.get(key)
+        if value is not None and _number(value) is None:
+            raise ValueError("단가와 수거 횟수는 유한한 숫자 또는 미입력이어야 합니다.")
+    floor = _number(guardrails.get("floorPriceKrwPerKg"))
+    ceiling = _number(guardrails.get("ceilingPriceKrwPerKg"))
+    if floor is not None and ceiling is not None and floor > ceiling:
+        raise ValueError("최저 단가는 최고 단가보다 클 수 없습니다. 기존 설정은 유지됩니다.")
+    minimum = _number(guardrails.get("minPickupsPerMonth"))
+    if minimum is not None and minimum <= 0:
+        raise ValueError("월 수거 횟수는 양수여야 합니다.")
 
 
 def _norm(text: Any) -> str:
@@ -63,6 +79,15 @@ def check_terms(guardrails: dict[str, Any] | None, terms: dict[str, Any] | None)
     guardrails = guardrails or {}
     terms = terms or {}
     found: list[Violation] = []
+
+    try:
+        validate_policy(guardrails)
+    except ValueError:
+        return [
+            Violation("INVALID_POLICY", "업체 협상 범위가 유효하지 않아 담당자 수정이 필요합니다.")
+        ]
+    if "unitPriceKrwPerKg" in terms and _number(terms["unitPriceKrwPerKg"]) is None:
+        return [Violation("INVALID_PRICE", "제안 단가를 확인할 수 없어 진행하지 않습니다.")]
 
     price = _number(terms.get("unitPriceKrwPerKg"))
     floor = _number(guardrails.get("floorPriceKrwPerKg"))

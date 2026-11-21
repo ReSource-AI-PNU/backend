@@ -48,7 +48,6 @@ from tests.v3.runtime_fixtures import (
     approve_all,
     briefing_of,
     draft,
-    make_app,
     only_for,
     rule_fallback,
     scripted,
@@ -56,9 +55,42 @@ from tests.v3.runtime_fixtures import (
     thread_of,
     to_approval,
 )
+from tests.v3.runtime_fixtures import (
+    make_app as seeded_app,
+)
 
 ROOT = Path(__file__).resolve().parents[2]
 VENDORS = (SAEGIL, NAMHAE, MISO)
+
+
+def make_app(*args, **options):
+    """Security scenarios need explicit costs; production no longer invents them."""
+    app = seeded_app(*args, **options)
+    for sid in ("st_film", "st_purge"):
+        service.update_stream(
+            app,
+            HANBIT,
+            sid,
+            {
+                "currentTreatment": {
+                    "method": "소각",
+                    "unitCostKrwPerKg": 250,
+                }
+            },
+            HANBIT,
+        )
+    service.update_vendor(
+        app,
+        MISO,
+        {
+            "fleet": {"serviceAreas": ["부산"]},
+            "transport": {"offRoute": {"status": "visit", "basis": "included"}},
+        },
+        MISO,
+    )
+    return app
+
+
 PRICE = "pc_saegil_pp_a_unitPrice"
 # 모델이 지어낸 값의 표식. 시연 데이터와 근거 어디에도 없는 수다
 FAKE = ("13,579", "１３５７９", "만삼천")
@@ -491,7 +523,7 @@ TEXT_KEYS_SKIPPED = {
     "documentId", "questionId", "rendered", "lot", "streamIds", "assignedStreamIds", "key", "from",
     "to", "orgId", "vendorOrgId", "emitterOrgId", "claimId", "name", "streamId",
     # 허가증 업로드·원문 대조 시각
-    "checkedAt", "uploadedAt",
+    "checkedAt", "uploadedAt", "agreementVersion",
 }  # fmt: skip
 
 # 허가 확인 상태(permit)에서 허가증 원문을 옮긴 칸(쪽마다의 원문 표기, 상호·소재지, 문서 이름). 근거로 열린다
@@ -567,10 +599,12 @@ def test_rule1_assumptions_are_shown_as_assumptions(confirmed_demo):
     for claim in claims_in(view["result"]):
         for evidence_id in claim["evidence"]:
             used |= _assumptions_behind(app, evidence_id)
-    assert used and used <= listed, used - listed
+    assert used <= listed, used - listed
     for stream in view["streams"]:
         current = stream["currentTreatment"]
-        assumed = current["unitCost"]["evidence"][0].startswith("assumption:")
+        assumed = bool(
+            current["unitCost"] and current["unitCost"]["evidence"][0].startswith("assumption:")
+        )
         assert current["assumed"] is assumed
         if assumed:
             assert current["method"] == "혼합 소각"
@@ -770,6 +804,8 @@ def test_rule3_three_states_reach_the_view_consistently():
     assert result["status"] == max(statuses, key=order.index)  # 가장 나쁜 상태가 전체 상태다
     by_vendor = {t["vendorOrgId"]: t for t in view["threads"] if t["status"] != "not_opened"}
     for item in result["assignments"]:
+        if item["vendorOrgId"] is None:
+            continue
         thread = by_vendor[item["vendorOrgId"]]
         route = orchestrator_module.memo_result(
             session["work"]["threadTools"][thread["id"]], "judge_route", streamId=item["streamId"]
@@ -811,28 +847,23 @@ def test_rule3_needs_information_is_not_shown_as_decided():
     )
 
 
-def test_rule4_missing_current_treatment_uses_mixed_incineration_and_sensitivity():
-    app = make_app()
+def test_rule4_missing_current_treatment_holds_instead_of_inventing_incineration():
+    app = seeded_app()
     view = to_approval(app)
     streams = {s["id"]: s for s in view["streams"]}
     assumed = {"st_film", "st_purge"}  # 시연 데이터에서 현행 처리 입력이 없는 흐름
     for sid, stream in streams.items():
         current = stream["currentTreatment"]
-        assert current["assumed"] is (sid in assumed)
+        assert current["assumed"] is False
         if sid in assumed:
-            assert current["method"] == "혼합 소각"
-            assert current["unitCost"]["evidence"][0].startswith("assumption:current.cost.")
+            assert current["method"] == "미확인"
+            assert current["unitCost"] is None
     result = view["result"]
     for item in result["assignments"]:
-        assert item["currentAssumed"] is (item["streamId"] in assumed)
-        keys = [c["key"] for c in item["checks"]]
-        assert ("current_assumed" in keys) is (item["streamId"] in assumed)
-    assert {s["streamId"] for s in result["sensitivity"]} == assumed
-    for item in result["sensitivity"]:
-        assert item["difference"]["value"] is not None and item["difference"]["evidence"]
-        assert "현행" in item["label"]
-    labels = [a["label"] for a in result["assumptions"]]
-    assert any("혼합 소각" in label for label in labels)
+        assert item["currentAssumed"] is False
+        if item["streamId"] in assumed:
+            assert item["monthlyNow"] is None and item["difference"] is None
+    assert result["sensitivity"] == []
     # 업체에게는 현행 처리와 민감도가 보이지 않는다
     for vendor in VENDORS:
         seen = service.get_view(app, view["session"]["id"], vendor)
@@ -1336,7 +1367,7 @@ def test_rule7_permit_lost_between_offer_and_optimisation_drops_only_those_offer
             reply = service.handle_vendor_message(self.app, vendor_org, message, context)
             if vendor_org == SAEGIL:
                 self.count += 1
-                if self.count == 2:  # 두 번째(마지막) 답을 낸 뒤
+                if reply.get("type") in ("offer", "conditional", "counter"):
                     _drop_plastic_permit(self.app)
             return reply
 

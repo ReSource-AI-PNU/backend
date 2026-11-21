@@ -8,7 +8,6 @@ import pytest
 from app.v3.evidence.model import Evidence
 from app.v3.evidence.seeds import SEED_DIR, load_seed_file
 from app.v3.intake.documents import business_names, profile_from_fields
-from app.v3.judge.common import haversine_km
 from app.v3.judge.permits import permit_level, registry_records
 from tests.v3.judge_fixtures import (
     EMITTER,
@@ -17,17 +16,40 @@ from tests.v3.judge_fixtures import (
     VENDOR,
     VENDOR2,
     assert_grounded,
-    claim,
     registry,
     run,
-    stream,
-    vendor,
+)
+from tests.v3.judge_fixtures import (
+    stream as base_stream,
+)
+from tests.v3.judge_fixtures import (
+    vendor as base_vendor,
 )
 
 # 공공 허가 명부(registry.v1.json)에 있는 실제 업체 두 곳. 상호와 좌표만 빌려 대조를 시험한다
 PLASTIC_NAME, PLASTIC_AT = "㈜우리환경산업", [129.12468, 35.229955]  # 51-03-01, 중간재활용업
 TIRE_NAME, TIRE_AT = "감만타이어", [129.090554, 35.11976]  # 51-15-02 폐타이어만
 TRUCK = 0.192419625  # 환경성적표지 평가계수 · 육상수송 트럭(kgCO2e/ton·km)
+
+
+def stream(**over):
+    return base_stream(
+        **{
+            "currentTreatment": {"method": "소각", "unitCostKrwPerKg": 250},
+            "pretreatHoursPerMonth": 0,
+            **over,
+        }
+    )
+
+
+def vendor(**over):
+    return base_vendor(
+        **{
+            "process": "재활용",
+            "transport": {"status": "visit", "basis": "included"},
+            **over,
+        }
+    )
 
 
 def _human_permit_vendor(reg, **over):
@@ -222,40 +244,28 @@ def test_document_business_is_read_from_fixed_names_only():
 # ── 운송 배출 ─────────────────────────────────────────────────────
 
 
-def test_truck_factor_is_the_official_table_value():
+def test_truck_factor_is_retained_but_unverified_boundary_is_not_calculated():
     reg = registry()
     r = run(reg, "cost_carbon", stream=stream(), vendor=vendor(), origin=ORIGIN)
-    moved = claim(r, "transportCarbon")
-    assert "ref:환경성적표지:트럭-운송@2024-09" in moved["evidence"]
     factor = reg.get("ref:환경성적표지:트럭-운송@2024-09", EMITTER)
     assert factor.value == pytest.approx(TRUCK) and factor.unit == "kgCO2e/tkm"
-    assert not any(e.startswith("assumption:emission.transport") for e in moved["evidence"])
+    assert r["output"]["carbonTotal"] is None
+    assert not any(c["id"] == "transportCarbon" for c in r["claims"])
 
 
-def test_transport_emissions_enter_carbon_and_objective():
+def test_unverified_transport_disables_carbon_objective():
     reg = _seeded()
     r = run(reg, "optimize_assignment", streams=[stream()], vendors=[vendor()], origin=ORIGIN)
     out = r["output"]
-    assert out["carbonInObjective"] is True
-    price = claim(r, out["carbonPrice"])
-    assert price["unit"] == "원/tCO2e" and price["evidence"][1].startswith("ref:KAU:")
+    assert out["carbonInObjective"] is False
     entry = out["assignments"][0]
-    process = claim(r, entry["carbonProcess"])["value"]
-    moved = claim(r, entry["carbonTransport"])["value"]
-    total = claim(r, entry["carbon"])["value"]
-    assert moved > 0 and total == pytest.approx(process + moved, abs=2e-6)
-    # 트럭 운송 계수 × 월 발생량(0.6 t) × 공장 → 업체 거리(직선 × 우회 계수 1.3)
-    km = claim(r, entry["transportKm"])["value"]
-    assert km == pytest.approx(haversine_km(ORIGIN, vendor()["fleet"]["depot"]) * 1.3, rel=1e-6)
-    assert moved == pytest.approx(TRUCK * 0.6 * km / 1000, abs=1e-6)
-    assert claim(r, out["totals"]["carbon"])["value"] == pytest.approx(total, abs=1e-5)
-    value = claim(r, entry["carbonValue"])["value"]
-    assert value == pytest.approx(-total * price["value"], rel=1e-5)
+    assert entry["carbonProcess"] is None and entry["carbonTransport"] is None
+    assert entry["carbon"] is None and out["greenest"] is None
     assert_grounded(reg, r)
 
 
-def test_far_vendor_loses_a_tie_on_transport_emissions():
-    """같은 단가·같은 조건이면 차고지가 가까운 업체를 고른다(전에는 업체 ID 순서로 먼 곳을 골랐다)."""
+def test_centroid_distance_cannot_break_a_tie_as_verified_carbon():
+    """동일 금액에서 중심점 거리만으로 탄소 최적 업체를 주장하지 않는다."""
     reg = _seeded()
     near, far = vendor(), _second_vendor(reg, [129.3, 35.5])  # far가 ID 순서로 앞선다
     kwargs = {"streams": [stream()], "vendors": [near, far], "origin": ORIGIN}
@@ -263,28 +273,19 @@ def test_far_vendor_loses_a_tie_on_transport_emissions():
     assert without["output"]["assignments"][0]["vendorOrgId"] == VENDOR2
     assert without["output"]["carbonInObjective"] is False
     chosen = run(reg, "optimize_assignment", **kwargs)
-    assert chosen["output"]["assignments"][0]["vendorOrgId"] == VENDOR
-    assert chosen["output"]["greenest"] == {"same": True, "changes": []}
+    assert chosen["output"]["assignments"][0]["vendorOrgId"] == VENDOR2
+    assert chosen["output"]["greenest"] is None
     assert_grounded(reg, chosen)
 
 
-def test_greenest_assignment_is_compared_when_money_wins():
-    """먼 업체가 더 많이 쳐주면 돈으로 고르고, 탄소를 가장 줄이는 배정(가까운 업체)과의 차이를 남긴다."""
+def test_money_comparison_does_not_invent_a_greenest_alternative():
+    """확인된 금액은 비교하되 미산정 탄소 차이는 만들지 않는다."""
     reg = _seeded()
     near, far = vendor(), _second_vendor(reg, [129.3, 35.5], price=340)
     r = run(reg, "optimize_assignment", streams=[stream()], vendors=[near, far], origin=ORIGIN)
     out = r["output"]
     assert out["assignments"][0]["vendorOrgId"] == VENDOR2
-    green = out["greenest"]
-    assert green["same"] is False
-    assert green["changes"] == [{"streamId": "st_sprue", "vendorOrgId": VENDOR, "route": "sell"}]
-    money_gap = claim(r, green["moneyGap"])["value"]
-    carbon_gap = claim(r, green["carbonGap"])["value"]
-    assert money_gap == pytest.approx(-(340 - 320) * 600)
-    assert carbon_gap < 0
-    # 고른 배정은 돈 차이가 내부 탄소 가격으로 환산한 탄소 차이보다 크기 때문이다
-    price = claim(r, out["carbonPrice"])["value"]
-    assert -money_gap > -carbon_gap * price
+    assert out["greenest"] is None and out["carbonInObjective"] is False
     assert_grounded(reg, r)
 
 
@@ -292,7 +293,7 @@ def test_without_origin_transport_emissions_are_flagged_not_guessed():
     reg = _seeded()
     r = run(reg, "optimize_assignment", streams=[stream()], vendors=[vendor()])
     entry = r["output"]["assignments"][0]
-    assert entry["carbonTransport"] is None and entry["carbonProcess"] is not None
+    assert entry["carbonTransport"] is None and entry["carbonProcess"] is None
     check = next(c for c in r["checks"] if c["key"] == "transport_carbon")
     assert check["status"] == "conditional" and "공장 위치" in check["text"]
 
@@ -301,8 +302,6 @@ def test_cost_carbon_reports_transport_emissions_for_alternatives():
     reg = _seeded()
     r = run(reg, "cost_carbon", stream=stream(), vendor=vendor(), origin=ORIGIN)
     out = r["output"]
-    total = claim(r, out["carbonTotal"])["value"]
-    assert total == pytest.approx(
-        claim(r, "carbonDifference")["value"] + claim(r, "transportCarbon")["value"]
-    )
+    assert out["carbonTotal"] is None
+    assert not any(c["id"] in ("carbonDifference", "transportCarbon") for c in r["claims"])
     assert_grounded(reg, r)

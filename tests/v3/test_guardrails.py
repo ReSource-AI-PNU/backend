@@ -33,7 +33,7 @@ def test_each_violation():
     assert codes({"days": ["화", "금"]}) == ["DAY_NOT_ALLOWED"]
     assert codes({"pickupsPerMonth": 1}) == ["PICKUPS_BELOW_MINIMUM"]
     assert codes({"conditions": "pvc혼입 허용"}) == ["AUTO_DECLINE_CONDITION"]
-    assert codes({"unitPriceKrwPerKg": True}) == []
+    assert codes({"unitPriceKrwPerKg": True}) == ["INVALID_PRICE"]
 
 
 def test_fee_guardrails_use_signed_price():

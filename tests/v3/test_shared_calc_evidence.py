@@ -108,7 +108,8 @@ def test_the_emitter_still_sees_its_inputs_and_private_values(world):
     text = json.dumps([search.shown(e, HANBIT) for e in mine], ensure_ascii=False)
     assert METHOD in text and "13579" in text
     keys = {e.id.rsplit(":", 1)[-1] for e in mine}
-    assert {"currentUnitCost", "monthlyLabor", "carbonDifference"} <= keys
+    assert {"currentUnitCost", "monthlyLabor"} <= keys
+    assert "carbonDifference" not in keys  # 원문 경계 미확인 국내 계수는 보류한다.
     found = service.get_evidence(
         app, next(e.id for e in mine if e.id.endswith(":monthlyLabor")), HANBIT
     )

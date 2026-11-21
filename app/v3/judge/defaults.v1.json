@@ -1,7 +1,7 @@
 {
-  "version": "v1",
-  "asOf": "2026-11-16",
-  "source": "Re:Source AI 팀 가정값 v1",
+  "version": "v2-evidence-20261121",
+  "asOf": "2026-11-21",
+  "source": "Re:Source AI 운영 정책·가정 설정 v2 (과학적 상수가 아닙니다)",
   "sensitivity": [
     {
       "label": "현행이 무상 위탁 재활용일 때",
@@ -182,36 +182,48 @@
       "value": 250,
       "unit": "원/kg",
       "label": "현행 혼합 소각 처리비 (폐플라스틱)",
-      "excerpt": "팀 가정값(가상 시연용)이며 실제 시세·법정 기준이 아닙니다. 지금 단가를 넣지 않았을 때 가상 처리비로 씁니다.",
+      "excerpt": "이전 가상 시연의 처리비 가정값입니다. 현재 계산에서는 미입력 처리비를 이 값으로 대체하지 않습니다.",
       "origin": "app/demo/synthetic.py의 current_per_kg",
-      "internalNote": "이전 시연 화면에서 쓰던 가상 단가를 옮겼다. 부호를 뒤집어 처리비로 적었다."
+      "internalNote": "이전 시연 화면에서 쓰던 가상 단가를 옮겼다. 부호를 뒤집어 처리비로 적었다.",
+      "evidenceClass": "assumption",
+      "valueRange": null,
+      "updatedOn": "2026-11-21"
     },
     {
       "key": "current.cost.포장재",
       "value": 250,
       "unit": "원/kg",
       "label": "현행 혼합 소각 처리비 (포장재)",
-      "excerpt": "팀 가정값(가상 시연용)이며 실제 시세·법정 기준이 아닙니다. 지금 단가를 넣지 않았을 때 가상 처리비로 씁니다.",
+      "excerpt": "이전 가상 시연의 처리비 가정값입니다. 현재 계산에서는 미입력 처리비를 이 값으로 대체하지 않습니다.",
       "origin": "app/demo/synthetic.py의 current_per_kg",
-      "internalNote": "이전 시연 화면에서 쓰던 가상 단가를 옮겼다. 부호를 뒤집어 처리비로 적었다."
+      "internalNote": "이전 시연 화면에서 쓰던 가상 단가를 옮겼다. 부호를 뒤집어 처리비로 적었다.",
+      "evidenceClass": "assumption",
+      "valueRange": null,
+      "updatedOn": "2026-11-21"
     },
     {
       "key": "current.cost.금속 스크랩",
       "value": 250,
       "unit": "원/kg",
       "label": "현행 혼합 소각 처리비 (금속 스크랩)",
-      "excerpt": "팀 가정값(가상 시연용)이며 실제 시세·법정 기준이 아닙니다. 지금 단가를 넣지 않았을 때 가상 처리비로 씁니다.",
+      "excerpt": "이전 가상 시연의 처리비 가정값입니다. 현재 계산에서는 미입력 처리비를 이 값으로 대체하지 않습니다.",
       "origin": "app/demo/synthetic.py의 current_per_kg",
-      "internalNote": "이전 시연 화면에서 쓰던 가상 단가를 옮겼다. 부호를 뒤집어 처리비로 적었다."
+      "internalNote": "이전 시연 화면에서 쓰던 가상 단가를 옮겼다. 부호를 뒤집어 처리비로 적었다.",
+      "evidenceClass": "assumption",
+      "valueRange": null,
+      "updatedOn": "2026-11-21"
     },
     {
       "key": "current.cost.폐목재",
       "value": 120,
       "unit": "원/kg",
       "label": "현행 혼합 소각 처리비 (폐목재)",
-      "excerpt": "팀 가정값(가상 시연용)이며 실제 시세·법정 기준이 아닙니다. 지금 단가를 넣지 않았을 때 가상 처리비로 씁니다.",
+      "excerpt": "이전 가상 시연의 처리비 가정값입니다. 현재 계산에서는 미입력 처리비를 이 값으로 대체하지 않습니다.",
       "origin": "app/demo/synthetic.py의 current_per_kg",
-      "internalNote": "이전 시연 화면에서 쓰던 가상 단가를 옮겼다. 부호를 뒤집어 처리비로 적었다."
+      "internalNote": "이전 시연 화면에서 쓰던 가상 단가를 옮겼다. 부호를 뒤집어 처리비로 적었다.",
+      "evidenceClass": "assumption",
+      "valueRange": null,
+      "updatedOn": "2026-11-21"
     },
     {
       "key": "current.alt.위탁재활용-무상",
@@ -219,43 +231,62 @@
       "unit": "원/kg",
       "label": "현행이 무상 위탁 재활용일 때의 처리비",
       "excerpt": "팀 가정값(가상 시연용)이며 실제 시세·법정 기준이 아닙니다. 기존 자료에 없어 새로 둔 값입니다.",
-      "internalNote": "기존 자료에 없어 새로 둔 값이다."
+      "internalNote": "기존 자료에 없어 새로 둔 값이다.",
+      "evidenceClass": "assumption",
+      "valueRange": null,
+      "updatedOn": "2026-11-21"
     },
     {
       "key": "min.monthlyKg.폐플라스틱",
       "value": 1000,
       "unit": "kg/월",
       "label": "업체가 기준을 밝히지 않았을 때의 최소 물량 (폐플라스틱)",
-      "excerpt": "팀 가정값(가상 시연용)이며 실제 시세·법정 기준이 아닙니다. 업체가 밝히지 않았을 때 가상 최소 물량으로 씁니다.",
+      "excerpt": "서비스 운영 정책값(가상 시연용)이며 실제 시세·법정 기준이 아닙니다. 업체가 밝히지 않았을 때 가상 최소 물량으로 씁니다.",
       "origin": "app/demo/synthetic.py의 minimum_kg",
-      "internalNote": "이전 시연 화면에서 쓰던 가상 최소 물량을 옮겼다."
+      "internalNote": "이전 시연 화면에서 쓰던 가상 최소 물량을 옮겼다.",
+      "evidenceClass": "policy",
+      "decisionOwner": "Re:Source AI 서비스 운영자; 업체별 명시 설정 우선",
+      "valueRange": null,
+      "updatedOn": "2026-11-21"
     },
     {
       "key": "min.monthlyKg.포장재",
       "value": 1000,
       "unit": "kg/월",
       "label": "업체가 기준을 밝히지 않았을 때의 최소 물량 (포장재)",
-      "excerpt": "팀 가정값(가상 시연용)이며 실제 시세·법정 기준이 아닙니다. 업체가 밝히지 않았을 때 가상 최소 물량으로 씁니다.",
+      "excerpt": "서비스 운영 정책값(가상 시연용)이며 실제 시세·법정 기준이 아닙니다. 업체가 밝히지 않았을 때 가상 최소 물량으로 씁니다.",
       "origin": "app/demo/synthetic.py의 minimum_kg",
-      "internalNote": "이전 시연 화면에서 쓰던 가상 최소 물량을 옮겼다."
+      "internalNote": "이전 시연 화면에서 쓰던 가상 최소 물량을 옮겼다.",
+      "evidenceClass": "policy",
+      "decisionOwner": "Re:Source AI 서비스 운영자; 업체별 명시 설정 우선",
+      "valueRange": null,
+      "updatedOn": "2026-11-21"
     },
     {
       "key": "min.monthlyKg.금속 스크랩",
       "value": 300,
       "unit": "kg/월",
       "label": "업체가 기준을 밝히지 않았을 때의 최소 물량 (금속 스크랩)",
-      "excerpt": "팀 가정값(가상 시연용)이며 실제 시세·법정 기준이 아닙니다. 업체가 밝히지 않았을 때 가상 최소 물량으로 씁니다.",
+      "excerpt": "서비스 운영 정책값(가상 시연용)이며 실제 시세·법정 기준이 아닙니다. 업체가 밝히지 않았을 때 가상 최소 물량으로 씁니다.",
       "origin": "app/demo/synthetic.py의 minimum_kg",
-      "internalNote": "이전 시연 화면에서 쓰던 가상 최소 물량을 옮겼다."
+      "internalNote": "이전 시연 화면에서 쓰던 가상 최소 물량을 옮겼다.",
+      "evidenceClass": "policy",
+      "decisionOwner": "Re:Source AI 서비스 운영자; 업체별 명시 설정 우선",
+      "valueRange": null,
+      "updatedOn": "2026-11-21"
     },
     {
       "key": "min.monthlyKg.폐목재",
       "value": 500,
       "unit": "kg/월",
       "label": "업체가 기준을 밝히지 않았을 때의 최소 물량 (폐목재)",
-      "excerpt": "팀 가정값(가상 시연용)이며 실제 시세·법정 기준이 아닙니다. 업체가 밝히지 않았을 때 가상 최소 물량으로 씁니다.",
+      "excerpt": "서비스 운영 정책값(가상 시연용)이며 실제 시세·법정 기준이 아닙니다. 업체가 밝히지 않았을 때 가상 최소 물량으로 씁니다.",
       "origin": "app/demo/synthetic.py의 minimum_kg",
-      "internalNote": "이전 시연 화면에서 쓰던 가상 최소 물량을 옮겼다."
+      "internalNote": "이전 시연 화면에서 쓰던 가상 최소 물량을 옮겼다.",
+      "evidenceClass": "policy",
+      "decisionOwner": "Re:Source AI 서비스 운영자; 업체별 명시 설정 우선",
+      "valueRange": null,
+      "updatedOn": "2026-11-21"
     },
     {
       "key": "distance.detourFactor",
@@ -263,7 +294,10 @@
       "unit": null,
       "label": "직선 거리에 곱하는 도로 우회 계수",
       "excerpt": "팀 가정값(가상 시연용)이며 실제 시세·법정 기준이 아닙니다. 기존 자료에 없어 새로 둔 값입니다.",
-      "internalNote": "기존 자료에 없어 새로 둔 값이다."
+      "internalNote": "기존 자료에 없어 새로 둔 값이다.",
+      "evidenceClass": "assumption",
+      "valueRange": null,
+      "updatedOn": "2026-11-21"
     },
     {
       "key": "transport.costPerKm",
@@ -271,25 +305,47 @@
       "unit": "원/km",
       "label": "차량 운행 단가",
       "excerpt": "팀 가정값(가상 시연용)이며 실제 시세·법정 기준이 아닙니다. 기존 자료에 없어 새로 둔 값입니다. 업체가 노선·차량 단가를 올리면 그 값을 씁니다.",
-      "internalNote": "기존 자료에 없어 새로 둔 값이다."
+      "internalNote": "기존 자료에 없어 새로 둔 값이다.",
+      "evidenceClass": "assumption",
+      "valueRange": null,
+      "updatedOn": "2026-11-21"
     },
     {
       "key": "contract.priceBandPct",
       "value": 10,
       "unit": "%",
       "label": "단가를 다시 협의하는 기준 시세 변동 폭",
-      "excerpt": "팀 가정값입니다. 기준 시세(재활용가능자원 가격조사)가 합의할 때보다 이만큼 넘게 바뀌면 단가를 다시 협의하자는 이행 계획서의 조건입니다. 2026-11-19 배출 사업장 설문의 \"단가 상호불신으로 장기 계약이 어렵다\"는 답에 따라 두었습니다.",
-      "internalNote": "설문 자유 답(장기 계약, 단가 불신)에 맞춰 새로 둔 값이다."
+      "excerpt": "서비스 운영 정책값입니다. 기준 시세(재활용가능자원 가격조사)가 합의할 때보다 이만큼 넘게 바뀌면 단가를 다시 협의하자는 이행 계획서의 조건입니다. 2026-11-19 배출 사업장 설문의 \"단가 상호불신으로 장기 계약이 어렵다\"는 답에 따라 두었습니다.",
+      "internalNote": "설문 자유 답(장기 계약, 단가 불신)에 맞춰 새로 둔 값이다.",
+      "evidenceClass": "policy",
+      "decisionOwner": "Re:Source AI 서비스 운영자; 업체별 명시 설정 우선",
+      "valueRange": null,
+      "updatedOn": "2026-11-21"
     },
     {
       "key": "negotiation.askPct",
       "value": 10,
       "unit": "%",
       "label": "합의 전에 한 번 더 요청하는 단가 폭",
-      "excerpt": "팀 가정값입니다. 회사 측 AI가 합의하기 전에 업체가 낸 단가보다 이만큼 나은 단가(매입이면 더 받고 처리비면 덜 내는 쪽)를 한 번 요청합니다. 업체 측 AI는 업체가 정한 단가 범위 안에서만 답합니다.",
-      "internalNote": "⑥ 단가 협상(2026-11-19). 업체 가드레일 상한이 있으면 그 안에서 받아들이고, 없으면 처음 제안을 그대로 둔다."
+      "excerpt": "서비스 운영 정책값입니다. 회사 측 AI가 합의하기 전에 업체가 낸 단가보다 이만큼 나은 단가(매입이면 더 받고 처리비면 덜 내는 쪽)를 한 번 요청합니다. 업체 측 AI는 업체가 정한 단가 범위 안에서만 답합니다.",
+      "internalNote": "⑥ 단가 협상(2026-11-19). 업체 가드레일 상한이 있으면 그 안에서 받아들이고, 없으면 처음 제안을 그대로 둔다.",
+      "evidenceClass": "policy",
+      "decisionOwner": "Re:Source AI 서비스 운영자; 업체별 명시 설정 우선",
+      "valueRange": null,
+      "updatedOn": "2026-11-21"
+    },
+    {
+      "key": "contract.pilotMonths",
+      "value": 1,
+      "unit": "개월",
+      "label": "첫 거래 시범 기간",
+      "excerpt": "서비스 운영자가 첫 거래 확인을 위해 제안한 시범 기간 정책값입니다. 첫 반입 결과를 양측이 검토하도록 제안하며 과학적 상수가 아닙니다.",
+      "evidenceClass": "policy",
+      "decisionOwner": "Re:Source AI 서비스 운영자",
+      "valueRange": null,
+      "updatedOn": "2026-11-21"
     }
   ],
   "referenceNote": "reference.price.* 는 가격조사 참고 시세다. 업체 매입 단가가 아니므로 손익 계산에는 쓰지 않는다.",
-  "emissionNote": "배출계수는 환경성적표지 평가계수의 혼합폐플라스틱 값이다. 탄소 변화는 (옮긴 뒤 처리의 계수 − 현행 처리의 계수) × 월 발생량으로 계산하고, 신재 대체 효과와 운송 배출은 넣지 않는다. 열분해 공정의 계수는 표에 없어 계산하지 않는다."
+  "emissionNote": "기존 환경성적표지 시드는 메타데이터만 확인했습니다. 원문 기능단위·계산 경계 확인 전 처리·운송 배출 산정을 보류합니다."
 }

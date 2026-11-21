@@ -5,7 +5,8 @@
 """
 
 from app.v3 import feedback, outcome_carbon, service
-from tests.v3.runtime_fixtures import HANBIT, SAEGIL, approve_all, make_app, thread_of, to_approval
+from tests.v3.evidence_fixtures import numerical_history_app as make_app
+from tests.v3.runtime_fixtures import HANBIT, SAEGIL, approve_all, thread_of, to_approval
 
 
 def _setup():

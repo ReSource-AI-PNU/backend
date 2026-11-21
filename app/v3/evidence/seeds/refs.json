@@ -1,264 +1,351 @@
 [
- {
-  "id": "ref:가격조사:PE-압축-경남@2026-10",
-  "kind": "ref",
-  "label": "재활용가능자원 가격조사 PE 압축 · 경남 · 2026년 10월",
-  "value": 483.0,
-  "unit": "원/kg",
-  "excerpt": "조사월 2026.10 | 권역 경남 | 품목 압축 (PE) | 시장 가격 483 원/kg",
-  "source": "한국환경공단 재활용가능자원 가격조사 정보 조회 서비스 (공공데이터포털 15156640)",
-  "asOf": "2026-10-31",
-  "validUntil": null,
-  "access": [
-   "*"
-  ],
-  "version": 1,
-  "meta": {
-   "series": "가격조사",
-   "item": "PE-압축-경남",
-   "period": "2026-10",
-   "region": "경남",
-   "material": "PE",
-   "form": "압축",
-   "url": "https://apis.data.go.kr/B552584/reutilMrktPrcExmn/getlist",
-   "dataset": "https://www.data.go.kr/data/15156640/openapi.do",
-   "retrievedAt": "2026-11-17T16:43:11Z",
-   "regionCode": "4800000000",
-   "receivedOn": "20261101",
-   "conditions": [
-    "단위 원/kg",
-    "권역 내 조사업체 가격의 평균"
-   ],
-   "caveats": [
-    "asOf는 기준월의 말일로 적었다",
-    "API는 권역 평균을 원 단위로 준다(소수점 아래가 없다). 업체별 가격은 다를 수 있다",
-    "부가세·물류비 포함 여부와 품질·거래 단계 기준은 API 응답에 없다",
-    "부산은 조사 권역에 따로 없다. 경남 권역 값을 참고로 쓴다",
-    "이전 값 482.6 원/kg(https://www.recycling-info.or.kr/sds/marketIndex.do)을 API 값으로 바꿨다"
-   ]
+  {
+    "id": "ref:가격조사:PE-압축-경남@2026-10",
+    "kind": "ref",
+    "label": "재활용가능자원 가격조사 PE 압축 · 경남 · 2026년 10월",
+    "value": 483.0,
+    "unit": "원/kg",
+    "excerpt": "조사월 2026.10 | 권역 경남 | 품목 압축 (PE) | 시장 가격 483 원/kg",
+    "source": "한국환경공단 재활용가능자원 가격조사 정보 조회 서비스 (공공데이터포털 15156640)",
+    "asOf": "2026-10-31",
+    "validUntil": null,
+    "access": [
+      "*"
+    ],
+    "version": 1,
+    "meta": {
+      "series": "가격조사",
+      "item": "PE-압축-경남",
+      "period": "2026-10",
+      "region": "경남",
+      "material": "PE",
+      "form": "압축",
+      "url": "https://apis.data.go.kr/B552584/reutilMrktPrcExmn/getlist",
+      "dataset": "https://www.data.go.kr/data/15156640/openapi.do",
+      "retrievedAt": "2026-11-17T16:43:11Z",
+      "regionCode": "4800000000",
+      "receivedOn": "20261101",
+      "conditions": [
+        "단위 원/kg",
+        "권역 내 조사업체 가격의 평균"
+      ],
+      "caveats": [
+        "asOf는 기준월의 말일로 적었다",
+        "API는 권역 평균을 원 단위로 준다(소수점 아래가 없다). 업체별 가격은 다를 수 있다",
+        "부가세·물류비 포함 여부와 품질·거래 단계 기준은 API 응답에 없다",
+        "부산은 조사 권역에 따로 없다. 경남 권역 값을 참고로 쓴다",
+        "이전 값 482.6 원/kg(https://www.recycling-info.or.kr/sds/marketIndex.do)을 API 값으로 바꿨다",
+        "이번 수정에서는 가격조사 이용 주의사항 원문을 확인했으며, 이 개별 시세 수치는 재조회하지 않았습니다. 가공 전 폐기물의 실거래 단가로 쓰지 않습니다."
+      ],
+      "evidenceClass": "official",
+      "verificationStatus": "not_rechecked",
+      "valueRange": null,
+      "publicationDate": null,
+      "dataYear": "2026-10",
+      "functionalUnit": null,
+      "systemBoundary": null,
+      "datasetVersion": "가격조사@2026-10",
+      "excludes": [],
+      "priceRole": "reference_index",
+      "quantityScope": "survey regional average; transaction lot unspecified",
+      "freightIncluded": null
+    }
+  },
+  {
+    "id": "ref:가격조사:PP-압축-경남@2026-10",
+    "kind": "ref",
+    "label": "재활용가능자원 가격조사 PP 압축 · 경남 · 2026년 10월",
+    "value": 391.0,
+    "unit": "원/kg",
+    "excerpt": "조사월 2026.10 | 권역 경남 | 품목 압축 (PP) | 시장 가격 391 원/kg",
+    "source": "한국환경공단 재활용가능자원 가격조사 정보 조회 서비스 (공공데이터포털 15156640)",
+    "asOf": "2026-10-31",
+    "validUntil": null,
+    "access": [
+      "*"
+    ],
+    "version": 1,
+    "meta": {
+      "series": "가격조사",
+      "item": "PP-압축-경남",
+      "period": "2026-10",
+      "region": "경남",
+      "material": "PP",
+      "form": "압축",
+      "url": "https://apis.data.go.kr/B552584/reutilMrktPrcExmn/getlist",
+      "dataset": "https://www.data.go.kr/data/15156640/openapi.do",
+      "retrievedAt": "2026-11-17T16:43:11Z",
+      "regionCode": "4800000000",
+      "receivedOn": "20261101",
+      "conditions": [
+        "단위 원/kg",
+        "권역 내 조사업체 가격의 평균"
+      ],
+      "caveats": [
+        "asOf는 기준월의 말일로 적었다",
+        "API는 권역 평균을 원 단위로 준다(소수점 아래가 없다). 업체별 가격은 다를 수 있다",
+        "부가세·물류비 포함 여부와 품질·거래 단계 기준은 API 응답에 없다",
+        "부산은 조사 권역에 따로 없다. 경남 권역 값을 참고로 쓴다",
+        "이전 값 390.5 원/kg(https://www.recycling-info.or.kr/sds/marketIndex.do)을 API 값으로 바꿨다",
+        "이번 수정에서는 가격조사 이용 주의사항 원문을 확인했으며, 이 개별 시세 수치는 재조회하지 않았습니다. 가공 전 폐기물의 실거래 단가로 쓰지 않습니다."
+      ],
+      "evidenceClass": "official",
+      "verificationStatus": "not_rechecked",
+      "valueRange": null,
+      "publicationDate": null,
+      "dataYear": "2026-10",
+      "functionalUnit": null,
+      "systemBoundary": null,
+      "datasetVersion": "가격조사@2026-10",
+      "excludes": [],
+      "priceRole": "reference_index",
+      "quantityScope": "survey regional average; transaction lot unspecified",
+      "freightIncluded": null
+    }
+  },
+  {
+    "id": "ref:가격조사:PE-플레이크-경남@2026-10",
+    "kind": "ref",
+    "label": "재활용가능자원 가격조사 PE 플레이크 · 경남 · 2026년 10월",
+    "value": 622.0,
+    "unit": "원/kg",
+    "excerpt": "조사월 2026.10 | 권역 경남 | 품목 플레이크 (PE) | 시장 가격 622 원/kg",
+    "source": "한국환경공단 재활용가능자원 가격조사 정보 조회 서비스 (공공데이터포털 15156640)",
+    "asOf": "2026-10-31",
+    "validUntil": null,
+    "access": [
+      "*"
+    ],
+    "version": 1,
+    "meta": {
+      "series": "가격조사",
+      "item": "PE-플레이크-경남",
+      "period": "2026-10",
+      "region": "경남",
+      "material": "PE",
+      "form": "플레이크",
+      "url": "https://apis.data.go.kr/B552584/reutilMrktPrcExmn/getlist",
+      "dataset": "https://www.data.go.kr/data/15156640/openapi.do",
+      "retrievedAt": "2026-11-17T16:43:11Z",
+      "regionCode": "4800000000",
+      "receivedOn": "20261101",
+      "conditions": [
+        "단위 원/kg",
+        "권역 내 조사업체 가격의 평균"
+      ],
+      "caveats": [
+        "asOf는 기준월의 말일로 적었다",
+        "API는 권역 평균을 원 단위로 준다(소수점 아래가 없다). 업체별 가격은 다를 수 있다",
+        "부가세·물류비 포함 여부와 품질·거래 단계 기준은 API 응답에 없다",
+        "부산은 조사 권역에 따로 없다. 경남 권역 값을 참고로 쓴다",
+        "이전 값 621.7 원/kg(https://www.recycling-info.or.kr/sds/marketIndex.do)을 API 값으로 바꿨다",
+        "이번 수정에서는 가격조사 이용 주의사항 원문을 확인했으며, 이 개별 시세 수치는 재조회하지 않았습니다. 가공 전 폐기물의 실거래 단가로 쓰지 않습니다."
+      ],
+      "evidenceClass": "official",
+      "verificationStatus": "not_rechecked",
+      "valueRange": null,
+      "publicationDate": null,
+      "dataYear": "2026-10",
+      "functionalUnit": null,
+      "systemBoundary": null,
+      "datasetVersion": "가격조사@2026-10",
+      "excludes": [],
+      "priceRole": "reference_index",
+      "quantityScope": "survey regional average; transaction lot unspecified",
+      "freightIncluded": null
+    }
+  },
+  {
+    "id": "ref:가격조사:PP-플레이크-경남@2026-10",
+    "kind": "ref",
+    "label": "재활용가능자원 가격조사 PP 플레이크 · 경남 · 2026년 10월",
+    "value": 563.0,
+    "unit": "원/kg",
+    "excerpt": "조사월 2026.10 | 권역 경남 | 품목 플레이크 (PP) | 시장 가격 563 원/kg",
+    "source": "한국환경공단 재활용가능자원 가격조사 정보 조회 서비스 (공공데이터포털 15156640)",
+    "asOf": "2026-10-31",
+    "validUntil": null,
+    "access": [
+      "*"
+    ],
+    "version": 1,
+    "meta": {
+      "series": "가격조사",
+      "item": "PP-플레이크-경남",
+      "period": "2026-10",
+      "region": "경남",
+      "material": "PP",
+      "form": "플레이크",
+      "url": "https://apis.data.go.kr/B552584/reutilMrktPrcExmn/getlist",
+      "dataset": "https://www.data.go.kr/data/15156640/openapi.do",
+      "retrievedAt": "2026-11-17T16:43:11Z",
+      "regionCode": "4800000000",
+      "receivedOn": "20261101",
+      "conditions": [
+        "단위 원/kg",
+        "권역 내 조사업체 가격의 평균"
+      ],
+      "caveats": [
+        "asOf는 기준월의 말일로 적었다",
+        "API는 권역 평균을 원 단위로 준다(소수점 아래가 없다). 업체별 가격은 다를 수 있다",
+        "부가세·물류비 포함 여부와 품질·거래 단계 기준은 API 응답에 없다",
+        "부산은 조사 권역에 따로 없다. 경남 권역 값을 참고로 쓴다",
+        "이전 값 562.7 원/kg(https://www.recycling-info.or.kr/sds/marketIndex.do)을 API 값으로 바꿨다",
+        "이번 수정에서는 가격조사 이용 주의사항 원문을 확인했으며, 이 개별 시세 수치는 재조회하지 않았습니다. 가공 전 폐기물의 실거래 단가로 쓰지 않습니다."
+      ],
+      "evidenceClass": "official",
+      "verificationStatus": "not_rechecked",
+      "valueRange": null,
+      "publicationDate": null,
+      "dataYear": "2026-10",
+      "functionalUnit": null,
+      "systemBoundary": null,
+      "datasetVersion": "가격조사@2026-10",
+      "excludes": [],
+      "priceRole": "reference_index",
+      "quantityScope": "survey regional average; transaction lot unspecified",
+      "freightIncluded": null
+    }
+  },
+  {
+    "id": "ref:가격조사:PE-펠렛-경남@2026-10",
+    "kind": "ref",
+    "label": "재활용가능자원 가격조사 PE 펠렛 · 경남 · 2026년 10월",
+    "value": 888.0,
+    "unit": "원/kg",
+    "excerpt": "조사월 2026.10 | 권역 경남 | 품목 펠렛 (PE) | 시장 가격 888 원/kg",
+    "source": "한국환경공단 재활용가능자원 가격조사 정보 조회 서비스 (공공데이터포털 15156640)",
+    "asOf": "2026-10-31",
+    "validUntil": null,
+    "access": [
+      "*"
+    ],
+    "version": 1,
+    "meta": {
+      "series": "가격조사",
+      "item": "PE-펠렛-경남",
+      "period": "2026-10",
+      "region": "경남",
+      "material": "PE",
+      "form": "펠렛",
+      "url": "https://apis.data.go.kr/B552584/reutilMrktPrcExmn/getlist",
+      "dataset": "https://www.data.go.kr/data/15156640/openapi.do",
+      "retrievedAt": "2026-11-17T16:43:11Z",
+      "regionCode": "4800000000",
+      "receivedOn": "20261101",
+      "conditions": [
+        "단위 원/kg",
+        "권역 내 조사업체 가격의 평균"
+      ],
+      "caveats": [
+        "asOf는 기준월의 말일로 적었다",
+        "API는 권역 평균을 원 단위로 준다(소수점 아래가 없다). 업체별 가격은 다를 수 있다",
+        "부가세·물류비 포함 여부와 품질·거래 단계 기준은 API 응답에 없다",
+        "부산은 조사 권역에 따로 없다. 경남 권역 값을 참고로 쓴다",
+        "이전 값 888.3 원/kg(https://www.recycling-info.or.kr/sds/marketIndex.do)을 API 값으로 바꿨다",
+        "이번 수정에서는 가격조사 이용 주의사항 원문을 확인했으며, 이 개별 시세 수치는 재조회하지 않았습니다. 가공 전 폐기물의 실거래 단가로 쓰지 않습니다."
+      ],
+      "evidenceClass": "official",
+      "verificationStatus": "not_rechecked",
+      "valueRange": null,
+      "publicationDate": null,
+      "dataYear": "2026-10",
+      "functionalUnit": null,
+      "systemBoundary": null,
+      "datasetVersion": "가격조사@2026-10",
+      "excludes": [],
+      "priceRole": "reference_index",
+      "quantityScope": "survey regional average; transaction lot unspecified",
+      "freightIncluded": null
+    }
+  },
+  {
+    "id": "ref:가격조사:PP-펠렛-경남@2026-10",
+    "kind": "ref",
+    "label": "재활용가능자원 가격조사 PP 펠렛 · 경남 · 2026년 10월",
+    "value": 724.0,
+    "unit": "원/kg",
+    "excerpt": "조사월 2026.10 | 권역 경남 | 품목 펠렛 (PP) | 시장 가격 724 원/kg",
+    "source": "한국환경공단 재활용가능자원 가격조사 정보 조회 서비스 (공공데이터포털 15156640)",
+    "asOf": "2026-10-31",
+    "validUntil": null,
+    "access": [
+      "*"
+    ],
+    "version": 1,
+    "meta": {
+      "series": "가격조사",
+      "item": "PP-펠렛-경남",
+      "period": "2026-10",
+      "region": "경남",
+      "material": "PP",
+      "form": "펠렛",
+      "url": "https://apis.data.go.kr/B552584/reutilMrktPrcExmn/getlist",
+      "dataset": "https://www.data.go.kr/data/15156640/openapi.do",
+      "retrievedAt": "2026-11-17T16:43:11Z",
+      "regionCode": "4800000000",
+      "receivedOn": "20261101",
+      "conditions": [
+        "단위 원/kg",
+        "권역 내 조사업체 가격의 평균"
+      ],
+      "caveats": [
+        "asOf는 기준월의 말일로 적었다",
+        "API는 권역 평균을 원 단위로 준다(소수점 아래가 없다). 업체별 가격은 다를 수 있다",
+        "부가세·물류비 포함 여부와 품질·거래 단계 기준은 API 응답에 없다",
+        "부산은 조사 권역에 따로 없다. 경남 권역 값을 참고로 쓴다",
+        "이전 값 723.7 원/kg(https://www.recycling-info.or.kr/sds/marketIndex.do)을 API 값으로 바꿨다",
+        "이번 수정에서는 가격조사 이용 주의사항 원문을 확인했으며, 이 개별 시세 수치는 재조회하지 않았습니다. 가공 전 폐기물의 실거래 단가로 쓰지 않습니다."
+      ],
+      "evidenceClass": "official",
+      "verificationStatus": "not_rechecked",
+      "valueRange": null,
+      "publicationDate": null,
+      "dataYear": "2026-10",
+      "functionalUnit": null,
+      "systemBoundary": null,
+      "datasetVersion": "가격조사@2026-10",
+      "excludes": [],
+      "priceRole": "reference_index",
+      "quantityScope": "survey regional average; transaction lot unspecified",
+      "freightIncluded": null
+    }
+  },
+  {
+    "id": "ref:KAU:KAU26-종가@2026-11-16",
+    "kind": "ref",
+    "label": "배출권 KAU26 종가 · 2026-11-16",
+    "value": 29750.0,
+    "unit": "원/tCO2e",
+    "excerpt": "일자 | 종목명 | 종가 | 대비 | 등락률 | 시가 | 고가 | 저가 | 거래량 | 거래대금 | 가중평균\n2026-11-16 | KAU26 | 29,750 | -150 | -0.50 | 29,850 | 29,900 | 29,750 | 51,570 | 1,537,361,000 | 29,811",
+    "source": "한국거래소 배출권시장 정보플랫폼 · 시세조회 · 일자별 정보",
+    "asOf": "2026-11-16",
+    "validUntil": null,
+    "access": [
+      "*"
+    ],
+    "version": 1,
+    "meta": {
+      "series": "KAU",
+      "item": "KAU26-종가",
+      "period": "2026-11-16",
+      "url": "https://ets.krx.co.kr/contents/ETS/03/03010000/ETS03010000.jsp",
+      "retrievedAt": "2026-11-16T17:36:06.136Z",
+      "pageStamp": "2026/11/17 AM 02:35:59",
+      "conditions": [
+        "종가",
+        "배출권 1톤(tCO2e)당 원"
+      ],
+      "per": "tCO2e",
+      "evidenceClass": "official",
+      "verificationStatus": "not_rechecked",
+      "valueRange": null,
+      "publicationDate": null,
+      "dataYear": "2026-11-16",
+      "functionalUnit": null,
+      "systemBoundary": null,
+      "datasetVersion": "KAU@2026-11-16",
+      "excludes": []
+    }
   }
- },
- {
-  "id": "ref:가격조사:PP-압축-경남@2026-10",
-  "kind": "ref",
-  "label": "재활용가능자원 가격조사 PP 압축 · 경남 · 2026년 10월",
-  "value": 391.0,
-  "unit": "원/kg",
-  "excerpt": "조사월 2026.10 | 권역 경남 | 품목 압축 (PP) | 시장 가격 391 원/kg",
-  "source": "한국환경공단 재활용가능자원 가격조사 정보 조회 서비스 (공공데이터포털 15156640)",
-  "asOf": "2026-10-31",
-  "validUntil": null,
-  "access": [
-   "*"
-  ],
-  "version": 1,
-  "meta": {
-   "series": "가격조사",
-   "item": "PP-압축-경남",
-   "period": "2026-10",
-   "region": "경남",
-   "material": "PP",
-   "form": "압축",
-   "url": "https://apis.data.go.kr/B552584/reutilMrktPrcExmn/getlist",
-   "dataset": "https://www.data.go.kr/data/15156640/openapi.do",
-   "retrievedAt": "2026-11-17T16:43:11Z",
-   "regionCode": "4800000000",
-   "receivedOn": "20261101",
-   "conditions": [
-    "단위 원/kg",
-    "권역 내 조사업체 가격의 평균"
-   ],
-   "caveats": [
-    "asOf는 기준월의 말일로 적었다",
-    "API는 권역 평균을 원 단위로 준다(소수점 아래가 없다). 업체별 가격은 다를 수 있다",
-    "부가세·물류비 포함 여부와 품질·거래 단계 기준은 API 응답에 없다",
-    "부산은 조사 권역에 따로 없다. 경남 권역 값을 참고로 쓴다",
-    "이전 값 390.5 원/kg(https://www.recycling-info.or.kr/sds/marketIndex.do)을 API 값으로 바꿨다"
-   ]
-  }
- },
- {
-  "id": "ref:가격조사:PE-플레이크-경남@2026-10",
-  "kind": "ref",
-  "label": "재활용가능자원 가격조사 PE 플레이크 · 경남 · 2026년 10월",
-  "value": 622.0,
-  "unit": "원/kg",
-  "excerpt": "조사월 2026.10 | 권역 경남 | 품목 플레이크 (PE) | 시장 가격 622 원/kg",
-  "source": "한국환경공단 재활용가능자원 가격조사 정보 조회 서비스 (공공데이터포털 15156640)",
-  "asOf": "2026-10-31",
-  "validUntil": null,
-  "access": [
-   "*"
-  ],
-  "version": 1,
-  "meta": {
-   "series": "가격조사",
-   "item": "PE-플레이크-경남",
-   "period": "2026-10",
-   "region": "경남",
-   "material": "PE",
-   "form": "플레이크",
-   "url": "https://apis.data.go.kr/B552584/reutilMrktPrcExmn/getlist",
-   "dataset": "https://www.data.go.kr/data/15156640/openapi.do",
-   "retrievedAt": "2026-11-17T16:43:11Z",
-   "regionCode": "4800000000",
-   "receivedOn": "20261101",
-   "conditions": [
-    "단위 원/kg",
-    "권역 내 조사업체 가격의 평균"
-   ],
-   "caveats": [
-    "asOf는 기준월의 말일로 적었다",
-    "API는 권역 평균을 원 단위로 준다(소수점 아래가 없다). 업체별 가격은 다를 수 있다",
-    "부가세·물류비 포함 여부와 품질·거래 단계 기준은 API 응답에 없다",
-    "부산은 조사 권역에 따로 없다. 경남 권역 값을 참고로 쓴다",
-    "이전 값 621.7 원/kg(https://www.recycling-info.or.kr/sds/marketIndex.do)을 API 값으로 바꿨다"
-   ]
-  }
- },
- {
-  "id": "ref:가격조사:PP-플레이크-경남@2026-10",
-  "kind": "ref",
-  "label": "재활용가능자원 가격조사 PP 플레이크 · 경남 · 2026년 10월",
-  "value": 563.0,
-  "unit": "원/kg",
-  "excerpt": "조사월 2026.10 | 권역 경남 | 품목 플레이크 (PP) | 시장 가격 563 원/kg",
-  "source": "한국환경공단 재활용가능자원 가격조사 정보 조회 서비스 (공공데이터포털 15156640)",
-  "asOf": "2026-10-31",
-  "validUntil": null,
-  "access": [
-   "*"
-  ],
-  "version": 1,
-  "meta": {
-   "series": "가격조사",
-   "item": "PP-플레이크-경남",
-   "period": "2026-10",
-   "region": "경남",
-   "material": "PP",
-   "form": "플레이크",
-   "url": "https://apis.data.go.kr/B552584/reutilMrktPrcExmn/getlist",
-   "dataset": "https://www.data.go.kr/data/15156640/openapi.do",
-   "retrievedAt": "2026-11-17T16:43:11Z",
-   "regionCode": "4800000000",
-   "receivedOn": "20261101",
-   "conditions": [
-    "단위 원/kg",
-    "권역 내 조사업체 가격의 평균"
-   ],
-   "caveats": [
-    "asOf는 기준월의 말일로 적었다",
-    "API는 권역 평균을 원 단위로 준다(소수점 아래가 없다). 업체별 가격은 다를 수 있다",
-    "부가세·물류비 포함 여부와 품질·거래 단계 기준은 API 응답에 없다",
-    "부산은 조사 권역에 따로 없다. 경남 권역 값을 참고로 쓴다",
-    "이전 값 562.7 원/kg(https://www.recycling-info.or.kr/sds/marketIndex.do)을 API 값으로 바꿨다"
-   ]
-  }
- },
- {
-  "id": "ref:가격조사:PE-펠렛-경남@2026-10",
-  "kind": "ref",
-  "label": "재활용가능자원 가격조사 PE 펠렛 · 경남 · 2026년 10월",
-  "value": 888.0,
-  "unit": "원/kg",
-  "excerpt": "조사월 2026.10 | 권역 경남 | 품목 펠렛 (PE) | 시장 가격 888 원/kg",
-  "source": "한국환경공단 재활용가능자원 가격조사 정보 조회 서비스 (공공데이터포털 15156640)",
-  "asOf": "2026-10-31",
-  "validUntil": null,
-  "access": [
-   "*"
-  ],
-  "version": 1,
-  "meta": {
-   "series": "가격조사",
-   "item": "PE-펠렛-경남",
-   "period": "2026-10",
-   "region": "경남",
-   "material": "PE",
-   "form": "펠렛",
-   "url": "https://apis.data.go.kr/B552584/reutilMrktPrcExmn/getlist",
-   "dataset": "https://www.data.go.kr/data/15156640/openapi.do",
-   "retrievedAt": "2026-11-17T16:43:11Z",
-   "regionCode": "4800000000",
-   "receivedOn": "20261101",
-   "conditions": [
-    "단위 원/kg",
-    "권역 내 조사업체 가격의 평균"
-   ],
-   "caveats": [
-    "asOf는 기준월의 말일로 적었다",
-    "API는 권역 평균을 원 단위로 준다(소수점 아래가 없다). 업체별 가격은 다를 수 있다",
-    "부가세·물류비 포함 여부와 품질·거래 단계 기준은 API 응답에 없다",
-    "부산은 조사 권역에 따로 없다. 경남 권역 값을 참고로 쓴다",
-    "이전 값 888.3 원/kg(https://www.recycling-info.or.kr/sds/marketIndex.do)을 API 값으로 바꿨다"
-   ]
-  }
- },
- {
-  "id": "ref:가격조사:PP-펠렛-경남@2026-10",
-  "kind": "ref",
-  "label": "재활용가능자원 가격조사 PP 펠렛 · 경남 · 2026년 10월",
-  "value": 724.0,
-  "unit": "원/kg",
-  "excerpt": "조사월 2026.10 | 권역 경남 | 품목 펠렛 (PP) | 시장 가격 724 원/kg",
-  "source": "한국환경공단 재활용가능자원 가격조사 정보 조회 서비스 (공공데이터포털 15156640)",
-  "asOf": "2026-10-31",
-  "validUntil": null,
-  "access": [
-   "*"
-  ],
-  "version": 1,
-  "meta": {
-   "series": "가격조사",
-   "item": "PP-펠렛-경남",
-   "period": "2026-10",
-   "region": "경남",
-   "material": "PP",
-   "form": "펠렛",
-   "url": "https://apis.data.go.kr/B552584/reutilMrktPrcExmn/getlist",
-   "dataset": "https://www.data.go.kr/data/15156640/openapi.do",
-   "retrievedAt": "2026-11-17T16:43:11Z",
-   "regionCode": "4800000000",
-   "receivedOn": "20261101",
-   "conditions": [
-    "단위 원/kg",
-    "권역 내 조사업체 가격의 평균"
-   ],
-   "caveats": [
-    "asOf는 기준월의 말일로 적었다",
-    "API는 권역 평균을 원 단위로 준다(소수점 아래가 없다). 업체별 가격은 다를 수 있다",
-    "부가세·물류비 포함 여부와 품질·거래 단계 기준은 API 응답에 없다",
-    "부산은 조사 권역에 따로 없다. 경남 권역 값을 참고로 쓴다",
-    "이전 값 723.7 원/kg(https://www.recycling-info.or.kr/sds/marketIndex.do)을 API 값으로 바꿨다"
-   ]
-  }
- },
- {
-  "id": "ref:KAU:KAU26-종가@2026-11-16",
-  "kind": "ref",
-  "label": "배출권 KAU26 종가 · 2026-11-16",
-  "value": 29750.0,
-  "unit": "원/tCO2e",
-  "excerpt": "일자 | 종목명 | 종가 | 대비 | 등락률 | 시가 | 고가 | 저가 | 거래량 | 거래대금 | 가중평균\n2026-11-16 | KAU26 | 29,750 | -150 | -0.50 | 29,850 | 29,900 | 29,750 | 51,570 | 1,537,361,000 | 29,811",
-  "source": "한국거래소 배출권시장 정보플랫폼 · 시세조회 · 일자별 정보",
-  "asOf": "2026-11-16",
-  "validUntil": null,
-  "access": [
-   "*"
-  ],
-  "version": 1,
-  "meta": {
-   "series": "KAU",
-   "item": "KAU26-종가",
-   "period": "2026-11-16",
-   "url": "https://ets.krx.co.kr/contents/ETS/03/03010000/ETS03010000.jsp",
-   "retrievedAt": "2026-11-16T17:36:06.136Z",
-   "pageStamp": "2026/11/17 AM 02:35:59",
-   "conditions": [
-    "종가",
-    "배출권 1톤(tCO2e)당 원"
-   ],
-   "per": "tCO2e"
-  }
- }
 ]

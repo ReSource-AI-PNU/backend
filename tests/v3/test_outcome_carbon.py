@@ -15,7 +15,8 @@ from app.v3.evidence.model import Evidence
 from app.v3.evidence.registry import EvidenceForbidden
 from app.v3.evidence.validator import validate_text
 from app.v3.judge import basis
-from tests.v3.runtime_fixtures import HANBIT, SAEGIL, answer_all, approve_all, make_app, start
+from tests.v3.evidence_fixtures import numerical_history_app as make_app
+from tests.v3.runtime_fixtures import HANBIT, SAEGIL, answer_all, approve_all, start
 
 INCINERATE = "ref:환경성적표지:혼합폐플라스틱-소각@2024-09"
 # 580 kg × (재활용 0.0186 − 소각 3.412554039 kgCO2e/kg) ÷ 1000
@@ -120,9 +121,11 @@ def _change_factor_default(app, _stream_id):
             excerpt="시험용 소각 배출계수 2.5",
             source="시험",
             as_of="2026-11-18",
+            meta=dict(app.registry.get(INCINERATE).meta),
         )
     )
     basis.prefer("emission.incinerate.포장재", "assumption:시험-소각계수@v2")
+    basis.prefer("emission.incinerate.폐플라스틱", "assumption:시험-소각계수@v2")
 
 
 # 바꾼 뒤 새로 기록한 580kg 검수의 탄소: 새 조건이 들어가야 한다
@@ -154,7 +157,10 @@ def test_past_record_keeps_its_carbon_and_new_records_take_the_new_condition(cha
     assert before["currentMethod"] == "소각" and before["currentMethodAssumed"] is False
     assert before["process"] == "재활용"
     factors = before["carbonBasis"]["factors"]
-    assert factors["baseline"]["value"] == 3.412554039 and factors["baseline"]["version"] == 1
+    assert (
+        factors["baseline"]["value"] == 3.412554039
+        and factors["baseline"]["version"] == app.registry.get(INCINERATE).version
+    )
     assert factors["applied"]["value"] == 0.0186 and factors["applied"]["unit"] == "kgCO2e/kg"
     totals = _report(app)["totals"]["carbon"]["value"]
 
@@ -255,18 +261,14 @@ def _make_legacy(app, record):
     assert legacy["legacy"] is True and legacy.get("appliedProcess") is None
 
 
-def test_legacy_record_is_rebuilt_from_the_agreement_and_then_frozen(restore_basis):
+def test_legacy_without_calculated_agreement_is_held_and_then_frozen(restore_basis):
     app, sid, thread, stream_id = _confirmed()
     _make_legacy(app, _record(app, sid, thread, stream_id, "2026-11-10"))
     row = _row(app, "2026-11-10")
     shown = row["carbonBasis"]
-    assert shown["status"] == "reconstructed"
-    assert shown["statusLabel"] == "합의 당시 기준으로 재구성"
-    # 합의 당시에는 현행 처리를 적지 않아 혼합 소각으로 가정했다(지금 자료의 소각이 아니다)
-    assert row["currentMethod"] == "혼합 소각" and row["currentMethodAssumed"] is True
-    assert shown["baseline"]["source"] == "deal" and shown["deal"]["monthlyKg"] == 300
-    assert row["carbon"]["value"] == FIRST and _ok(app, row["carbon"])
-    # 재구성한 기준도 처음 읽을 때 고정된다: 그 뒤 계수가 바뀌어도 같다
+    assert shown["status"] == "unverified"
+    assert row["carbon"] is None and row["amount"]["value"] == 174000
+    # 보류 이유도 그때 상태로 고정한다. 오늘 계수로 과거 값을 채우지 않는다.
     _change_factor_value(app, stream_id)
     _change_method(app, stream_id)
     assert _frozen(_row(app, "2026-11-10")) == _frozen(row)
@@ -306,15 +308,15 @@ def test_backfill_previews_then_freezes_legacy_records_once(capsys, restore_basi
     _make_legacy(app, record)
     legacy = feedback.outcomes(app)[0]
     assert backfill.main([], app) == 0
-    assert '"would_freeze:reconstructed": 1' in capsys.readouterr().out
+    assert '"would_freeze:unverified": 1' in capsys.readouterr().out
     assert outcome_carbon.latest(app.registry, legacy) is None  # 미리 보기는 쓰지 않는다
     assert backfill.main(["--apply"], app) == 0
-    assert '"frozen:reconstructed": 1' in capsys.readouterr().out
-    assert outcome_carbon.latest(app.registry, legacy)["status"] == "reconstructed"
+    assert '"frozen:unverified": 1' in capsys.readouterr().out
+    assert outcome_carbon.latest(app.registry, legacy)["status"] == "unverified"
     _change_factor_value(app, stream_id)  # 고정한 뒤에는 계수가 바뀌어도 재구성 결과가 그대로다
     assert backfill.main(["--apply"], app) == 0
-    assert '"already:reconstructed": 1' in capsys.readouterr().out
-    assert _row(app, "2026-11-10")["carbon"]["value"] == FIRST
+    assert '"already:unverified": 1' in capsys.readouterr().out
+    assert _row(app, "2026-11-10")["carbon"] is None
 
 
 def _correct(app, sid, record, reason, **values):

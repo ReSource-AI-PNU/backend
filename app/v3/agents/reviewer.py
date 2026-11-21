@@ -23,6 +23,8 @@ from __future__ import annotations
 import re
 from typing import Any
 
+from app.v3.a2a.guardrails import validate_policy
+from app.v3.agents.contract_terms import INSPECTION_HOLD
 from app.v3.judge import pickup
 
 LABEL = "계약 검토 담당"
@@ -191,6 +193,10 @@ def review(
     ceiling = _number(guard.get("ceilingPriceKrwPerKg"))
     allowed = list(guard.get("days") or [])
     outside: list[str] = []
+    try:
+        validate_policy(guard)
+    except ValueError:
+        outside.append("업체 협상 범위 설정 오류")
     for row in rows:
         offer = offers.get(row.get("streamId")) or {}
         price = _number(offer.get("unitPriceKrwPerKg"))
@@ -263,7 +269,15 @@ def review(
 
     # 운반비 부담
     payers = {row.get("transportPaidBy") for row in rows}
-    if payers == {"vendor"}:
+    if any(row.get("transportPending") or (row.get("pickup") or {}).get("pending") for row in rows):
+        items.append(
+            _item(
+                "transport",
+                "block",
+                "필수 운반비가 미정입니다. 견적과 부담 주체 확인 전에는 확정할 수 없습니다.",
+            )
+        )
+    elif payers == {"vendor"}:
         items.append(_item("transport", "ok", "운반비는 업체가 부담합니다(단가에 포함)."))
     elif payers == {"emitter"}:
         items.append(
@@ -292,7 +306,7 @@ def review(
                 "inspection",
                 "check",
                 "오염도·수분·물량 가운데 측정하지 않은 값이 있거나 업체가 반입 검수 조건을 걸었습니다. "
-                "검수에서 기준을 넘으면 그 업체 매입 기준표의 다음 등급 단가를 따른다는 조항을 계약서에 넣습니다.",
+                + INSPECTION_HOLD,
             )
         )
     else:
@@ -342,8 +356,8 @@ def review(
             _item(
                 "pilot",
                 "ok",
-                "이 업체와 처음 거래합니다. 계약서 초안에 한 달 시범 기간을 넣어, 첫 반입 검수 기록을 "
-                "양쪽이 확인한 뒤에 다음 달 수거를 이어 가게 합니다.",
+                "이 업체와 처음 거래합니다. 운영자 설정의 시범 기간을 계약서 초안에 제안하고, 첫 반입 검수 기록을 "
+                "양쪽이 확인한 뒤에 수거를 이어 가게 합니다. 서비스 정책이며 과학적 상수가 아닙니다.",
                 pilot=True,
             )
         )
@@ -369,7 +383,7 @@ def review(
     elif checks:
         overall = "needs_check"
         summary = (
-            "합의 조건을 항목마다 대조했고 막을 항목은 없습니다. "
+            "규칙 대조 후에도 필수 확인이 남아 있습니다. 허가 대조 등 서버 승인 조건을 충족해야 진행할 수 있습니다. "
             f"승인 전에 담당자가 확인할 것: {', '.join(checks)}."
         )
     else:

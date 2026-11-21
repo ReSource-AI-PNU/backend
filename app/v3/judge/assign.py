@@ -486,7 +486,7 @@ def optimize_assignment(
                     "carbon": process + (moved["tco2e"] or 0.0),
                     "process": process,
                     "carbon_ev": carbon_ev,
-                    "carbon_known": per_kg is not None,
+                    "carbon_known": per_kg is not None and moved["known"],
                     "moved": moved,
                     "permit": level,
                     "conditional": any(c[1] == "conditional" for c in checks),
@@ -509,6 +509,17 @@ def optimize_assignment(
 
     if not usable:
         return rec.result("needs_information", output)
+    if weight and any(
+        c["vendor"] and not c["carbon_known"] for choices in options for c in choices
+    ):
+        weight = 0.0
+        output["carbonInObjective"] = False
+        output["carbonPrice"] = None
+        rec.check(
+            "carbon_objective",
+            "conditional",
+            "후보의 탄소 경계가 모두 확인되지 않아 미산정을 무배출로 비교하지 않고 금액 기준으로만 배정했습니다.",
+        )
     too_many = math.prod(len(o) for o in options) > MAX_COMBINATIONS
     if cp_solver is _AUTO:
         cp_solver = cp_sat_pick if HAS_ORTOOLS else None
@@ -561,7 +572,12 @@ def optimize_assignment(
             money, carbon = _money_carbon(combo)
             objective = money - weight * carbon
             names = tuple(_name(c) for c in combo)
-            key = (-round(objective, 6), names)  # 동점이면 업체 ID 순서가 앞선 배정
+            # Unknown transport cannot win by being treated as free. Keep such offers
+            # in negotiation, but prefer a feasible fully costed allocation (including keep).
+            pending = sum(
+                bool(c["vendor"] and transport_charge(c["vendor"])["pending"]) for c in combo
+            )
+            key = (pending, -round(objective, 6), names)
             if best_key is None or key < best_key:
                 best, best_key = combo, key
             if (alone_key is None or key < alone_key) and alone(combo):
@@ -584,6 +600,19 @@ def optimize_assignment(
         return best
 
     found = None
+    if any(
+        c["vendor"] and transport_charge(c["vendor"])["pending"]
+        for choices in options
+        for c in choices
+    ):
+        cp_solver = None  # The integer objective has no unknown-cost ordering.
+        if too_many:
+            rec.check(
+                "cost_pending",
+                "conditional",
+                "운반비 미정 후보가 많아 확정 배정을 보류합니다. 견적을 입력해 주세요.",
+            )
+            return rec.result("needs_information", output)
     if cp_solver is not None:
         try:
             picked = cp_solver(usable, options, weight)
@@ -792,7 +821,12 @@ def optimize_assignment(
                 after_ev.append(made["evidence"][0])
             after = choice["value"] - share.get(i, 0.0)
         pending = bool(choice["vendor"] and charge and charge["pending"])
-        tail = "(별도 운반비 반영 전)" if pending else ""
+        cost_pending = bool(choice["vendor"] and item["hours"] is None) or bool(
+            choice["vendor"] and item["hours"] and item["rate"] is None
+        )
+        tail = "(미확인 비용 반영 전 잠정 금액)" if pending or cost_pending else ""
+        if cost_pending:
+            after_formula += ". 전처리·선별·세척 비용 미확인으로 순손익을 확정하지 않았습니다"
         made = rec.number(
             f"{tag}MonthlyAfter",
             after,
@@ -838,6 +872,7 @@ def optimize_assignment(
             "transportBasis": charge["basis"] if charge else None,
             "transportUnit": charge["unit"] if charge else None,
             "transportPending": pending,
+            "costPending": cost_pending,
             "transportFee": _claim_id(haul, "fee"),
             "transportPickups": _claim_id(haul, "pickups"),
             "transportMonthly": _claim_id(haul, "monthly"),
@@ -940,9 +975,17 @@ def optimize_assignment(
         output["assignments"].append(entry)
         now_total, after_total = now_total + now, after_total + after
     # 운반비를 정하지 못한 배정이 섞인 합계는 잠정값이다(이름과 계산식에 밝힌다)
-    pending_ids = [a["streamId"] for a in output["assignments"] if a.get("transportPending")]
-    note = ". 별도 운반비 반영 전 값이 섞여 있습니다" if pending_ids else ""
-    tail = "(별도 운반비 반영 전 포함)" if pending_ids else ""
+    pending_ids = [
+        a["streamId"]
+        for a in output["assignments"]
+        if a.get("transportPending") or a.get("costPending")
+    ]
+    note = (
+        ". 미확인 운반비·작업비 반영 전 잠정 금액이 포함되어 순손익이 아닙니다"
+        if pending_ids
+        else ""
+    )
+    tail = "(미확인 비용 반영 전 포함)" if pending_ids else ""
     rec.number("totalNow", now_total, "원/월", "폐기물별 현행 월 손익의 합", parts["now"])
     rec.number(
         "totalAfter",
@@ -981,7 +1024,11 @@ def optimize_assignment(
             "conditional",
             f"{'·'.join(dict.fromkeys(no_distance))} 운송 배출을 계산하지 못한 업체가 있습니다. 확인 필요.",
         )
-    output["greenest"] = _greenest(rec, usable, best, greenest)
+    output["greenest"] = (
+        _greenest(rec, usable, best, greenest)
+        if all(c["carbon_known"] for choices in options for c in choices)
+        else None
+    )
     # 자원순환 효과(현행 대비 감축량·에너지 절감·신재 대체)와 네 시나리오. 월 손익과 섞지 않는다
     money_b = None
     if unbundled is not None:
