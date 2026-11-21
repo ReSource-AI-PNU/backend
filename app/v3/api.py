@@ -42,6 +42,7 @@ from app.core.config import settings
 from app.v3 import accounts, httpio, live, service
 from app.v3.agents.factory import build_llm_factory
 from app.v3.demo.scope import demo_app
+from app.v3.onboarding import agent as onboarding
 from app.v3.scan import views as scans
 
 logger = logging.getLogger(__name__)
@@ -608,6 +609,35 @@ async def put_vendor(org_id: str, request: Request):
     viewer = await viewer_of(request)
     patch = await json_object(request)
     return await call(service.update_vendor, org_id, patch, viewer)
+
+
+# 업체 온보딩 대화(app/v3/onboarding). 업체 측 AI가 초안을 만들고, 담당자가 고른 항목만 저장한다
+@router.get("/vendors/{org_id}/onboarding")
+@guarded
+async def vendor_onboarding(org_id: str, request: Request):
+    return await call(onboarding.get_onboarding, org_id, await viewer_of(request))
+
+
+@router.post("/vendors/{org_id}/onboarding/messages")
+@guarded
+async def vendor_onboarding_message(org_id: str, request: Request):
+    viewer = await viewer_of(request)
+    body = await json_object(request)
+    return await call(onboarding.post_message, org_id, body, viewer)
+
+
+@router.post("/vendors/{org_id}/onboarding/confirm")
+@guarded
+async def vendor_onboarding_confirm(org_id: str, request: Request):
+    viewer = await viewer_of(request)
+    body = await json_object(request)
+    return await call(onboarding.post_confirm, org_id, body, viewer)
+
+
+@router.delete("/vendors/{org_id}/onboarding")
+@guarded
+async def vendor_onboarding_reset(org_id: str, request: Request):
+    return await call(onboarding.delete_onboarding, org_id, await viewer_of(request))
 
 
 # ── 진단 ─────────────────────────────────────────────────────────────
