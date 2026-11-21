@@ -136,7 +136,8 @@ def test_contract_routes_are_read():
     assert ("PUT", "/sessions/{}/outcomes/{}") in routes  # 검수 기록 정정(새 반입 등록과 따로)
     assert ("POST", "/sessions/{}/permit-checks") in routes
     assert ("GET", "/orgs/{}/memory") in routes and ("PUT", "/orgs/{}/memory") in routes
-    assert len(routes) == 41  # 보관장 3D 스캔 6개, 회사별 기록 2개 포함
+    assert ("POST", "/vendors/{}/onboarding/confirm") in routes
+    assert len(routes) == 45  # 보관장 3D 스캔 6개, 회사별 기록 2개, 업체 온보딩 4개 포함
 
 
 def test_devserver_routes_equal_the_contract():
