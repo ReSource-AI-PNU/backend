@@ -1,3 +1,5 @@
+from dataclasses import replace
+
 import pytest
 
 from app.v3.evidence.model import Evidence
@@ -13,11 +15,17 @@ from tests.v3.judge_fixtures import (
     VENDOR2,
     assert_grounded,
     claim,
+    factor_gate,  # noqa: F401 - 시험 전용 배출계수를 받는 픽스처
     film_vendor,
+    grade_gate,  # noqa: F401 - 팀 등급 임계값을 받는 픽스처(등급 계산 경로만 본다)
+    origin_of,
     registry,
     run,
-    stream,
     vendor,
+    with_test_factors,
+)
+from tests.v3.judge_fixtures import (
+    answered_stream as stream,
 )
 
 
@@ -27,7 +35,18 @@ def test_defaults_are_assumptions_and_idempotent():
     assert len(ids_) == len(defaults.load()["items"]) and all(
         i.startswith("assumption:") for i in ids_
     )
-    assert all(reg.get(i).version == 1 and "가정값" in reg.get(i).excerpt for i in ids_)
+    assert all(reg.get(i).version == 1 for i in ids_)
+    # 가정값은 가정값이라고, 승인 기록이 없는 제안 정책값은 자동 적용하지 않는다고 밝힌다
+    for i in ids_:
+        found = reg.get(i)
+        if found.meta["evidenceClass"] == "policy":
+            assert "자동 적용하지 않습니다" in found.excerpt
+        else:
+            assert found.meta["evidenceClass"] == "assumption" and "가정값" in found.excerpt
+    # 어느 것도 새 계산의 기준값으로 고르지 않는다(기존 근거를 다시 읽을 수 있게 저장소에는 남긴다)
+    assert all(
+        basis.resolve(reg, EMITTER, item["key"]) is None for item in defaults.load()["items"]
+    )
     assert basis.resolve(reg, EMITTER, "kau.price") is None
 
 
@@ -44,9 +63,13 @@ def test_basis_prefers_ref_when_present():
     )
     reg.put(ref)
     basis.prefer("current.cost.폐플라스틱", ref.id)
+    # 원문을 확인하지 않은 ref는 이름과 값이 있어도 쓰지 않고, 가정값으로 내려가지도 않는다
+    assert basis.resolve(reg, EMITTER, "current.cost.폐플라스틱") is None
+    checked = replace(ref, meta={"verificationStatus": "original_checked"})
+    reg.put(checked)
     assert basis.resolve(reg, EMITTER, "current.cost.폐플라스틱").id == ref.id
     basis.reset()
-    assert basis.resolve(reg, EMITTER, "current.cost.폐플라스틱").kind == "assumption"
+    assert basis.resolve(reg, EMITTER, "current.cost.폐플라스틱") is None
 
 
 def test_toolbox_has_eleven_tools_and_validates_input():
@@ -85,7 +108,28 @@ def test_deterministic_and_grounded(name, args):
     assert all(reg.get(e).version == 1 for e in first["evidence"])
 
 
+def test_identify_holds_the_common_grade_without_an_established_standard():
+    """팀 등급 임계값은 공통 등급으로 쓰지 않는다. 측정값이 있어도 등급은 산정 보류다."""
+    reg = registry()
+    r = run(reg, "identify_stream", stream=stream())
+    # 측정값은 업체 매입 기준과 바로 대조하므로 보류는 조건부이고, 수분을 다시 묻지 않는다
+    assert r["status"] == "conditional" and r["output"]["grade"] is None
+    assert r["output"]["basis"] == "measured" and r["output"]["gradeEvidence"] == []
+    held = next(c for c in r["checks"] if c["key"] == "quality")
+    assert "등급 산정을 보류" in held["text"]
+    assert all(c["key"] != "moisture" for c in r["checks"])
+    photo = run(
+        reg,
+        "identify_stream",
+        stream=stream(measure=None, photo={"contaminationPct": 8.0}),
+        moisturePct=2.0,
+    )
+    assert photo["output"]["grade"] is None and photo["output"]["photoGrade"] is None
+
+
+@pytest.mark.usefixtures("grade_gate")
 def test_identify_measured_beats_photo_and_flags_disagreement():
+    """등급 계산 경로만 본다(grade_gate가 팀 임계값을 받아들인다)."""
     reg = registry()
     r = run(reg, "identify_stream", stream=stream())
     assert (
@@ -120,18 +164,27 @@ def test_identify_measured_beats_photo_and_flags_disagreement():
 
 def test_judge_route_three_states_and_sensitivity():
     reg = registry()
+    # 담당자가 답한 현행 처리비(kg당 250원)로 견준다
     r = run(reg, "judge_route", stream=stream(), vendor=vendor())
     assert (
         r["status"] == "calculated"
         and r["output"]["route"] == "sell"
-        and r["output"]["current"]["assumed"]
+        and not r["output"]["current"]["assumed"]
     )
     assert (
         claim(r, "monthlyAfter")["value"] == 192000 and claim(r, "monthlyNow")["value"] == -150000
     )
     assert claim(r, "difference")["value"] == 342000
-    assert claim(r, "sensitivityA")["value"] == 192000 and r["output"]["current"]["sensitivity"]
-    assert f"doc:{VENDOR}:매입기준표:PP-A" in claim(r, "unitPrice")["evidence"]
+    assert f"doc:{VENDOR}:매입기준표:PP-A" in {
+        origin_of(reg, e) for e in claim(r, "unitPrice")["evidence"]
+    }
+    # 현행 처리비를 모르면 혼합 소각 가정값으로 채우지 않고 현행 대비를 보류한다(감도 분석도 내지 않는다)
+    unknown = run(reg, "judge_route", stream=stream(currentTreatment=None), vendor=vendor())
+    assert unknown["status"] == "conditional" and unknown["output"]["route"] == "sell"
+    assert {c["id"] for c in unknown["claims"]} == {"monthlyKg", "unitPrice", "monthlyAfter"}
+    assert not unknown["output"]["current"]["assumed"]
+    assert not unknown["output"]["current"]["sensitivity"]
+    assert any(c["key"] == "current_cost" for c in unknown["checks"])
     given = stream(
         currentTreatment={"method": "위탁 소각", "unitCostKrwPerKg": 300, "evidence": []}
     )
@@ -220,7 +273,9 @@ def test_permit_mismatch_blocks_thread_with_evidence():
     assert r["status"] == "needs_information" and r["output"]["openThread"] is False
     r = run(reg, "find_vendors", stream=stream(), vendors=[film_vendor(), vendor()], origin=ORIGIN)
     assert [c["vendorOrgId"] for c in r["output"]["candidates"]] == [VENDOR]
-    assert r["output"]["candidates"][0]["distanceAssumed"] is True
+    # 도로 거리가 없으면 직선 거리 × 우회 계수(가정값)로 채우지 않는다
+    assert r["output"]["candidates"][0]["distance"] is None
+    assert r["output"]["candidates"][0]["distanceAssumed"] is None
     ex = r["output"]["excluded"][0]
     assert ex["vendorOrgId"] == VENDOR2 and ex["evidence"] == [f"doc:{VENDOR2}:허가증:품목"]
     road = call_tool(
@@ -235,7 +290,19 @@ def test_permit_mismatch_blocks_thread_with_evidence():
         road["output"]["candidates"][0]["distanceAssumed"] is False
         and road["claims"][0]["value"] == 7.5
     )
-    far = run(reg, "find_vendors", stream=stream(), vendors=[vendor()], origin=ORIGIN, maxKm=0.1)
+    # 거리를 모르면 탐색 거리로 빼지 않는다. 도로 거리가 탐색 거리 밖이면 뺀다
+    unknown = run(
+        reg, "find_vendors", stream=stream(), vendors=[vendor()], origin=ORIGIN, maxKm=0.1
+    )
+    assert [c["vendorOrgId"] for c in unknown["output"]["candidates"]] == [VENDOR]
+    far = call_tool(
+        "find_vendors",
+        {"stream": stream(), "vendors": [vendor()], "origin": ORIGIN, "maxKm": 0.1},
+        registry=reg,
+        org_id=EMITTER,
+        today=TODAY,
+        distance_provider=lambda pts: [[0, 7.5], [7.5, 0]],
+    )
     assert (
         far["output"]["candidates"] == []
         and far["output"]["excluded"][0]["reason"] == "탐색 거리 밖입니다."
@@ -245,17 +312,16 @@ def test_permit_mismatch_blocks_thread_with_evidence():
 def test_cost_carbon_marks_missing_basis_as_needs_check():
     reg = registry()
     r = run(reg, "cost_carbon", stream=stream(), vendor=vendor(), origin=ORIGIN)
-    assert r["status"] == "conditional" and r["output"]["transportAssumed"] is True
-    assert claim(r, "monthlyAfter")["value"] == 192000  # 운송비는 기본으로 업체 부담
-    # 환경성적표지 평가계수: (재활용 공정 − 혼합 소각) × 월 발생량. 신재 대체 효과는 넣지 않는다
-    assert claim(r, "carbonDifference")["value"] == pytest.approx(
-        (0.0186 - 3.412554039) * 600 / 1000, abs=1e-6
-    )
-    assert all(
-        e.startswith(("calc:", "ref:환경성적표지:"))
-        for e in claim(r, "carbonDifference")["evidence"]
-    )
-    assert r["output"]["kau"] is None and any(c["key"] == "kau" for c in r["checks"])
+    # 업체가 운반 조건을 밝히지 않았다: 가정 운행 단가로 어림하지 않고 미정으로 둔다
+    assert r["status"] == "conditional" and r["output"]["transportAssumed"] is None
+    assert r["output"]["transportPending"] is True and r["output"]["costPending"] is True
+    assert claim(r, "monthlyAfter")["value"] == 192000  # 운반비·작업비 반영 전 잠정 금액
+    assert all(c["id"] != "monthlyTransport" for c in r["claims"])
+    transport = next(c for c in r["checks"] if c["key"] == "transport")
+    assert transport["status"] == "conditional" and "가정 운행 단가" in transport["text"]
+    # 업체 처리 방식이 없고 시드 배출계수는 원문 미확인이라 탄소와 환산액을 내지 않는다
+    assert r["output"]["carbon"] is None and r["output"]["kau"] is None
+    assert any(c["key"] == "carbon" and "확인 필요" in c["text"] for c in r["checks"])
     paid = run(
         reg,
         "cost_carbon",
@@ -264,9 +330,13 @@ def test_cost_carbon_marks_missing_basis_as_needs_check():
         origin=ORIGIN,
         transportPaidBy="emitter",
     )
-    assert claim(paid, "monthlyAfter")["value"] == pytest.approx(
-        192000 - claim(paid, "monthlyTransport")["value"]
-    )
+    assert paid["output"]["transportPending"] is True
+    assert all(c["id"] != "monthlyTransport" for c in paid["claims"])
+    # 업체가 운반비를 밝히면 그 값을 뺀다
+    quoted = vendor(transport={"paidBy": "emitter", "feePerPickupKrw": 30000, "evidence": []})
+    fee = run(reg, "cost_carbon", stream=stream(), vendor=quoted, origin=ORIGIN)
+    assert claim(fee, "monthlyTransport")["value"] == 60000
+    assert claim(fee, "monthlyAfter")["value"] == pytest.approx(192000 - 60000)
     wood = run(
         reg,
         "cost_carbon",
@@ -277,24 +347,40 @@ def test_cost_carbon_marks_missing_basis_as_needs_check():
     assert wood["output"]["carbon"] is None and any(c["key"] == "carbon" for c in wood["checks"])
 
 
+def road_km(points):
+    """가상 도로 거리 제공자: 경위도 차이를 km로 어림한 대칭 행렬(시험 전용)."""
+    return [[round((abs(a[0] - b[0]) + abs(a[1] - b[1])) * 100, 3) for b in points] for a in points]
+
+
 def test_route_extra_cost_respects_weight_and_volume():
     reg = registry()
     v = vendor()
     stops = [{"id": "a", "location": [128.92, 35.12], "kg": 1000, "m3": 4}]
     new = {"id": "n", "location": ORIGIN, "kg": 600, "m3": 2.4}
-    r = run(reg, "route_extra_cost", org=VENDOR, vendor=v, stops=stops, newStop=new)
+    # 도로 거리가 없으면 직선 × 우회 계수(가정값)로 채우지 않고 보류한다
+    held = run(reg, "route_extra_cost", org=VENDOR, vendor=v, stops=stops, newStop=new)
+    assert held["status"] == "needs_information" and held["claims"] == []
+    assert any(c["key"] == "distance" for c in held["checks"])
+
+    def road(**args):
+        return call_tool(
+            "route_extra_cost",
+            args,
+            registry=reg,
+            org_id=VENDOR,
+            today=TODAY,
+            distance_provider=road_km,
+        )
+
+    r = road(vendor=v, stops=stops, newStop=new)
     assert_grounded(reg, r, VENDOR)
     assert claim(r, "extraKm")["value"] > 0 and claim(r, "trips")["value"] == 1
     assert claim(r, "extraCost")["value"] == pytest.approx(
         claim(r, "extraKm")["value"] * 1200, rel=1e-6
     )
-    bulky = run(
-        reg, "route_extra_cost", org=VENDOR, vendor=v, stops=stops, newStop={**new, "m3": 18}
-    )
+    bulky = road(vendor=v, stops=stops, newStop={**new, "m3": 18})
     assert claim(bulky, "trips")["value"] == 2 and bulky["output"]["extraTrips"] == 1
-    too_big = run(
-        reg, "route_extra_cost", org=VENDOR, vendor=v, stops=stops, newStop={**new, "kg": 9000}
-    )
+    too_big = road(vendor=v, stops=stops, newStop={**new, "kg": 9000})
     assert too_big["output"]["feasible"] is False
     m = [[0, 1, 1, 5], [1, 0, 1, 5], [1, 1, 0, 5], [5, 5, 5, 0]]
     assert plan_trips(m, [(1, 0), (1, 0), (1, 0)], 2, None) == (13.0, 2)
@@ -333,8 +419,9 @@ def test_optimize_assignment_constraints_and_tiebreak():
     )
 
 
+@pytest.mark.usefixtures("factor_gate")
 def test_carbon_weight_only_changes_objective_when_positive():
-    reg = registry()
+    reg = with_test_factors(registry())
     payer = vendor(
         process="재활용",  # 처리비를 받는 업체는 처리 방식을 밝혀야 탄소를 계산한다
         criteria=[
@@ -353,10 +440,12 @@ def test_carbon_weight_only_changes_objective_when_positive():
         and off["output"]["assignments"][0]["route"] == "keep"
     )
     on = run(reg, "optimize_assignment", streams=[stream()], vendors=[payer], carbonWeight=100000)
-    assert (
-        on["output"]["carbonInObjective"] is True
-        and on["output"]["assignments"][0]["route"] == "treat"
-    )
+    # 처리 배출계수가 있어도 수거 운송 배출의 경계(실제 사업장 도로 거리·적재·회송)가 확인되지 않으면
+    # 미산정을 무배출로 견주지 않고 금액만으로 배정한다
+    assert on["output"]["carbonInObjective"] is False and on["output"]["carbonPrice"] is None
+    assert on["output"]["assignments"][0]["route"] == "keep"
+    held = next(c for c in on["checks"] if c["key"] == "carbon_objective")
+    assert held["status"] == "conditional" and "금액 기준" in held["text"]
 
 
 def test_org_boundary():
@@ -385,26 +474,36 @@ def test_org_boundary():
     }  # 업체 내부 문서
 
 
-def test_kau_reference_feeds_cost_carbon_when_seeded():
+@pytest.mark.usefixtures("factor_gate")
+def test_kau_reference_feeds_cost_carbon_only_when_checked_against_the_original():
     from app.v3.evidence.seeds import load_seed_dir
 
-    reg = registry()
+    reg = with_test_factors(registry())
     assert basis.resolve(reg, EMITTER, "kau.price") is None
     load_seed_dir(reg)
+    with_test_factors(reg)
+    # 시드의 KAU 종가는 원문을 다시 확인하지 않아(not_rechecked) 환산에 쓰지 않는다
+    seeded = next(e for e in reg.list(org_id=None) if e.id.startswith("ref:KAU:"))
+    assert seeded.meta.get("verificationStatus") != "original_checked"
+    assert basis.resolve(reg, EMITTER, "kau.price") is None
+    recycler = vendor(process="재활용")
+    r = run(reg, "cost_carbon", stream=stream(), vendor=recycler, origin=ORIGIN)
+    assert r["output"]["kau"] is None and any(c["key"] == "kau" for c in r["checks"])
+    # 원문을 확인한 시세면 처리 단계 배출 변화에 곱해 판단용 환산액을 낸다
+    reg.put(replace(seeded, meta={**seeded.meta, "verificationStatus": "original_checked"}))
     kau = basis.resolve(reg, EMITTER, "kau.price")
     assert kau.kind == "ref" and kau.unit == "원/tCO2e" and kau.meta["per"] == "tCO2e"
-    r = run(reg, "cost_carbon", stream=stream(), vendor=vendor(), origin=ORIGIN)
+    r = run(reg, "cost_carbon", stream=stream(), vendor=recycler, origin=ORIGIN)
     value = claim(r, "kauValue")
     assert r["output"]["kau"] == "kauValue" and value["unit"] == "원/월"
-    # 환산액은 처리 방식 탄소 변화에 수거 운행 배출을 더한 값(carbonTotal)으로 낸다
-    total = claim(r, "carbonTotal")["value"]
-    moved = claim(r, "transportCarbon")["value"]
-    assert total == pytest.approx(claim(r, "carbonDifference")["value"] + moved)
-    assert moved > 0
-    assert value["value"] == pytest.approx(-total * kau.value)
-    assert kau.id in value["evidence"] and not any(c["key"] == "kau" for c in r["checks"])
+    # 운송 배출은 실제 사업장 거리·적재·회송 조건이 확인되지 않아 더하지 않는다(처리 단계만)
+    assert r["output"]["transportCarbon"] is None and r["output"]["carbonTotal"] is None
+    assert value["value"] == pytest.approx(-claim(r, "carbonDifference")["value"] * kau.value)
+    assert kau.id in {origin_of(reg, e) for e in value["evidence"]}
+    assert not any(c["key"] == "kau" for c in r["checks"])
 
 
+@pytest.mark.usefixtures("grade_gate")
 def test_grade_thresholds_have_one_source():
     from app.v3.intake.grade_model import grade_by_thresholds
 
@@ -477,6 +576,11 @@ def test_reference_prices_are_shown_but_never_used_in_profit():
     reg = registry()
     assert basis.reference_prices(reg, EMITTER) == []  # 근거 시드가 없으면 비어 있다
     load_seed_dir(reg)
+    # 시드의 가격조사는 원문을 다시 확인하지 않아(not_rechecked) 참고 시세로도 보이지 않는다
+    assert basis.reference_prices(reg, EMITTER) == []
+    for e in reg.list(org_id=None):
+        if e.id.startswith("ref:가격조사"):
+            reg.put(replace(e, meta={**e.meta, "verificationStatus": "original_checked"}))
     prices = basis.reference_prices(reg, EMITTER, ["PP"])
     assert [p["form"] for p in prices] == ["압축", "펠렛", "플레이크"]
     assert all(p["evidence"].kind == "ref" and p["evidence"].unit == "원/kg" for p in prices)

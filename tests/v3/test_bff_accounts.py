@@ -299,8 +299,12 @@ def test_demo_view_reads_demo_orgs_only_and_only_with_get(world):
     streams = client.get(f"/api/v3/orgs/{HANBIT}/streams", headers=demo(HANBIT))
     assert streams.status_code == 200 and len(streams.json()) == 4
     sessions = client.get("/api/v3/sessions", headers=demo(HANBIT)).json()
-    # 맨 앞은 승인 대기의 시연 진단, 그 뒤는 확정하고 검수까지 마친 지난 거래(실적 리포트용)
-    assert [s["status"] for s in sessions] == ["awaiting_approval", "confirmed"]
+    # 맨 앞은 승인 대기의 시연 진단, 그 뒤는 확정하고 검수까지 마친 지난 거래(실적 리포트용). 지난 거래에서도
+    # 미소환경은 노선 밖 운반비가 정해지지 않아 계약 검토 담당이 막으므로 진단 전체는 승인 대기로 남는다
+    assert [s["status"] for s in sessions] == ["awaiting_approval", "awaiting_approval"]
+    past = client.get(f"/api/v3/sessions/{sessions[1]['id']}", headers=demo(HANBIT)).json()
+    settled = {t["vendorOrgId"]: t["status"] for t in past["threads"] if t["messages"]}
+    assert settled[SAEGIL] == "confirmed" and settled[MISO] == "agreed"
     view = client.get(f"/api/v3/sessions/{sessions[0]['id']}", headers=demo(HANBIT))
     assert view.status_code == 200 and view.json()["session"]["status"] == "awaiting_approval"
     assert client.get("/api/v3/sessions", headers=demo(SAEGIL)).status_code == 200
@@ -485,7 +489,8 @@ def test_demo_reset_keeps_real_data_and_leaves_a_demo_diagnosis(world):
 
     hanbit = client.get("/api/v3/sessions", headers=demo(HANBIT)).json()
     assert hanbit[0]["id"] == reset.json()["demoSessionId"]
-    assert [s["status"] for s in hanbit] == ["awaiting_approval", "confirmed"]
+    # 지난 거래도 미소환경 대화는 운반비 미정으로 막혀 진단 전체는 승인 대기다(확정한 대화의 검수는 있다)
+    assert [s["status"] for s in hanbit] == ["awaiting_approval", "awaiting_approval"]
     report = client.get(f"/api/v3/orgs/{HANBIT}/report", headers=demo(HANBIT)).json()
     assert "records" in report, report
     assert report["records"] and report["totals"]["kg"]["value"] > 0

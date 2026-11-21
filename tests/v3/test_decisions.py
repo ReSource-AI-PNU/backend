@@ -47,16 +47,21 @@ def status_of(result, key):
 
 
 # ── C12 ──────────────────────────────────────────────────────────────
+# 현행 처리비가 없으면 judge_route가 current_cost를 확인 필요로 남긴다(가정값 없음). 품질 출처만 보려고 넣는다(가상)
+CURRENT = {"method": "혼합 소각", "unitCostKrwPerKg": 250, "evidence": []}
+
+
 def test_estimated_quality_inside_the_limit_is_conditional_not_confirmed():
     reg = jf.registry()
     vendor = jf.vendor()
-    measured = jf.run(reg, "judge_route", stream=jf.stream(), vendor=vendor)
+    measured = jf.run(reg, "judge_route", stream=jf.stream(currentTreatment=CURRENT), vendor=vendor)
     assert measured["status"] == "calculated"
     assert status_of(measured, "contaminationPct") == "met"
     assert status_of(measured, "contamination_basis") is None
     assert status_of(measured, "moisture_basis") is None
 
     photo_only = jf.stream(
+        currentTreatment=CURRENT,
         measure=None,
         photo={"contaminationPct": 1.0, "evidence": []},
         answers={"moisturePct": 0.3, "evidence": []},

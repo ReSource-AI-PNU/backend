@@ -12,7 +12,16 @@ from app.v3.evidence.registry import (
     InMemoryRegistry,
     JsonFileRegistry,
 )
-from tests.v3.runtime_fixtures import HANBIT, SAEGIL, TODAY, approve_all, recheck, to_approval
+from tests.v3.runtime_fixtures import (
+    HANBIT,
+    MISO,
+    MISO_VISITS,
+    SAEGIL,
+    TODAY,
+    approve_all,
+    recheck,
+    to_approval,
+)
 
 
 def evidence(evidence_id="doc:org_a:기준표:단가", value=320.0, **over):
@@ -80,6 +89,8 @@ def test_restart_with_the_same_store_continues_the_diagnosis(tmp_path):
     store_path = str(tmp_path / "demo.json")
     first = devserver.build_app(store_path=store_path, today=TODAY)
     assert first.resumed is False  # 파일이 없었으므로 시연 시작 상태
+    # 미소환경의 노선 밖 수거 답(가상). 없으면 운반비 미정이라 그 대화는 확정할 수 없다(계약 검토 담당)
+    service.update_vendor(first, MISO, {"transport": {"offRoute": dict(MISO_VISITS)}}, MISO)
     waiting = to_approval(first)
     sid = waiting["session"]["id"]
     assert waiting["session"]["status"] == "awaiting_approval"

@@ -269,26 +269,43 @@ def test_source_units_convert_without_combining_energy_types():
     assert convert(1, "MMBtu/short ton", "GJ/t") == pytest.approx(1.05505585262 / 0.90718474)
 
 
-def test_cost_pending_is_visible_and_no_transport_estimate_wins():
-    from tests.v3.judge_fixtures import run, vendor
+def test_cost_pending_is_visible_and_pending_transport_stays_provisional():
+    """운반비 견적이 없으면 가정 운행 단가를 대입하지 않는다. 배정은 "운반비 반영 전" 잠정 배정으로 두고
+    (2026-11-22 사용자 결정: main처럼 잠정 배정 + 손익분기), 운반비가 한 달 얼마를 넘으면 현행 유지가 나은지 밝힌다.
+    확정은 계약 검토 담당이 막는다(필수 운반비 미정)."""
+    from tests.v3.judge_fixtures import claim, run, vendor
 
     row = stream(currentTreatment={"method": "소각", "unitCostKrwPerKg": 250})
     reg = registry()
     missing = run(reg, "cost_carbon", stream=row, vendor=vendor())
     assert missing["output"]["transportPending"] and missing["output"]["costPending"]
     selected = run(reg, "optimize_assignment", streams=[row], vendors=[vendor()])
-    assert selected["output"]["assignments"][0]["route"] == "keep"
+    item = selected["output"]["assignments"][0]
+    assert item["route"] == "sell" and item["status"] == "conditional"
+    assert item["transportPending"] is True and item["costPending"] is True
+    assert item["transport"] is None  # 0원으로 확정하지 않는다
+    after = claim(selected, item["monthlyAfter"])["value"]
+    room = claim(selected, item["transportRoom"])["value"]
+    assert room == pytest.approx(after - (-250 * 600))  # 현행 유지와의 손익분기
+    assert item["transportRoomAgainst"] == {"vendorOrgId": None, "route": "keep"}
 
 
 def test_contract_documents_use_same_included_terms_and_preserve_sources():
-    from tests.v3.runtime_fixtures import HANBIT, approve_all, to_approval
+    from tests.v3.runtime_fixtures import HANBIT, NAMHAE, approve_all, to_approval
 
     app = make_app()
     confirmed = approve_all(app, to_approval(app))
     docs = confirmed["documents"]
     assert {d["kind"] for d in docs} >= {"request", "plan", "contract"}
+    vendor_of = {t["id"]: t["vendorOrgId"] for t in confirmed["threads"]}
+    # 남해열분해는 운반비를 따로 받고(보내는 곳 부담), 새길자원·미소환경은 단가에 포함한다
+    separate = {vendor_of[d["threadId"]] for d in docs if "운반비 별도" in d["rendered"]}
+    assert separate == {NAMHAE}
     for doc in docs:
         assert doc["validation"]["ok"]
+        if vendor_of[doc["threadId"]] == NAMHAE:
+            assert "운반비 단가 포함" not in doc["rendered"]
+            continue
         assert "운반비 별도" not in doc["rendered"]
         assert "운반비 단가 포함" in doc["rendered"]
         assert "다음 등급" not in doc["rendered"]
@@ -298,9 +315,20 @@ def test_contract_documents_use_same_included_terms_and_preserve_sources():
 
 
 def test_missing_baseline_is_held_in_view_and_unknown_carbon_is_not_best():
-    from tests.v3.runtime_fixtures import to_approval
+    from tests.v3.runtime_fixtures import HANBIT, start
 
-    view = to_approval(make_app())
+    app = make_app()
+    # 현행 처리비 질문에도 모두 "모름"으로 답한다(시연 답 DEMO_ANSWERS를 쓰지 않는다)
+    view = start(app)
+    for _ in range(3):
+        if view["session"]["status"] != "awaiting_answers":
+            break
+        for question in view["questions"]:
+            if not question["answered"]:
+                service.answer_question(
+                    app, view["session"]["id"], question["id"], "unknown", HANBIT
+                )
+        view = service.run_session(app, view["session"]["id"], HANBIT)
     for row in view["streams"]:
         if row["id"] in ("st_film", "st_purge"):
             assert row["currentTreatment"]["method"] == "미확인"

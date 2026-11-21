@@ -9,7 +9,8 @@ from urllib.parse import quote
 import pytest
 
 from app.v3 import devserver
-from tests.v3.runtime_fixtures import ADMIN, DAON, HANBIT, SAEGIL, TODAY
+from app.v3.agents.factory import LlmConfigError
+from tests.v3.runtime_fixtures import ADMIN, DAON, HANBIT, MISO, MISO_VISITS, SAEGIL, TODAY
 
 
 @pytest.fixture(scope="module")
@@ -73,6 +74,15 @@ def test_full_flow_over_http(base):
     assert seeded["emitterOrgId"] == HANBIT and seeded["synthetic"] is True
     assert [o["id"] for o in api(base, "GET", "/orgs")][:2] == [HANBIT, DAON]
     assert len(api(base, "GET", f"/orgs/{HANBIT}/streams")) == 4
+    # 미소환경이 업체 정보에서 노선 밖도 방문 수거하고 운반비는 단가에 포함한다고 답한다(가상). 이 답이 없으면
+    # 노선 밖 운반비가 미정이라 계약 검토 담당이 그 대화의 승인을 막는다
+    api(
+        base,
+        "PUT",
+        f"/vendors/{MISO}",
+        {"transport": {"offRoute": dict(MISO_VISITS)}},
+        org=MISO,
+    )
 
     view = api(base, "POST", "/sessions", {"emitterOrgId": HANBIT})
     sid = view["session"]["id"]
@@ -85,7 +95,7 @@ def test_full_flow_over_http(base):
             base, "POST", f"/sessions/{sid}/answers", {"questionId": question["id"], "value": value}
         )
     view = api(base, "POST", f"/sessions/{sid}/run")
-    # 두 번째 묶음: 현행 처리비를 모르는 흐름에 묻는다. 모름으로 답하면 가정값으로 견준다
+    # 두 번째 묶음: 현행 처리비를 모르는 흐름에 묻는다. 가정값으로 채우지 않으므로 담당자가 계약대로 답한다
     assert view["session"]["status"] == "awaiting_answers"
     second = [q for q in view["questions"] if not q["answered"]]
     assert {q["field"] for q in second} == {"currentCost"}
@@ -94,7 +104,7 @@ def test_full_flow_over_http(base):
             base,
             "POST",
             f"/sessions/{sid}/answers",
-            {"questionId": question["id"], "value": "unknown"},
+            {"questionId": question["id"], "value": "kg당 250원"},
         )
     view = api(base, "POST", f"/sessions/{sid}/run")
     assert view["session"]["status"] == "awaiting_approval"
@@ -280,11 +290,17 @@ def test_llm_option_reads_environment_only_for_foundry(tmp_path):
         app.llm_for("vendor", SAEGIL, {"provider": "foundry", "name": "gpt-5-mini"}).provider
         == "foundry"
     )
-    # 업체가 ollama를 골랐는데 주소가 없으면 규칙 정책으로 돌고, 그렇게 표시된다
-    assert (
-        app.llm_for("vendor", "org_namhae", {"provider": "ollama", "name": "qwen2.5:7b"}).provider
-        == "rule"
+    # 업체가 ollama를 골랐는데 주소가 없으면 규칙 정책 답으로 연결 성공을 대신하지 않고 설정 오류로 멈춘다
+    # (2026-11-21, strict). 오류 문구에 키 값을 싣지 않는다
+    with pytest.raises(LlmConfigError) as missing:
+        app.llm_for("vendor", "org_namhae", {"provider": "ollama", "name": "qwen2.5:7b"})
+    assert "Ollama" in str(missing.value) and "not-a-real-key" not in str(missing.value)
+    # V3_LLM_ALL_VENDORS=1(배포에서 Ollama를 끈 경우)이면 주 모델이 그 업체 대신 답한다
+    shared = devserver.build_app(
+        llm="foundry", today=TODAY, env={**full, "V3_LLM_ALL_VENDORS": "1"}
     )
+    stand_in = shared.llm_for("vendor", "org_namhae", {"provider": "ollama", "name": "qwen2.5:7b"})
+    assert (stand_in.provider, stand_in.model) == ("foundry", "chat")
     with_ollama = devserver.build_app(
         llm="foundry", today=TODAY, env={**full, "OLLAMA_BASE_URL": "http://10.0.0.4:11434"}
     )

@@ -207,7 +207,22 @@ def test_demo_scenario_to_confirmation(client):
     assert view["documents"] == []  # 승인 전에는 문서를 만들지 않는다
 
     blocked = {a["threadId"] for a in view["approvals"] if a["blocked"]}
-    agreed = [t for t in view["threads"] if t["status"] == "agreed" and t["id"] not in blocked]
+    # 계약 검토 담당이 막은 대화(시드의 미소환경: 노선 밖 운반비 미정)는 409 REVIEW_BLOCKED로 승인을 받지 않는다
+    stopped = {
+        a["threadId"]
+        for a in view["approvals"]
+        if (a.get("review") or {}).get("status") == "blocked"
+    }
+    for thread_id in stopped:
+        refused = client.post(
+            f"/api/v3/sessions/{session_id}/approvals",
+            headers=org(EMITTER),
+            json={"threadId": thread_id},
+        )
+        assert refused.status_code == 409 and refused.json()["error"]["code"] == "REVIEW_BLOCKED"
+    agreed = [
+        t for t in view["threads"] if t["status"] == "agreed" and t["id"] not in blocked | stopped
+    ]
     assert agreed, "시연 시나리오에는 합의된 스레드가 하나 이상 있어야 한다"
     for thread in agreed:
         body = {"threadId": thread["id"]}

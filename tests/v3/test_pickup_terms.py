@@ -83,6 +83,23 @@ def label_of(reg, found):
     return reg.get(found["evidence"][0], EMITTER).label
 
 
+def originals(reg, found):
+    """claim 근거 가운데 업체 문서. 계산 당시 판을 고정한 사본(doc:snapshot)이면 원본 ID로 읽는다."""
+    out = []
+    for eid in found["evidence"]:
+        if eid.startswith("doc:snapshot:"):
+            out.append(reg.get(eid, EMITTER).meta["originalId"])
+        elif eid.startswith("doc:"):
+            out.append(eid)
+    return out
+
+
+def formula_of(reg, found, viewer=EMITTER):
+    """calc 근거의 계산식(근거 패널 본문)."""
+    found = reg.get(found["evidence"][0], viewer)
+    return f"{(found.meta or {}).get('formula') or ''} {found.excerpt or ''}"
+
+
 STATES = {
     "unknown": {"status": "unknown", "basis": "undecided", "evidence": []},
     "check": {"status": "check", "basis": "undecided", "evidence": []},
@@ -190,7 +207,13 @@ def test_four_pickup_states_on_the_same_waste():
     out, reg_of = {}, {}
     for name, transport in STATES.items():
         reg = reg_of[name] = with_quote_docs(registry())
-        done = run(reg, "optimize_assignment", streams=[defect()], vendors=[buyer(transport)])
+        # 전처리 작업이 없다고 확인한 흐름(작업비 확정): 잠정 여부는 운반비만으로 갈린다
+        done = run(
+            reg,
+            "optimize_assignment",
+            streams=[defect(pretreatHoursPerMonth=0)],
+            vendors=[buyer(transport)],
+        )
         out[name] = (done, done["output"]["assignments"][0])
 
     for name in ("unknown", "check"):
@@ -198,11 +221,13 @@ def test_four_pickup_states_on_the_same_waste():
         assert item["route"] == "sell" and item["status"] == "conditional"
         assert item["transportPending"] is True and item["transport"] is None
         after = claim(done, item["monthlyAfter"])
-        assert after["value"] == 88000 and "별도 운반비 반영 전" in label_of(reg_of[name], after)
+        # 이름은 잠정 금액임을, 계산식은 별도 운반비 반영 전임을 밝힌다
+        assert after["value"] == 88000 and "미확인 비용 반영 전" in label_of(reg_of[name], after)
+        assert "별도 운반비 반영 전" in formula_of(reg_of[name], after)
         assert claim(done, item["difference"])["value"] == 188000
         assert done["output"]["totals"]["pending"] == ["st_defect"]
         total = claim(done, done["output"]["totals"]["difference"])
-        assert "별도 운반비 반영 전" in label_of(reg_of[name], total)
+        assert "미확인 비용 반영 전" in label_of(reg_of[name], total)
         # 운반비가 한 달 이만큼을 넘으면 현행 유지가 낫다
         assert claim(done, item["transportRoom"])["value"] == 188000
         assert item["transportRoomAgainst"] == {"vendorOrgId": None, "route": "keep"}
@@ -216,9 +241,10 @@ def test_four_pickup_states_on_the_same_waste():
     assert item["pickupStatus"] == "visit" and item["transportPending"] is False
     assert claim(done, item["revenue"])["value"] == 88000
     fee = claim(done, item["transportFee"])
-    assert fee["value"] == 30000 and fee["unit"] == "원/회" and FEE_DOC in fee["evidence"]
+    reg = reg_of["visit"]
+    assert fee["value"] == 30000 and fee["unit"] == "원/회" and originals(reg, fee) == [FEE_DOC]
     count = claim(done, item["transportPickups"])
-    assert count["value"] == 2 and COUNT_DOC in count["evidence"]
+    assert count["value"] == 2 and originals(reg, count) == [COUNT_DOC]
     assert claim(done, item["transportMonthly"])["value"] == 60000
     assert claim(done, item["transport"])["value"] == 60000
     assert claim(done, item["monthlyAfter"])["value"] == 28000
@@ -258,7 +284,8 @@ def test_100kg_counterexample_is_provisional_until_the_quote_arrives():
     assert item["route"] == "sell" and item["status"] == "conditional"
     assert item["transportPending"] is True
     difference = claim(empty, item["difference"])
-    assert difference["value"] == 35000 and "별도 운반비 반영 전" in label_of(reg, difference)
+    assert difference["value"] == 35000 and "미확인 비용 반영 전" in label_of(reg, difference)
+    assert "별도 운반비 반영 전" in formula_of(reg, difference)
     assert claim(empty, item["transportRoom"])["value"] == 35000
     # 월 70,000원 견적(월 금액)을 넣으면 현행 유지가 낫다
     quoted = {"status": "visit", "basis": "separate", "feePerMonthKrw": 70000, "evidence": []}
@@ -367,7 +394,7 @@ def _defect_row(view):
 
 
 def test_demo_off_route_vendor_is_not_shown_as_transport_included():
-    app = make_app()
+    app = make_app(miso_visits=False)
     view = to_approval(app)
     row = _defect_row(view)
     assert row["vendorOrgId"] == MISO
@@ -376,7 +403,14 @@ def test_demo_off_route_vendor_is_not_shown_as_transport_included():
     assert row["pickup"]["routeBasis"] == "included"
     assert row["transportPending"] is True and row["status"] == "conditional"
     assert (
-        "별도 운반비 반영 전" in app.registry.get(row["monthlyAfter"]["evidence"][0], HANBIT).label
+        "미확인 비용 반영 전" in app.registry.get(row["monthlyAfter"]["evidence"][0], HANBIT).label
+    )
+    assert "별도 운반비 반영 전" in formula_of(app.registry, row["monthlyAfter"], HANBIT)
+    # 필수 운반비가 미정이라 계약 검토 담당이 이 대화의 승인을 막는다(잠정 배정만 보인다)
+    approval = next(a for a in view["approvals"] if a["threadId"] == row["threadId"])
+    assert approval["review"]["status"] == "blocked"
+    assert any(
+        i["key"] == "transport" and i["status"] == "block" for i in approval["review"]["items"]
     )
     assert "st_defect" in view["result"]["transportPending"]
     route = next(c for c in row["checks"] if c["key"] == "pickup_route")
@@ -386,16 +420,17 @@ def test_demo_off_route_vendor_is_not_shown_as_transport_included():
     said = [m for m in thread["messages"] if "수거·운반:" in m["text"]]
     assert said and row["pickup"]["seq"] == said[-1]["seq"]
     assert "따로 수거하러 갈 수 있는지는 담당자가 확인" in said[-1]["text"]
-    # 비용·탄소 비교의 계산 범위를 밝힌다
-    keys = [item["key"] for item in view["result"]["scope"]]
-    assert keys == ["cost", "carbon"]
+    # 비용 비교의 계산 범위를 밝힌다. 운송 배출 계수가 원문 확인 전이라 탄소 운송 범위 줄은 없다
+    scope = {item["key"]: item["text"] for item in view["result"]["scope"]}
+    assert list(scope) == ["cost"] and "별도 운반비 반영 전" in scope["cost"]
+    assert all(a.get("carbonTransport") is None for a in view["result"]["assignments"])
     # 새길자원(노선 포함, 운반비 포함)은 확정 조건이다
     sprue = next(a for a in view["result"]["assignments"] if a["streamId"] == "st_sprue")
     assert sprue["pickup"]["status"] == "route" and sprue["transportPending"] is False
 
 
 def test_vendor_quote_flows_into_the_result_and_matches_the_api():
-    app = make_app()
+    app = make_app(miso_visits=False)
     _only_miso_for_defect(app)
     _miso_off_route(app, VISIT)
     view = to_approval(app)
@@ -411,8 +446,13 @@ def test_vendor_quote_flows_into_the_result_and_matches_the_api():
     assert row["monthlyAfter"]["value"] == 28000
     assert row["difference"]["value"] == 128000
     assert row["transportPending"] is False
-    # 금액과 횟수의 근거는 업체 문서이고, 배출 기업이 열 수 있다
-    assert "doc:org_miso:반입조건표:노선밖운반비" in row["pickup"]["fee"]["evidence"]
+    # 금액과 횟수의 근거는 업체 문서(계산 당시 판을 고정한 사본)이고, 배출 기업이 열 수 있다
+    frozen = [
+        app.registry.get(e, HANBIT)
+        for e in row["pickup"]["fee"]["evidence"]
+        if e.startswith("doc:snapshot:")
+    ]
+    assert [f.meta["originalId"] for f in frozen] == ["doc:org_miso:반입조건표:노선밖운반비"]
     for evidence_id in row["pickup"]["monthly"]["evidence"]:
         app.registry.get(evidence_id, HANBIT)
     # 업체 조건 답의 본문과 claim에 같은 견적이 있다
@@ -430,7 +470,7 @@ def test_vendor_quote_flows_into_the_result_and_matches_the_api():
 
 
 def test_unavailable_vendor_is_left_out_of_assignment_and_totals():
-    app = make_app()
+    app = make_app(miso_visits=False)
     _only_miso_for_defect(app)
     _miso_off_route(
         app, {"status": "unavailable", "evidence": ["doc:org_miso:반입조건표:노선밖운반비"]}
@@ -453,7 +493,7 @@ def test_unavailable_vendor_is_left_out_of_assignment_and_totals():
 
 
 def test_changed_pickup_terms_clear_approvals_and_rerun_refreshes_the_result():
-    app = make_app()
+    app = make_app(miso_visits=False)
     _only_miso_for_defect(app)
     view = to_approval(app)
     sid = view["session"]["id"]
@@ -461,14 +501,17 @@ def test_changed_pickup_terms_clear_approvals_and_rerun_refreshes_the_result():
     thread = next(
         t for t in view["threads"] if t["vendorOrgId"] == MISO and t["status"] == "agreed"
     )
-    service.approve(app, sid, thread["id"], HANBIT)
+    # 운반비가 미정인 동안에는 계약 검토 담당이 막아 승인할 수 없다
+    with pytest.raises(service.ServiceError) as refused:
+        service.approve(app, sid, thread["id"], HANBIT)
+    assert refused.value.code == "REVIEW_BLOCKED"
     # 합의한 뒤에 미소환경이 노선 밖 방문 수거와 운반비를 밝혔다
     _miso_off_route(app, VISIT)
     service._recheck(app, MISO)
     blocked = service.get_view(app, sid, HANBIT)
     approval = next(a for a in blocked["approvals"] if a["threadId"] == thread["id"])
     assert approval["blocked"] and "PICKUP_TERMS_CHANGED" in approval["blockedCodes"]
-    assert approval["emitter"] is False  # 앞선 승인은 지웠다
+    assert approval["emitter"] is False
     assert (
         "별도 수거 확인 필요 · 운반비 미정 → 지금: 업체 수거 가능 확인" in approval["blockedReason"]
     )
@@ -487,7 +530,7 @@ def test_changed_pickup_terms_clear_approvals_and_rerun_refreshes_the_result():
 
 def test_changing_route_transport_after_agreement_blocks_approval():
     """노선 수거 조건(운반비 포함 → 회당 금액 별도)을 합의 뒤에 바꿔도 막힌다."""
-    app = make_app()
+    app = make_app(miso_visits=False)
     view = to_approval(app)
     sid = view["session"]["id"]
     thread = next(
@@ -550,7 +593,7 @@ def test_per_pickup_quote_without_a_count_is_not_filled_from_the_minimum():
 
 def test_off_route_quote_without_a_count_stays_pending_in_the_conversation():
     """노선 밖 방문 견적에 월 횟수가 없으면 업체 측 답이 정기 수거 횟수를 끌어다 운반비를 확정하지 않는다."""
-    app = make_app()
+    app = make_app(miso_visits=False)
     _only_miso_for_defect(app)
     no_count = {
         **VISIT,
@@ -571,7 +614,7 @@ def test_off_route_quote_without_a_count_stays_pending_in_the_conversation():
 
 def test_reopened_thread_renegotiates_so_price_and_money_agree():
     """수거·운반 조건만 바뀌어 대화를 다시 열어도 표시 단가와 계산 단가가 같은 협상 결과를 쓴다(협상 켬)."""
-    app = make_app(negotiate=True)
+    app = make_app(negotiate=True, miso_visits=False)
     saegil = copy.deepcopy(app.store.get_vendor_profile(SAEGIL))
     saegil["guardrails"]["autoDecline"] = [*saegil["guardrails"]["autoDecline"], "금속 인서트"]
     app.store.put_vendor_profile(saegil)
@@ -603,8 +646,12 @@ def test_demo_view_never_measures_pickup_distance_or_writes():
     읽는다. 적어 둔 값이 없는 예전 진단은 직선 거리 × 우회 계수로 어림한다.
     """
     from app.v3.demo.scope import demo_app
+    from app.v3.judge.common import haversine_km
 
-    app = make_app()
+    def road(points):  # 가상 도로 거리 제공자. 우회 계수 가정값은 쓰지 않는다
+        return [[haversine_km(a, b) * 1.3 for b in points] for a in points]
+
+    app = make_app(miso_visits=False, distance_provider=road)
     view = to_approval(app)
     sid = view["session"]["id"]
     session = app.store.get_session(sid)

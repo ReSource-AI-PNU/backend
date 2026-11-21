@@ -790,7 +790,9 @@ def _search(app, monthly_kg):
         EMITTER,
         "st_qa_pp",
         {"name": "PP 사출 불량품", "process": "사출", "wasteItem": "폐플라스틱", "material": "PP",
-         "origin": "PIR", "form": "사출 스크랩", "monthlyKg": monthly_kg},
+         "origin": "PIR", "form": "사출 스크랩", "monthlyKg": monthly_kg,
+         # 현행 처리비가 없으면 가정값으로 채우지 않고 배정에서 뺀다(2026-11-21). 계약대로 적어 둔다(가상)
+         "currentTreatment": {"method": "소각", "unitCostKrwPerKg": 200}},
         EMITTER,
     )  # fmt: skip
     view = service.create_session(app, EMITTER, EMITTER)
@@ -821,7 +823,11 @@ def test_saved_criteria_apply_to_a_new_search(monthly_kg, met):
     service.confirm_criteria(app, VENDOR, "price.pdf", _rows_from(draft), VENDOR, draft["id"])
     view, claims, text = _search(app, monthly_kg)
     assert claims["unitPrice"]["value"] == 320
-    assert any(e.startswith(f"doc:{VENDOR}:price.pdf:") for e in claims["unitPrice"]["evidence"])
+    # 단가 근거는 계산 당시의 고정본(doc:snapshot:…)이고, 고정본이 확인·저장한 기준표 근거를 가리킨다
+    originals = [
+        app.registry.get(e).meta.get("originalId") for e in claims["unitPrice"]["evidence"]
+    ]
+    assert any(str(o).startswith(f"doc:{VENDOR}:price.pdf:") for o in originals)
     assert claims["threshold"]["id"] == "load_qa_pp_minMonthlyKg"
     assert claims["threshold"]["value"] == 1000 and claims["totalKg"]["value"] == monthly_kg
     if met:

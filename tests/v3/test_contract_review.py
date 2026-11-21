@@ -170,7 +170,8 @@ def test_review_speaks_in_the_live_feed():
 
 
 def test_vendor_outside_its_service_area_cannot_be_approved():
-    app = make_app()
+    # 시드 그대로: 미소환경은 노선 밖 방문 수거 답이 없어 수거 가능 지역만으로 수거 여부가 정해진다
+    app = make_app(miso_visits=False)
     service.update_vendor(app, MISO, {"fleet": {"serviceAreas": ["부산 강서구"]}}, MISO)
     view = to_approval(app)
     sid = view["session"]["id"]

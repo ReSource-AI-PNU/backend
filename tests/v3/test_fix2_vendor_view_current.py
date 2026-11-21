@@ -141,10 +141,16 @@ def test_plan_keeps_its_other_lines_and_the_emitter_still_sees_carbon_on_the_res
         assert "탄소" not in plan["rendered"] and "현행" not in plan["rendered"]
         assert plan["validation"]["ok"] is True
     assert any("반입 전 확인: " in plan["rendered"] for plan in plans)
-    # 탄소 변화는 배출 기업만 보는 결과 한 장에 그대로 있다
-    carbon = [a["carbon"] for a in view["result"]["assignments"] if a["carbon"]]
-    assert carbon and all(c["role"] == "carbon" and c["evidence"] for c in carbon)
-    assert any(a["carbonValue"] for a in view["result"]["assignments"])
+    # 탄소 판단은 배출 기업만 보는 결과 한 장에 남는다. 원문 경계를 확인한 배출계수가 없어 지금은 값 대신
+    # 산정 보류와 그 까닭이다(2026-11-21). 0이나 가정값으로 채우지 않는다
+    for item in view["result"]["assignments"]:
+        assert item["carbon"] is None and item["carbonValue"] is None
+        held = next(c for c in item["checks"] if c["key"] == "carbon")
+        assert held["status"] == "conditional" and held["text"]
+    sid = view["session"]["id"]
+    for vendor in {t["vendorOrgId"] for t in view["threads"] if t["status"] == "confirmed"}:
+        theirs = service.get_view(app, sid, vendor)["result"]
+        assert all(c["key"] != "carbon" for a in theirs["assignments"] for c in a["checks"])
 
 
 def test_a_vendor_cannot_quote_values_compared_with_the_current_treatment():

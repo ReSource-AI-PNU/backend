@@ -15,6 +15,7 @@ import copy
 import pytest
 
 from app.v3 import service
+from app.v3.judge.common import haversine_km
 from tests.v3.runtime_fixtures import HANBIT, MISO, SAEGIL, make_app, thread_of, to_approval
 
 DEFECT = "st_defect"
@@ -27,8 +28,9 @@ NO_PICKUP = {"status": "unavailable"}
 
 def _world(*, saegil_takes_metal: bool = True):
     """시연 세계에서 승인 대기까지. saegil_takes_metal이 거짓이면 새길자원이 금속 인서트를 받지 않는다
-    (불량 사출품을 받을 곳이 미소환경뿐인 시험 조건: 다른 비용·다른 후보가 없다)."""
-    app = make_app(negotiate=True)
+    (불량 사출품을 받을 곳이 미소환경뿐인 시험 조건: 다른 비용·다른 후보가 없다).
+    미소환경의 노선 밖 수거 답이 없는 시드 그대로의 세계다(miso_visits=False)."""
+    app = make_app(negotiate=True, miso_visits=False)
     if not saegil_takes_metal:
         guard = service.get_vendor(app, SAEGIL, SAEGIL)["guardrails"]
         service.update_vendor(
@@ -86,7 +88,8 @@ def test_a_off_route_shows_pickup_check_in_result_and_approval():
     _app, view = _world()
     row = _row(view)
     assert row["vendorOrgId"] == MISO
-    assert _value(row["unitPrice"]) == 220  # 협상 단가(매입 kg당 220원)
+    # 승인 기록이 있는 요청 폭(negotiation.askPct)이 없어 자동 인상 없이 매입 기준표 단가(kg당 200원)로 합의한다
+    assert _value(row["unitPrice"]) == 200
     assert _value(row["monthlyNow"]) == -100000  # 현행 처리비 kg당 250원 × 400kg
     pickup = row["pickup"]
     assert pickup["status"] == "check" and pickup["label"] == "별도 수거 확인 필요"
@@ -107,7 +110,7 @@ def test_a_unconfirmed_transport_is_not_fixed_at_zero():
     # 운반비를 정하지 못했으니 0원으로 확정하지 않고 월 손익을 "별도 운반비 반영 전"으로 둔다
     assert row["transportPending"] is True
     assert row["transport"] is None or _value(row["transport"]) != 0
-    assert _value(row["monthlyAfter"]) == 88000
+    assert _value(row["monthlyAfter"]) == 80000
     # 계산 근거(근거 패널에 열리는 식)에 "별도 운반비 반영 전"을 밝힌다. 합계도 그렇다
     assert "반영 전" in _formula(app, row["monthlyAfter"])
     assert DEFECT in view["result"]["transportPending"]
@@ -122,10 +125,16 @@ def test_b_paid_visit_numbers_match_in_result_and_approval():
     sid = view["session"]["id"]
     thread = thread_of(view, MISO)
     assert _row(view)["vendorOrgId"] == MISO
-    service.approve(app, sid, thread["id"], HANBIT)  # 공장이 이전 조건으로 먼저 승인해 둔 상태
+    # 필수 운반비가 미정인 동안에는 계약 검토 담당이 막아 공장도 승인할 수 없다(잠정 배정만 보인다)
+    pending, _ = _approval(view, MISO)
+    transport = next(i for i in pending["review"]["items"] if i["key"] == "transport")
+    assert pending["review"]["status"] == "blocked" and transport["status"] == "block"
+    with pytest.raises(service.ServiceError) as refused:
+        service.approve(app, sid, thread["id"], HANBIT)
+    assert refused.value.code == "REVIEW_BLOCKED"
 
     blocked, after = _answer(app, view, PAID)
-    # 이전 조건으로 한 승인은 기존 재확인 흐름을 탄다: 막히고 앞선 승인이 지워진다
+    # 합의 뒤 업체가 수거·운반 조건을 바꾸면 기존 재확인 흐름을 탄다: 막히고 승인이 없다
     stale, _ = _approval(blocked, MISO)
     assert stale["blocked"] and "PICKUP_TERMS_CHANGED" in stale["blockedCodes"]
     assert not stale["emitter"] and not stale["vendor"]
@@ -133,14 +142,14 @@ def test_b_paid_visit_numbers_match_in_result_and_approval():
     row = _row(after)
     assert row["vendorOrgId"] == MISO and row["transportPending"] is False
     # 수거·운반 답은 단가 합의를 흔들지 않는다: 보이는 단가와 계산에 쓴 단가가 같다
-    assert _value(row["unitPrice"]) == 220
-    assert _value(row["revenue"]) == 88000  # 매각 대금 220원 × 400kg
+    assert _value(row["unitPrice"]) == 200
+    assert _value(row["revenue"]) == 80000  # 매각 대금 200원 × 400kg
     assert (
         _value(row["transport"]) == 60000
     )  # 월 운반비 30,000원 × 2회(이 업체로 가는 폐기물이 하나뿐)
-    assert _value(row["monthlyAfter"]) == 28000
+    assert _value(row["monthlyAfter"]) == 20000
     assert _value(row["monthlyNow"]) == -100000
-    assert _value(row["difference"]) == 128000
+    assert _value(row["difference"]) == 120000
     pickup = row["pickup"]
     assert (
         pickup["status"] == "visit"
@@ -161,7 +170,7 @@ def test_b_paid_visit_numbers_match_in_result_and_approval():
     approval, rows = _approval(after, MISO)
     assert approval is not None and not approval["blocked"]
     assert [(r["streamId"], _value(r["monthlyAfter"]), _value(r["transport"])) for r in rows] == [
-        (DEFECT, 28000, 60000)
+        (DEFECT, 20000, 60000)
     ]
     # 합계는 폐기물별 값의 합이다
     total = sum(_value(a["difference"]) or 0 for a in after["result"]["assignments"])
@@ -169,7 +178,7 @@ def test_b_paid_visit_numbers_match_in_result_and_approval():
 
 
 def test_b_in_the_demo_world_a_better_route_takes_the_stream():
-    # 새길자원(노선이 녹산을 지나고 운반비 포함)도 받을 수 있으면, 운반비를 넣은 미소환경(+28,000원)보다
+    # 새길자원(노선이 녹산을 지나고 운반비 포함)도 받을 수 있으면, 운반비를 넣은 미소환경(+20,000원)보다
     # 새길자원(+72,000원)이 낫다. 다시 진행하면 옮겨 가고 미소환경은 다른 선택지로 남는다
     app, view = _world()
     _, after = _answer(app, view, PAID)
@@ -177,8 +186,8 @@ def test_b_in_the_demo_world_a_better_route_takes_the_stream():
     assert row["vendorOrgId"] == SAEGIL and row["pickup"]["status"] == "route"
     assert _value(row["monthlyAfter"]) == 72000
     miso = next(x for x in row["alternatives"] if x["vendorOrgId"] == MISO)
-    assert _value(miso["monthlyAfter"]) == 28000
-    # 대안 줄의 단가와 한 달 값의 기준이 같다(220원 × 400kg − 운반비 60,000원)
+    assert _value(miso["monthlyAfter"]) == 20000
+    # 대안 줄의 단가와 한 달 값의 기준이 같다(200원 × 400kg − 운반비 60,000원)
     assert _value(miso["unitPrice"]) * 400 - 60000 == _value(miso["monthlyAfter"])
 
 
@@ -192,13 +201,13 @@ def test_c_fee_without_count_stays_pending():
     assert row["vendorOrgId"] == MISO
     assert row["transportPending"] is True and row["pickup"]["pending"] is True
     assert _value(row["pickup"]["fee"]) == 30000 and row["pickup"]["pickups"] is None
-    assert _value(row["monthlyAfter"]) == 88000  # 운반비를 넣기 전 값
+    assert _value(row["monthlyAfter"]) == 80000  # 운반비를 넣기 전 값
     assert "반영 전" in _formula(app, row["monthlyAfter"])
     assert DEFECT in after["result"]["transportPending"]
 
 
 @pytest.mark.parametrize(
-    ("off", "pending", "after"), [(UNDECIDED, True, 88000), (FREE, False, 88000)]
+    ("off", "pending", "after"), [(UNDECIDED, True, 80000), (FREE, False, 80000)]
 )
 def test_c_undecided_and_free_answers(off, pending, after):
     app, view = _world(saegil_takes_metal=False)
@@ -208,7 +217,7 @@ def test_c_undecided_and_free_answers(off, pending, after):
     assert row["transportPending"] is pending
     assert _value(row["monthlyAfter"]) == after
     if not pending:
-        assert _value(row["difference"]) == 188000
+        assert _value(row["difference"]) == 180000
 
 
 def test_c_no_pickup_leaves_recommendations_and_totals_with_a_reason():
@@ -252,26 +261,39 @@ def test_sessions_saved_before_the_pickup_fields_still_open():
     assert not any(a["blocked"] for a in reopened["approvals"])
 
 
+def _road(points):
+    """가상 도로 거리 제공자(직선 × 1.3). 우회 계수 가정값은 이제 쓰지 않으므로 조회한 거리로 대조한다."""
+    return [[haversine_km(a, b) * 1.3 for b in points] for a in points]
+
+
+def _far_world(location, distance_provider):
+    """스프루·런너 1,000kg만 남긴 한빛정밀을 location으로 옮긴 세계에서 승인 대기까지."""
+    app = make_app(miso_visits=False, distance_provider=distance_provider)
+    org = app.store.get_org(HANBIT)
+    app.store.put_org({**org, "location": location})
+    for stream in app.store.list_streams(HANBIT):
+        if stream["id"] == "st_sprue":
+            service.update_stream(app, HANBIT, stream["id"], {"monthlyKg": 1000}, HANBIT)
+        else:
+            app.store.put_stream({**stream, "orgId": "org_daon"})
+    return app, to_approval(app)
+
+
+FAR = [128.8721, 37.944]  # 녹산산단과 지역명은 같게 두고 좌표만 약 400km 북쪽
+
+
 def test_matching_route_rechecks_distance_before_applying_included_fee():
     def run(location):
-        app = make_app()
-        org = app.store.get_org(HANBIT)
-        app.store.put_org({**org, "location": location})
-        for stream in app.store.list_streams(HANBIT):
-            if stream["id"] == "st_sprue":
-                service.update_stream(app, HANBIT, stream["id"], {"monthlyKg": 1000}, HANBIT)
-            else:
-                app.store.put_stream({**stream, "orgId": "org_daon"})
-        return app, to_approval(app)
+        return _far_world(location, _road)
 
     _, near = run([128.826, 35.0871])
-    app, far = run([128.8721, 37.944])
+    app, far = run(FAR)
     near_row, far_row = (_row(view, "st_sprue") for view in (near, far))
     assert near_row["vendorOrgId"] == far_row["vendorOrgId"] == SAEGIL
     assert near_row["pickup"]["status"] == "route"
     assert near_row["pickup"]["basis"] == "included"
     assert not near_row["transportPending"]
-    assert _value(far_row["transportKm"]) == pytest.approx(404, abs=10)
+    # 운송 배출 계수가 보류라 거리 claim(transportKm)은 싣지 않는다. 거리는 최대 수거 거리 대조에 쓰인다
     assert far_row["pickup"]["status"] == "check"
     assert far_row["pickup"]["label"] == "주소 또는 수거 가능 여부 확인"
     assert "최대 수거 거리" in far_row["pickup"]["detail"]
@@ -302,3 +324,12 @@ def test_matching_route_rechecks_distance_before_applying_included_fee():
     assert not quoted["transportPending"]
     assert _value(quoted["transport"]) == 100000
     assert _value(quoted["difference"]) == _value(far_row["difference"]) - 100000
+
+
+def test_unknown_distance_does_not_apply_the_included_route_fee():
+    """최대 수거 거리를 밝힌 업체인데 공장까지 거리를 모르면(도로 거리 제공자 없음, 우회 계수 가정값은 쓰지 않음)
+    지역명이 노선과 같다는 이유만으로 "기존 노선 포함 · 운반비 포함"으로 확정하지 않는다."""
+    _, far = _far_world(FAR, None)
+    row = _row(far, "st_sprue")
+    assert row["pickup"]["status"] != "route"
+    assert row["transportPending"]

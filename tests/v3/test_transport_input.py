@@ -129,12 +129,15 @@ def test_describe_writes_what_the_vendor_chose():
 # ── 저장과 근거 ──────────────────────────────────────────────────────
 
 
+# 이 파일의 시험은 시드 그대로의 세계(miso_visits=False)를 쓴다: 미소환경은 노선 밖 조건을 아직 밝히지 않았다
+
+
 def _transport(app, vendor=MISO):
     return service.get_vendor(app, vendor, vendor).get("transport") or {}
 
 
 def test_off_route_terms_are_saved_with_who_and_when():
-    app = make_app()
+    app = make_app(miso_visits=False)
     before = copy.deepcopy(_transport(app))
     assert (
         before.get("paidBy") == "vendor" and "offRoute" not in before
@@ -172,7 +175,7 @@ def test_off_route_terms_are_saved_with_who_and_when():
 
 def test_sending_the_saved_terms_back_changes_nothing():
     # 업체 화면은 받은 프로필을 그대로 다시 보낸다. 같은 조건이면 근거 ID와 판(version)이 그대로여야 한다
-    app = make_app()
+    app = make_app(miso_visits=False)
     service.update_vendor(app, MISO, {"transport": {"offRoute": PAID_VISIT}}, MISO)
     saved = copy.deepcopy(_transport(app))
     versions = {e: app.registry.get(e, MISO).version for e in saved["offRoute"]["evidence"]}
@@ -182,7 +185,7 @@ def test_sending_the_saved_terms_back_changes_nothing():
 
 
 def test_changing_the_answer_replaces_the_terms_and_bumps_the_evidence():
-    app = make_app()
+    app = make_app(miso_visits=False)
     service.update_vendor(app, MISO, {"transport": {"offRoute": FEE_ONLY}}, MISO)
     first = copy.deepcopy(_transport(app)["offRoute"])
     assert "pickupsPerMonth" not in first and first["pickupsEvidence"] == []
@@ -206,7 +209,7 @@ def test_changing_the_answer_replaces_the_terms_and_bumps_the_evidence():
 
 def test_shared_evidence_stays_open_to_the_counterpart():
     # 대화 상대에게 이미 열린 근거를 고쳐 쓸 때 상대가 볼 수 없게 되지 않는다
-    app = make_app()
+    app = make_app(miso_visits=False)
     service.update_vendor(app, MISO, {"transport": {"offRoute": UNDECIDED}}, MISO)
     stance = _transport(app)["offRoute"]["evidence"][-1]
     from app.v3.demo.seed import share_evidence
@@ -219,7 +222,7 @@ def test_shared_evidence_stays_open_to_the_counterpart():
 
 
 def test_wrong_transport_is_a_422_and_saves_nothing():
-    app = make_app()
+    app = make_app(miso_visits=False)
     before = copy.deepcopy(_transport(app))
     with pytest.raises(service.ServiceError) as caught:
         service.update_vendor(
@@ -237,7 +240,7 @@ def test_wrong_transport_is_a_422_and_saves_nothing():
 
 
 def test_only_the_vendor_edits_its_transport():
-    app = make_app()
+    app = make_app(miso_visits=False)
     with pytest.raises(service.ServiceError) as caught:
         service.update_vendor(app, MISO, {"transport": {"offRoute": NO_PICKUP}}, HANBIT)
     assert caught.value.status in (403, 404)
@@ -247,7 +250,7 @@ def test_only_the_vendor_edits_its_transport():
 
 def test_purchase_criteria_upload_keeps_the_off_route_terms():
     # 매입 기준표의 수거비는 노선 수거 조건만 바꾼다. 업체가 정한 노선 밖 조건은 지우지 않는다
-    app = make_app()
+    app = make_app(miso_visits=False)
     service.update_vendor(app, MISO, {"transport": {"offRoute": PAID_VISIT}}, MISO)
     off = copy.deepcopy(_transport(app)["offRoute"])
     service.confirm_criteria(

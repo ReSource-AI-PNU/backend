@@ -106,7 +106,15 @@ def test_service_run_eval_runs_the_case_set(outcome):
     cases = evaluated["cases"]
     assert cases["summary"] == outcome["summary"]
     assert len(cases["results"]) == 50 and "observed" not in cases["results"][0]
-    assert evaluated["sessionStatus"] == "confirmed" and evaluated["validatorPassRate"] == 1.0
+    # 시연 시드 그대로라 미소환경 경로는 필수 운반비 미정이다. 계약 검토 담당이 그 승인을 막아 진단은 승인
+    # 대기로 남고, 나머지 업체만 확정된다
+    assert evaluated["validatorPassRate"] == 1.0
+    assert evaluated["sessionStatus"] == "awaiting_approval"
+    status = {
+        t["vendorOrgId"]: t["status"] for t in evaluated["threads"] if t["status"] != "not_opened"
+    }
+    assert status["org_miso"] == "agreed"
+    assert status["org_saegil"] == status["org_namhae"] == "confirmed"
     assert app.store.list_sessions() == []
 
 
@@ -117,7 +125,9 @@ def test_groundedness_rows_come_from_the_execution_record():
     assert {r["kind"] for r in rows} == {"message", "document"}
     offer = next(r for r in rows if r["type"] == "offer")
     assert "260원/kg" in offer["response"] and "{{" not in offer["response"]
-    assert "doc:org_v1:매입기준표:pc_pe_b-단가" in offer["context"]
+    # 메시지는 매입 기준표 근거를 그때 판으로 고정한 사본(doc:snapshot:…, meta.originalId)으로 인용한다(2026-11-21).
+    # 원문 발췌가 그대로 context에 실린다
+    assert "doc:snapshot:" in offer["context"] and "PE B등급 단가 kg당 260원" in offer["context"]
     assert "문의드립니다" in offer["query"]  # 받은 문의를 값으로 풀어 쓴 글
 
 

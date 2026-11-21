@@ -26,18 +26,13 @@ def test_totals_chain_to_the_per_stream_calculations():
         key: [a[key]["evidence"][0] for a in result["assignments"] if a.get(key)]
         for key in ("monthlyNow", "monthlyAfter", "difference")
     }
-    # 열분해는 공정 에너지·수율·열분해유 용도 근거가 없어 처리 방식 탄소를 산정 보류한다(2026-11-19 자원순환
-    # 효과 보강). 퍼지 덩어리는 운송 배출만 합계에 든다
-    per_stream["carbon"] = [
-        (a["carbon"] or a["carbonTransport"])["evidence"][0]
-        for a in result["assignments"]
-        if a.get("carbon") or a.get("carbonTransport")
-    ]
-    for key, claim in result["totals"].items():
-        if key == "carbon":
-            purge = next(a for a in result["assignments"] if a["streamId"] == "st_purge")
-            assert purge["carbon"] is None and purge["carbonTransport"] is not None
-            assert len(per_stream[key]) == 4
+    # 시드 처리 배출계수는 원문 경계를 확인하지 못했고(metadata_only), 운송 배출도 실제 사업장 거리·적재·회송
+    # 조건이 확인되지 않아 탄소는 흐름별로도 합계로도 산정 보류한다(0으로 합치지 않는다)
+    assert result["totals"]["carbon"] is None
+    assert all(a["carbon"] is None and a["carbonTransport"] is None for a in result["assignments"])
+    money = {k: v for k, v in result["totals"].items() if k != "carbon"}
+    assert set(money) == {"monthlyNow", "monthlyAfter", "difference"}
+    for key, claim in money.items():
         total_id = claim["evidence"][0]
         assert total_id.startswith("calc:optimize_assignment:") and ":total" in total_id
         found = service.get_evidence(app, total_id, HANBIT)
@@ -47,15 +42,16 @@ def test_totals_chain_to_the_per_stream_calculations():
         assert len(inputs) == len(set(inputs))
         chain = {item["id"]: item for item in found["chain"]}
         assert set(inputs) <= set(chain)
-        # 사슬이 흐름별 계산을 거쳐 원 근거(문서·가정값)까지 이어진다
+        # 사슬이 흐름별 계산을 거쳐 원 근거(문서·담당자 답)까지 이어지고, 가정값은 들어가지 않는다
         kinds = {item["kind"] for item in chain.values()}
-        assert kinds & {"doc", "assumption", "ref"}, (key, kinds)
+        assert kinds & {"doc", "human"}, (key, kinds)
+        assert "assumption" not in kinds, key
         # 합계 값은 흐름별 값의 합과 같다
         parts = sum(chain[i]["value"] for i in inputs)
         assert abs(parts - claim["value"]) < 1e-6
 
 
-def test_carbon_total_chains_to_the_per_stream_carbon_calculations():
+def test_carbon_total_is_held_instead_of_summing_unknown_carbon_as_zero():
     app = make_app()
     to_approval(app)  # 대화가 열려 업체의 매입 기준 근거가 배출 기업에 열린 뒤
     streams = [s for s in app.store.list_streams(HANBIT) if s["wasteItem"] == "폐플라스틱"]
@@ -67,21 +63,13 @@ def test_carbon_total_chains_to_the_per_stream_carbon_calculations():
         org_id=HANBIT,
         today=TODAY,
     )
-    claims = {c["id"]: c for c in done["claims"]}
-    total = claims[done["output"]["totals"]["carbon"]]
-    # 열분해(퍼지 덩어리)는 처리 방식 탄소를 산정 보류한다. 공장 위치(origin)를 주지 않아 운송 배출도 없으므로
-    # 합계에 들지 않는다(2026-11-19 자원순환 효과 보강)
-    per_stream = [
-        claims[a["carbon"] or a["carbonTransport"]]["evidence"][0]
-        for a in done["output"]["assignments"]
-        if a["carbon"] or a["carbonTransport"]
-    ]
-    purge = next(a for a in done["output"]["assignments"] if a["streamId"] == "st_purge")
-    assert purge["carbon"] is None and purge["carbonTransport"] is None
-    assert len(per_stream) == len(streams) - 1
-    assert total["evidence"] == [total["evidence"][0], *per_stream]
-    found = app.registry.get(total["evidence"][0], HANBIT)
-    assert found.meta["inputEvidence"] == per_stream
+    # 흐름마다 탄소를 내지 못했으면(원문 미확인 배출계수, 운송 배출 경계 미확인) 합계 claim을 만들지 않는다
+    assert done["output"]["totals"]["carbon"] is None
+    assert all(a["carbon"] is None for a in done["output"]["assignments"])
+    assert not any(c["id"] == "totalCarbon" for c in done["claims"])
+    held = next(c for c in done["checks"] if c["key"] == "carbon")
+    assert held["status"] == "conditional"
+    assert all(s["name"] in held["text"] for s in streams if s["id"] != "st_film")
 
 
 def test_totals_inputs_are_stable_for_the_same_input():

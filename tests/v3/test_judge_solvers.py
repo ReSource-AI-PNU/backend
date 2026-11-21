@@ -12,7 +12,8 @@ from app.v3.evidence.registry import InMemoryRegistry
 from app.v3.judge import assign, economics
 from app.v3.judge.defaults import register_defaults
 from app.v3.judge.toolbox import call_tool
-from tests.v3.judge_fixtures import EMITTER, TODAY, VENDOR, stream, vendor
+from tests.v3.judge_fixtures import EMITTER, TODAY, VENDOR, vendor
+from tests.v3.judge_fixtures import answered_stream as stream
 
 LINE = [[0, 1, 2, 3], [1, 0, 1, 2], [2, 1, 0, 1], [3, 2, 1, 0]]  # 차고지와 세 지점이 한 줄에
 UNIT = [(1, 0), (1, 0), (1, 0)]
@@ -99,12 +100,31 @@ def test_volume_capacity_is_checked_in_the_ortools_answer():
     assert merged == (*exact, "exact")  # 무게는 되지만 부피가 넘는다
 
 
+def road_km(points):
+    """가상 도로 거리 제공자(시험 전용). 직선 × 우회 계수 가정값 없이 노선 계산을 보려고 쓴다."""
+    return [[round((abs(a[0] - b[0]) + abs(a[1] - b[1])) * 100, 3) for b in points] for a in points]
+
+
 def test_route_extra_cost_records_the_solver(reg, monkeypatch):
     v = vendor()
     stops = [{"location": [128.86, 35.10], "kg": 1000, "m3": 4}]
     new = {"location": [128.85, 35.09], "kg": 600, "m3": 3}
+
+    def route():
+        return call_tool(
+            "route_extra_cost",
+            {"vendor": v, "stops": stops, "newStop": new},
+            registry=reg,
+            org_id=VENDOR,
+            today=TODAY,
+            distance_provider=road_km,
+        )
+
     monkeypatch.setattr(economics, "HAS_ORTOOLS", False)
-    pure = run(reg, "route_extra_cost", org=VENDOR, vendor=v, stops=stops, newStop=new)
+    # 도로 거리가 없으면 노선을 풀지 않는다(풀이 이름도 남기지 않는다)
+    held = run(reg, "route_extra_cost", org=VENDOR, vendor=v, stops=stops, newStop=new)
+    assert held["status"] == "needs_information" and held["output"]["solver"] is None
+    pure = route()
     assert pure["output"]["solver"] == "exact" and pure["output"]["exact"] is True
 
     def fake(matrix, loads, cap_kg, cap_m3):
@@ -119,7 +139,7 @@ def test_route_extra_cost_records_the_solver(reg, monkeypatch):
 
     monkeypatch.setattr(economics, "HAS_ORTOOLS", True)
     monkeypatch.setattr(economics, "ortools_routes", fake)
-    with_solver = run(reg, "route_extra_cost", org=VENDOR, vendor=v, stops=stops, newStop=new)
+    with_solver = route()
     assert with_solver["output"]["solver"] == "ortools"
 
     # 풀이 이름 말고는 수치, 근거 ID, 판정이 모두 같다
@@ -129,7 +149,7 @@ def test_route_extra_cost_records_the_solver(reg, monkeypatch):
     assert strip(with_solver) == strip(pure)
 
     monkeypatch.setattr(economics, "ortools_routes", lambda *_: 1 / 0)
-    broken = run(reg, "route_extra_cost", org=VENDOR, vendor=v, stops=stops, newStop=new)
+    broken = route()
     assert broken == pure
 
 

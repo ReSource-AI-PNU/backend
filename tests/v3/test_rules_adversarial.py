@@ -851,7 +851,18 @@ def test_rule3_needs_information_is_not_shown_as_decided():
 
 def test_rule4_missing_current_treatment_holds_instead_of_inventing_incineration():
     app = seeded_app()
-    view = to_approval(app)
+    # 담당자가 현행 처리비 질문에도 모두 "모름"으로 답한다(시연 답 DEMO_ANSWERS를 쓰지 않는다)
+    view = start(app)
+    for _ in range(3):
+        if view["session"]["status"] != "awaiting_answers":
+            break
+        for question in view["questions"]:
+            if not question["answered"]:
+                service.answer_question(
+                    app, view["session"]["id"], question["id"], "unknown", HANBIT
+                )
+        view = service.run_session(app, view["session"]["id"], HANBIT)
+    assert view["session"]["status"] == "awaiting_approval"
     streams = {s["id"]: s for s in view["streams"]}
     assumed = {"st_film", "st_purge"}  # 시연 데이터에서 현행 처리 입력이 없는 흐름
     for sid, stream in streams.items():

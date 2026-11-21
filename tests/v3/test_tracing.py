@@ -6,7 +6,15 @@ from app.v3 import service, tracing
 from app.v3.evidence.registry import InMemoryRegistry
 from app.v3.store import InMemoryStore
 from tests.v3 import wiring
-from tests.v3.runtime_fixtures import CLOCK, HANBIT, TODAY, approve_all, to_approval
+from tests.v3.runtime_fixtures import (
+    CLOCK,
+    HANBIT,
+    MISO,
+    MISO_VISITS,
+    TODAY,
+    approve_all,
+    to_approval,
+)
 
 TOOL_EVENT = {
     "seq": 2,
@@ -106,6 +114,8 @@ def test_tracing_store_delegates_and_emits_every_event():
     )
     app = service.App(store, InMemoryRegistry(), today=TODAY)
     service.seed(app)
+    # 미소환경의 노선 밖 수거 답(가상). 없으면 운반비 미정이라 그 대화는 확정할 수 없다(계약 검토 담당)
+    service.update_vendor(app, MISO, {"transport": {"offRoute": dict(MISO_VISITS)}}, MISO)
     view = approve_all(app, to_approval(app, HANBIT))
     assert view["session"]["status"] == "confirmed"
     events = inner.list_events(view["session"]["id"])
