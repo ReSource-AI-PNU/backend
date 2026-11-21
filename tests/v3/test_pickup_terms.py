@@ -621,3 +621,18 @@ def test_demo_view_never_measures_pickup_distance_or_writes():
     app.store.put_session(session)
     shown = service.get_view(demo_app(app), sid, HANBIT)
     assert all(a.get("review") for a in shown["approvals"])
+
+
+def test_matching_route_without_comparable_range_keeps_existing_terms():
+    routes = [{"regions": ["부산 강서구"], "days": ["화", "목"]}]
+    transport = {"paidBy": "vendor"}
+    region = "부산 강서구 녹산산단"
+    for fleet, km in (({}, 404), ({"maxPickupKm": 40}, None)):
+        terms = pickup.effective(transport, routes, region, fleet, km)
+        assert terms["status"] == "route"
+        assert terms["days"] == ["화", "목"]
+        assert pickup.monthly(terms) == 0
+    area_conflict = pickup.effective(transport, routes, region, {"serviceAreas": ["경남 양산시"]})
+    assert area_conflict["status"] == "check"
+    assert "가능 지역 밖" in pickup.route_conflict_detail(area_conflict)
+    assert pickup.monthly(area_conflict) is None

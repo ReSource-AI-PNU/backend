@@ -250,3 +250,55 @@ def test_sessions_saved_before_the_pickup_fields_still_open():
     reopened = service.get_view(app, sid, HANBIT)
     assert reopened["result"]["assignments"]
     assert not any(a["blocked"] for a in reopened["approvals"])
+
+
+def test_matching_route_rechecks_distance_before_applying_included_fee():
+    def run(location):
+        app = make_app()
+        org = app.store.get_org(HANBIT)
+        app.store.put_org({**org, "location": location})
+        for stream in app.store.list_streams(HANBIT):
+            if stream["id"] == "st_sprue":
+                service.update_stream(app, HANBIT, stream["id"], {"monthlyKg": 1000}, HANBIT)
+            else:
+                app.store.put_stream({**stream, "orgId": "org_daon"})
+        return app, to_approval(app)
+
+    _, near = run([128.826, 35.0871])
+    app, far = run([128.8721, 37.944])
+    near_row, far_row = (_row(view, "st_sprue") for view in (near, far))
+    assert near_row["vendorOrgId"] == far_row["vendorOrgId"] == SAEGIL
+    assert near_row["pickup"]["status"] == "route"
+    assert near_row["pickup"]["basis"] == "included"
+    assert not near_row["transportPending"]
+    assert _value(far_row["transportKm"]) == pytest.approx(404, abs=10)
+    assert far_row["pickup"]["status"] == "check"
+    assert far_row["pickup"]["label"] == "주소 또는 수거 가능 여부 확인"
+    assert "최대 수거 거리" in far_row["pickup"]["detail"]
+    assert far_row["transportPending"] and far_row["transport"] is None
+    assert _value(far_row["difference"]) == _value(near_row["difference"])
+    approval, _ = _approval(far, SAEGIL)
+    pickup_review = next(item for item in approval["review"]["items"] if item["key"] == "pickup")
+    assert pickup_review["status"] == "check"
+    assert pickup_review["text"] == far_row["pickup"]["detail"]
+
+    service.update_vendor(
+        app,
+        SAEGIL,
+        {"transport": {"offRoute": {**PAID, "feePerPickupKrw": 50000}}},
+        SAEGIL,
+    )
+    sid = far["session"]["id"]
+    stale, _ = _approval(service.get_view(app, sid, HANBIT), SAEGIL)
+    assert "PICKUP_TERMS_CHANGED" in stale["blockedCodes"]
+    quoted_view = service.run_session(app, sid, HANBIT)
+    quoted = _row(quoted_view, "st_sprue")
+    quote = quoted["pickup"]
+    assert quote["status"] == "visit" and "별도 방문 수거를 확인" in quote["detail"]
+    assert (_value(quote["fee"]), _value(quote["pickups"])) == (50000, 2)
+    assert any(app.registry.get(e, HANBIT).kind == "human" for e in quote["fee"]["evidence"])
+    quoted_approval, _ = _approval(quoted_view, SAEGIL)
+    assert not quoted_approval["blocked"]
+    assert not quoted["transportPending"]
+    assert _value(quoted["transport"]) == 100000
+    assert _value(quoted["difference"]) == _value(far_row["difference"]) - 100000
