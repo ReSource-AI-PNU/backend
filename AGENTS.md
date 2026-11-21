@@ -12,5 +12,5 @@
 - S5: 노선 비교는 확정 방문 기준이고 다른 고객 위치·업체 운행 단가는 배출 기업에 노출하지 않는다.
 
 ## 3. 검증
-진행 단계: 구현·검증. `python -m pytest -q`, `ruff check .`. 환경: `/Users/jeondonghun/rs-work/backend/.venv/bin/python`.
+진행 단계: 검증 완료·초안 PR 검토 대기. `python -m pytest -q`, `ruff check .`. 환경: `/Users/jeondonghun/rs-work/backend/.venv/bin/python`.
 실행 결과와 남은 제한은 `docs/verification.md`, 결정은 `docs/decisions.md`에 기록한다.
