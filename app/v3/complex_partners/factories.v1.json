@@ -1,0 +1,976 @@
+{
+"version": "v1",
+"source": "한국산업단지공단 전국등록공장현황(공공데이터포털)",
+"url": "https://www.data.go.kr/data/15105482/fileData.do",
+"dataset": "15105482",
+"asOf": "2025-12-31",
+"note": "공장설립온라인지원시스템에 등록된 공장의 회사명, 단지명, 생산품, 공장주소입니다. 생산품은 회사가 신고한 문장이라 지금도 그 품목을 만드는지, 폐기물을 받을 수 있는지는 회사에 물어 확인해야 합니다.",
+"count": 59,
+"factories": [
+{
+"id": "cf_03fa401a50",
+"name": "(주)석산",
+"complexId": "sasang",
+"complexName": "사상재생사업지구",
+"product": "플라스틱 사출",
+"address": "부산광역시 사상구 가야대로134번길 38 (학장동)",
+"roles": {
+"use": {
+"items": [
+"플라스틱 사출"
+],
+"resins": []
+}
+}
+},
+{
+"id": "cf_0580403ae5",
+"name": "신영산업",
+"complexId": "noksan",
+"complexName": "명지녹산국가산업단지",
+"product": "플라스틱 및 금속제 논슬립, 걸레받이",
+"address": "부산광역시 강서구 녹산산단165로 20 (송정동)",
+"roles": {
+"use": {
+"items": [
+"플라스틱"
+],
+"resins": []
+}
+}
+},
+{
+"id": "cf_07fcf52ebc",
+"name": "동일패키지",
+"complexId": "sasang",
+"complexName": "사상재생사업지구",
+"product": "농산물 포장 비닐",
+"address": "부산광역시 사상구 낙동대로815번길 62 (감전동)",
+"roles": {
+"use": {
+"items": [
+"농산물 포장 비닐"
+],
+"resins": []
+}
+}
+},
+{
+"id": "cf_0d113e1c76",
+"name": "(주)태양에스씨알",
+"complexId": "changwon",
+"complexName": "창원국가산업단지",
+"product": "전자기기 플라스틱 사출 부품(Next 3, 6 /Cover Hinge Assy)",
+"address": "경상남도 창원시 성산구 공단로166번길 13-51(신촌동)",
+"roles": {
+"use": {
+"items": [
+"전자기기 플라스틱 사출 부품(Next 3"
+],
+"resins": []
+}
+}
+},
+{
+"id": "cf_10328b082e",
+"name": "우성플라스틱(주)",
+"complexId": "yangsan",
+"complexName": "양산일반산업단지",
+"product": "플라스틱파이프",
+"address": "경상남도 양산시 유산공단9길 16 (유산동)",
+"roles": {
+"use": {
+"items": [
+"플라스틱파이프"
+],
+"resins": []
+}
+}
+},
+{
+"id": "cf_13627e713e",
+"name": "일성정공글로벌 주식회사",
+"complexId": "changwon",
+"complexName": "창원국가산업단지",
+"product": "플라스틱사출 성형품",
+"address": "경상남도 창원시 의창구 평산로70번길 47(팔용동, 일성금형정공사)",
+"roles": {
+"use": {
+"items": [
+"플라스틱사출 성형품"
+],
+"resins": []
+}
+}
+},
+{
+"id": "cf_26af376dbe",
+"name": "(주)원림",
+"complexId": "yangsan",
+"complexName": "양산일반산업단지",
+"product": "산업용 포장재, PE FILM 포대",
+"address": "경상남도 양산시 유산공단3길 24 (교동) 외 5필지",
+"roles": {
+"use": {
+"items": [
+"PE FILM 포대"
+],
+"resins": [
+"PE"
+]
+}
+}
+},
+{
+"id": "cf_299e386d43",
+"name": "태화프라스틱",
+"complexId": "noksan",
+"complexName": "명지녹산국가산업단지",
+"product": "플라스틱 자동차 부품",
+"address": "부산광역시 강서구 녹산산단290로 27-7, (송정동, 1729-12) (송정동) (총 2 필지) 외 1필지",
+"roles": {
+"use": {
+"items": [
+"플라스틱 자동차 부품"
+],
+"resins": []
+}
+}
+},
+{
+"id": "cf_2c7ca72b92",
+"name": "동양피앤씨 유한회사",
+"complexId": "noksan",
+"complexName": "명지녹산국가산업단지",
+"product": "플라스틱제품",
+"address": "부산광역시 강서구 녹산산단381로40번길 16 (송정동)",
+"roles": {
+"use": {
+"items": [
+"플라스틱제품"
+],
+"resins": []
+}
+}
+},
+{
+"id": "cf_2e5dbf1bd3",
+"name": "(주)진양통상",
+"complexId": "sasang",
+"complexName": "사상재생사업지구",
+"product": "사출장화",
+"address": "부산광역시 사상구 낙동대로 1014 (감전동)",
+"roles": {
+"use": {
+"items": [
+"사출장화"
+],
+"resins": []
+}
+}
+},
+{
+"id": "cf_3499b75819",
+"name": "(주)한국유화",
+"complexId": "noksan",
+"complexName": "명지녹산국가산업단지",
+"product": "비닐봉지, 아연첨가고무칩",
+"address": "부산광역시 강서구 녹산산단165로 36-20 (송정동) (총 2 필지)",
+"roles": {
+"use": {
+"items": [
+"비닐봉지"
+],
+"resins": []
+}
+}
+},
+{
+"id": "cf_3521daf6fd",
+"name": "주식회사 금학",
+"complexId": "sasang",
+"complexName": "사상재생사업지구",
+"product": "플라스틱",
+"address": "부산광역시 사상구 학감대로178번길 40(학장동)",
+"roles": {
+"use": {
+"items": [
+"플라스틱"
+],
+"resins": []
+}
+}
+},
+{
+"id": "cf_379ec7bdf9",
+"name": "진양산업 주식회사",
+"complexId": "yangsan",
+"complexName": "양산일반산업단지",
+"product": "기타 플라스틱 발포 성형제품",
+"address": "경상남도 양산시 유산공단7길 42 (유산동)",
+"roles": {
+"use": {
+"items": [
+"기타 플라스틱 발포 성형제품"
+],
+"resins": []
+}
+}
+},
+{
+"id": "cf_3ab681371d",
+"name": "봉일화학(주)",
+"complexId": "sasang",
+"complexName": "사상재생사업지구",
+"product": "PE, 비닐",
+"address": "부산광역시 사상구 대동로193번길 39 (학장동, 봉일화학)",
+"roles": {
+"use": {
+"items": [
+"비닐"
+],
+"resins": []
+}
+}
+},
+{
+"id": "cf_42907780bc",
+"name": "동양피앤씨 유한회사",
+"complexId": "noksan",
+"complexName": "명지녹산국가산업단지",
+"product": "재생PE,PP칩",
+"address": "부산광역시 강서구 녹산산단381로12번길 13-25 (송정동)",
+"roles": {
+"reprocess": {
+"items": [
+"재생PE"
+],
+"resins": [
+"PP",
+"PE"
+]
+}
+}
+},
+{
+"id": "cf_451836241e",
+"name": "삼성수지",
+"complexId": "sasang",
+"complexName": "사상재생사업지구",
+"product": "플라스틱제품",
+"address": "부산광역시 사상구 사상로 57-10 (주례동, 삼성수지)",
+"roles": {
+"use": {
+"items": [
+"플라스틱제품"
+],
+"resins": []
+}
+}
+},
+{
+"id": "cf_46d2e00d92",
+"name": "현대정금",
+"complexId": "changwon",
+"complexName": "창원국가산업단지",
+"product": "프라스틱 금형제작, 성형사출",
+"address": "경상남도 창원시 의창구 죽전로 6-1 (팔용동)",
+"roles": {
+"use": {
+"items": [
+"성형사출"
+],
+"resins": []
+}
+}
+},
+{
+"id": "cf_4da2b3ec93",
+"name": "(주)경기",
+"complexId": "noksan",
+"complexName": "명지녹산국가산업단지",
+"product": "사출성형품",
+"address": "부산광역시 강서구 녹산산업북로313번길 49 (송정동)",
+"roles": {
+"use": {
+"items": [
+"사출성형품"
+],
+"resins": []
+}
+}
+},
+{
+"id": "cf_50cc854d59",
+"name": "대성프라스틱",
+"complexId": "noksan",
+"complexName": "명지녹산국가산업단지",
+"product": "플라스틱 사출품",
+"address": "부산광역시 강서구 녹산산단262로50번길 28 (송정동)",
+"roles": {
+"use": {
+"items": [
+"플라스틱 사출품"
+],
+"resins": []
+}
+}
+},
+{
+"id": "cf_535fb5ab03",
+"name": "영신소재",
+"complexId": "noksan",
+"complexName": "명지녹산국가산업단지",
+"product": "플라스틱",
+"address": "부산광역시 강서구 녹산산단231로 6 (송정동)",
+"roles": {
+"use": {
+"items": [
+"플라스틱"
+],
+"resins": []
+}
+}
+},
+{
+"id": "cf_66f6c58118",
+"name": "기동산업",
+"complexId": "noksan",
+"complexName": "명지녹산국가산업단지",
+"product": "식품용 PE비닐",
+"address": "부산광역시 강서구 녹산산단261로73번길 25 (송정동)",
+"roles": {
+"use": {
+"items": [
+"식품용 PE비닐"
+],
+"resins": [
+"PE"
+]
+}
+}
+},
+{
+"id": "cf_6b88a4a135",
+"name": "청우산업",
+"complexId": "noksan",
+"complexName": "명지녹산국가산업단지",
+"product": "비닐류",
+"address": "부산광역시 강서구 녹산산단382로50번길 21 (송정동)",
+"roles": {
+"use": {
+"items": [
+"비닐류"
+],
+"resins": []
+}
+}
+},
+{
+"id": "cf_749c8d2a2a",
+"name": "창신프라스틱",
+"complexId": "noksan",
+"complexName": "명지녹산국가산업단지",
+"product": "프라스틱 서랍,가구,플라스틱사출성형",
+"address": "부산광역시 강서구 녹산산단262로13번길 51 (송정동)",
+"roles": {
+"use": {
+"items": [
+"프라스틱 서랍",
+"플라스틱사출성형"
+],
+"resins": []
+}
+}
+},
+{
+"id": "cf_77be08d193",
+"name": "신우정밀",
+"complexId": "jisa",
+"complexName": "부산과학일반산업단지",
+"product": "플라스틱 사출품",
+"address": "부산광역시 강서구 과학산단1로 121 (지사동)",
+"roles": {
+"use": {
+"items": [
+"플라스틱 사출품"
+],
+"resins": []
+}
+}
+},
+{
+"id": "cf_813eacdfab",
+"name": "운봉산업",
+"complexId": "sasang",
+"complexName": "사상재생사업지구",
+"product": "플라스틱사출, 성형품",
+"address": "부산광역시 사상구 가야대로176번길 13-35 (학장동)",
+"roles": {
+"use": {
+"items": [
+"플라스틱사출"
+],
+"resins": []
+}
+}
+},
+{
+"id": "cf_8d3072d44c",
+"name": "(주)아이에스테크",
+"complexId": "noksan",
+"complexName": "명지녹산국가산업단지",
+"product": "PE  FILM",
+"address": "부산광역시 강서구 녹산산단262로 21 (송정동)",
+"roles": {
+"use": {
+"items": [
+"PE  FILM"
+],
+"resins": [
+"PE"
+]
+}
+}
+},
+{
+"id": "cf_8f02c18be5",
+"name": "부산프라스틱공업(주)",
+"complexId": "noksan",
+"complexName": "명지녹산국가산업단지",
+"product": "포장용 프라스틱 CPP,PAD",
+"address": "부산광역시 강서구 녹산산업중로168번길 3 (송정동)",
+"roles": {
+"use": {
+"items": [
+"포장용 프라스틱 CPP"
+],
+"resins": [
+"PP"
+]
+}
+}
+},
+{
+"id": "cf_8f0f2144d8",
+"name": "극동산업",
+"complexId": "noksan",
+"complexName": "명지녹산국가산업단지",
+"product": "합성수지재생",
+"address": "부산광역시 강서구 녹산산단381로12번길 43-23 (송정동)",
+"roles": {
+"reprocess": {
+"items": [
+"합성수지재생"
+],
+"resins": []
+}
+}
+},
+{
+"id": "cf_91d5e63c3d",
+"name": "성신디펜스솔루션 주식회사",
+"complexId": "noksan",
+"complexName": "명지녹산국가산업단지",
+"product": "개스터빈 흡기시스템, 적외선저감장치, 승강기, 그 외 기타 플라스틱 제품, 소음저감장치",
+"address": "부산광역시 강서구 송정동 녹산산단261로74번길 54",
+"roles": {
+"use": {
+"items": [
+"그 외 기타 플라스틱 제품"
+],
+"resins": []
+}
+}
+},
+{
+"id": "cf_9646874046",
+"name": "한수정밀",
+"complexId": "changwon",
+"complexName": "창원국가산업단지",
+"product": "플라스틱가전사출품(냉장고,세탁기)",
+"address": "경상남도 창원시 성산구 월림로39번길 8-5 (신촌동)",
+"roles": {
+"use": {
+"items": [
+"플라스틱가전사출품(냉장고"
+],
+"resins": []
+}
+}
+},
+{
+"id": "cf_968c986484",
+"name": "대호수지",
+"complexId": "noksan",
+"complexName": "명지녹산국가산업단지",
+"product": "재생플라스틱 칩",
+"address": "부산광역시 강서구 녹산산업중로 376 (송정동)",
+"roles": {
+"reprocess": {
+"items": [
+"재생플라스틱 칩"
+],
+"resins": []
+}
+}
+},
+{
+"id": "cf_9f4d499c0c",
+"name": "(주)삼풍",
+"complexId": "yangsan",
+"complexName": "양산일반산업단지",
+"product": "PE필름",
+"address": "경상남도 양산시 새목1길 3, (양산지방산업단지내) (어곡동) (총 2 필지) 외 1필지",
+"roles": {
+"use": {
+"items": [
+"PE필름"
+],
+"resins": [
+"PE"
+]
+}
+}
+},
+{
+"id": "cf_a20ed8e6c5",
+"name": "한미프라스틱(주)",
+"complexId": "noksan",
+"complexName": "명지녹산국가산업단지",
+"product": "플라스틱 사출품",
+"address": "부산광역시 강서구 녹산산단262로13번길 8 (송정동)",
+"roles": {
+"use": {
+"items": [
+"플라스틱 사출품"
+],
+"resins": []
+}
+}
+},
+{
+"id": "cf_a7b66bb32a",
+"name": "준성화학",
+"complexId": "noksan",
+"complexName": "명지녹산국가산업단지",
+"product": "재생칩",
+"address": "부산광역시 강서구 녹산산단442로 52 (송정동)",
+"roles": {
+"reprocess": {
+"items": [
+"재생칩"
+],
+"resins": []
+}
+}
+},
+{
+"id": "cf_a7dd18f7bb",
+"name": "대영",
+"complexId": "changwon",
+"complexName": "창원국가산업단지",
+"product": "플라스틱 사출",
+"address": "경상남도 창원시 의창구 평산로70번길 35 (팔용동)",
+"roles": {
+"use": {
+"items": [
+"플라스틱 사출"
+],
+"resins": []
+}
+}
+},
+{
+"id": "cf_a969a3eca1",
+"name": "삼양화학산업(주)",
+"complexId": "yangsan",
+"complexName": "양산일반산업단지",
+"product": "금속표면처리제, 와셔액, 부동액, 사출성형품",
+"address": "경상남도 양산시 유산공단3길 15 (교동, 삼양화학산업(주))",
+"roles": {
+"use": {
+"items": [
+"사출성형품"
+],
+"resins": []
+}
+}
+},
+{
+"id": "cf_a9d18cee5e",
+"name": "주식회사 뉴펠",
+"complexId": "noksan",
+"complexName": "명지녹산국가산업단지",
+"product": "비닐봉투",
+"address": "부산광역시 강서구 녹산산단165로 36-19 (송정동)",
+"roles": {
+"use": {
+"items": [
+"비닐봉투"
+],
+"resins": []
+}
+}
+},
+{
+"id": "cf_b067f36a7d",
+"name": "(주)태창비닐산업",
+"complexId": "sasang",
+"complexName": "사상재생사업지구",
+"product": "비닐,쓰레기봉투",
+"address": "부산광역시 사상구 대동로 237 (학장동)",
+"roles": {
+"use": {
+"items": [
+"비닐"
+],
+"resins": []
+}
+}
+},
+{
+"id": "cf_b5d009b6f6",
+"name": "금학케미칼",
+"complexId": "sasang",
+"complexName": "사상재생사업지구",
+"product": "비닐봉투",
+"address": "부산광역시 사상구 가야대로176번길 72 (학장동)",
+"roles": {
+"use": {
+"items": [
+"비닐봉투"
+],
+"resins": []
+}
+}
+},
+{
+"id": "cf_b9f78c8825",
+"name": "세화골게이트팩(주)",
+"complexId": "noksan",
+"complexName": "명지녹산국가산업단지",
+"product": "골판지 상자, 재생플라스틱 소재 물질 제조, 플라스틱 포대 제조",
+"address": "부산광역시 강서구 녹산산단381로 25 (송정동)",
+"roles": {
+"reprocess": {
+"items": [
+"재생플라스틱 소재 물질 제조"
+],
+"resins": []
+}
+}
+},
+{
+"id": "cf_bfdc7767fd",
+"name": "주식회사 대우산업",
+"complexId": "sasang",
+"complexName": "사상재생사업지구",
+"product": "비닐",
+"address": "부산광역시 사상구 장인로 13 (감전동)",
+"roles": {
+"use": {
+"items": [
+"비닐"
+],
+"resins": []
+}
+}
+},
+{
+"id": "cf_c0482c4cbe",
+"name": "대원프라스틱공업사",
+"complexId": "noksan",
+"complexName": "명지녹산국가산업단지",
+"product": "재생용 플라스틱 사출품,재생용 플라스틱 칩(CHIP)",
+"address": "부산광역시 강서구 녹산산단381로12번길 13-23 (송정동)",
+"roles": {
+"reprocess": {
+"items": [
+"재생용 플라스틱 사출품",
+"재생용 플라스틱 칩(CHIP)"
+],
+"resins": []
+}
+}
+},
+{
+"id": "cf_c4b279db7e",
+"name": "(주)서경",
+"complexId": "hwajeon",
+"complexName": "부산강서화전일반산업단지",
+"product": "자동차 내외장제 사출품, 자동차 내외장제 사출품, 자동차 내외장제 사출품, 자동차 내외장제 사출품",
+"address": "부산광역시 강서구 화전산단5로48번길 25(화전동)",
+"roles": {
+"use": {
+"items": [
+"자동차 내외장제 사출품",
+"자동차 내외장제 사출품",
+"자동차 내외장제 사출품",
+"자동차 내외장제 사출품"
+],
+"resins": []
+}
+}
+},
+{
+"id": "cf_c57acb0b79",
+"name": "(주)성우케미칼",
+"complexId": "noksan",
+"complexName": "명지녹산국가산업단지",
+"product": "재생수지",
+"address": "부산광역시 강서구 녹산산단381로12번길 43-9 (송정동)",
+"roles": {
+"reprocess": {
+"items": [
+"재생수지"
+],
+"resins": []
+}
+}
+},
+{
+"id": "cf_c76b0526a8",
+"name": "동광케미칼",
+"complexId": "changwon",
+"complexName": "창원국가산업단지",
+"product": "플라스틱 사출품(피팅보호용 캡)",
+"address": "경상남도 창원시 의창구 창원대로363번길 11, 4동 1층 2호 (팔용동, 창원제3표준공장)",
+"roles": {
+"use": {
+"items": [
+"플라스틱 사출품(피팅보호용 캡)"
+],
+"resins": []
+}
+}
+},
+{
+"id": "cf_d9254de75a",
+"name": "(주)성광프라",
+"complexId": "noksan",
+"complexName": "명지녹산국가산업단지",
+"product": "플라스틱용기",
+"address": "부산광역시 강서구 녹산산단262로13번길 48 (송정동)",
+"roles": {
+"use": {
+"items": [
+"플라스틱용기"
+],
+"resins": []
+}
+}
+},
+{
+"id": "cf_db876cbc39",
+"name": "한미케이블(주)",
+"complexId": "noksan",
+"complexName": "명지녹산국가산업단지",
+"product": "플라스틱튜브등, 우산,양산 부붐품, 자동차부품, 열수축튜브",
+"address": "부산광역시 강서구 녹산산단382로14번가길 9 (송정동)",
+"roles": {
+"use": {
+"items": [
+"플라스틱튜브등"
+],
+"resins": []
+}
+}
+},
+{
+"id": "cf_dd665f36e3",
+"name": "선경화학",
+"complexId": "noksan",
+"complexName": "명지녹산국가산업단지",
+"product": "완구용 플라스틱 사출용",
+"address": "부산광역시 강서구 녹산산단290로 21 (송정동)",
+"roles": {
+"use": {
+"items": [
+"완구용 플라스틱 사출용"
+],
+"resins": []
+}
+}
+},
+{
+"id": "cf_df00064435",
+"name": "(주)형기술",
+"complexId": "jisa",
+"complexName": "부산과학일반산업단지",
+"product": "금형 및 플라스틱 사출물",
+"address": "부산광역시 강서구 과학산단1로 135 (지사동)",
+"roles": {
+"use": {
+"items": [
+"플라스틱 사출물"
+],
+"resins": []
+}
+}
+},
+{
+"id": "cf_e0ed4d06c6",
+"name": "(주)재영테크윈 제2공장",
+"complexId": "noksan",
+"complexName": "명지녹산국가산업단지",
+"product": "플라스틱부품, 플라스틱부품, 플라스틱부품, 플라스틱부품",
+"address": "부산광역시 강서구 녹산산단261로59번길 8 (송정동)",
+"roles": {
+"use": {
+"items": [
+"플라스틱부품",
+"플라스틱부품",
+"플라스틱부품",
+"플라스틱부품"
+],
+"resins": []
+}
+}
+},
+{
+"id": "cf_e2c8e011ef",
+"name": "(주)다원테크",
+"complexId": "noksan",
+"complexName": "명지녹산국가산업단지",
+"product": "비닐포장지",
+"address": "부산광역시 강서구 녹산산단382로50번길 29 (송정동)",
+"roles": {
+"use": {
+"items": [
+"비닐포장지"
+],
+"resins": []
+}
+}
+},
+{
+"id": "cf_e3731fcc95",
+"name": "골드ENG",
+"complexId": "noksan",
+"complexName": "명지녹산국가산업단지",
+"product": "플라스틱",
+"address": "부산광역시 강서구 녹산산업중로 51-12 (송정동)",
+"roles": {
+"use": {
+"items": [
+"플라스틱"
+],
+"resins": []
+}
+}
+},
+{
+"id": "cf_e74f6c1acb",
+"name": "동명공업사",
+"complexId": "sasang",
+"complexName": "사상재생사업지구",
+"product": "신발부품,사출품",
+"address": "부산광역시 사상구 가야대로175번길 46 (주례동)",
+"roles": {
+"use": {
+"items": [
+"사출품"
+],
+"resins": []
+}
+}
+},
+{
+"id": "cf_eb8c464c15",
+"name": "진성산업(주)",
+"complexId": "noksan",
+"complexName": "명지녹산국가산업단지",
+"product": "플라스틱",
+"address": "부산광역시 강서구 녹산산단261로39번길 6(송정동)",
+"roles": {
+"use": {
+"items": [
+"플라스틱"
+],
+"resins": []
+}
+}
+},
+{
+"id": "cf_f13e59014c",
+"name": "지엔피테크",
+"complexId": "jisa",
+"complexName": "부산과학일반산업단지",
+"product": "자동차플라스틱제 부품",
+"address": "부산광역시 강서구 과학산단1로 20 (지사동)",
+"roles": {
+"use": {
+"items": [
+"자동차플라스틱제 부품"
+],
+"resins": []
+}
+}
+},
+{
+"id": "cf_f36b159b52",
+"name": "삼화프라스틱",
+"complexId": "noksan",
+"complexName": "명지녹산국가산업단지",
+"product": "플라스틱용기",
+"address": "부산광역시 강서구 녹산산단262로 27 (송정동)",
+"roles": {
+"use": {
+"items": [
+"플라스틱용기"
+],
+"resins": []
+}
+}
+},
+{
+"id": "cf_f43ff7014b",
+"name": "엠에스텍",
+"complexId": "changwon",
+"complexName": "창원국가산업단지",
+"product": "프라스틱사출",
+"address": "경상남도 창원시 의창구 차룡단지로 43 (팔용동)",
+"roles": {
+"use": {
+"items": [
+"프라스틱사출"
+],
+"resins": []
+}
+}
+},
+{
+"id": "cf_f8a21fde92",
+"name": "대성금형",
+"complexId": "sasang",
+"complexName": "사상재생사업지구",
+"product": "금형 및 플라스틱",
+"address": "부산광역시 사상구 낙동대로988번길 15(감전동, 대성금형)",
+"roles": {
+"use": {
+"items": [
+"플라스틱"
+],
+"resins": []
+}
+}
+},
+{
+"id": "cf_faaae81643",
+"name": "(주)원포인트",
+"complexId": "changwon",
+"complexName": "창원국가산업단지",
+"product": "플라스틱시제품",
+"address": "경상남도 창원시 의창구 창원대로363번길 11, 7동 1층 6호 (팔용동, 창원제3표준공장)",
+"roles": {
+"use": {
+"items": [
+"플라스틱시제품"
+],
+"resins": []
+}
+}
+}
+]
+}

@@ -30,6 +30,7 @@ TOOL_LABELS: dict[str, str] = {
     "negotiate_ask": "단가 협상(요청)",
     "negotiate_reply": "단가 협상(업체 답)",
     "find_outside_vendors": "가입하지 않은 업체 찾기",
+    "find_complex_partners": "같은 단지 자원순환 후보 찾기",
 }
 
 # role -> 화면에 보여 줄 이름

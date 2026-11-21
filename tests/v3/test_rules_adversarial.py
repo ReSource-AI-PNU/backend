@@ -535,6 +535,8 @@ PERMIT_DOCUMENT_KEYS = {"quote", "itemQuote", "processQuote", "address", "permit
 
 # 가입하지 않은 업체 후보(결과 한 장의 outsideVendors)에서 공공데이터 원문을 옮긴 칸
 PUBLIC_RECORD_KEYS = {"url", "asOfRange", "address", "phone", "permitDate", "code"}
+# 같은 단지 자원순환 후보(complexPartners)에서 공공데이터 원문을 옮긴 칸(회사가 신고한 생산품과 그 품목, 허가 명부 ID)
+COMPLEX_RECORD_KEYS = PUBLIC_RECORD_KEYS | {"product", "items", "vendorId"}
 
 
 def _loose_numbers(node, path, out):
@@ -566,6 +568,11 @@ def test_rule1_sentences_written_by_code_carry_no_loose_numbers(confirmed_demo):
                 and path.rsplit(".", 1)[-1] in PUBLIC_RECORD_KEYS
             ):
                 continue  # 공공데이터 명부를 원문 그대로 옮긴 식별 정보(ref 근거로 열린다). 수치가 아니다
+            if (
+                path.startswith("result.complexPartners.")
+                and path.rsplit(".", 1)[-1] in COMPLEX_RECORD_KEYS
+            ):
+                continue  # 등록공장 현황·허가 명부 원문(ref 근거로 열린다). 수치가 아니다
             if ".permit" in f".{path}" and path.rsplit(".", 1)[-1] in PERMIT_DOCUMENT_KEYS:
                 continue  # 허가증 원문 표기(문서에 적힌 글 그대로). 코드가 쓴 문장이 아니다
             if path.startswith("result.circular.sources."):

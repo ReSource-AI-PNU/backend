@@ -18,7 +18,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from app.v3 import ids, public_vendors
+from app.v3 import complex_partners, ids, public_vendors
 from app.v3.agents.pool import ClaimPool
 from app.v3.evidence.model import Evidence
 from app.v3.evidence.registry import EvidenceNotFound
@@ -82,6 +82,7 @@ STALE_REASONS = {
     "too_far": "지금 회사 위치에서 찾는 반경 밖에 있습니다.",
     "not_listed": "허가 명부에서 이 업체를 찾을 수 없습니다.",
     "deleted": "이 폐기물이 지워졌습니다.",
+    "not_in_complex": "지금 회사 정보로는 산업단지를 알 수 없어 같은 단지 후보인지 확인할 수 없습니다.",
 }
 
 
@@ -148,6 +149,7 @@ def find_outside(
     location = emitter.get("location")
     origin = (float(location[0]), float(location[1])) if location else None
     registered = _registered_names(store)
+    same = complex_partners.same_complex_vendor_ids(emitter)
     out = []
     for stream in streams:
         found = public_vendors.search(stream, origin, exclude_names=registered)
@@ -172,6 +174,8 @@ def find_outside(
                     "distance": distance,
                     "evidence": [ref],
                     "note": CHECK_NOTE if item["match"] == "check" else None,
+                    # 회사와 같은 산업단지(단지 범위 안이거나 같은 단지 등록공장과 상호가 같음)
+                    "sameComplex": item["id"] in same,
                 }
             )
         out.append(

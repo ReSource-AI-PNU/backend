@@ -21,6 +21,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Any
 
 from app.v3 import (
+    complex_partners,
     current_cost,
     feedback,
     ids,
@@ -1997,7 +1998,12 @@ def quote_request(
         for s in outside.get("streams") or []
         for c in s.get("candidates") or []
     }
-    if (stream_id, vendor_id) not in listed:
+    # 같은 단지 자원순환 후보 가운데 허가 명부에 있는 곳(complexPartners의 takes)도 요청서를 만들 수 있다
+    in_complex = (stream_id, vendor_id) in complex_partners.vendor_ids(
+        (session["work"].get("result") or {}).get("complexPartners")
+        or session["work"].get("complex")
+    )
+    if (stream_id, vendor_id) not in listed and not in_complex:
         raise ServiceError("NOT_FOUND", "그 업체는 이 폐기물의 후보가 아닙니다.", 404)
     emitter = app.store.get_org(session["emitterOrgId"])
     try:
@@ -2012,12 +2018,16 @@ def quote_request(
     before = (session["work"].get("outsideBasis") or {}).get(stream_id)
     changes = outreach.basis_changes(before, stream)
     location = emitter.get("location")
+    registered = outreach._registered_names(app.store)
     fit = public_vendors.recheck(
         stream,
         vendor_id,
         (float(location[0]), float(location[1])) if location else None,
-        exclude_names=outreach._registered_names(app.store),
+        exclude_names=registered,
     )
+    if not fit["ok"] and in_complex:
+        # 반경 안 후보 기준(상호·허가 품목)으로는 아니어도, 같은 단지에서 생산품으로 찾은 곳이면 그 기준으로 본다
+        fit = complex_partners.recheck(stream, vendor_id, emitter, exclude_names=registered)
     if not fit["ok"]:
         raise ServiceError(
             "OUTSIDE_STALE",

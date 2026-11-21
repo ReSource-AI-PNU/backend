@@ -12,7 +12,7 @@ import logging
 import re
 from typing import Any
 
-from app.v3 import ids, improve, outreach
+from app.v3 import complex_partners, ids, improve, outreach
 from app.v3 import names as naming
 from app.v3.a2a import guardrails as rails
 from app.v3.a2a.guardrails import WEEKDAYS
@@ -1009,6 +1009,44 @@ class Orchestrator:
             toolStatus="calculated",
         )
 
+    def _find_complex(
+        self, session, emitter: dict[str, Any], streams: list[dict[str, Any]]
+    ) -> None:
+        """같은 산업단지의 자원순환 후보(등록공장 생산품과 허가 명부). 대화는 열지 않고 결과 한 장에만 싣는다.
+
+        다른 배출 기업의 물량은 쓰지 않고, 찾은 회사에 아무것도 보내지 않는다. 찾을 때 본 흐름 칸은
+        work.outsideBasis와 같다(같은 때 같은 흐름으로 찾는다).
+        """
+        try:
+            found = complex_partners.find(
+                self.registry,
+                emitter,
+                streams,
+                exclude_names=outreach._registered_names(self.store),
+            )
+        except Exception:  # 명부 문제로 진단이 멈추면 안 된다(후보 없이 진행)
+            logger.warning("같은 단지 자원순환 후보를 찾지 못했다", exc_info=True)
+            session["work"]["complex"] = None
+            return
+        session["work"]["complex"] = found
+        count = sum(len(s["takes"]) + len(s["uses"]) for s in found["streams"])
+        if found["complex"] is None:
+            line = "회사의 산업단지를 몰라 찾지 않았습니다"
+        elif count:
+            line = f"{found['complex']['name']}에서 후보를 찾았습니다"
+        else:
+            line = f"{found['complex']['name']}에 맞는 곳이 없습니다"
+        self.feed.activity(
+            session["id"],
+            "tool",
+            "판단 도구 · 같은 단지 자원순환 후보 찾기: " + line,
+            stage=4,
+            actor="tool",
+            org_id=session["emitterOrgId"],
+            tool=complex_partners.TOOL,
+            toolStatus="calculated",
+        )
+
     def _discover(self, session: dict[str, Any]) -> bool:
         work, org_id = session["work"], session["emitterOrgId"]
         emitter = self.store.get_org(org_id)
@@ -1021,6 +1059,7 @@ class Orchestrator:
         publics = {v: public_profile(p, fleet_cost=False) for v, p in profiles.items()}
         work["stages"].update({"3": "running", "4": "running"})
         self._find_outside(session, emitter, streams)
+        self._find_complex(session, emitter, streams)
 
         matched: dict[str, list[dict]] = {v: [] for v in publics}
         refused: dict[str, list[dict]] = {v: [] for v in publics}
@@ -3526,6 +3565,8 @@ class Orchestrator:
             "evidence": list(optimized.get("evidence") or []),
             # 가입하지 않은 업체 후보(배출 기업만 본다: 업체 뷰는 최상위 키를 싣지 않는다)
             "outsideVendors": work.get("outside"),
+            # 같은 산업단지의 자원순환 후보(배출 기업만 본다: 업체 뷰는 최상위 키를 싣지 않는다)
+            "complexPartners": work.get("complex"),
             # 분리 개선 안내(배출 기업만 본다)
             "improvements": self._improvements(org_id, streams, assignments, sorted(threads)),
             # ③ 규정 확인: 폐기물마다 경로 요건 체크리스트와 관련 조항(배출 기업만 본다)
