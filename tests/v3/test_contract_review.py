@@ -134,7 +134,8 @@ def test_every_agreement_gets_a_review_both_sides_see():
         review = approval["review"]
         assert review["reviewer"]["label"] == "계약 검토 담당"
         keys = [item["key"] for item in review["items"]]
-        assert keys == list(reviewer.TITLES)
+        # 처음 거래하는 두 회사라 지난 검수 기록(history)이 없어 그 항목은 두지 않는다(test_memory.py)
+        assert keys == [k for k in reviewer.TITLES if k != "history"]
         assert review["status"] in ("needs_check", "clear")
         assert not [i for i in review["items"] if i["status"] == "block"]
         for item in review["items"]:
@@ -162,7 +163,7 @@ def test_review_speaks_in_the_live_feed():
     reviews = [e for e in shown if e.get("kind") == "review"]
     assert reviews and reviews[0]["author"]["label"] == "계약 검토 담당"
     assert reviews[0]["author"]["side"] == "reviewer"
-    assert {i["key"] for i in reviews[0]["review"]["items"]} == set(reviewer.TITLES)
+    assert {i["key"] for i in reviews[0]["review"]["items"]} == set(reviewer.TITLES) - {"history"}
     # 다시 계산해도 같은 검토는 다시 남기지 않는다
     service.get_view(app, sid, HANBIT)
     again = [e for e in app.store.list_activity(sid) if e.get("kind") == "review"]

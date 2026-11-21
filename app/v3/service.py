@@ -26,6 +26,7 @@ from app.v3 import (
     feedback,
     ids,
     live,
+    memory,
     outreach,
     public_vendors,
     report,
@@ -1968,6 +1969,21 @@ def get_report(
         return report.build(app, org_id, date_from or None, date_to or None)
     except ValueError as error:
         raise ServiceError("INVALID_VALUE", str(error), 422) from error
+
+
+def get_memory(app: App, org_id: str, viewer: str) -> dict[str, Any]:
+    """회사별 기록(memory.py): 지난 답변·검수·교정·거래. 배출 기업 본인과 운영자만 본다. 읽기라서 체험하기에서도 열린다."""
+    _owner(app, org_id, viewer, role="emitter")
+    return memory.org_memory(app, org_id)
+
+
+def update_memory(app: App, org_id: str, body: dict[str, Any], viewer: str) -> dict[str, Any]:
+    """회사별 기록을 계약 검토에 쓸지 정한다(PUT /orgs/{orgId}/memory {"enabled": bool}). 기록은 지우지 않는다."""
+    _owner(app, org_id, viewer, role="emitter")
+    value = body.get("enabled") if isinstance(body, dict) else None
+    if not isinstance(value, bool):
+        raise ServiceError("INVALID_VALUE", "enabled를 참·거짓으로 보내 주세요.", 422)
+    return memory.set_enabled(app, org_id, value)
 
 
 def _outside_of(session: dict[str, Any]) -> dict[str, Any]:

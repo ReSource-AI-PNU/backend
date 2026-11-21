@@ -40,6 +40,7 @@ TITLES = {
     "transport": "운반비 부담",
     "inspection": "반입 검수 조건",
     "law": "법령 요건",
+    "history": "지난 검수 기록",
     "pilot": "첫 거래 시범 기간",
 }
 # 문장 속 근거 자리표시자와 그 앞 빈칸(예: "거리 {{st_a_transportKm}}가" → "거리가")
@@ -157,12 +158,14 @@ def review(
     approval: dict[str, Any] | None,
     earlier_deals: int,
     stream_names: dict[str, str] | None = None,
+    history: dict[str, dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
     """합의한 대화 하나의 검토 결과.
 
     rows는 결과 한 장에서 이 대화에 배정된 줄(assignments), offers는 그 대화에서 받은 제안(흐름 ID별),
     guardrails는 업체가 정한 범위, regulation은 결과 한 장의 법령 요건, approval은 저장된 승인 상태(막힘 사유),
-    earlier_deals는 같은 두 회사가 다른 찾기에서 확정한 거래 수다.
+    earlier_deals는 같은 두 회사가 다른 찾기에서 확정한 거래 수다. history는 같은 두 회사 사이의 지난 검수를
+    폐기물마다 요약한 것(memory.pair_history)이고, 배출 기업이 기록 사용을 껐으면 None이다.
 
     돌려주는 값: {status: blocked|needs_check|clear, summary, items: [{key, title, status, text, ...}], reviewer}
     """
@@ -350,6 +353,11 @@ def review(
     else:
         items.append(_item("law", "ok", "이 거래에 걸리는 법령 요건을 모두 확인했습니다."))
 
+    # 지난 검수 기록(회사별 기록, memory.py): 같은 두 회사 사이의 검수가 합의보다 낮게 나온 적이 많으면 사람이 확인한다
+    found_history = _history_item(rows, history, names)
+    if found_history is not None:
+        items.append(found_history)
+
     # 첫 거래 시범 기간(안전장치): 함께 확정한 거래가 없으면 계약서 초안에 시범 기간을 넣는다
     if earlier_deals <= 0:
         items.append(
@@ -395,6 +403,50 @@ def review(
         "items": items,
         "reviewer": {"label": LABEL, "kind": "rules"},
     }
+
+
+def _history_item(
+    rows: list[dict[str, Any]],
+    history: dict[str, dict[str, Any]] | None,
+    names: dict[str, str],
+) -> dict[str, Any] | None:
+    """지난 검수 기록 한 줄. 기록이 없거나 회사가 껐으면 None(항목을 두지 않는다).
+
+    기록이 적으면(memory.MIN_RECORDS 미만) 참고로만 적고, 합의한 등급이나 단가보다 낮게 나온 검수가 절반 이상이면
+    확인(check)으로 둔다. 숫자는 쓰지 않는다(건수와 값은 자료 화면의 회사 기록이 근거와 함께 보여 준다).
+    """
+    if history is None:
+        return None
+    found = {
+        row.get("streamId"): history[row.get("streamId")]
+        for row in rows
+        if row.get("streamId") in history and history[row.get("streamId")]["status"] != "none"
+    }
+    if not found:
+        return None
+    below = [names.get(sid, "폐기물") for sid, s in found.items() if s["status"] == "below"]
+    if below:
+        return _item(
+            "history",
+            "check",
+            f"이 업체와의 지난 검수에서 {', '.join(below)}의 등급이나 단가가 합의보다 낮게 나온 건이 절반 이상입니다. "
+            "합의한 등급과 단가가 실제로 나올지 양쪽이 확인한 뒤 승인해 주세요. 계약서 초안의 반입 검수 조건(기준을 "
+            "벗어나면 반입을 보류하고 다시 협의)이 그대로 적용됩니다.",
+            evidence=[e for s in found.values() for e in s.get("evidence") or []],
+        )
+    if any(s["status"] == "few" for s in found.values()):
+        return _item(
+            "history",
+            "ok",
+            "이 업체와의 지난 검수 기록이 아직 적어 참고로만 봅니다. 기록이 쌓이면 합의한 등급·단가와 견줘 다시 확인합니다.",
+            evidence=[e for s in found.values() for e in s.get("evidence") or []],
+        )
+    return _item(
+        "history",
+        "ok",
+        "이 업체와의 지난 검수는 대부분 합의한 등급과 단가대로였습니다.",
+        evidence=[e for s in found.values() for e in s.get("evidence") or []],
+    )
 
 
 def blocked_titles(found: dict[str, Any] | None) -> list[str]:

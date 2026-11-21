@@ -262,6 +262,10 @@ def route(app: service.App, request: Request) -> Any:
             date_from = (request.query.get("from") or [""])[0] or None
             date_to = (request.query.get("to") or [""])[0] or None
             return service.get_report(app, org_id, viewer, date_from, date_to)
+        case ("GET", ["orgs", org_id, "memory"]):
+            return service.get_memory(app, org_id, viewer)
+        case ("PUT", ["orgs", org_id, "memory"]):
+            return service.update_memory(app, org_id, request.json(), viewer)
         case ("PUT", ["orgs", org_id, "streams", stream_id]):
             return service.update_stream(app, org_id, stream_id, request.json(), viewer)
         case ("GET", ["vendors", org_id]):

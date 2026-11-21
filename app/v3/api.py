@@ -574,6 +574,20 @@ async def org_report(org_id: str, request: Request):
     )
 
 
+@router.get("/orgs/{org_id}/memory")
+@guarded
+async def org_memory(org_id: str, request: Request):
+    return await call(service.get_memory, org_id, await viewer_of(request))
+
+
+@router.put("/orgs/{org_id}/memory")
+@guarded
+async def put_org_memory(org_id: str, request: Request):
+    viewer = await viewer_of(request)
+    body = await json_object(request)
+    return await call(service.update_memory, org_id, body, viewer)
+
+
 @router.put("/orgs/{org_id}/streams/{stream_id}")
 @guarded
 async def put_stream(org_id: str, stream_id: str, request: Request):

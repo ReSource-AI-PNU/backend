@@ -12,7 +12,7 @@ import logging
 import re
 from typing import Any
 
-from app.v3 import complex_partners, ids, improve, outreach
+from app.v3 import complex_partners, ids, improve, memory, outreach
 from app.v3 import names as naming
 from app.v3.a2a import guardrails as rails
 from app.v3.a2a.guardrails import WEEKDAYS
@@ -4029,6 +4029,14 @@ class Orchestrator:
             approval=approval,
             earlier_deals=earlier,
             stream_names=names,
+            # 같은 두 회사 사이의 지난 검수(회사별 기록). 배출 기업이 기록 사용을 껐으면 None
+            history=memory.pair_history(
+                self.app,
+                thread.emitter_org,
+                thread.vendor_org,
+                [row["streamId"] for row in rows if row.get("streamId")],
+                session["id"],
+            ),
         )
 
     def _announce_reviews(self, session) -> None:
