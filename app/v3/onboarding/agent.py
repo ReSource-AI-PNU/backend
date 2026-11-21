@@ -44,6 +44,7 @@ SYSTEM = """너는 폐기물 처리 업체 "{company}" 한 곳만 대변하는 �
   - 단가는 업체가 돈을 주고 사는 매입이면 양수, 업체가 처리비를 받으면 음수다. 말로 어느 쪽인지 분명하지
     않으면 넣지 말고 ask에서 매입 단가인지 처리비인지 묻는다.
   - 담당자가 말하지 않은 값은 절대 넣지 않는다. 맨 마지막 말에 없는 값은 넣지 않는다(지난 말의 값은 이미 초안에 있다).
+  - 담당자가 앞에서 말한 값을 고치면(예: "2대가 아니라 4대예요") 그 항목을 새 값으로 다시 넣는다.
 - skipped: 담당자가 모른다, 없다, 해당 없다고 한 항목의 key(예: "최대 거리는 잘 모르겠어요" →
   ["fleet.maxPickupKm"], "받지 않는 조건은 없어요" → ["guardrails.autoDecline"]).
 - ask: 담당자의 말이 애매해서 되물어야 할 때만 짧은 질문 한 문장(존댓말). 아니면 null.
@@ -463,7 +464,10 @@ def _run(llm, app, org_id, profile, state, used) -> str:
             parts.append("초안에 넣었습니다: " + ", ".join(written) + ".")
         for item in result.get("rejected") or []:
             label = T.FIELDS.get(item.get("key") or "", ("그 값",))[0]
-            parts.append(f"{josa(label, '은는')} 말씀과 맞는지 확인하지 못해 넣지 않았습니다.")
+            if item.get("reason") == T.SIGN_UNCLEAR:
+                parts.append(f"{label}: {T.SIGN_UNCLEAR} 매입인지 처리비인지 알려 주세요.")
+            else:
+                parts.append(f"{josa(label, '은는')} 말씀과 맞는지 확인하지 못해 넣지 않았습니다.")
 
     skipped = [k for k in parsed.get("skipped") or [] if k in T.FIELDS]
     if not skipped and not fields and _unknown(state["messages"][-1]["text"]):

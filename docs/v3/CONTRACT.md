@@ -683,6 +683,7 @@ VendorProfile {"orgId": "org_saegil",
 | `ORG_NOT_FOUND`, `VENDOR_NOT_FOUND`, `STREAM_NOT_FOUND`, `SESSION_NOT_FOUND`, `THREAD_NOT_FOUND`, `QUESTION_NOT_FOUND`, `EVIDENCE_NOT_FOUND`, `OUTCOME_NOT_FOUND` | 404 | 없거나 볼 수 없다(볼 수 없는 것은 있는지도 알려 주지 않는다) |
 | `MEMBER_NOT_FOUND` | 404 | 빼거나 소유자로 지정하려는 사용자가 그 조직의 구성원이 아니다(9장) |
 | `NOT_AGREED` | 409 | 합의된 조건이 없는 대화를 승인하려 했다 |
+| `EMPTY_MESSAGE`, `NOTHING_TO_CONFIRM` | 422 | 업체 온보딩 대화에 빈 말을 보냈다, 또는 저장할 초안 항목을 하나도 고르지 않았다(고른 키가 초안에 없다) |
 | `EMAIL_TAKEN` | 409 | 이미 가입한 이메일이다(대소문자와 앞뒤 공백은 가리지 않는다) |
 | `APPROVAL_BLOCKED` | 409 | 승인이 막혀 있다. 이유는 `approvals[].blockedReason`과 `blockedCodes`에 있다(아래 "승인을 막는 사유 코드") |
 | `REVIEW_BLOCKED` | 409 | 계약 검토 담당(`app/v3/agents/reviewer.py`)이 막은 항목이 있어 승인할 수 없다. 막은 항목과 이유는 `approvals[].review.items[]`(`status: "block"`)에 있다. 양쪽 모두 같다 |

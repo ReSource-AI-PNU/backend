@@ -249,6 +249,24 @@ def test_price_sign_must_match_the_words():
     assert ctx.draft["guardrails.ceilingPriceKrwPerKg"]["text"] == "kg당 −80원 (처리비 80원)"
 
 
+def test_a_price_without_buy_or_fee_words_is_not_drafted():
+    app, _ = _app()
+    ctx = T.Context(app=app, org_id=NEW, draft={}, said=["단가는 kg당 50원이요"])
+    out = T.propose_fields(
+        ctx,
+        {
+            "fields": [
+                {
+                    "key": "guardrails.floorPriceKrwPerKg",
+                    "value": -50,
+                    "quote": "단가는 kg당 50원이요",
+                }
+            ]
+        },
+    )
+    assert out["written"] == [] and out["rejected"][0]["reason"] == T.SIGN_UNCLEAR
+
+
 def test_values_repeated_from_earlier_messages_are_dropped_quietly():
     app, _ = _app(
         [
@@ -267,15 +285,26 @@ def test_values_repeated_from_earlier_messages_are_dropped_quietly():
     assert "초안에 넣었습니다: 수거 가능 요일 월." in text and "차량 수" not in text
 
 
+def test_native_korean_numbers_count_as_said():
+    assert T._number_in(2, "fleet.vehicleCount", "집게차 두 대 있어요")
+    assert T._number_in(3, "guardrails.minPickupsPerMonth", "한 달에 세 번은 가야")
+    assert T._number_in(5000, "fleet.capacityKg", "다섯 톤 실어요")
+    assert not T._number_in(1, "guardrails.minPickupsPerMonth", "한 달에 세 번은 가야")
+
+
 def test_prices_follow_the_guardrail_rules():
     app, _ = _app()
-    ctx = T.Context(app=app, org_id=NEW, draft={}, said=["최저 150원, 최고 100원"])
+    ctx = T.Context(app=app, org_id=NEW, draft={}, said=["매입 최저 150원, 매입 최고 100원"])
     out = T.propose_fields(
         ctx,
         {
             "fields": [
-                {"key": "guardrails.floorPriceKrwPerKg", "value": 150, "quote": "최저 150원"},
-                {"key": "guardrails.ceilingPriceKrwPerKg", "value": 100, "quote": "최고 100원"},
+                {"key": "guardrails.floorPriceKrwPerKg", "value": 150, "quote": "매입 최저 150원"},
+                {
+                    "key": "guardrails.ceilingPriceKrwPerKg",
+                    "value": 100,
+                    "quote": "매입 최고 100원",
+                },
             ]
         },
     )

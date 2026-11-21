@@ -67,6 +67,24 @@ _CODE_ITEMS: tuple[tuple[str, str, tuple[str, ...]], ...] = (
 _PREFIX_ITEMS = (("51-29-", "금속 스크랩"), ("51-20-", "폐목재"))
 
 
+# 단가의 부호(매입 +, 처리비 −)는 담당자의 말에 그 낱말이 있어야 정한다
+_FEE_WORDS = ("처리비", "처리 비용", "처리단가", "처리 단가", "비용을 받", "돈을 받")
+_BUY_WORDS = (
+    "매입",
+    "사들",
+    "사 드",
+    "사드",
+    "사서",
+    "값을 쳐",
+    "쳐 드",
+    "돈을 드",
+    "드려요",
+    "드립니다",
+    "지급",
+)
+SIGN_UNCLEAR = "매입 단가인지 처리비인지 말씀에 없어 넣지 않았습니다."
+
+
 class ToolError(ValueError):
     """도구 입력이 틀렸다. 문장은 모델에게 그대로 돌려준다."""
 
@@ -247,7 +265,25 @@ def _digits(text: str) -> list[tuple[float, str]]:
         except ValueError:
             continue
         out.append((number, match.group(2) or ""))
+    # 우리말 수: "두 대", "세 번", "다섯 톤". 단위가 바로 뒤에 붙은 것만 읽는다("한 달"의 '한'은 수가 아니다)
+    for match in _NATIVE.finditer(text):
+        out.append((float(_NATIVE_NUMBERS[match.group(1)]), match.group(2)))
     return out
+
+
+_NATIVE_NUMBERS = {
+    "한": 1,
+    "두": 2,
+    "세": 3,
+    "네": 4,
+    "다섯": 5,
+    "여섯": 6,
+    "일곱": 7,
+    "여덟": 8,
+    "아홉": 9,
+    "열": 10,
+}
+_NATIVE = re.compile(r"(?<![가-힣])(다섯|여섯|일곱|여덟|아홉|한|두|세|네|열)\s*(대|번|회|톤)")
 
 
 def _number_in(value: float, key: str, quote: str) -> bool:
@@ -330,8 +366,10 @@ def _check_value(key: str, value: Any, quote: str) -> tuple[Any, str]:
         shown = f"{value:,.0f}" if float(value) == int(value) else f"{value:,}"
         unit = NUMBER_KEYS[key]
         if key.startswith("guardrails.") and key.endswith("KrwPerKg"):
-            fee = any(w in quote for w in ("처리비", "처리 비용", "처리단가", "처리 단가"))
-            buy = "매입" in quote
+            fee = any(w in quote for w in _FEE_WORDS)
+            buy = any(w in quote for w in _BUY_WORDS)
+            if not fee and not buy:
+                raise ToolError(SIGN_UNCLEAR)
             if fee and not buy and value > 0:
                 raise ToolError(
                     "담당자가 처리비라고 했는데 매입 단가(양수)로 넣었습니다. 처리비는 음수로 넣으세요."
