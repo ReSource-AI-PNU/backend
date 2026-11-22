@@ -432,7 +432,11 @@ def optimize_assignment(
             if permit_match(stream, vendor)[0] is not True:
                 continue
             criterion, checks = best_criterion(stream, vendor, q)
-            if criterion is None or any(c[1] == "unmet" for c in checks):
+            if (
+                criterion is None
+                or criterion.get("priceMode") == "negotiated"
+                or any(c[1] == "unmet" for c in checks)
+            ):
                 continue
             level = permit_level(registry, stream, vendor, today)
             if level is not None and level["status"] == "unmet":

@@ -117,7 +117,7 @@ def greeting(app: Any, org_id: str) -> dict[str, Any]:
     name = str(app.store.get_org(org_id).get("name") or "")
     found = T.search_registry(name, org_name=name)
     same = [c for c in found if c["sameNameAsCompany"]]
-    head = f"안녕하세요. {name} 전용 업체 측 AI입니다. 배출 기업의 문의를 받으려면 업체 정보를 채워야 해서, 함께 채워 보겠습니다."
+    head = f"안녕하세요. {name} 전용 업체 측 AI입니다. 허가 품목 또는 매입 기준을 등록하면 문의 후보군에 포함됩니다."
     if same:
         lines = [f"- {c['name']} · {c['business']} · {c['address']}" for c in same[:3]]
         body = (
@@ -128,9 +128,9 @@ def greeting(app: Any, org_id: str) -> dict[str, Any]:
     else:
         body = (
             f"공공 허가 명부에서 '{name}' 상호를 찾지 못했습니다. 허가증에 적힌 상호나 소재지(시·군·구)를 알려 주시면 다시 찾겠습니다. "
-            "명부에 없으면 허가증 파일을 아래 '허가증·매입 기준표 올리기'에 올려 주세요."
+            "명부에 없어도 아래 허가 품목에서 '목록에서 선택' 또는 '직접 입력'으로 등록할 수 있습니다."
         )
-    tail = "그다음에 차량, 수거 가능 지역, 수거 요일을 여쭙겠습니다."
+    tail = "매입 기준표가 없어도 '매입 기준 추가'로 조건을 저장할 수 있습니다. 거래 확정에는 허가증 원본의 품목과 처리 방식 대조가 필요합니다."
     return {
         "id": "greeting",
         "role": "assistant",
@@ -356,7 +356,7 @@ def reply(app: Any, org_id: str, text: str) -> dict[str, Any]:
     if llm is None:
         answer = (
             "지금은 업체 측 AI 모델이 연결되어 있지 않아 대화로 채울 수 없습니다. "
-            "아래 칸에 직접 적거나 허가증·매입 기준표 파일을 올려 주세요."
+            "아래에서 허가 품목을 선택하거나 직접 입력하고, '매입 기준 추가'로 조건을 저장할 수 있습니다."
         )
     else:
         answer = _run(llm, app, org_id, profile, state, used)
@@ -414,7 +414,7 @@ def _run(llm, app, org_id, profile, state, used) -> str:
             parts.append(
                 f"공공 허가 명부의 허가 품목({T._permits_text(result['permits'])})과 차고지 위치를 초안에 넣었습니다."
                 if result["permits"]
-                else "공공 허가 명부의 차고지 위치를 초안에 넣었습니다. 명부의 처리 폐기물 분류는 허가 품목으로 옮기지 못해, 허가증을 올려 주셔야 합니다."
+                else "공공 허가 명부의 차고지 위치를 초안에 넣었습니다. 명부의 처리 폐기물 분류는 허가 품목으로 옮기지 못했습니다. 아래에서 품목을 선택하거나 직접 입력해 주세요."
             )
             if not result["sameNameAsCompany"]:
                 parts.append("다만 회사 이름이 명부 상호와 달라 명부 대조는 되지 않습니다.")
@@ -434,7 +434,7 @@ def _run(llm, app, org_id, profile, state, used) -> str:
         else:
             parts.append(
                 "공공 허가 명부에서 찾지 못했습니다. 명부는 지자체가 올린 곳만 있어 빠진 업체도 있습니다. "
-                "허가증 파일을 아래 '허가증·매입 기준표 올리기'에 올려 주세요."
+                "아래에서 '목록에서 선택' 또는 '직접 입력'으로 허가 품목을 등록해 주세요."
             )
 
     fields = [
@@ -498,10 +498,10 @@ def _next_questions(profile: dict[str, Any], state: dict[str, Any]) -> str:
     tail = ""
     if not profile.get("criteria") and not state.get("fileHint"):
         state["fileHint"] = True
-        tail = " 매입 기준표는 아래 '허가증·매입 기준표 올리기'에 파일로 올려 주시면 AI가 읽습니다."
+        tail = " 기준표가 없어도 '매입 기준 추가'로 저장할 수 있습니다. 파일이 있으면 '기준표 업로드'로 읽을 수 있습니다."
     if "permits" not in state["draft"] and not profile.get("permits"):
         return (
-            "허가 품목이 아직 없습니다. 공공 허가 명부의 사업장이 맞는지, 아니면 허가증에 적힌 상호를 알려 주세요."
+            "허가 품목이 아직 없습니다. 아래에서 품목을 선택하거나 직접 입력해 주세요."
             + tail
         )
     if not missing:
@@ -551,10 +551,7 @@ def patch_for(draft: dict[str, Any], keys: list[str], profile: dict[str, Any]) -
             continue
         value = entry.get("value")
         if key == "permits":
-            kept = [
-                {"wasteItem": p.get("wasteItem"), "materials": list(p.get("materials") or [])}
-                for p in profile.get("permits") or []
-            ]
+            kept = [dict(permit) for permit in profile.get("permits") or []]
             have = {p["wasteItem"] for p in kept}
             patch["permits"] = kept + [p for p in value or [] if p.get("wasteItem") not in have]
         elif key == "process":

@@ -349,3 +349,29 @@ def test_registry_codes_map_to_permit_items():
         {"wasteItem": "포장재", "materials": []},
     ]
     assert left == ["40-02-06"]
+
+
+def test_manual_catalog_reuses_registered_mapping_without_expanding_materials():
+    catalog = {item["code"]: item for item in T.permit_catalog()}
+    assert {code: item["name"] for code, item in catalog.items()} == T.public_vendors.code_names()
+    assert T.manual_permit_item("51-03-01", ["PP"]) == "폐플라스틱"
+    assert T.manual_permit_item("51-03-01", ["PVC"]) is None
+    assert T.manual_permit_item("51-03-06", ["EPS"]) == "폐플라스틱"
+    assert T.manual_permit_item("51-03-06", ["PP"]) is None
+    assert catalog["51-03"]["wasteItem"] is None
+
+
+def test_onboarding_guides_vendor_after_registry_miss_without_requiring_files():
+    app, _ = _app()
+    app.store.put_org({"id": "org_no_registry", "name": "테스트 명부 미등록 업체", "role": "vendor"})
+    message = onboarding.greeting(app, "org_no_registry")["text"]
+    assert "목록에서 선택" in message and "직접 입력" in message
+    assert "매입 기준 추가" in message
+    assert "허가증 원본" in message
+
+
+def test_registry_draft_preserves_manual_permit_scope():
+    manual = {"wasteItem": "폐목재", "materials": [], "entrySource": "manual", "evidence": ["human:x"]}
+    draft = {"permits": {"value": [{"wasteItem": "폐플라스틱", "materials": ["PP"]}]}}
+    patch = onboarding.patch_for(draft, ["permits"], {"permits": [manual]})
+    assert patch["permits"][0] == manual

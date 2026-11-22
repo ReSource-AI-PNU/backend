@@ -77,7 +77,11 @@ def cost_carbon(
         )
         return rec.result("needs_information", output)
     criterion, checks = best_criterion(stream, vendor, quality(stream))
-    if criterion is None or any(c[1] == "unmet" for c in checks):
+    if (
+        criterion is None
+        or criterion.get("priceMode") == "negotiated"
+        or any(c[1] == "unmet" for c in checks)
+    ):
         rec.check("criteria", "unmet", "충족하는 매입 기준이 없어 계산하지 않았습니다.")
         return rec.result("needs_information", output)
     crit_ev = list(criterion.get("evidence") or [])

@@ -269,6 +269,8 @@ def route(app: service.App, request: Request) -> Any:
             return service.update_memory(app, org_id, request.json(), viewer)
         case ("PUT", ["orgs", org_id, "streams", stream_id]):
             return service.update_stream(app, org_id, stream_id, request.json(), viewer)
+        case ("GET", ["vendors", org_id, "permit-catalog"]):
+            return service.vendor_permit_catalog(app, org_id, viewer)
         case ("GET", ["vendors", org_id]):
             return service.get_vendor(app, org_id, viewer)
         case ("PUT", ["vendors", org_id]):

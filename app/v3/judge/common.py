@@ -312,6 +312,15 @@ def quality(stream: dict) -> dict:
 _ESTIMATED = {"photo_estimate": "사진 추정값", "answered": "담당자가 답한 값"}
 
 
+def permit_covers(stream: dict, permit: dict) -> bool:
+    materials = permit.get("materials") or []
+    if permit.get("entrySource") == "manual" and not materials:
+        return False
+    return permit.get("wasteItem") == stream.get("wasteItem") and (
+        not materials or stream.get("material") in materials
+    )
+
+
 def permit_match(stream: dict, vendor: dict):
     """(일치 여부 | None, 허가 근거 ID). 허가 품목이 올라와 있지 않으면 None."""
     permits = vendor.get("permits") or []
@@ -319,10 +328,7 @@ def permit_match(stream: dict, vendor: dict):
     if not permits:
         return None, evidence
     for permit in permits:
-        materials = permit.get("materials") or []
-        if permit.get("wasteItem") == stream.get("wasteItem") and (
-            not materials or stream.get("material") in materials
-        ):
+        if permit_covers(stream, permit):
             return True, list(permit.get("evidence") or [])
     return False, evidence
 
@@ -414,12 +420,14 @@ def _ranked_criteria(stream: dict, vendor: dict, q: dict) -> list[tuple]:
         if criterion.get("material") != stream.get("material"):
             continue
         price = num(criterion.get("unitPriceKrwPerKg"))
-        if price is None:
+        negotiated = criterion.get("priceMode") == "negotiated"
+        if price is None and not negotiated:
             continue
         checks = criterion_checks(stream, criterion, q)
         unmet = sum(1 for c in checks if c[1] == "unmet")
         conditional = sum(1 for c in checks if c[1] == "conditional")
-        ranked.append(((unmet, conditional, -price, str(criterion.get("id"))), criterion, checks))
+        rank = (unmet, conditional, negotiated, -price if not negotiated else 0, str(criterion.get("id")))
+        ranked.append((rank, criterion, checks))
     ranked.sort(key=lambda r: r[0])
     return ranked
 

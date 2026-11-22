@@ -12,6 +12,10 @@ import pytest
 from app.v3 import service
 from app.v3.agents.orchestrator import discoverable_profiles
 from app.v3.intake.documents import extract_permit
+from app.v3.judge.assign import optimize_assignment
+from app.v3.judge.common import permit_match
+from app.v3.judge.economics import cost_carbon
+from app.v3.judge.route import judge_route
 from tests.v3.runtime_fixtures import make_app
 
 VENDOR, EMITTER = "org_qa_vendor", "org_qa_emitter"
@@ -227,3 +231,60 @@ def test_a_real_emitter_finds_the_vendor_after_confirmation():
     # 업체도 그 문의를 받은 대화를 본다
     vendor_view = service.get_view(app, session_id, VENDOR)
     assert [t["vendorOrgId"] for t in vendor_view["threads"]] == [VENDOR]
+
+
+def test_append_manual_permits_preserves_document_scope_and_evidence():
+    app = _world()
+    _upload_and_confirm(app, "permit", "허가증.pdf", b"%PDF-permit")
+    original = service.get_vendor(app, VENDOR, VENDOR)
+    additions = {"appendPermits": [
+        {"wasteItem": "폐플라스틱", "materials": ["ABS"]},
+        {"wasteItem": "폐목재", "materials": []},
+    ]}
+    service.update_vendor(app, VENDOR, additions, VENDOR)
+    service.update_vendor(app, VENDOR, additions, VENDOR)
+    saved = service.get_vendor(app, VENDOR, VENDOR)
+    assert saved["permitDocuments"] == original["permitDocuments"]
+    assert saved["permits"][:len(original["permits"])] == original["permits"]
+    added = saved["permits"][len(original["permits"]):]
+    assert len(added) == 2
+    assert all(row["evidence"][0].startswith("human:") for row in added)
+    assert permit_match({"wasteItem": "폐플라스틱", "material": "ABS"}, saved)[0] is True
+    assert permit_match({"wasteItem": "폐목재", "material": "목재"}, saved)[0] is False
+    _upload_and_confirm(app, "permit", "허가증.pdf", b"%PDF-permit")
+    assert service.get_vendor(app, VENDOR, VENDOR)["permits"] == saved["permits"]
+
+
+def test_case_by_case_criteria_stays_out_of_quote_and_monthly_calculations():
+    app = _world()
+    service.update_vendor(
+        app, VENDOR, {"appendPermits": [{"code": "51-03-01", "materials": ["PP"]}]}, VENDOR
+    )
+    row = {"material": "PP", "priceMode": "negotiated", "unitPriceKrwPerKg": None, "manual": True}
+    service.confirm_criteria(app, VENDOR, "직접 적은 매입 기준", [row], VENDOR)
+    profile = service.get_vendor(app, VENDOR, VENDOR)
+    [criterion] = profile["criteria"]
+    assert criterion["priceMode"] == "negotiated" and criterion["unitPriceKrwPerKg"] is None
+    assert criterion["evidence"][0].startswith("human:")
+    assert VENDOR in discoverable_profiles(app.store, {"id": EMITTER})
+    stream = app.store.get_stream("st_sprue")
+    route = judge_route(app.registry, org_id=stream["orgId"], today=app.today, stream=stream, vendor=profile)
+    assert route["output"]["reason"] == "담당자 견적 필요"
+    assert {"unitPrice", "monthlyAfter", "difference"}.isdisjoint(claim["id"] for claim in route["claims"])
+    economics = cost_carbon(
+        app.registry, org_id=stream["orgId"], today=app.today, stream=stream, vendor=profile
+    )
+    assert {"unitPrice", "monthlyRevenue"}.isdisjoint(claim["id"] for claim in economics["claims"])
+    assignment = optimize_assignment(
+        app.registry, org_id=stream["orgId"], today=app.today, streams=[stream], vendors=[profile],
+    )
+    [assigned] = assignment["output"]["assignments"]
+    assert assigned.get("vendorOrgId") is None
+    assert not assigned.get("alternatives")
+
+    service.confirm_criteria(app, VENDOR, "직접 적은 매입 기준", [
+        {**row, "priceMode": "fixed", "unitPriceKrwPerKg": 0},
+    ], VENDOR)
+    fixed = service.get_vendor(app, VENDOR, VENDOR)["criteria"][0]
+    assert fixed["id"] == criterion["id"] and fixed["unitPriceKrwPerKg"] == 0
+    assert fixed["priceMode"] == "fixed"
