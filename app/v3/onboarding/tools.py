@@ -188,6 +188,26 @@ def permits_from_codes(codes: list[str]) -> tuple[list[dict[str, Any]], list[str
     return permits, left
 
 
+def manual_permit_item(code: str, materials: list[str]) -> str | None:
+    """목록 선택을 기존 분류에 연결하되 재질 범위는 담당자가 명시한 값으로 제한한다."""
+    permits, unmapped = permits_from_codes([code])
+    if unmapped or len(permits) != 1:
+        return None
+    item = permits[0]
+    if item["materials"] and not set(materials) <= set(item["materials"]):
+        return None
+    if code == "51-03-01" and "PVC" in materials:
+        return None
+    return item["wasteItem"]
+
+
+def permit_catalog() -> list[dict[str, str | None]]:
+    return [
+        {"code": code, "name": name, "wasteItem": manual_permit_item(code, [])}
+        for code, name in public_vendors.code_names().items()
+    ]
+
+
 def _permits_text(permits: list[dict[str, Any]]) -> str:
     return ", ".join(
         f"{p['wasteItem']}({', '.join(p['materials'])})"
@@ -251,7 +271,7 @@ def use_registry_vendor(ctx: Context, args: dict[str, Any]) -> dict[str, Any]:
         "note": (
             "상호와 차고지가 명부와 같으면 허가 확인이 '등록 품목 일치'로 올라갑니다. 허가증 원본 대조는 따로 필요합니다."
             if same
-            else "회사 이름이 명부 상호와 달라 저장해도 명부 대조는 되지 않습니다. 허가증을 올리도록 안내하세요."
+            else "회사 이름이 명부 상호와 달라 저장해도 명부 대조는 되지 않습니다. 허가 품목을 선택하거나 직접 입력하도록 안내하세요."
         ),
     }
 
@@ -474,14 +494,14 @@ def checks(profile: dict[str, Any]) -> list[dict[str, Any]]:
             "key": "permits",
             "label": "허가 품목",
             "done": bool(profile.get("permits")),
-            "note": "허가 품목이 맞는 폐기물만 문의가 옵니다."
+            "note": "목록에서 선택하거나 직접 입력할 수 있습니다. 거래 확정에는 품목과 처리 방식의 원본 대조가 필요합니다."
             + (" 올린 허가증은 원본 대조를 기다립니다." if docs else ""),
         },
         {
             "key": "criteria",
             "label": "매입 기준표",
             "done": bool(profile.get("criteria")),
-            "note": "매입 기준표 파일을 올리면 AI가 읽고, 담당자가 확인한 줄만 들어갑니다.",
+            "note": "기준표가 없어도 매입 기준을 추가할 수 있습니다. 기준표 파일은 담당자가 확인한 줄만 저장합니다.",
         },
         {
             "key": "depot",

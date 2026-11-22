@@ -69,7 +69,11 @@ def _pair_feasible(stream: dict[str, Any], profile: dict[str, Any]) -> bool:
     if permit_match(stream, profile)[0] is not True:
         return False
     criterion, checks = best_criterion(stream, profile, quality(stream))
-    if criterion is None or any(c[1] == "unmet" for c in checks):
+    if (
+        criterion is None
+        or criterion.get("priceMode") == "negotiated"
+        or any(c[1] == "unmet" for c in checks)
+    ):
         return False
     guard = profile.get("guardrails") or {}
     if rails.auto_decline_reason(guard, stream):

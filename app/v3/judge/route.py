@@ -214,6 +214,13 @@ def judge_route(registry, *, org_id, today, stream, vendor=None):
         output["current"], _ = baseline(rec, stream, kg, None)
         return rec.result("calculated", output)
 
+    if criterion.get("priceMode") == "negotiated":
+        text = "담당자 견적 필요"
+        rec.check("negotiated_price", "conditional", text, None, crit_ev)
+        output["reason"] = text
+        output["current"], _ = baseline(rec, stream, kg, None)
+        return rec.result("conditional", output)
+
     price = float(criterion["unitPriceKrwPerKg"])
     rec.number("unitPrice", price, "원/kg", "업체 매입 기준표의 단가(음수면 처리비)", crit_ev)
     after = price * kg

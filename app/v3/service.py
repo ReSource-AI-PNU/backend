@@ -65,6 +65,7 @@ from app.v3.intake import detector as media
 from app.v3.judge import basis
 from app.v3.judge.common import quality, without_emitter_only
 from app.v3.judge.defaults import register_defaults
+from app.v3.onboarding.tools import manual_permit_item, permit_catalog
 from app.v3.store import InMemoryStore, NotFound, VersionConflict
 from app.v3.untrusted import (
     contaminant_labels,
@@ -957,11 +958,66 @@ def get_vendor(app: App, org_id: str, viewer: str) -> dict[str, Any]:
         "orgId": org_id,
         "name": org.get("name"),
         "permits": [
-            {"wasteItem": p.get("wasteItem"), "materials": p.get("materials")}
+            {key: p[key] for key in ("wasteItem", "materials", "entrySource", "code") if key in p}
             for p in profile.get("permits") or []
         ],
         "model": profile.get("model"),
     }
+
+
+def vendor_permit_catalog(app: App, org_id: str, viewer: str) -> list[dict[str, Any]]:
+    _owner(app, org_id, viewer, "vendor")
+    return permit_catalog()
+
+
+def _manual_permits(app: App, org_id: str, rows: Any, existing: list) -> list:
+    if not isinstance(rows, list) or not 1 <= len(rows) <= 200:
+        raise ServiceError("INVALID_VALUE", "추가할 허가 품목을 1~200개 골라 주세요.", 422)
+    additions = []
+    for row in rows:
+        if not isinstance(row, dict):
+            raise ServiceError("INVALID_VALUE", "허가 품목은 객체로 보내 주세요.", 422)
+        code = row.get("code")
+        waste = row.get("wasteItem")
+        materials = row.get("materials", [])
+        if not isinstance(materials, list) or len(materials) > 30 or any(
+            not isinstance(value, str) or not 0 < len(value.strip()) <= 40 for value in materials
+        ):
+            raise ServiceError("INVALID_VALUE", "재질을 확인해 주세요.", 422)
+        materials = sorted({value.strip().upper() for value in materials})
+        if code is not None:
+            if not isinstance(code, str) or code not in public_vendors.code_names():
+                raise ServiceError("INVALID_VALUE", "목록의 분류코드를 골라 주세요.", 422)
+            waste = manual_permit_item(code, materials)
+            if waste is None:
+                raise ServiceError("INVALID_VALUE", "품목과 재질을 확인하고 직접 입력해 주세요.", 422)
+        if not isinstance(waste, str) or not 0 < len(waste.strip()) <= 120:
+            raise ServiceError("INVALID_VALUE", "허가 품목명을 확인해 주세요.", 422)
+        additions.append({
+            "wasteItem": waste.strip(),
+            "materials": materials,
+            "entrySource": "manual",
+            **({"code": code} if code is not None else {}),
+        })
+
+    permits = list(existing)
+    for item in additions:
+        if any(all(old.get(key) == value for key, value in item.items()) for old in permits):
+            continue
+        waste = item["wasteItem"]
+        label = f'{waste} ({", ".join(item["materials"]) or "재질 확인 필요"})'
+        ref = app.registry.put(Evidence(
+            id=ids.human_id(org_id, f"허가품목-{ids.digest(item)}"),
+            kind="human",
+            label=f"허가 품목(업체 입력): {label}",
+            excerpt=f"{item.get('code', '')} {label}".strip(),
+            source="업체 담당자 입력(허가증 원본 확인 전)",
+            as_of=app.today,
+            access=(org_id,),
+            meta={"ownerOrgId": org_id},
+        ))
+        permits.append({**item, "evidence": [ref.id]})
+    return permits
 
 
 def update_vendor(app: App, org_id: str, patch: dict[str, Any], viewer: str) -> dict[str, Any]:
@@ -1018,13 +1074,23 @@ def update_vendor(app: App, org_id: str, patch: dict[str, Any], viewer: str) -> 
                 "INVALID_VALUE", "모델은 foundry 또는 ollama 가운데 고르고 이름을 적어 주세요.", 422
             )
         profile["model"] = {"provider": model["provider"], "name": str(model["name"])}
+    if "appendPermits" in patch:
+        if "permits" in patch:
+            raise ServiceError("INVALID_VALUE", "허가 품목 추가와 전체 교체는 따로 요청해 주세요.", 422)
+        profile["permits"] = _manual_permits(
+            app, org_id, patch["appendPermits"], profile.get("permits") or []
+        )
     if "permits" in patch:
-        old = {p.get("wasteItem"): p for p in profile.get("permits") or []}
+        def permit_key(item):
+            return (item.get("wasteItem"), tuple(item.get("materials") or []),
+                    item.get("entrySource"), item.get("code"))
+
+        old = {permit_key(p): p for p in profile.get("permits") or []}
         permits = []
         for item in patch["permits"] or []:
             waste, materials = item.get("wasteItem"), list(item.get("materials") or [])
-            kept = old.get(waste)
-            if kept and list(kept.get("materials") or []) == materials:
+            kept = old.get(permit_key(item))
+            if kept:
                 permits.append(kept)
                 continue
             evidence = app.registry.put(
@@ -1046,7 +1112,18 @@ def update_vendor(app: App, org_id: str, patch: dict[str, Any], viewer: str) -> 
         criteria = []
         for item in patch["criteria"] or []:
             cid = str(item.get("id") or f"pc_{ids.digest(item)[:6]}")
-            before = list((old.get(cid) or {}).get("evidence") or [])
+            original = old.get(cid) or {}
+            price_mode = item.get("priceMode", original.get("priceMode", "fixed"))
+            if price_mode not in ("fixed", "negotiated") or (
+                price_mode == "negotiated" and item.get("unitPriceKrwPerKg") is not None
+            ):
+                raise ServiceError("INVALID_VALUE", "단가 방식과 금액을 확인해 주세요.", 422)
+            if original.get("priceMode", "fixed") != price_mode:
+                raise ServiceError("INVALID_VALUE", "단가 방식은 매입 기준 추가에서 변경해 주세요.", 422)
+            if original and all(original.get(key) == value for key, value in item.items() if key != "evidence"):
+                criteria.append(original)
+                continue
+            before = list(original.get("evidence") or [])
             evidence = []
             for key, label, unit in (
                 ("unitPriceKrwPerKg", "단가", "원/kg"),
@@ -3098,6 +3175,8 @@ def confirm_criteria(
             if row.get(field) is not None:
                 by_field[field] = put(field, title, float(row[field]), unit)
                 evidence.append(by_field[field])
+        if row["priceMode"] == "negotiated":
+            evidence.append(put("priceMode", "단가 방식", "건별 협의", None))
         if row["collectionFee"]:
             fee_id = put("collectionFee", "수거비", _FEE_TEXT[row["collectionFee"]], None)
             evidence.append(fee_id)
@@ -3111,6 +3190,7 @@ def confirm_criteria(
                 "material": row["material"],
                 "grade": row["grade"],
                 "form": row["form"],
+                "priceMode": row["priceMode"],
                 "unitPriceKrwPerKg": row["unitPriceKrwPerKg"],
                 "minMonthlyKg": row["minMonthlyKg"],
                 "maxContaminationPct": row["maxContaminationPct"],
@@ -3172,7 +3252,11 @@ def _profile_from_document(app: App, org_id: str, found: dict[str, Any]) -> dict
     added = {"permits": 0, "criteria": 0}
     updated = {"permits": 0, "criteria": 0}
     for item in found["permits"]:
-        same = next((p for p in permits if p.get("wasteItem") == item["wasteItem"]), None)
+        same = next(
+            (p for p in permits
+             if p.get("wasteItem") == item["wasteItem"] and p.get("entrySource") != "manual"),
+            None,
+        )
         if same is None:
             permits.append(
                 {
@@ -3212,8 +3296,12 @@ def _profile_from_document(app: App, org_id: str, found: dict[str, Any]) -> dict
         values = {k: item[k] for k in documents.CRITERION_KEYS if item.get(k) is not None}
         if item.get("collectionFee"):
             values["collectionFee"] = item["collectionFee"]
+        if item.get("priceMode") == "negotiated":
+            values.update(priceMode="negotiated", unitPriceKrwPerKg=None)
+        elif values.get("unitPriceKrwPerKg") is not None:
+            values["priceMode"] = "fixed"
         if same is None:
-            if values.get("unitPriceKrwPerKg") is None:
+            if values.get("unitPriceKrwPerKg") is None and values.get("priceMode") != "negotiated":
                 found["skipped"].append(
                     f"{naming.criterion_label(item)}: 단가를 확인하지 않아 매입 기준을 만들지 않았습니다"
                 )
