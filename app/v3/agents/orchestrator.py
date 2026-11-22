@@ -3810,6 +3810,7 @@ class Orchestrator:
                     metric: {
                         "status": total["status"],
                         "total": claim(total.get("claim")),
+                        "upper": claim(total.get("upper")),
                         "countedKg": claim(total.get("countedKg")),
                         "heldKg": claim(total.get("heldKg")),
                         "heldStreams": [
@@ -3829,6 +3830,7 @@ class Orchestrator:
                         "streamName": name_of(row["streamId"]),
                         "metric": row["metric"],
                         "value": claim(row.get("claim")),
+                        "upper": claim(row.get("upper")),
                         "assumptions": row["assumptions"],
                         "reason": row["reason"],
                         "status": row["status"],

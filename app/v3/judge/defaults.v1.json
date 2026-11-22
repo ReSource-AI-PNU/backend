@@ -131,6 +131,21 @@
     "circular.reference.energy.PET-병급": [
       "ref:Uekert2023:PET-병급-생산에너지차이@2023"
     ],
+    "circular.reference.energy.PET-비정질": [
+      "ref:REMADE2019:PET-비정질-참고-energy@2019"
+    ],
+    "circular.reference.energy.PS": [
+      "ref:REMADE2019:PS-참고-energy@2019"
+    ],
+    "circular.reference.energy.ABS": [
+      "ref:REMADE2019:ABS-참고-energy@2019"
+    ],
+    "circular.reference.ghg.ABS": [
+      "ref:Schwarz2021:ABS-참고-ghg@2021"
+    ],
+    "circular.reference.virgin.ABS": [
+      "ref:Schwarz2021:ABS-참고-virgin@2021"
+    ],
     "circular.energy.PP.recycle": [
       "ref:WARM16:PP-recycle-순에너지@2023-12"
     ],

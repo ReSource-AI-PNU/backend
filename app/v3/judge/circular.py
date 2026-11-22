@@ -779,25 +779,99 @@ def baseline_emission(rec: Recorder, rows: list[dict]) -> dict:
     return {"claim": total, "missing": missing}
 
 
-def reference_energy_effect(rec: Recorder, stream: dict, virgin: dict) -> dict:
-    """Energy to supply the same amount of virgin and recycled resin, for display only."""
-    if virgin["status"] != "estimated":
-        return _hold(virgin["reason"])
-    material, _ = material_key(stream)
-    factor = rec.basis(f"circular.reference.energy.{material}")
-    if not compatible(factor, metric="energy") or factor.meta.get("material") != material:
-        return _hold(f"{material}의 신재·재생원료 생산 에너지 문헌값이 없습니다.")
+def _reference_factor(
+    rec: Recorder, material: str, metric: str, mass: float, unit: str, formula: str
+) -> dict:
+    factor = rec.basis(f"circular.reference.{metric}.{material}")
+    if not compatible(factor, metric=metric) or factor.meta.get("material") != material:
+        return _hold(f"{material}의 적용 가능한 문헌 계수가 없습니다.")
     try:
-        per_t = convert(factor.value, factor.unit, "GJ/t")
+        value = convert(factor.value, factor.unit, unit) * mass
     except UnitError:
-        return _hold("생산 에너지 계수의 단위를 확인해야 합니다.")
-    return _estimated(
-        virgin["value"] * per_t / 1000,
-        "literature",
-        [factor.id, *virgin["basis"]],
-        "예상 신재 대체량(t/월) × 신재와 기계적 재생수지의 공급망 에너지 차이(GJ/t). "
-        "Uekert 외 2023 Table S27의 같은 재질·같은 생산량을 비교합니다.",
-    )
+        return _hold("문헌 계수의 단위를 확인해야 합니다.")
+    return _estimated(value, "literature", [factor.id], formula)
+
+
+def _reference_options(stream: dict) -> tuple[tuple[str | None, ...], list[str]]:
+    material, reason = material_key(stream)
+    raw = str(stream.get("material") or "").strip().upper()
+    if raw == "PP+ABS":
+        return ("PP", "ABS"), [
+            "PP와 ABS를 분리해 각각 재활용한다고 가정했습니다. 혼합 비율에 따라 달라지는 두 재질 시나리오의 범위입니다."
+        ]
+    if stream.get("singleMaterial") is False:
+        return (None,), [reason]
+    if raw == "PE":
+        return ("LDPE", "HDPE"), [
+            "세부 등급을 모르는 PE에 LDPE와 HDPE 두 문헌 시나리오를 적용했습니다."
+        ]
+    if raw == "PET" and not material:
+        return ("PET-비정질", "PET-병급"), [
+            "PET 등급이 확인되지 않아 비병급과 병급 두 문헌 시나리오를 적용했습니다."
+        ]
+    if raw == "ABS":
+        return ("ABS",), ["선별된 ABS를 개방형 기계적 재활용으로 처리하는 문헌 시나리오입니다."]
+    return (material,), [reason] if not material else []
+
+
+def _reference_scenario(rec: Recorder, stream: dict, material: str | None, kg: float) -> dict:
+    specimen = {**stream, "origin": "PCR", "currentTreatment": {}}
+    if material:
+        specimen["singleMaterial"] = True
+    if material and material.startswith("PET-"):
+        specimen.update(material="PET", form=material)
+    elif material:
+        specimen["material"] = material
+
+    if material == "ABS":
+        ghg = _reference_factor(
+            rec,
+            material,
+            "ghg",
+            kg / 1000,
+            "tCO2e/t",
+            "월 투입량(t) × ABS 에너지 회수 소각과 개방형 기계적 재활용의 배출 차이.",
+        )
+        virgin = _reference_factor(
+            rec,
+            material,
+            "virgin",
+            kg / 100,
+            "%",
+            "월 투입량(kg) × ABS 개방형 재활용 수율(80%) × 신재 대체율(50%).",
+        )
+    else:
+        ghg = ghg_effect(rec, specimen, kg, "incineration", "recycle")
+        virgin = virgin_effect(rec, specimen, kg, "incineration", "recycle")
+
+    if virgin["status"] == "estimated":
+        energy = _reference_factor(
+            rec,
+            material,
+            "energy",
+            virgin["value"] / 1000,
+            "GJ/t",
+            "예상 신재 대체량(t) × 같은 재질의 신재와 기계적 재생수지의 생산 에너지 차이(GJ/t).",
+        )
+        energy["basis"].extend(virgin["basis"])
+    else:
+        energy = _hold(virgin["reason"])
+    return {"ghg": ghg, "energy": energy, "virgin": virgin}
+
+
+def _reference_range(options: list[dict]) -> dict:
+    if len(options) == 1:
+        return options[0]
+    held = next((item for item in options if item["status"] != "estimated"), None)
+    if held is not None:
+        return held
+    low, high = sorted(options, key=lambda item: item["value"])
+    return {
+        **low,
+        "upper": high["value"],
+        "basis": list(dict.fromkeys([*low["basis"], *high["basis"]])),
+        "formula": f"두 문헌 시나리오의 범위. 하한 계산 {low['formula']} 상한 계산 {high['formula']}",
+    }
 
 
 def reference_estimates(rec: Recorder, rows: list[dict], choices: list[dict]) -> dict | None:
@@ -816,35 +890,26 @@ def reference_estimates(rec: Recorder, rows: list[dict], choices: list[dict]) ->
         [ev for row in matched for ev in _kg_evidence(row["stream"])],
         private=True,
     )["id"]
-    effects = []
-    baseline = "incineration"
+    scenarios = []
     for row in matched:
         stream, kg = row["stream"], row["kg"]
-        specimen = {**stream, "origin": "PCR", "currentTreatment": {}}
-        virgin = virgin_effect(rec, specimen, kg, baseline, "recycle")
-        effects.append(
-            {
-                "ghg": ghg_effect(rec, specimen, kg, baseline, "recycle"),
-                "energy": reference_energy_effect(rec, specimen, virgin),
-                "virgin": virgin,
-            }
-        )
+        materials, assumptions = _reference_options(stream)
+        options = [_reference_scenario(rec, stream, material, kg) for material in materials]
+        if stream.get("origin") != "PCR" and "ABS" not in materials:
+            assumptions.append("소비 후 폐플라스틱 연구를 같은 재질과 물량에 환산했습니다.")
+        scenarios.append((options, assumptions))
 
     details, totals = [], {}
     for metric in METRICS:
-        values, counted, held = [], [], []
-        for i, (row, by_metric) in enumerate(zip(matched, effects, strict=True)):
+        values, ceilings, counted, held = [], [], [], []
+        for i, (row, (options, assumptions)) in enumerate(zip(matched, scenarios, strict=True)):
             stream = row["stream"]
-            effect = by_metric[metric]
-            assumptions = (
-                ["소비 후 폐플라스틱 연구를 같은 재질과 물량에 환산했습니다."]
-                if stream.get("origin") != "PCR"
-                else []
-            )
+            effect = _reference_range([option[metric] for option in options])
             item = {
                 "streamId": stream.get("id"),
                 "metric": metric,
                 "claim": None,
+                "upper": None,
                 "basis": rec.visible(effect["basis"]),
                 "assumptions": assumptions,
                 "reason": effect["reason"],
@@ -863,6 +928,19 @@ def reference_estimates(rec: Recorder, rows: list[dict], choices: list[dict]) ->
                 )
                 item["claim"] = made["id"]
                 values.append(made)
+                upper = effect.get("upper")
+                maximum = made
+                if upper is not None and upper > effect["value"]:
+                    maximum = rec.number(
+                        f"ceRef_s{i}Upper{SUFFIX[metric]}",
+                        upper,
+                        UNIT[metric],
+                        f"문헌 시나리오 범위의 상한. {formula}",
+                        [*effect["basis"], *_kg_evidence(stream)],
+                        private=True,
+                    )
+                    item["upper"] = maximum["id"]
+                ceilings.append(maximum)
                 counted.append(i)
             elif effect["status"] == "zero":
                 counted.append(i)
@@ -883,6 +961,7 @@ def reference_estimates(rec: Recorder, rows: list[dict], choices: list[dict]) ->
             )["id"]
 
         total = None
+        ceiling = None
         if values:
             total = rec.number(
                 f"ceRef_total{SUFFIX[metric]}",
@@ -893,6 +972,15 @@ def reference_estimates(rec: Recorder, rows: list[dict], choices: list[dict]) ->
                 label=f"문헌 기준 {names.LABELS[names.role_of(SUFFIX[metric])]} 추정 합계 계산",
                 private=True,
             )["id"]
+            if ceilings != values:
+                ceiling = rec.number(
+                    f"ceRef_totalUpper{SUFFIX[metric]}",
+                    math.fsum(float(v["value"]) for v in ceilings),
+                    UNIT[metric],
+                    "품목마다 계산한 문헌 시나리오의 상한 합",
+                    [v["evidence"][0] for v in ceilings],
+                    private=True,
+                )["id"]
         totals[metric] = {
             "status": "partial"
             if held and values
@@ -902,6 +990,7 @@ def reference_estimates(rec: Recorder, rows: list[dict], choices: list[dict]) ->
             if values
             else "zero",
             "claim": total,
+            "upper": ceiling,
             "countedKg": quantity(counted, "Counted"),
             "heldKg": quantity(held, "Held"),
             "heldStreams": [matched[i]["stream"].get("id") for i in held],
