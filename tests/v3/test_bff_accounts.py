@@ -697,7 +697,7 @@ def test_negotiation_test_company_runs_three_price_rounds_without_cross_matching
     assert assignment["unitPrice"]["value"] == 155
 
 
-def test_live_find_shows_example_negotiation_without_adding_a_trade(world):
+def test_live_find_explains_missing_candidates_and_hides_old_example_quotes(world):
     client, state, _ = world
     user = signup(client, "example-comparison@example.com")
     company = new_org(client, user, "일반 배출 사업장", "emitter")["id"]
@@ -722,22 +722,20 @@ def test_live_find_shows_example_negotiation_without_adding_a_trade(world):
     session_id = opened.json()["session"]["id"]
     view = answer_until_settled(client, session_id, headers)
 
-    assert view["vendorComparison"]["status"] == "ready"
-    item = view["vendorComparison"]["items"][0]
-    assert item["streamId"] == stream
-    quotes = item["quotes"]
-    assert [row["name"] for row in quotes] == ["필름자원", "순환소재", "그린원료"]
-    assert [row["finalPrice"] for row in quotes] == [138, 155, 170]
-    assert all(row["requestedPrice"] > row["firstPrice"] for row in quotes)
-    assert [row["selected"] for row in quotes] == [False, True, False]
-    assert quotes[2]["pickupFee"] == 15_000
+    assert "vendorComparison" not in view
     assert not view["threads"] and not view["approvals"] and not view["documents"]
-    assert all(assignment["vendorOrgId"] is None for assignment in view["result"]["assignments"])
+    assignment = view["result"]["assignments"][0]
+    assert assignment["vendorOrgId"] is None
+    assert "매칭에 사용할 업체" in assignment["vendorSearchNote"]
     assert len(state.store.list_sessions(company)) == 1
     assert not any(org.get("simulation") for org in state.store.list_orgs())
 
+    session = state.store.get_session(session_id)
+    session["work"]["vendorComparison"] = {"status": "ready", "items": [{"name": "필름자원"}]}
+    state.store.put_session(session)
     stored = client.get(f"/api/v3/sessions/{session_id}", headers=headers).json()
-    assert stored["vendorComparison"] == view["vendorComparison"]
+    assert "vendorComparison" not in stored
+    assert stored["result"]["assignments"][0]["vendorSearchNote"] == assignment["vendorSearchNote"]
     other = signup(client, "unrelated-comparison@example.com")
     other_org = new_org(client, other, "다른 회사", "emitter")["id"]
     assert error(client.get(f"/api/v3/sessions/{session_id}", headers=bff(other, other_org)), 404) == "SESSION_NOT_FOUND"

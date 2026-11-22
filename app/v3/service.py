@@ -55,7 +55,7 @@ from app.v3.agents.policy_rule import RulePolicy
 from app.v3.agents.pool import ClaimPool, is_private
 from app.v3.agents.vendor import VendorAgent
 from app.v3.complex_partners import plan as complex_partners_plan
-from app.v3.demo import negotiation_test, vendor_comparison
+from app.v3.demo import negotiation_test
 from app.v3.demo.seed import DEMO_ANSWERS, EMITTER, ORGS, seed_demo, share_evidence
 from app.v3.evidence import search
 from app.v3.evidence.model import KINDS, PUBLIC, Evidence
@@ -1539,25 +1539,8 @@ def _execute(app: App, session_id: str, run_id: str) -> None:
     except Exception as error:
         _run_failed(app, orchestrator, session_id, run_id, error)
         raise
-    finished = app.store.get_session(session_id)
-    work = finished["work"]
-    if (
-        app.auth_mode == "bff"
-        and not app.read_only
-        and negotiation_test.match_group(emitter) == "live"
-        and finished["status"] in ("idle", "awaiting_approval")
-        and work.get("result")
-        and work.get("vendorComparison", {}).get("status") != "ready"
-    ):
-        stream_ids = {item["streamId"] for item in work["result"]["assignments"]}
-        try:
-            work["vendorComparison"] = vendor_comparison.compare(app, emitter["id"], stream_ids)
-        except Exception:
-            logger.exception("예시 업체 견적 비교를 만들지 못했다: %s", session_id)
-            work["vendorComparison"] = {"status": "unavailable", "items": []}
-        finished = app.store.put_session(finished)
     # 아무것도 바꾸지 않고 끝났어도 마지막 상태를 남긴다(같은 값이면 남지 않는다)
-    orchestrator.feed.status(finished)
+    orchestrator.feed.status(app.store.get_session(session_id))
 
 
 def _run_failed(
@@ -2076,8 +2059,11 @@ def _event_view(
     return {**event, "detail": detail}
 
 
-def _result_view(session: dict[str, Any], viewer: str, owner: bool) -> dict[str, Any] | None:
-    result = session["work"].get("result")
+def _result_view(
+    session: dict[str, Any], viewer: str, owner: bool, *, show_search_note: bool = False
+) -> dict[str, Any] | None:
+    work = session["work"]
+    result = work.get("result")
     if result is None:
         return None
     if owner:
@@ -2090,6 +2076,17 @@ def _result_view(session: dict[str, Any], viewer: str, owner: bool) -> dict[str,
             shown = display(assignment)
             if shown.get("alternatives"):
                 shown = {**shown, "alternatives": [display(row) for row in shown["alternatives"]]}
+            if show_search_note and not shown.get("vendorOrgId") and shown.get("route") != "reuse":
+                search_result = (work.get("find", {}).get(shown["streamId"]) or {}).get("output")
+                if search_result and not search_result.get("candidates"):
+                    shown = {
+                        **shown,
+                        "vendorSearchNote": (
+                            "등록 업체 중 허가 품목과 매입 기준을 모두 충족하는 곳이 없습니다."
+                            if search_result.get("excluded")
+                            else "매칭에 사용할 업체의 허가 품목이나 매입 기준이 등록되지 않았습니다."
+                        ),
+                    }
             rows.append(shown)
         return {**result, "assignments": rows}
     mine = []
@@ -2430,6 +2427,13 @@ def get_view(app: App, session_id: str, viewer: str) -> dict[str, Any]:
             and (e["kind"] in VENDOR_EVENT_KINDS or (e.get("detail") or {}).get("orgId") == viewer)
         ]
     questions = app.store.list_questions(session_id) if owner else []
+    show_search_note = (
+        app.auth_mode == "bff"
+        and not app.read_only
+        and me.get("role") == "emitter"
+        and negotiation_test.match_group(me) == "live"
+    )
+    result = _result_view(session, viewer, owner, show_search_note=show_search_note)
     return {
         "session": {
             "id": session["id"],
@@ -2444,10 +2448,7 @@ def get_view(app: App, session_id: str, viewer: str) -> dict[str, Any]:
         "streams": [_stream_view(app, s, session, viewer, owner) for s in streams],
         "threads": [_thread_view(app, t, session, viewer) for t in threads],
         "graph": _graph(app, session, threads, streams, viewer),
-        "result": _outside_view(app, session, _result_view(session, viewer, owner))
-        if owner and session["work"].get("result")
-        else _result_view(session, viewer, owner),
-        **({"vendorComparison": work["vendorComparison"]} if owner and "vendorComparison" in work else {}),
+        "result": _outside_view(app, session, result) if owner and result else result,
         "questions": [_question_view(q) for q in questions],
         "questionBatch": _question_batch(questions) if owner else None,
         "unresolved": list(work.get("unresolved") or []) if owner else [],
