@@ -4,6 +4,8 @@
 - 후보는 허가받은 처리 폐기물 분류번호(폐기물관리법 시행규칙 별표 4)가 그 폐기물의 분류에 맞고, 배출 기업에서
   직선거리로 가까운 순이다. 가입 업체처럼 AI가 대화하지 않으며, 단가·매입 기준을 모르므로 손익 계산과 배정에
   넣지 않는다. 담당자가 직접 견적을 요청할 수 있도록 연락처와 허가 정보만 보인다.
+- 후보에는 「2024 전국 폐기물 발생 및 처리현황」 결과표의 2024년 처리량·처리능력을 붙인다(treatment2024,
+  상호·시군구로 확실히 맞을 때만. 규칙은 treatment.py). 표시용이며 순위·손익 계산·배정에는 쓰지 않는다.
 """
 
 from __future__ import annotations
@@ -15,6 +17,7 @@ from pathlib import Path
 from typing import Any
 
 from app.v3.judge.common import haversine_km
+from app.v3.public_vendors import treatment
 
 _DIR = Path(__file__).resolve().parent
 REGISTRY_FILE = _DIR / "registry.v1.json"
@@ -192,6 +195,8 @@ def search(
             "phone": vendor.get("phone"),
             "agency": vendor.get("agency"),
             "asOf": vendor.get("asOf"),
+            # 2024년 처리 실적(결과표 한 줄). 확실히 맞는 줄이 없으면 None
+            "treatment2024": treatment.summary(vendor),
         }
         for _, km, _, vendor, matched in [*confirmed, *check]
     ]

@@ -4,6 +4,7 @@ import pytest
 
 from app.v3 import service
 from app.v3.evidence.validator import find_numbers
+from app.v3.public_vendors import treatment
 from tests.v3.runtime_fixtures import HANBIT, SAEGIL, answer_all, make_app, start
 
 
@@ -32,6 +33,39 @@ def test_result_lists_outside_candidates_per_stream_with_evidence(waiting):
         distance = candidate["distance"]
         assert distance["unit"] == "km" and distance["evidence"][0].startswith("calc:")
         assert app.registry.get(distance["evidence"][0], HANBIT).value == distance["value"]
+
+
+def test_outside_candidates_show_the_2024_treatment_with_ref_evidence(waiting):
+    """결과표 한 줄의 처리량·처리능력은 claim이고, 첫 근거는 그 값의 ref, 둘째는 허가 명부 한 줄이다."""
+    app, view = waiting
+    outside = view["result"]["outsideVendors"]
+    source = outside["source"]["treatment2024"]
+    assert source["asOf"] == "2024-12-31" and source["published"] == "2025-12-31"
+    assert source["url"].startswith("https://www.recycling-info.or.kr/")
+    candidates = [c for s in outside["streams"] for c in s["candidates"]]
+    shown = [c for c in candidates if c["treatment2024"]]
+    assert shown, "녹산 근처 폐합성수지 후보 가운데 2024년 처리 실적이 붙은 곳이 있어야 한다"
+    for candidate in shown:
+        t = candidate["treatment2024"]
+        assert t["sheet"].startswith("8-") and t["asOf"] == "2024-12-31"
+        for field, unit in (("tonsPerYear", "톤/년"), ("capacityTonsPerDay", "톤/일")):
+            claim = t[field]
+            if claim is None:
+                continue
+            assert claim["unit"] == unit and claim["evidence"][1] == candidate["evidence"][0]
+            ref = app.registry.get(claim["evidence"][0], HANBIT)
+            assert ref.kind == "ref" and ref.value == claim["value"] and ref.unit == unit
+            assert ref.id.startswith(f"ref:처리업체현황:{t['sheet'].split('.')[0]}-{t['row']}-")
+            name = ref.excerpt.split(" · ")[0]
+            assert treatment.name_key(name) == treatment.name_key(candidate["name"])
+            assert "2024년 처리량" in ref.excerpt and ref.meta["sheet"] == t["sheet"]
+            assert ref.access == ("*",)  # 공표 자료라 누구나 본다
+        assert t["evidence"] == [
+            t[f]["evidence"][0] for f in ("tonsPerYear", "capacityTonsPerDay") if t[f]
+        ]
+    # 처리 실적은 표시용이다: 손익 계산·배정에 쓰는 claim에 결과표 근거가 섞이지 않는다
+    used = str({k: v for k, v in view["result"].items() if k != "outsideVendors"})
+    assert "ref:처리업체현황" not in used
 
 
 def test_vendor_view_does_not_carry_outside_candidates(waiting):

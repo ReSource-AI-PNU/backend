@@ -5,6 +5,8 @@
 - 후보는 AI가 대화하지 않는다. 단가·매입 기준을 모르므로 손익 계산과 배정에 넣지 않고, 담당자가 직접
   견적을 물을 수 있게 허가 정보와 연락처만 보인다.
 - 후보마다 공공데이터 한 줄을 ref 근거(누구나 볼 수 있음)로, 직선거리를 calc 근거(배출 기업만 봄)로 남긴다.
+- 2024년 처리 실적(「2024 전국 폐기물 발생 및 처리현황」 결과표 한 줄)이 맞는 후보는 처리량과 처리능력을 각각
+  ref 근거로 남기고 claim으로 보인다(treatment2024). 표시용이며 손익 계산·배정·견적 요청서 본문에는 쓰지 않는다.
 - 견적 요청서는 코드 템플릿이다. 숫자는 흐름의 근거가 붙은 값(claim)만 쓰고 근거 검증기를 거친다.
   주소·전화번호는 본문이 아니라 받는 곳 칸(recipient)에 둔다(검증기는 본문의 맨 숫자를 거부한다).
 - 후보는 찾은 때의 흐름 자료로 고른 것이다. 진행기는 그때 본 칸(stream_basis)을 work.outsideBasis에 남기고,
@@ -126,6 +128,100 @@ def ref_evidence(vendor: dict[str, Any]) -> Evidence:
     )
 
 
+# 결과표 한 줄에서 보이는 값: 후보 칸, 근거 ID 끝말, 단위, 이름
+TREATMENT_VALUES = (
+    ("tonsPerYear", "처리량", "톤/년", "2024년 처리량"),
+    ("capacityTonsPerDay", "처리능력", "톤/일", "하루 처리능력"),
+)
+
+
+def _amount(value: float) -> str:
+    return f"{value:,.0f}" if float(value).is_integer() else f"{value:,.1f}"
+
+
+def treatment_evidence(vendor: dict[str, Any]) -> dict[str, Evidence]:
+    """결과표 한 줄을 값마다 ref 근거로. 조문처럼 그 줄의 칸을 그대로 옮긴다(대표자는 옮기지 않는다).
+
+    근거 ID는 결과표의 시트와 행 번호로 정한다(같은 줄이면 같은 근거). 맞는 줄이 없으면 빈 dict다.
+    """
+    row = public_vendors.treatment.match(vendor)
+    if row is None:
+        return {}
+    data = public_vendors.treatment.table()
+    sheet = row["sheet"]
+    parts = [
+        row["name"],
+        sheet.split(". ", 1)[-1],
+        " ".join(p for p in (row["sido"], row["sgg"], row["address"]) if p),
+    ]
+    if row.get("waste"):
+        parts.append(f"영업대상 폐기물 {row['waste']}")
+    if row.get("facility"):
+        parts.append(f"처리시설 {row['facility']}")
+    if row.get("capacityTonsPerDay") is not None:
+        parts.append(f"처리능력 {_amount(row['capacityTonsPerDay'])}톤/일")
+    if row.get("tonsPerYear") is not None:
+        parts.append(f"2024년 처리량 {_amount(row['tonsPerYear'])}톤/년")
+    if row.get("permitDate"):
+        parts.append(f"허가(승인)일 {row['permitDate']}")
+    if row.get("returnedOn"):
+        parts.append(f"반납 신고일 {row['returnedOn']}")
+    out = {}
+    for key, word, unit, label in TREATMENT_VALUES:
+        if row.get(key) is None:
+            continue
+        out[key] = Evidence(
+            id=ids.ref_id("처리업체현황", f"{sheet.split('.')[0]}-{row['row']}-{word}", "2024"),
+            kind="ref",
+            value=row[key],
+            unit=unit,
+            label=f"{row['name']} {label}",
+            excerpt=" · ".join(parts),
+            source=f"{data['source']} · {sheet}",
+            as_of=data["asOf"],
+            meta={
+                "url": data["url"],
+                "download": data["download"],
+                "file": data["file"],
+                "sheet": sheet,
+                "row": row["row"],
+                "year": data["year"],
+                "published": data["published"],
+                "matchedBy": "상호·시군구(허가 명부와 공통 번호가 없어 상호와 소재지로 맞춤)",
+            },
+        )
+    return out
+
+
+def _treatment_view(
+    registry: Any, vendor: dict[str, Any], item: dict[str, Any], key: str, permit_ref: str
+) -> dict[str, Any] | None:
+    """후보의 treatment2024를 화면 모양으로. 값은 claim(근거: 결과표 한 줄, 허가 명부 한 줄)이다."""
+    summary = item.get("treatment2024")
+    if not summary:
+        return None
+    refs = {k: registry.put(e).id for k, e in treatment_evidence(vendor).items()}
+    if "tonsPerYear" not in refs:
+        return None
+    # 출처 이름·주소·공표일은 결과 한 장의 outsideVendors.source.treatment2024에 한 번만 둔다
+    view = {k: summary[k] for k in ("sheet", "row", "returnedOn", "asOf")}
+    for field, _, unit, label in TREATMENT_VALUES:
+        view[field] = (
+            {
+                "id": f"{key}_{field}2024",
+                "kind": "number",
+                "value": summary[field],
+                "unit": unit,
+                "evidence": [refs[field], permit_ref],
+                "label": f"{item['name']} {label}",
+            }
+            if field in refs
+            else None
+        )
+    view["evidence"] = [refs[field] for field, *_ in TREATMENT_VALUES if field in refs]
+    return view
+
+
 def _ensure_ref(registry: Any, vendor: dict[str, Any], org_id: str) -> str:
     """명부 한 줄의 근거 ID. 이미 있으면 읽기만 한다(체험하기의 읽기 전용 레지스트리에서도 열리게)."""
     evidence_id = _ref_id(vendor)
@@ -153,6 +249,7 @@ def find_outside(
 ) -> dict[str, Any]:
     """흐름마다 가입하지 않은 업체 후보. 결과 한 장의 outsideVendors 모양이다."""
     data = public_vendors.registry()
+    treatment_data = public_vendors.treatment.table()
     location = emitter.get("location")
     origin = (float(location[0]), float(location[1])) if location else None
     registered = _registered_names(store)
@@ -183,6 +280,10 @@ def find_outside(
                     "note": CHECK_NOTE if item["match"] == "check" else None,
                     # 회사와 같은 산업단지(단지 범위 안이거나 같은 단지 등록공장과 상호가 같음)
                     "sameComplex": item["id"] in same,
+                    # 2024년 처리 실적(값은 근거가 열리는 claim). 결과표에서 확실히 맞는 줄이 없으면 None
+                    "treatment2024": _treatment_view(
+                        registry, vendor, item, f"{stream['id']}_outside{index}", ref
+                    ),
                 }
             )
         out.append(
@@ -202,6 +303,13 @@ def find_outside(
             "asOfRange": data.get("asOfRange"),
             "note": data["note"],
             "radiusKm": public_vendors.RADIUS_KM,
+            # 후보의 2024년 처리 실적 출처(2026-11-22 추가)
+            "treatment2024": {
+                "name": treatment_data["source"],
+                "url": treatment_data["url"],
+                "asOf": treatment_data["asOf"],
+                "published": treatment_data["published"],
+            },
         },
         "streams": out,
     }

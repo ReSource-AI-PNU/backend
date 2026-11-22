@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from app.v3 import public_vendors as pv
+from app.v3.public_vendors import treatment
 
 NOKSAN = (128.8550, 35.0925)  # 부산 강서구 녹산국가산업단지 [경도, 위도]
 CHANGWON = (128.6811, 35.2280)
@@ -112,3 +113,126 @@ def test_recheck_says_whether_a_candidate_still_fits_the_current_stream():
     assert pv.recheck(pp, confirmed["id"], (126.9780, 37.5665))["reason"] == "too_far"  # 서울
     named = pv.recheck(pp, confirmed["id"], NOKSAN, exclude_names=(f"(주) {confirmed['name']}",))
     assert named["reason"] == "registered"
+
+
+# ── 2024년 처리 실적(「2024 전국 폐기물 발생 및 처리현황」 결과표) ──────────────
+
+
+def _vendor(vendor_id):
+    vendor = pv.get(vendor_id)
+    assert vendor is not None, vendor_id
+    return vendor
+
+
+def test_treatment_table_keeps_only_the_needed_columns_and_no_person_names():
+    data = treatment.table()
+    assert data["year"] == 2024 and data["asOf"] == "2024-12-31"
+    assert data["published"] == "2025-12-31"
+    assert data["url"].startswith("https://www.recycling-info.or.kr/")
+    assert data["sheets"] == [
+        "8-가. 재활용처리(중간)",
+        "8-나. 재활용처리(최종)",
+        "8-다. 재활용처리(종합)",
+    ]
+    assert data["count"] == len(data["rows"]) > 5000
+    keys = {
+        "sheet",
+        "row",
+        "sido",
+        "sgg",
+        "name",
+        "address",
+        "waste",
+        "facility",
+        "capacityTonsPerDay",
+        "tonsPerYear",
+        "permitDate",
+        "returnedOn",
+    }
+    # 대표자(개인 이름)와 전화번호는 남기지 않는다
+    assert all(set(row) == keys for row in data["rows"])
+    assert all(row["sheet"] in data["sheets"] for row in data["rows"])
+    # 시도별 소계·전국 합계 줄은 없다
+    assert not any(row["sgg"] in ("소계", "합계") for row in data["rows"])
+
+
+def test_name_key_drops_company_forms_and_former_names():
+    same = {
+        "(주)천우엔지니어링",
+        "㈜천우엔지니어링",
+        "주식회사 천우 엔지니어링",
+        "천우엔지니어링(주)",
+    }
+    assert {treatment.name_key(n) for n in same} == {"천우엔지니어링"}
+    assert treatment.name_key("㈜일진건설환경 (구 일성에너지㈜)") == "일진건설환경"
+    assert (
+        treatment.name_key("㈜에코비트 에너지 울산(울산2공장) [구: ㈜티에스케이이앤피 울산2공장]")
+        == "에코비트에너지울산울산2공장"
+    )
+
+
+def test_treatment_matches_name_and_district_and_uses_the_same_permit_sheet():
+    # 대호수지(부산 강서구)는 중간·종합 두 허가로 올라 있다. 명부 줄의 업종과 같은 시트만 쓰고 더하지 않는다
+    middle = treatment.match(_vendor("pv_637c017f1a"))
+    total = treatment.match(_vendor("pv_e0f482a7f6"))
+    assert (middle["sheet"], middle["tonsPerYear"], middle["capacityTonsPerDay"]) == (
+        "8-가. 재활용처리(중간)",
+        851.3,
+        38.4,
+    )
+    assert (total["sheet"], total["tonsPerYear"], total["capacityTonsPerDay"]) == (
+        "8-다. 재활용처리(종합)",
+        0.0,
+        2.0,
+    )
+    # 성광스틸(김해)은 중간·종합에 같은 처리량(2,084톤)을 겹쳐 적었다. 더하면 두 배가 된다
+    steel = treatment.match(_vendor("pv_43867a34a7"))
+    assert (steel["sheet"], steel["tonsPerYear"]) == ("8-다. 재활용처리(종합)", 2084.0)
+    # 업종을 2024년 뒤에 바꾼 곳은 그 업체의 다른 시트 줄을 그 시트 이름과 함께 쓴다
+    changed = treatment.match(_vendor("pv_0ae8a0652d"))  # 명부는 종합, 2024년 결과표는 중간
+    assert changed["sheet"] == "8-가. 재활용처리(중간)" and changed["tonsPerYear"] == 29091.1
+
+
+def test_treatment_is_left_empty_when_the_match_is_not_certain():
+    # 창원시 안의 다른 구(명부 성산구, 결과표 마산합포구)는 다른 사업장일 수 있다
+    assert treatment.match(_vendor("pv_d866672b76")) is None
+    # 도로명 번지가 다르다(용담로 50-1 ↔ 58-1)
+    assert treatment.match(_vendor("pv_adeb874b55")) is None
+    # 같은 상호라도 시군구가 다르거나, 상호가 비슷하기만 하면 잇지 않는다
+    daeho = dict(_vendor("pv_637c017f1a"))
+    assert treatment.match({**daeho, "address": "부산광역시 사하구 다대로 1"}) is None
+    assert treatment.match({**daeho, "name": "대호수지산업"}) is None
+    assert treatment.match({**daeho, "address": "경기도 시흥시 녹산산업중로376"}) is None
+    assert treatment.match({**daeho, "address": "주소없음"}) is None
+
+
+def test_treatment_match_rate_in_busan_ulsan_gyeongnam():
+    """2026-11-22 판: 부산·울산·경남 명부 503곳 중 378곳(부산 52/59, 울산 24/31, 경남 302/413)."""
+    regions = ("부산광역시", "울산광역시", "경상남도")
+    vendors = [v for v in pv.registry()["vendors"] if v["address"].startswith(regions)]
+    found = sum(1 for v in vendors if treatment.match(v))
+    assert len(vendors) == 503 and found == 378
+
+
+def test_search_candidates_carry_the_2024_treatment_for_display_only():
+    pp = {"material": "PP", "origin": "PIR"}
+    result = pv.search(pp, NOKSAN)
+    candidates = result["candidates"]
+    shown = [c for c in candidates if c["treatment2024"]]
+    assert shown and all(
+        c["treatment2024"] is None or c["treatment2024"]["tonsPerYear"] is not None
+        for c in candidates
+    )
+    for c in shown:
+        t = c["treatment2024"]
+        row = treatment.match(pv.get(c["id"]))
+        assert (t["tonsPerYear"], t["capacityTonsPerDay"], t["sheet"], t["row"]) == (
+            row["tonsPerYear"],
+            row["capacityTonsPerDay"],
+            row["sheet"],
+            row["row"],
+        )
+        assert t["asOf"] == "2024-12-31" and t["source"].startswith("기후에너지환경부·한국환경공단")
+    # 순위는 처리 실적과 상관없다(허가 정보로 맞는 곳 먼저, 가까운 순)
+    confirmed = [c["distanceKm"] for c in candidates if c["match"] == "confirmed"]
+    assert confirmed == sorted(confirmed)
