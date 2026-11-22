@@ -59,7 +59,7 @@ def test_reset_seeds_everything():
         raises("FORBIDDEN", 403, service.admin_status, app, viewer)
         raises("FORBIDDEN", 403, service.run_eval, app, viewer)
     status = service.admin_status(app, ADMIN)
-    assert status["laws"]["count"] == 374 and status["evidence"]["byKind"]["ref"] == 53
+    assert status["laws"]["count"] == 374 and status["evidence"]["byKind"]["ref"] == 54
     assert status["models"]["company"] == {"provider": "rule", "name": "규칙 정책(모델 미연결)"}
     assert status["promptShields"] == {"configured": False}
     # 열분해 처리 단계 계수는 산출물 용도·수율 근거가 없어 잇지 않는다(2026-11-19 자원순환 효과 보강).

@@ -18,6 +18,7 @@ from app.v3.judge.common import (
     carbon_per_kg,
     grade_of,
     labor_cost,
+    labor_is_floor,
     num,
     permit_match,
     quality,
@@ -166,7 +167,11 @@ def _fixed_transport(vendor: dict) -> float:
 
 def _labor_pending(item: dict) -> bool:
     """전처리 작업 시간이나 시간당 인건비를 몰라 이 흐름의 작업비를 확정하지 못했다."""
-    return item["hours"] is None or bool(item["hours"] and item["rate"] is None)
+    return (
+        item["hours"] is None
+        or bool(item["hours"] and item["rate"] is None)
+        or labor_is_floor(item["labor_ev"])
+    )
 
 
 def _tagged(label: str, tail: str) -> str:
@@ -903,6 +908,8 @@ def optimize_assignment(
             "transportUnit": charge["unit"] if charge else None,
             "transportPending": pending,
             "costPending": cost_pending,
+            # 전처리 인건비가 회사 시급이 아니라 법정 최저 시급으로 넣은 하한이다
+            "laborFloor": bool(breakdown["labor"]) and labor_is_floor(item["labor_ev"]),
             "transportFee": _claim_id(haul, "fee"),
             "transportPickups": _claim_id(haul, "pickups"),
             "transportMonthly": _claim_id(haul, "monthly"),

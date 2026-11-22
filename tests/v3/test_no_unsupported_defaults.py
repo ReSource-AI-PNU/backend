@@ -37,8 +37,6 @@ def registry():
         "distance.detourFactor",
         "transport.costPerKm",
         "min.monthlyKg.폐플라스틱",
-        "kau.price",
-        "reference.price.PP.압축",
         "emission.transport.truck",
     ],
 )
@@ -48,6 +46,13 @@ def test_unapproved_or_unverified_defaults_are_not_used(registry, key):
 
 def test_original_checked_literature_remains_available(registry):
     assert basis.resolve(registry, "real-org", "circular.ghg.PP.recycle.incineration") is not None
+
+
+@pytest.mark.parametrize("key", ["kau.price", "reference.price.PP.압축", "labor.costPerHour"])
+def test_official_values_checked_against_the_original_are_used(registry, key):
+    found = basis.resolve(registry, "real-org", key)
+    assert found is not None and found.kind == "ref"
+    assert found.meta["verificationStatus"] == "original_checked" and found.meta["verifiedOn"]
 
 
 def test_policy_needs_a_real_decision_record_not_just_a_policy_label(registry):

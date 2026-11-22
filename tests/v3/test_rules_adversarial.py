@@ -2307,7 +2307,9 @@ def test_chapter4_nothing_is_sent_outside_the_app():
         # 도로 거리 조회(읽기 전용: 좌표 두 개를 보내고 거리를 받는다. V3_DISTANCE=kakao일 때만 부른다)
         r"kakaomobility\.com|"
         # 인용 출처(부르지 않는다): 보관장 3D 스캔의 필름 겉보기 밀도(US EPA 2016 환산표)
-        r"epa\.gov|nvlpubs\.nist\.gov|developers\.google\.com)$"
+        r"epa\.gov|nvlpubs\.nist\.gov|developers\.google\.com|"
+        # 인용 출처(부르지 않는다): 가격조사 월별 책자를 싣는 한국환경공단 순환자원정보센터
+        r"recycling-info\.or\.kr)$"
     )
     assert sorted(h for h in hosts if not allowed.search(h.rstrip("."))) == []
     # 올바로시스템은 연동하지 않는다고 적은 글 말고는 나오지 않는다

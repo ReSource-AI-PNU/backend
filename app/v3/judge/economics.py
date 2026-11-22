@@ -16,6 +16,7 @@ from app.v3.judge.common import (
     carbon_per_kg,
     distance_matrix,
     labor_cost,
+    labor_is_floor,
     num,
     quality,
     transport_carbon,
@@ -198,13 +199,20 @@ def cost_carbon(
             private=True,
         )
         rec.number(
-            "laborRate", rate, "원/시간", "전처리 작업의 시간당 인건비", labor_ev, private=True
+            "laborRate",
+            rate,
+            "원/시간",
+            "법정 최저임금 시간급(실제 인건비의 하한)"
+            if labor_is_floor(labor_ev)
+            else "전처리 작업의 시간당 인건비",
+            labor_ev,
+            private=True,
         )
         rec.number(
             "monthlyLabor", labor, "원/월", "월 작업 시간 × 시간당 인건비", labor_ev, private=True
         )
     after = revenue - borne - (labor or 0.0)
-    output["costPending"] = labor is None or output["transportPending"]
+    output["costPending"] = labor is None or labor_is_floor(labor_ev) or output["transportPending"]
     rec.number(
         "monthlyAfter",
         after,

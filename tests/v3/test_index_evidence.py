@@ -235,5 +235,5 @@ def test_default_registry_is_the_seed_set():
     seeds = index_evidence.build_registry({})
     summary = index_evidence.run(seeds, search_azure.client_from_env(SEARCH_ENV), dry_run=True)
     # 제품 법령 26조 + 법령 말뭉치 348조(2026-11-19부터 ③ 규정 검토가 함께 본다)
-    assert summary["byKind"]["law"] == 374 and summary["byKind"]["ref"] == 53
+    assert summary["byKind"]["law"] == 374 and summary["byKind"]["ref"] == 54
     assert summary["private"] == 0 and summary["uploaded"] == 0

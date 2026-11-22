@@ -642,7 +642,7 @@ def scenario(rec: Recorder, tag: str, rows: list[dict]) -> dict:
                 f"ce{tag}_s{i}r{k}VirginDisplaced",
                 ref["value"],
                 "kg/월",
-                f"월 발생량 × 철 스크랩 1톤당 {ref['name']} 절감 참고값(세계철강협회, 세계 평균)",
+                f"월 발생량 × 철 스크랩 1톤당 {ref['name']} 절감 참고값(세계철강협회 LCI)",
                 [*ref["basis"], *_kg_evidence(stream)],
                 label=f"{who + ' ' if who else ''}{ref['name']} 절감 참고값 계산",
                 private=True,
