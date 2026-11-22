@@ -25,9 +25,12 @@ real이다(기록할 때 정한다). demo 기록은 시연 데이터 수집을 �
 
 from __future__ import annotations
 
+import contextvars
 import json
 import math
 import re
+from collections.abc import Iterator
+from contextlib import contextmanager
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
@@ -151,11 +154,41 @@ def _with_origin(app: Any, record: dict[str, Any]) -> dict[str, Any]:
     return {**record, "dataOrigin": data_origin(app, *parties)}
 
 
+# 읽기 요청 하나 안에서 같은 피드백 목록을 다시 읽지 않게 담아 두는 곳(reuse()를 연 동안만 있다).
+# 진단 뷰 하나가 계약 검토마다 검수 기록을 다시 읽어, 담아 두지 않으면 같은 조회를 대여섯 번 한다
+_reused: contextvars.ContextVar[dict[str, tuple[Any, list[Evidence]]] | None] = (
+    contextvars.ContextVar("v3_feedback_reuse", default=None)
+)
+
+
+@contextmanager
+def reuse() -> Iterator[None]:
+    """이 안에서는 피드백 목록을 종류마다 한 번만 읽는다. 피드백을 쓰지 않는 읽기 요청에만 연다.
+
+    이미 열려 있으면 바깥 것을 그대로 쓴다.
+    """
+    if _reused.get() is not None:
+        yield
+        return
+    token = _reused.set({})
+    try:
+        yield
+    finally:
+        _reused.reset(token)
+
+
 def _feedback(app: Any, kind: str) -> list[Evidence]:
     """meta["feedback"]["type"]이 kind인 근거 전부(시스템 조회, ID 순서)."""
+    cache = _reused.get()
+    held = cache.get(kind) if cache is not None else None
+    if held is not None and held[0] is app.registry:
+        return list(held[1])
     listed = getattr(app.registry, "list_feedback", None)
     found = listed(kind) if listed is not None else app.registry.list(org_id=None)
-    return [item for item in found if is_feedback(item, kind)]
+    items = [item for item in found if is_feedback(item, kind)]
+    if cache is not None:
+        cache[kind] = (app.registry, items)
+    return list(items)
 
 
 # ── 교정 ─────────────────────────────────────────────────────────────

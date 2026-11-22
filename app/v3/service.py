@@ -2244,7 +2244,8 @@ def get_report(
     """재활용·탄소 실적 리포트(report.py). 배출 기업 본인과 운영자만 본다. 읽기라서 체험하기에서도 열린다."""
     _owner(app, org_id, viewer, role="emitter")
     try:
-        return report.build(app, org_id, date_from or None, date_to or None)
+        with feedback.reuse():
+            return report.build(app, org_id, date_from or None, date_to or None)
     except ValueError as error:
         raise ServiceError("INVALID_VALUE", str(error), 422) from error
 
@@ -2253,11 +2254,12 @@ def get_memory(app: App, org_id: str, viewer: str) -> dict[str, Any]:
     """회사별 기록(memory.py). 배출 기업은 지난 답변·검수·교정·거래와 판정 반영, 처리 업체는 배출 기업별 검수와 거래.
     그 회사 본인과 운영자만 본다. 읽기라서 체험하기에서도 열린다."""
     org = _owner(app, org_id, viewer)
-    if org.get("role") == "vendor":
-        return memory.vendor_memory(app, org_id)
-    if org.get("role") != "emitter":
+    if org.get("role") not in ("vendor", "emitter"):
         raise ServiceError("WRONG_ROLE", "배출 기업이나 처리 업체만 볼 수 있는 기록입니다.", 403)
-    return memory.org_memory(app, org_id)
+    with feedback.reuse():
+        if org.get("role") == "vendor":
+            return memory.vendor_memory(app, org_id)
+        return memory.org_memory(app, org_id)
 
 
 def update_memory(app: App, org_id: str, body: dict[str, Any], viewer: str) -> dict[str, Any]:
@@ -2396,6 +2398,12 @@ def _outside_view(app: App, session: dict[str, Any], result: dict[str, Any]) -> 
 
 
 def get_view(app: App, session_id: str, viewer: str) -> dict[str, Any]:
+    # 계약 검토가 대화마다 검수 기록을 읽는다. 이 뷰를 만드는 동안은 한 번만 읽는다(피드백은 쓰지 않는다)
+    with feedback.reuse():
+        return _get_view(app, session_id, viewer)
+
+
+def _get_view(app: App, session_id: str, viewer: str) -> dict[str, Any]:
     session, owner = _session_for(app, session_id, viewer)
     if (
         session.get("status") == "awaiting_approval"

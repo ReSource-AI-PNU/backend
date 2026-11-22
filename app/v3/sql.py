@@ -19,7 +19,18 @@ from contextlib import contextmanager
 from dataclasses import replace
 from typing import Any
 
-from sqlalchemy import JSON, Integer, String, delete, func, or_, select, update
+from sqlalchemy import (
+    JSON,
+    Integer,
+    String,
+    bindparam,
+    delete,
+    func,
+    literal_column,
+    or_,
+    select,
+    update,
+)
 from sqlalchemy.engine import Engine
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Mapped, Session, mapped_column
@@ -41,6 +52,10 @@ class EvidenceRow(Base):
     access: Mapped[list] = mapped_column(JSON)
     version: Mapped[int] = mapped_column(Integer, default=1)
     payload: Mapped[dict] = mapped_column(JSON)
+
+
+# 피드백 근거(검수 결과·교정·모델 실행)의 종류. Postgres 식 인덱스 ix_v3_evidence_feedback_type의 식이다
+FEEDBACK_TYPE_SQL = "(v3_evidence.payload #>> '{meta,feedback,type}')"
 
 
 class RecordRow(Base):
@@ -237,9 +252,15 @@ class SqlRegistry:
 
     def list_feedback(self, feedback_type: str) -> list[Evidence]:
         # 근거 표 전체를 읽지 않도록 DB에서 먼저 거른다. 같은 조건을 파이썬에서 한 번 더 본다
-        kind = EvidenceRow.payload[("meta", "feedback", "type")].as_string()
+        if self._engine.dialect.name == "postgresql":
+            # 식 인덱스(마이그레이션 0007)와 글자까지 같은 식이어야 인덱스를 탄다. 경로를 바인드 값으로
+            # 보내면 psycopg가 문장을 준비해 둔 뒤 일반 계획에서 인덱스를 못 쓰고 표 전체를 파싱한다
+            kind = literal_column(FEEDBACK_TYPE_SQL, String)
+        else:
+            kind = EvidenceRow.payload[("meta", "feedback", "type")].as_string()
+        wanted = bindparam("feedback_type", feedback_type, String)
         with _transaction(self._engine) as db:
-            rows = db.scalars(select(EvidenceRow).where(kind == feedback_type)).all()
+            rows = db.scalars(select(EvidenceRow).where(kind == wanted)).all()
             items = [_to_evidence(row) for row in rows]
         return [
             item for item in sorted(items, key=lambda e: e.id) if is_feedback(item, feedback_type)

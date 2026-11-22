@@ -76,7 +76,14 @@ def test_migration_chain_is_unbroken():
         assert assigned(module, "down_revision") == previous, file.name
         previous = assigned(module, "revision")
         assert previous == file.stem, file.name
-    assert previous == "0006_v3_activity"
+    assert previous == "0007_v3_evidence_feedback_index"
+
+
+def test_feedback_index_matches_the_query():
+    """피드백 종류 식 인덱스(0007)와 sql.py의 Postgres 조회식이 같은 식이다. 다르면 인덱스를 타지 않는다."""
+    migration = read("migrations/versions/0007_v3_evidence_feedback_index.py")
+    query = assigned(tree("app/v3/sql.py"), "FEEDBACK_TYPE_SQL").replace("v3_evidence.", "")
+    assert f"ON v3_evidence ({query})" in migration.replace('"\n        "', "")
 
 
 def call_name(node: ast.AST) -> str:
