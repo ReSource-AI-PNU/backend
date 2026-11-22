@@ -34,6 +34,7 @@ _TABLES = (
     "activity",
     "runs",
     "criteria_drafts",
+    "survey_records",
     "scans",
     "scan_points",
 )
@@ -69,6 +70,12 @@ class Store(Protocol):
     def put_vendor_profile(self, profile: dict[str, Any]) -> dict[str, Any]: ...
     def get_vendor_profile(self, org_id: str) -> dict[str, Any]: ...
     def list_vendor_profiles(self) -> list[dict[str, Any]]: ...
+
+    def put_survey_record(
+        self, record: dict[str, Any], expected_revision: int | None = None
+    ) -> dict[str, Any]: ...
+    def list_survey_records(self) -> list[dict[str, Any]]: ...
+    def get_survey_record(self, record_id: str) -> dict[str, Any]: ...
 
     def put_criteria_draft(self, draft: dict[str, Any]) -> dict[str, Any]: ...
     def get_criteria_draft(self, draft_id: str) -> dict[str, Any]: ...
@@ -132,6 +139,7 @@ class InMemoryStore:
     def __init__(self, clock: Callable[[], str] | None = None) -> None:
         self._clock = clock or system_clock
         self._data: dict[str, dict[str, Any]] = {table: {} for table in _TABLES}
+        self._survey_lock = threading.Lock()
         self._runs_lock = threading.Lock()  # 실행 자리를 차지하는 일(확인과 적기)을 한 번에 한다
 
     # ── 공통 ──────────────────────────────────────────────────────────
@@ -175,6 +183,11 @@ class InMemoryStore:
             "events": sessions,
             "activity": sessions,
             "runs": sessions,
+            "survey_records": {
+                k
+                for k, d in data["survey_records"].items()
+                if d.get("orgId") in wanted or d.get("vendorOrgId") in wanted
+            },
             "criteria_drafts": {
                 k for k, d in data["criteria_drafts"].items() if d.get("orgId") in wanted
             },
@@ -281,6 +294,23 @@ class InMemoryStore:
 
     def list_vendor_profiles(self) -> list[dict[str, Any]]:
         return [copy.deepcopy(p) for _, p in sorted(self._data["vendors"].items())]
+
+    def put_survey_record(
+        self, record: dict[str, Any], expected_revision: int | None = None
+    ) -> dict[str, Any]:
+        with self._survey_lock:
+            before = self._data["survey_records"].get(record["id"])
+            if expected_revision is not None and (
+                before is None or before.get("revision") != expected_revision
+            ):
+                raise VersionConflict("문의가 먼저 바뀌었습니다.")
+            return self._put("survey_records", record["id"], record)
+
+    def get_survey_record(self, record_id: str) -> dict[str, Any]:
+        return self._get("survey_records", record_id)
+
+    def list_survey_records(self) -> list[dict[str, Any]]:
+        return [copy.deepcopy(v) for _, v in sorted(self._data["survey_records"].items())]
 
     # ── 매입 기준표 판독 초안 (저장할 때 서버가 대조한다) ─────────────────
     def put_criteria_draft(self, draft: dict[str, Any]) -> dict[str, Any]:

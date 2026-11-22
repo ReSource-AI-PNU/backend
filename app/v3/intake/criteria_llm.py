@@ -1398,6 +1398,8 @@ def read_by_rules(layout: dict[str, Any] | None) -> dict[str, Any]:
 
 VALUE_FIELDS = (
     "priceMode",
+    "priceLow",
+    "priceHigh",
     "unitPriceKrwPerKg",
     "minMonthlyKg",
     "maxContaminationPct",
@@ -1601,9 +1603,20 @@ def clean_rows(rows: Any) -> list[dict[str, Any]]:
         price_mode = row.get("priceMode", "fixed")
         if price_mode not in ("fixed", "negotiated"):
             raise RowError(f"{where}: 단가 방식을 골라 주세요.")
+        range_values = {}
+        has_range = row.get("priceLow") is not None or row.get("priceHigh") is not None
         if price_mode == "negotiated":
-            if row.get("unitPriceKrwPerKg") is not None:
-                raise RowError(f"{where}: 건별 협의에는 단가를 비워 주세요.")
+            if row.get("unitPriceKrwPerKg") is not None or has_range:
+                raise RowError(f"{where}: 건별 협의에는 단가와 단가 범위를 비워 주세요.")
+        elif has_range:
+            from app.v3.survey import clean_criterion
+
+            try:
+                bounded = clean_criterion(row)
+                range_values = {"priceLow": bounded["priceLow"], "priceHigh": bounded["priceHigh"]}
+                price = None
+            except ValueError as error:
+                raise RowError(f"{where}: {error}") from None
         elif price is None:
             raise RowError(f"{where}: kg당 단가를 숫자 하나로 적고 매입·처리비를 골라 주세요.")
         if price is not None and abs(price) > PRICE_LIMIT:
@@ -1616,6 +1629,7 @@ def clean_rows(rows: Any) -> list[dict[str, Any]]:
             "form": form,
             "priceMode": price_mode,
             "unitPriceKrwPerKg": price,
+            **range_values,
         }
         for key, label, low, high in (
             ("minMonthlyKg", "한 달 최소 물량", 0, QUANTITY_LIMIT),

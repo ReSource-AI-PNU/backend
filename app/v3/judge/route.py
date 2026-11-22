@@ -418,7 +418,9 @@ def check_loading(registry, *, org_id, today, streams, vendor, pickupsPerMonth=N
         (num(c.get("minMonthlyKg")), c) for c in crits if num(c.get("minMonthlyKg")) is not None
     ]
     min_kg, min_ev = None, []
-    if mins:
+    if vendor.get("collectionPolicy") == "distance_vehicle":
+        min_kg, min_ev = 0.0, []
+    elif mins:
         min_kg, crit = max(mins, key=lambda m: (m[0], str(m[1].get("id"))))
         min_ev = list(crit.get("evidence") or [])
     else:

@@ -214,9 +214,13 @@ def public_profile(profile: dict[str, Any], *, fleet_cost: bool = True) -> dict[
     }
     # 운반 조건(단가에 포함인지, 1회 운반비), 처리 방식, 월 처리 용량은 업체가 밝히는 조건이다.
     # 없는 프로필은 예전처럼 키 자체를 싣지 않는다(계산 근거 ID가 바뀌지 않게)
-    for key in ("transport", "process", "monthlyCapacityKg"):
+    for key in ("transport", "process", "monthlyCapacityKg", "collectionPolicy"):
         if profile.get(key) is not None:
             out[key] = profile[key]
+    if any(c.get("priceLow") is not None for c in profile.get("criteria") or []):
+        from app.v3.survey import profile_basis
+
+        out["_rangeBasis"] = profile_basis(profile)
     return out
 
 
@@ -607,6 +611,15 @@ class VendorAgent:
 
     def _resolver(self, streams: dict[str, dict], profile: dict[str, Any], emitter: dict):
         vendor_id = profile["orgId"]
+        from app.v3.survey import stream_hash
+
+        for sid, value in streams.items():
+            raw = self.store.get_stream(sid)
+            if raw.get("orgId") == emitter.get("id"):
+                deal = (raw.get("rangeDeals") or {}).get(vendor_id)
+                if deal:
+                    value["rangeDeals"] = {vendor_id: deal}
+                    value["_rangeSourceHash"] = stream_hash(raw)
         tool_profile = public_profile(profile)
         origin = emitter.get("location")
         pickups = (profile.get("guardrails") or {}).get("minPickupsPerMonth")

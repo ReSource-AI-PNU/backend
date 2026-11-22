@@ -1123,6 +1123,12 @@ def update_vendor(app: App, org_id: str, patch: dict[str, Any], viewer: str) -> 
             profile["processEvidence"] = [proof.id]
         else:
             profile["processEvidence"] = []
+    if "collectionPolicy" in patch:
+        if patch["collectionPolicy"] not in ("quantity", "distance_vehicle", "combined"):
+            raise ServiceError(
+                "INVALID_VALUE", "수거 기준을 물량, 거리·차량, 병행 중에서 골라 주세요.", 422
+            )
+        profile["collectionPolicy"] = patch["collectionPolicy"]
     if "model" in patch:
         model = patch["model"] or {}
         if model.get("provider") not in MODEL_PROVIDERS or not model.get("name"):
@@ -1171,18 +1177,32 @@ def update_vendor(app: App, org_id: str, patch: dict[str, Any], viewer: str) -> 
             original = old.get(cid) or {}
             price_mode = item.get("priceMode", original.get("priceMode", "fixed"))
             if price_mode not in ("fixed", "negotiated") or (
-                price_mode == "negotiated" and item.get("unitPriceKrwPerKg") is not None
+                price_mode == "negotiated"
+                and any(item.get(k) is not None for k in ("unitPriceKrwPerKg", "priceLow", "priceHigh"))
             ):
                 raise ServiceError("INVALID_VALUE", "단가 방식과 금액을 확인해 주세요.", 422)
             if original.get("priceMode", "fixed") != price_mode:
                 raise ServiceError("INVALID_VALUE", "단가 방식은 매입 기준 추가에서 변경해 주세요.", 422)
-            if original and all(original.get(key) == value for key, value in item.items() if key != "evidence"):
+            from app.v3.survey import clean_criterion
+
+            try:
+                item = clean_criterion(item)
+            except ValueError as error:
+                raise ServiceError("INVALID_VALUE", str(error), 422) from None
+            # 공개 범위 근거가 아직 없는 범위 기준(문서 확인 저장 직후)은 값이 같아도 근거를 만든다
+            if (
+                original
+                and all(original.get(key) == value for key, value in item.items() if key != "evidence")
+                and (original.get("priceLow") is None or original.get("rangeEvidence"))
+            ):
                 criteria.append(original)
                 continue
             before = list(original.get("evidence") or [])
             evidence = []
             for key, label, unit in (
                 ("unitPriceKrwPerKg", "단가", "원/kg"),
+                ("priceLow", "공개 단가 하한", "원/kg"),
+                ("priceHigh", "공개 단가 상한", "원/kg"),
                 ("minMonthlyKg", "최소 물량", "kg/월"),
                 ("maxContaminationPct", "오염도 상한", "%"),
                 ("maxMoisturePct", "수분 상한", "%"),
@@ -1192,7 +1212,32 @@ def update_vendor(app: App, org_id: str, patch: dict[str, Any], viewer: str) -> 
                 )
                 if found:
                     evidence.append(found)
-            criteria.append({**item, "id": cid, "evidence": list(dict.fromkeys(evidence))})
+            range_evidence = []
+            if item.get("priceLow") is not None:
+                for key, label in (("priceLow", "공개 단가 하한"), ("priceHigh", "공개 단가 상한")):
+                    ev = app.registry.put(
+                        Evidence(
+                            id=ids.human_id(org_id, f"{cid}-{key}-{ids.digest(item[key])}"),
+                            kind="human",
+                            label=f"{item.get('material')} {label}",
+                            value=item[key],
+                            unit="원/kg",
+                            excerpt="업체가 거래 후보에게 공개한 참고 단가이며 거래 확정 단가가 아닙니다.",
+                            source="업체 담당자 공개 입력",
+                            as_of=app.today,
+                            access=("*",),
+                            meta={"ownerOrgId": org_id},
+                        )
+                    )
+                    range_evidence.append(ev.id)
+            criteria.append(
+                {
+                    **item,
+                    "id": cid,
+                    "evidence": list(dict.fromkeys(evidence)),
+                    **({"rangeEvidence": range_evidence} if range_evidence else {}),
+                }
+            )
         profile["criteria"] = criteria
     if "fleet" in patch:
         # 노선·차량은 app/v3/fleet.py가 검사한다(모르는 항목, 범위 밖 값은 422). null 값은 그 항목을 지운다
@@ -1255,6 +1300,9 @@ def update_vendor(app: App, org_id: str, patch: dict[str, Any], viewer: str) -> 
 
 def create_session(app: App, emitter_org_id: str, viewer: str) -> dict[str, Any]:
     _owner(app, emitter_org_id, viewer, "emitter")
+    from app.v3.survey import apply_deals
+
+    apply_deals(app, emitter_org_id)
     session = Orchestrator(app).create(emitter_org_id)
     return get_view(app, session["id"], viewer)
 
@@ -3209,6 +3257,8 @@ def confirm_document(
 
 
 _CRITERION_EVIDENCE = (
+    ("priceLow", "공개 단가 하한", "원/kg"),
+    ("priceHigh", "공개 단가 상한", "원/kg"),
     ("unitPriceKrwPerKg", "단가", "원/kg"),
     ("minMonthlyKg", "최소 물량", "kg/월"),
     ("maxContaminationPct", "오염도 상한", "%"),
@@ -3384,6 +3434,11 @@ def confirm_criteria(
                 "form": row["form"],
                 "priceMode": row["priceMode"],
                 "unitPriceKrwPerKg": row["unitPriceKrwPerKg"],
+                **(
+                    {"priceLow": row["priceLow"], "priceHigh": row["priceHigh"]}
+                    if row.get("priceLow") is not None
+                    else {}
+                ),
                 "minMonthlyKg": row["minMonthlyKg"],
                 "maxContaminationPct": row["maxContaminationPct"],
                 "maxMoisturePct": row["maxMoisturePct"],
@@ -3392,6 +3447,9 @@ def confirm_criteria(
             }
         )
     profile = _profile_from_document(app, org_id, found)
+    if any(c.get("priceLow") is not None for c in found["criteria"]):
+        saved = update_vendor(app, org_id, {"criteria": profile["criteria"]}, viewer)
+        profile["criteria"] = saved["criteria"]
     profile["transportUpdated"] = False
     if len(fee_evidence) == 1:
         (paid, fee), fee_ids = next(iter(fee_evidence.items()))
@@ -3494,10 +3552,18 @@ def _profile_from_document(app: App, org_id: str, found: dict[str, Any]) -> dict
             values["collectionFee"] = item["collectionFee"]
         if item.get("priceMode") == "negotiated":
             values.update(priceMode="negotiated", unitPriceKrwPerKg=None)
+            values.pop("priceLow", None)
+            values.pop("priceHigh", None)
+        elif values.get("priceLow") is not None:
+            values.update(priceMode="fixed", unitPriceKrwPerKg=None)
         elif values.get("unitPriceKrwPerKg") is not None:
             values["priceMode"] = "fixed"
         if same is None:
-            if values.get("unitPriceKrwPerKg") is None and values.get("priceMode") != "negotiated":
+            if (
+                values.get("unitPriceKrwPerKg") is None
+                and values.get("priceLow") is None
+                and values.get("priceMode") != "negotiated"
+            ):
                 found["skipped"].append(
                     f"{naming.criterion_label(item)}: 단가를 확인하지 않아 매입 기준을 만들지 않았습니다"
                 )

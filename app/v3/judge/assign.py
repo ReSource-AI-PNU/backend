@@ -100,7 +100,11 @@ def cp_sat_pick(usable, options, weight):
             if capacity is not None:
                 model.add(total <= math.floor(capacity * SOLVER_SCALE + 1e-6))
             for i, j in members:
-                minimum = num(options[i][j]["criterion"].get("minMonthlyKg")) or 0.0
+                minimum = (
+                    0.0
+                    if vendor.get("collectionPolicy") == "distance_vehicle"
+                    else (num(options[i][j]["criterion"].get("minMonthlyKg")) or 0.0)
+                )
                 if minimum > 0:
                     # 이 선택지를 고르면(x=1) 합계가 최소 물량 이상이어야 한다
                     model.add(total >= math.ceil(minimum * SOLVER_SCALE - 1e-6) * x[i][j])
@@ -613,7 +617,12 @@ def optimize_assignment(
         for members in groups.values():
             vendor = combo[members[0]]["vendor"]
             total = math.fsum(usable[i]["kg"] for i in members)
-            mins = [num(combo[i]["criterion"].get("minMonthlyKg")) or 0.0 for i in members]
+            mins = [
+                0.0
+                if vendor.get("collectionPolicy") == "distance_vehicle"
+                else (num(combo[i]["criterion"].get("minMonthlyKg")) or 0.0)
+                for i in members
+            ]
             if total + 1e-9 < max(mins):
                 return False
             capacity = num(vendor.get("monthlyCapacityKg"))
@@ -665,6 +674,7 @@ def optimize_assignment(
         """업체로 가는 폐기물마다 혼자서 고른 매입 기준의 최소 물량을 채우는가."""
         return all(
             choice["vendor"] is None
+            or choice["vendor"].get("collectionPolicy") == "distance_vehicle"
             or usable[i]["kg"] + 1e-9 >= (num(choice["criterion"].get("minMonthlyKg")) or 0.0)
             for i, choice in enumerate(combo)
         )
