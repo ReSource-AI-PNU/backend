@@ -3327,7 +3327,9 @@ class Orchestrator:
                 other_cost = tool_of(other_id, "cost_carbon", streamId=sid)
                 other_after = claim_in(
                     other_cost, "monthlyAfter", f"{tag}_alt_{safe_id(other_id)}_monthlyAfter"
-                ) or claim_in(
+                )
+                cost_pending = other_after is None
+                other_after = other_after or claim_in(
                     other_route, "monthlyAfter", f"{tag}_alt_{safe_id(other_id)}_monthlyAfter"
                 )
                 now_claim = claim_in(optimized, item.get("monthlyNow"), "x")
@@ -3376,6 +3378,9 @@ class Orchestrator:
                         "permit": self._permit_of(session, by_id[sid], other_id),
                         # 운반비가 정해지지 않아 한 달 값이 별도 운반비 반영 전이다(확정 견적과 견줄 때 밝힌다)
                         "transportPending": other_pending,
+                        "costPending": not no_pickup and (
+                            cost_pending or bool(other_output.get("costPending"))
+                        ),
                         "pickupStatus": other_output.get("pickupStatus"),
                         "note": "허가 근거가 맞지 않아 배정하지 않았습니다. " + excluded["text"]
                         if excluded
