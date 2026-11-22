@@ -847,7 +847,7 @@ def reference_estimates(rec: Recorder, rows: list[dict], choices: list[dict]) ->
                     UNIT[metric],
                     formula,
                     [*effect["basis"], *_kg_evidence(stream)],
-                    label=f"{stream.get('name') or '폐기물'} 문헌 기준 {names.LABELS[names.role_of(SUFFIX[metric])]} 추정",
+                    label=f"{stream.get('name') or '폐기물'} 문헌 기준 {names.LABELS[names.role_of(SUFFIX[metric])]} 추정 계산",
                     private=True,
                 )
                 item["claim"] = made["id"]
@@ -879,7 +879,7 @@ def reference_estimates(rec: Recorder, rows: list[dict], choices: list[dict]) ->
                 UNIT[metric],
                 "문헌 기준 추정의 합. 계수 없는 항목은 제외하며 0으로 간주하지 않습니다.",
                 [v["evidence"][0] for v in values],
-                label=f"문헌 기준 {names.LABELS[names.role_of(SUFFIX[metric])]} 추정 합계",
+                label=f"문헌 기준 {names.LABELS[names.role_of(SUFFIX[metric])]} 추정 합계 계산",
                 private=True,
             )["id"]
         totals[metric] = {
