@@ -3805,6 +3805,7 @@ class Orchestrator:
         if found.get("reference"):
             raw = found["reference"]
             reference = {
+                "monthlyKg": claim(raw.get("monthlyKg")),
                 "totals": {
                     metric: {
                         "status": total["status"],

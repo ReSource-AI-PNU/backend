@@ -2672,5 +2672,193 @@
       "excludes": [],
       "factSheet": "https://worldsteel.org/wp-content/uploads/Fact-sheet-on-scrap_2021.pdf"
     }
+  },
+  {
+    "id": "ref:Uekert2023:PP-생산에너지차이@2023",
+    "kind": "ref",
+    "label": "Uekert 외 2023 · PP 신재와 기계적 재생원료의 생산 에너지 차이",
+    "value": 91.13,
+    "unit": "GJ/t",
+    "excerpt": "Table S27, Energy use (MJ/kg), PP: Mechanical = 4.87, Virgin = 96.0.",
+    "source": "Uekert et al. (2023), ACS Sustainable Chemistry & Engineering 11, 965–978, doi:10.1021/acssuschemeng.2c05497",
+    "asOf": "2023-01-12",
+    "validUntil": null,
+    "access": [
+      "*"
+    ],
+    "version": 1,
+    "meta": {
+      "series": "Uekert2023",
+      "item": "PP-reference-production-energy",
+      "period": "2023",
+      "url": "https://doi.org/10.1021/acssuschemeng.2c05497.s001",
+      "retrievedAt": "2026-11-22T00:00:00.000Z",
+      "metric": "energy",
+      "material": "PP",
+      "column": "PP",
+      "route": "recycle",
+      "region": "미국",
+      "country": "미국",
+      "year": 2023,
+      "table": "보충자료 Table S27, p. S44",
+      "originalUnit": "MJ/kg (수치상 GJ/t와 동일)",
+      "conditions": [
+        "같은 양의 신재 수지와 기계적 재생수지를 공급하는 데 쓰인 에너지를 비교합니다."
+      ],
+      "caveats": [
+        "미국 공급망 모형을 바탕으로 한 참고 계수입니다.",
+        "연구의 수지 생산 경계를 적용합니다. 국내 업체의 에너지 사용량과 소각 발전·열 회수의 변화는 별도입니다."
+      ],
+      "evidenceClass": "literature",
+      "verificationStatus": "original_checked",
+      "verifiedOn": "2026-11-22",
+      "datasetVersion": "Uekert2023-S27",
+      "functionalUnit": "kg of supplied polymer resin",
+      "systemBoundary": "MFI-resin-supply-chain",
+      "energyType": "supply-chain-energy",
+      "virginEnergyMjPerKg": 96.0,
+      "recycledEnergyMjPerKg": 4.87
+    }
+  },
+  {
+    "id": "ref:Uekert2023:HDPE-생산에너지차이@2023",
+    "kind": "ref",
+    "label": "Uekert 외 2023 · HDPE 신재와 기계적 재생원료의 생산 에너지 차이",
+    "value": 68.9,
+    "unit": "GJ/t",
+    "excerpt": "Table S27, Energy use (MJ/kg), HDPE: Mechanical = 4.10, Virgin = 73.0.",
+    "source": "Uekert et al. (2023), ACS Sustainable Chemistry & Engineering 11, 965–978, doi:10.1021/acssuschemeng.2c05497",
+    "asOf": "2023-01-12",
+    "validUntil": null,
+    "access": [
+      "*"
+    ],
+    "version": 1,
+    "meta": {
+      "series": "Uekert2023",
+      "item": "HDPE-reference-production-energy",
+      "period": "2023",
+      "url": "https://doi.org/10.1021/acssuschemeng.2c05497.s001",
+      "retrievedAt": "2026-11-22T00:00:00.000Z",
+      "metric": "energy",
+      "material": "HDPE",
+      "column": "HDPE",
+      "route": "recycle",
+      "region": "미국",
+      "country": "미국",
+      "year": 2023,
+      "table": "보충자료 Table S27, p. S44",
+      "originalUnit": "MJ/kg (수치상 GJ/t와 동일)",
+      "conditions": [
+        "같은 양의 신재 수지와 기계적 재생수지를 공급하는 데 쓰인 에너지를 비교합니다."
+      ],
+      "caveats": [
+        "미국 공급망 모형을 바탕으로 한 참고 계수입니다.",
+        "연구의 수지 생산 경계를 적용합니다. 국내 업체의 에너지 사용량과 소각 발전·열 회수의 변화는 별도입니다."
+      ],
+      "evidenceClass": "literature",
+      "verificationStatus": "original_checked",
+      "verifiedOn": "2026-11-22",
+      "datasetVersion": "Uekert2023-S27",
+      "functionalUnit": "kg of supplied polymer resin",
+      "systemBoundary": "MFI-resin-supply-chain",
+      "energyType": "supply-chain-energy",
+      "virginEnergyMjPerKg": 73.0,
+      "recycledEnergyMjPerKg": 4.1
+    }
+  },
+  {
+    "id": "ref:Uekert2023:LDPE-생산에너지차이@2023",
+    "kind": "ref",
+    "label": "Uekert 외 2023 · LDPE 신재와 기계적 재생원료의 생산 에너지 차이",
+    "value": 74.59,
+    "unit": "GJ/t",
+    "excerpt": "Table S27, Energy use (MJ/kg), LDPE: Mechanical = 7.41, Virgin = 82.0.",
+    "source": "Uekert et al. (2023), ACS Sustainable Chemistry & Engineering 11, 965–978, doi:10.1021/acssuschemeng.2c05497",
+    "asOf": "2023-01-12",
+    "validUntil": null,
+    "access": [
+      "*"
+    ],
+    "version": 1,
+    "meta": {
+      "series": "Uekert2023",
+      "item": "LDPE-reference-production-energy",
+      "period": "2023",
+      "url": "https://doi.org/10.1021/acssuschemeng.2c05497.s001",
+      "retrievedAt": "2026-11-22T00:00:00.000Z",
+      "metric": "energy",
+      "material": "LDPE",
+      "column": "LDPE",
+      "route": "recycle",
+      "region": "미국",
+      "country": "미국",
+      "year": 2023,
+      "table": "보충자료 Table S27, p. S44",
+      "originalUnit": "MJ/kg (수치상 GJ/t와 동일)",
+      "conditions": [
+        "같은 양의 신재 수지와 기계적 재생수지를 공급하는 데 쓰인 에너지를 비교합니다."
+      ],
+      "caveats": [
+        "미국 공급망 모형을 바탕으로 한 참고 계수입니다.",
+        "연구의 수지 생산 경계를 적용합니다. 국내 업체의 에너지 사용량과 소각 발전·열 회수의 변화는 별도입니다."
+      ],
+      "evidenceClass": "literature",
+      "verificationStatus": "original_checked",
+      "verifiedOn": "2026-11-22",
+      "datasetVersion": "Uekert2023-S27",
+      "functionalUnit": "kg of supplied polymer resin",
+      "systemBoundary": "MFI-resin-supply-chain",
+      "energyType": "supply-chain-energy",
+      "virginEnergyMjPerKg": 82.0,
+      "recycledEnergyMjPerKg": 7.41
+    }
+  },
+  {
+    "id": "ref:Uekert2023:PET-병급-생산에너지차이@2023",
+    "kind": "ref",
+    "label": "Uekert 외 2023 · PET-병급 신재와 기계적 재생원료의 생산 에너지 차이",
+    "value": 98.42,
+    "unit": "GJ/t",
+    "excerpt": "Table S27, Energy use (MJ/kg), PET: Mechanical = 8.58, Virgin = 107.",
+    "source": "Uekert et al. (2023), ACS Sustainable Chemistry & Engineering 11, 965–978, doi:10.1021/acssuschemeng.2c05497",
+    "asOf": "2023-01-12",
+    "validUntil": null,
+    "access": [
+      "*"
+    ],
+    "version": 1,
+    "meta": {
+      "series": "Uekert2023",
+      "item": "PET-병급-reference-production-energy",
+      "period": "2023",
+      "url": "https://doi.org/10.1021/acssuschemeng.2c05497.s001",
+      "retrievedAt": "2026-11-22T00:00:00.000Z",
+      "metric": "energy",
+      "material": "PET-병급",
+      "column": "PET",
+      "route": "recycle",
+      "region": "미국",
+      "country": "미국",
+      "year": 2023,
+      "table": "보충자료 Table S27, p. S44",
+      "originalUnit": "MJ/kg (수치상 GJ/t와 동일)",
+      "conditions": [
+        "같은 양의 신재 수지와 기계적 재생수지를 공급하는 데 쓰인 에너지를 비교합니다."
+      ],
+      "caveats": [
+        "미국 공급망 모형을 바탕으로 한 참고 계수입니다.",
+        "연구의 수지 생산 경계를 적용합니다. 국내 업체의 에너지 사용량과 소각 발전·열 회수의 변화는 별도입니다."
+      ],
+      "evidenceClass": "literature",
+      "verificationStatus": "original_checked",
+      "verifiedOn": "2026-11-22",
+      "datasetVersion": "Uekert2023-S27",
+      "functionalUnit": "kg of supplied polymer resin",
+      "systemBoundary": "MFI-resin-supply-chain",
+      "energyType": "supply-chain-energy",
+      "virginEnergyMjPerKg": 107.0,
+      "recycledEnergyMjPerKg": 8.58
+    }
   }
 ]
