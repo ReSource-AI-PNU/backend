@@ -788,7 +788,7 @@ HTTP 오류 코드가 아니라 `approvals[].blockedCodes`(배열)와 `blockedRe
 
 관리자 조직:
 
-- 시연 데이터에 운영 조직 `org_admin`(`"Re:Source AI 운영"`, `role: "admin"`)이 있다. 흐름도 업체 프로필도 없다.
+- 시연 데이터에 운영 조직 `org_admin`(`"BYPRO 운영"`, `role: "admin"`)이 있다. 흐름도 업체 프로필도 없다.
 - `/admin/*`(`GET /admin/status`, `POST /admin/eval`, `GET /admin/retrain/export`, `POST /admin/retrain/runs`)는 `X-Org-Id`가 관리자 조직일 때만 답한다. 다른 조직은 403 `FORBIDDEN`, 헤더가 없으면 401 `ORG_REQUIRED`.
 - `POST /demo/reset`도 관리자만 부른다. 예외 두 가지: `App(demo_open=True)`이면 누구나 부른다(`devserver`의 기본값. `--demo-closed`로 끈다. `api.py`는 설정 `V3_DEMO_OPEN`, 기본 `false`). 그리고 조직이 하나도 없는 빈 저장소의 첫 시드는 막지 않는다(관리자 조직이 아직 없다).
 - 배출 기업과 업체는 관리자 화면을 볼 수 없다. 화면에서 조직을 `org_admin`으로 바꿔야 한다.

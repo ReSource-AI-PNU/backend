@@ -79,7 +79,7 @@ ORGS: list[dict[str, Any]] = [
     {
         "id": "org_admin",
         "order": 99,
-        "name": "Re:Source AI 운영",
+        "name": "BYPRO 운영",
         "role": "admin",
         "region": None,
         "location": None,

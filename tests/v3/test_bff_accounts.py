@@ -531,7 +531,7 @@ def test_operator_script_resets_demo_and_grants_admin(capsys):
     assert accounts_admin.main(["grant-admin", "OPS@example.com"], app=state) == 0
     me = accounts.login(state, {"email": "ops@example.com", "password": PASSWORD})
     assert me["memberships"] == [
-        {"orgId": ADMIN, "orgName": "Re:Source AI 운영", "kind": "admin", "memberRole": "owner"}
+        {"orgId": ADMIN, "orgName": "BYPRO 운영", "kind": "admin", "memberRole": "owner"}
     ]
     header_mode = service.App(InMemoryStore(), InMemoryRegistry())
     assert accounts_admin.main(["reset-demo"], app=header_mode) == 2

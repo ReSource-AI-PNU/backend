@@ -52,7 +52,7 @@ def test_orgs_and_streams(demo):
         "org_saegil": "(주)새길자원",
         "org_namhae": "(주)남해열분해",
         "org_miso": "(주)미소환경",
-        "org_admin": "Re:Source AI 운영",
+        "org_admin": "BYPRO 운영",
     }
     roles = {o["id"]: o["role"] for o in store.list_orgs()}
     assert roles["org_admin"] == "admin" and store.list_streams("org_admin") == []
