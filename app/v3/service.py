@@ -3186,6 +3186,8 @@ def upload_media(
         )
     if found["material"] is not None:
         photo["materialEstimate"] = found["material"]
+    # 검증 안 된 사진은 비율 대신 개수만 남긴다. 이전에 올린 사진의 비율은 그대로 둔다(화면이 그렇다고 알린다)
+    photo["objects"] = found["objects"]
     photo.update(file=filename, mode=result["mode"])
     stream["photo"] = photo
     saved = app.store.put_stream(stream)
@@ -3214,6 +3216,8 @@ def upload_media(
         "contamination": None
         if contamination is None
         else {"claim": claim, "reliable": contamination["reliable"], "note": contamination["note"]},
+        # 검증 안 된 사진: 탐지한 물체 수와 이물이 보인 곳 수(비율은 내지 않는다). 검증된 사진이면 null
+        "objects": found["objects"],
         "detections": result["detections"],
         "label": label,
         "evidence": [*found["evidence"], *(label["evidence"] if label else [])],

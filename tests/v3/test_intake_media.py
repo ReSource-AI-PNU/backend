@@ -74,6 +74,16 @@ PHOTO = {
 }
 # 영상: 같은 계약의 mode와 tracks_total(ByteTrack 트랙 수)
 VIDEO = {**PHOTO, "mode": "video", "frames_analyzed": 48, "tracks_total": 7, "rep_frame": 12}
+# 검증된 촬영 환경(선별장)의 사진: 이물 비율(%)을 근거로 등록한다. PHOTO(현장 사진, reliable=False)는 개수만 남긴다
+SORTING = {
+    **PHOTO,
+    "input_domain": "a71385_sorting",
+    "contamination": {
+        **PHOTO["contamination"],
+        "reliable": True,
+        "note": "선별장 test 기준 물체 단위 이물 판정 정확도 0.76",
+    },
+}
 
 
 def fake(payload, status=200, calls=None, wrap=False):
@@ -207,7 +217,7 @@ def test_without_an_endpoint_nothing_is_detected_or_registered():
 
 
 def test_photo_registers_model_evidence_and_updates_the_stream_photo():
-    app = make_app(detector=client())
+    app = make_app(detector=client(SORTING))
     before = app.store.get_stream("st_film")
     result = service.upload_media(app, HANBIT, "st_film", "필름.jpg", b"jpeg", HANBIT)
     assert result["detectorUnavailable"] is False and result["mode"] == "photos"
@@ -218,7 +228,7 @@ def test_photo_registers_model_evidence_and_updates_the_stream_photo():
     contamination = app.registry.get(cont_id, HANBIT)
     assert contamination.kind == "model" and contamination.unit == "%"
     assert contamination.value == 12.5 and contamination.meta["overallRatio"] == 0.125
-    assert contamination.meta["reliable"] is False and contamination.access == (HANBIT,)
+    assert contamination.meta["reliable"] is True and contamination.access == (HANBIT,)
     material = app.registry.get(mat_id, HANBIT)
     assert material.kind == "model" and material.value is None
     assert material.meta["class"] == "plastic_film" and "필름" in material.excerpt
@@ -235,7 +245,8 @@ def test_photo_registers_model_evidence_and_updates_the_stream_photo():
         "label": "사진 추정 오염 비율",
         "role": "contamination",
     }
-    assert result["contamination"]["reliable"] is False and result["contamination"]["note"]
+    assert result["contamination"]["reliable"] is True and result["contamination"]["note"]
+    assert result["objects"] is None  # 검증된 사진은 개수 대신 비율이다
     assert result["material"] == {
         "class": "plastic_film",
         "label": "필름",
@@ -368,7 +379,7 @@ def test_media_upload_over_http():
     wired = devserver.build_app(today=TODAY, env={"V3_DETECTOR_ENDPOINT": ENDPOINT})
     assert wired.detector.configured
     calls = []
-    wired.detector.transport = fake(PHOTO, calls=calls)
+    wired.detector.transport = fake(SORTING, calls=calls)
     results = {}
     for name, app in (("plain", plain), ("wired", wired)):
         server = devserver.make_server(app, "127.0.0.1", 0)

@@ -202,20 +202,47 @@ def test_registering_the_label_material_records_its_source():
     assert "materialBasis" not in typed and "materialEvidence" not in typed
 
 
-# ── 검증되지 않은 사진 추정값 ────────────────────────────────────────
-def test_unverified_photo_over_the_limit_is_conditional_not_unmet():
-    stream = {"id": "s", "material": "PP", "photo": {"contaminationPct": 12.5, "reliable": False}}
+# ── 검증되지 않은 사진: 비율 대신 개수 ─────────────────────────────────
+def test_unverified_photo_registers_counts_instead_of_a_ratio():
+    """현장 사진(reliable=False)은 이물 비율이 거의 항상 100%로 나와 %를 등록하지 않고 개수만 남긴다."""
+    app = make_app(detector=client())  # PHOTO: 현장 사진, 대상 1곳·이물 1곳
+    before = app.store.get_stream("st_film")
+    result = service.upload_media(app, HANBIT, "st_film", "필름.jpg", b"jpeg", HANBIT)
+    assert result["contamination"] is None
+    assert result["objects"]["items"] == 1 and result["objects"]["contaminantSpots"] == 1
+    count_id = ids.model_id("resource-ai-detector", "v5", "st_film-이물개수")
+    assert result["objects"]["evidence"] == [count_id] and count_id in result["evidence"]
+    evidence = app.registry.get(count_id, HANBIT)
+    assert (
+        evidence.value == 1
+        and evidence.unit == "곳"
+        and "비율(%)은 내지 않았습니다" in evidence.excerpt
+    )
+    assert ids.model_id("resource-ai-detector", "v5", "st_film-오염비율") not in result["evidence"]
+    after = app.store.get_stream("st_film")
+    assert after["photo"]["objects"]["contaminantSpots"] == 1
+    # 이전에 올린 사진의 비율은 그대로 둔다
+    assert after["photo"].get("contaminationPct") == before["photo"].get("contaminationPct")
+
+
+def test_unverified_photo_ratio_is_not_used_in_judging():
+    """예전에 등록된 검증 안 된 사진 비율도 판정에 쓰지 않는다. 오염도 값이 없는 것과 같다."""
+    stream = {"id": "s", "material": "PP", "photo": {"contaminationPct": 100.0, "reliable": False}}
     q = quality(stream)
-    assert q["contaminationBasis"] == "photo_unverified"
-    over = criterion_checks(stream, {"maxContaminationPct": 5}, q)
-    assert [(key, status) for key, status, *_ in over] == [("contaminationPct", "conditional")]
-    assert "검증되지 않은 사진 추정값" in over[0][2] and over[0][3]
-    # 탐지 모델이 믿을 만하다고 한 값은 전처럼 상한을 넘으면 불충족이다
-    trusted = {**stream, "photo": {"contaminationPct": 12.5, "reliable": True}}
-    assert criterion_checks(trusted, {"maxContaminationPct": 5}, quality(trusted))[0][1] == "unmet"
-    # reliable 표시가 없는 예전 값도 전과 같다
-    old = {**stream, "photo": {"contaminationPct": 12.5}}
-    assert quality(old)["contaminationBasis"] == "photo_estimate"
+    assert q["contaminationPct"] is None and q["contaminationBasis"] is None
+    checks = criterion_checks(stream, {"maxContaminationPct": 5}, q)
+    assert [(key, status) for key, status, *_ in checks] == [("contaminationPct", "conditional")]
+    assert "값이 없어" in checks[0][2]
+    # 담당자가 답한 값이 있으면 그것을 쓴다
+    answered = {**stream, "answers": {"contaminationPct": 3.0}}
+    assert quality(answered)["contaminationBasis"] == "answered"
+    # reliable 표시가 없는 예전 값과 검증된 값은 전과 같다
+    for photo in ({"contaminationPct": 12.5}, {"contaminationPct": 12.5, "reliable": True}):
+        trusted = {**stream, "photo": photo}
+        assert quality(trusted)["contaminationBasis"] == "photo_estimate"
+        assert (
+            criterion_checks(trusted, {"maxContaminationPct": 5}, quality(trusted))[0][1] == "unmet"
+        )
 
 
 # ── 참고 등급 ─────────────────────────────────────────────────────────

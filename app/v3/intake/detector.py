@@ -247,7 +247,8 @@ def register_detection(
 ) -> dict[str, Any]:
     """탐지 결과를 model 근거로 등록하고, 흐름의 photo에 넣을 값과 화면에 줄 요약을 돌려준다.
 
-    - 이물 비율(면적 기준)은 %로 바꿔 `model:<모델>:<버전>:<흐름>-오염비율` 근거가 된다.
+    - 이물 비율(면적 기준)은 %로 바꿔 `model:<모델>:<버전>:<흐름>-오염비율` 근거가 된다. 검증된 촬영 환경의
+      사진(reliable)일 때만이다. 그 밖의 사진은 개수(`…-이물개수`, 탐지한 물체와 이물이 보인 곳)만 남긴다.
       상태 모델이 돌지 않아 contamination이 없으면 등록하지 않는다(값을 지어내지 않는다).
     - 재질 추정은 `model:<모델>:<버전>:<흐름>-재질` 근거가 된다(값은 숫자가 아니고 분류 이름이다).
     """
@@ -291,8 +292,15 @@ def register_detection(
             "evidence": [evidence.id],
         }
     contamination = None
+    objects = None
     found = result["contamination"]
-    if found is not None:
+    if found is not None and not found["reliable"]:
+        # 검증된 촬영 환경(선별장)이 아닌 사진은 이물 비율(%)을 등록하지 않는다. 상태 모델이 깨끗한 물체에는 박스를
+        # 거의 그리지 않아, 비율의 분모가 이물이 보인 물체만으로 차서 거의 항상 100%가 된다(공개 검증 사진 564장 중
+        # 비율이 나온 299장의 298장이 100%, 2026-11-22). 대신 탐지한 물체와 이물이 보인 곳의 개수만 남긴다
+        objects = _object_counts(registry, org_id, sid, result, found, version, source, base_meta, today)
+        registered.append(objects["evidence"][0])
+    elif found is not None:
         percent = round(found["overallRatio"] * 100.0, 4)
         note = found["note"] or ("검증된 값" if found["reliable"] else "검증 안 된 참고값")
         evidence = registry.put(
@@ -321,4 +329,46 @@ def register_detection(
             "note": note,
             "evidence": [evidence.id],
         }
-    return {"material": material, "contamination": contamination, "evidence": registered}
+    return {
+        "material": material,
+        "contamination": contamination,
+        "objects": objects,
+        "evidence": registered,
+    }
+
+
+def _object_counts(registry, org_id, sid, result, found, version, source, base_meta, today):
+    """검증 안 된 사진의 탐지 결과를 개수로 남긴다: 탐지한 물체 수와 이물이 보인 곳(이물 박스) 수."""
+    detections = result["detections"]
+    items = sum(1 for d in detections if d.get("kind") == "item")
+    spots = sum(1 for d in detections if d.get("kind") == "contaminant")
+    note = found["note"] or "검증 안 된 참고값"
+    evidence = registry.put(
+        Evidence(
+            id=ids.model_id(MODEL_NAME, version, f"{sid}-이물개수"),
+            kind="model",
+            label="사진에서 이물이 보인 곳",
+            value=spots,
+            unit="곳",
+            excerpt=(
+                f"탐지한 물체 {items}개 가운데 이물이 보인 곳 {spots}곳. 검증된 촬영 환경(선별장)의 사진이 "
+                f"아니어서 이물 비율(%)은 내지 않았습니다. ({note})"
+            ),
+            source=source,
+            as_of=today,
+            access=(org_id,),
+            meta={
+                **base_meta,
+                "items": items,
+                "contaminantSpots": spots,
+                "reliable": False,
+                "judgedObjects": found["judgedObjects"],
+            },
+        )
+    )
+    return {
+        "items": items,
+        "contaminantSpots": spots,
+        "note": note,
+        "evidence": [evidence.id],
+    }

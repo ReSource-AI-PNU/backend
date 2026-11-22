@@ -288,11 +288,10 @@ def quality(stream: dict) -> dict:
     measure, photo = stream.get("measure") or {}, stream.get("photo") or {}
     answers = stream.get("answers") or {}
     cont, basis_name, evidence = num(measure.get("contaminationPct")), "measured", measure
-    if cont is None:
-        # 탐지 모델이 검증 안 된 참고값이라고 표시한 사진 추정값(reliable=False)은 따로 부른다(criterion_checks)
-        unverified = photo.get("reliable") is False
-        cont, evidence = num(photo.get("contaminationPct")), photo
-        basis_name = "photo_unverified" if unverified else "photo_estimate"
+    if cont is None and photo.get("reliable") is not False:
+        # 탐지 모델이 검증 안 된 참고값이라고 표시한 사진 비율(reliable=False)은 값으로 쓰지 않는다. 현장 사진의
+        # 비율은 거의 항상 100%로 나와 판정에 넣으면 안 된다(intake.detector.register_detection). 예전에 등록된 값도 같다
+        cont, basis_name, evidence = num(photo.get("contaminationPct")), "photo_estimate", photo
     if cont is None:
         cont, basis_name, evidence = num(answers.get("contaminationPct")), "answered", {}
     moist, moist_basis = num(measure.get("moisturePct")), "measured"
@@ -312,13 +311,7 @@ def quality(stream: dict) -> dict:
 
 
 # 측정값이 아닌 출처의 이름. 이 출처의 값은 매입 기준 안이어도 조건부다
-_ESTIMATED = {
-    "photo_estimate": "사진 추정값",
-    "photo_unverified": "검증되지 않은 사진 추정값",
-    "answered": "담당자가 답한 값",
-}
-# 이 출처의 값은 상한을 넘어도 불충족으로 보지 않는다. 확인 전까지 조건부다
-_UNVERIFIED = {"photo_unverified"}
+_ESTIMATED = {"photo_estimate": "사진 추정값", "answered": "담당자가 답한 값"}
 
 
 def permit_covers(stream: dict, permit: dict) -> bool:
@@ -389,22 +382,6 @@ def criterion_checks(stream: dict, criterion: dict, q: dict) -> list[tuple]:
                         ),
                     )
                 )
-        elif q.get(basis_key) in _UNVERIFIED:
-            # 탐지 모델이 스스로 믿기 어렵다고 표시한 값으로 업체를 후보에서 빼지 않는다. 측정이나 검수로 확인한다
-            out.append(
-                (
-                    field,
-                    "conditional",
-                    (
-                        f"{subject(name)} 검증되지 않은 사진 추정값으로는 매입 기준 상한을 넘습니다. "
-                        "측정값이나 반입 검수로 확인합니다."
-                    ),
-                    (
-                        f"{subject(name)} 검증되지 않은 사진 추정값으로는 상한을 넘습니다. "
-                        "시료를 보고 받을 수 있는지, 측정이 필요한지 알려 주세요."
-                    ),
-                )
-            )
         else:
             source = _ESTIMATED.get(q.get(basis_key))
             text = (

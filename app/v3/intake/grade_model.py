@@ -262,9 +262,9 @@ def reference_grade(
         return float(value) if math.isfinite(value) else None
 
     contamination, basis, inputs = number(measure.get("contaminationPct")), "measured", measure
-    if contamination is None:
-        contamination, inputs = number(photo.get("contaminationPct")), photo
-        basis = "photo_unverified" if photo.get("reliable") is False else "photo_estimate"
+    if contamination is None and photo.get("reliable") is not False:
+        # 검증 안 된 사진 비율은 쓰지 않는다(judge.common.quality와 같다)
+        contamination, basis, inputs = number(photo.get("contaminationPct")), "photo_estimate", photo
     if contamination is None:
         contamination, basis, inputs = number(answers.get("contaminationPct")), "answered", answers
     moisture = number(measure.get("moisturePct"))
