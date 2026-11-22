@@ -355,7 +355,17 @@ async def call(fn: Callable[..., Any], *args: Any) -> Any:
 
     체험하기 요청이면 app 대신 시연 조직만 보이는 읽기 전용 앱(demo/scope.py)을 준다.
     """
-    return await run_in_threadpool(_invoke, fn, args, _demo_view.get())
+    result = await run_in_threadpool(_invoke, fn, args, _demo_view.get())
+    # 별도 업체 A2A 서비스는 회사 진단 큐를 실행하지 않는다.
+    if not _demo_view.get() and fn is not service.handle_vendor_message:
+        from app.v3 import adaptive
+
+        await run_in_threadpool(
+            adaptive.launch_pending,
+            _background_app(get_state()),
+            lambda sid, rid: launch_run(get_state(), sid, rid),
+        )
+    return result
 
 
 # ── 뒤에서 도는 실행 ─────────────────────────────────────────────────
@@ -991,3 +1001,29 @@ async def admin_retrain_runs(request: Request):
     viewer = await viewer_of(request)
     body = await json_object(request)
     return await call(service.register_model_run, body, viewer)
+
+
+@router.get("/sessions/{session_id}/adaptive")
+@guarded
+async def adaptive_state(session_id: str, request: Request):
+    from app.v3 import adaptive
+
+    return await call(adaptive.state, session_id, await viewer_of(request))
+
+
+@router.post("/sessions/{session_id}/scenarios/preview")
+@guarded
+async def scenario_preview(session_id: str, request: Request):
+    from app.v3 import adaptive
+
+    viewer = await viewer_of(request)
+    return await call(adaptive.preview, session_id, await request.json(), viewer)
+
+
+@router.post("/sessions/{session_id}/scenarios/apply")
+@guarded
+async def scenario_apply(session_id: str, request: Request):
+    from app.v3 import adaptive
+
+    viewer = await viewer_of(request)
+    return await call(adaptive.apply, session_id, await request.json(), viewer)

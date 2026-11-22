@@ -277,6 +277,18 @@ def route(app: service.App, request: Request) -> Any:
             return service.create_session(app, str(body.get("emitterOrgId") or viewer), viewer)
         case ("GET", ["sessions"]):
             return service.list_sessions(app, viewer)
+        case ("GET", ["sessions", session_id, "adaptive"]):
+            from app.v3 import adaptive
+
+            return adaptive.state(app, session_id, viewer)
+        case ("POST", ["sessions", session_id, "scenarios", "preview"]):
+            from app.v3 import adaptive
+
+            return adaptive.preview(app, session_id, request.json(), viewer)
+        case ("POST", ["sessions", session_id, "scenarios", "apply"]):
+            from app.v3 import adaptive
+
+            return adaptive.apply(app, session_id, request.json(), viewer)
         case ("GET", ["sessions", session_id]):
             return service.get_view(app, session_id, viewer)
         case ("GET", ["sessions", session_id, "quote-request"]):
@@ -500,6 +512,16 @@ def make_handler(
                 )
                 with guard:  # 저장소가 동시 쓰기를 막지 않으므로 한 번에 한 요청만 처리한다
                     result = handle(app, request)
+                    from app.v3 import adaptive
+
+                    def launch_adaptive(sid, rid):
+                        threading.Thread(
+                            target=service.execute_run,
+                            args=(app.with_lock(guard), sid, rid),
+                            daemon=True,
+                        ).start()
+
+                    adaptive.launch_pending(app, launch_adaptive)
             except service.ServiceError as error:
                 self._json(error.status, error.to_dict())
             except Exception:  # noqa: BLE001 - 서버는 죽지 않고 500으로 답한다

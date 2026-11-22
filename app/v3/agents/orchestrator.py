@@ -1052,6 +1052,10 @@ class Orchestrator:
         emitter = self.store.get_org(org_id)
         streams = self.store.list_streams(org_id)
         profiles = discoverable_profiles(self.store, emitter)
+        from app.v3.adaptive import eligible
+
+        profiles, excluded = eligible(profiles, (work.get("scenario") or {}).get("maxPickupsPerMonth"))
+        work["scenarioExcluded"] = excluded
         for profile in profiles.values():  # 허가증은 대조하기 전에 연다(올린 허가증의 AI 판독도)
             for item in [*(profile.get("permits") or []), *(profile.get("permitDocuments") or [])]:
                 for evidence_id in item.get("evidence") or []:

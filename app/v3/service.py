@@ -1105,8 +1105,15 @@ def update_vendor(app: App, org_id: str, patch: dict[str, Any], viewer: str) -> 
                 "INVALID_VALUE", "등록된 등급 기준을 선택하거나 재협의로 두어야 합니다.", 422
             )
         profile["inspectionFallbackCriterionId"] = selected
+    from app.v3 import adaptive
+
+    try:
+        before = adaptive.profile_basis(app.store.get_vendor_profile(org_id))
+    except NotFound:
+        before = None
     saved = app.store.put_vendor_profile(profile)
     _recheck(app, org_id)
+    adaptive.vendor_changed(app, org_id, before)
     return {**saved, "name": app.store.get_org(org_id).get("name")}
 
 
@@ -1198,6 +1205,17 @@ def answer_question(
 
 def approve(app: App, session_id: str, thread_id: str, viewer: str) -> dict[str, Any]:
     session, _ = _session_for(app, session_id, viewer)
+    replacement = session["work"].get("replacementSessionId")
+    if (
+        replacement
+        and app.store.get_session(replacement)["work"].get("adaptive", {}).get("token")
+        and session["status"] != "confirmed"
+    ):
+        raise ServiceError(
+            "APPROVAL_BLOCKED",
+            "조건이 바뀌어 새 대안을 준비했습니다. 새 찾기에서 승인해 주세요.",
+            409,
+        )
     if thread_id not in {t["id"] for t in _visible_threads(app, session, viewer)}:
         raise ServiceError("THREAD_NOT_FOUND", "그런 대화가 없습니다.", 404)
     with _exclusive(app, session_id, "approve"):
@@ -1306,7 +1324,12 @@ def _exclusive(app: App, session_id: str, mode: str) -> Iterator[dict[str, Any]]
 def _execute(app: App, session_id: str, run_id: str) -> None:
     orchestrator = Orchestrator(app)
     try:
-        _wrap(orchestrator.run, session_id)
+        if app.store.get_session(session_id)["work"].get("adaptive"):
+            from app.v3 import adaptive
+
+            adaptive.execute(app, session_id)
+        else:
+            _wrap(orchestrator.run, session_id)
     except Exception as error:
         _run_failed(app, orchestrator, session_id, run_id, error)
         raise
@@ -3053,6 +3076,12 @@ def confirm_criteria(
     - 수거비 조건이 모든 행에서 같으면 업체의 운반 조건(transport)으로 쓴다(포함이면 업체 부담, 따로면 1회 수거비).
     """
     _owner(app, org_id, viewer, "vendor")
+    from app.v3 import adaptive
+
+    try:
+        before_profile = adaptive.profile_basis(app.store.get_vendor_profile(org_id))
+    except NotFound:
+        before_profile = None
     try:
         clean = criteria_llm.clean_rows(rows)
     except criteria_llm.RowError as error:
@@ -3144,6 +3173,7 @@ def confirm_criteria(
             "줄마다 수거비 조건이 달라 업체의 운반 조건에는 넣지 않았습니다. 줄마다의 조건은 매입 기준에 남겼습니다."
         )
     _recheck(app, org_id)
+    adaptive.vendor_changed(app, org_id, before_profile)
     return {"evidence": list(dict.fromkeys(registered)), "profile": profile}
 
 
@@ -3167,6 +3197,9 @@ def _profile_from_document(app: App, org_id: str, found: dict[str, Any]) -> dict
         profile = copy.deepcopy(app.store.get_vendor_profile(org_id))
     except NotFound:
         profile = {"orgId": org_id, "permits": [], "criteria": [], "fleet": {}, "guardrails": {}}
+    from app.v3 import adaptive
+
+    before_profile = adaptive.profile_basis(profile)
     permits = list(profile.get("permits") or [])
     criteria = list(profile.get("criteria") or [])
     added = {"permits": 0, "criteria": 0}
@@ -3238,6 +3271,7 @@ def _profile_from_document(app: App, org_id: str, found: dict[str, Any]) -> dict
     if any(added.values()) or any(updated.values()):
         profile.update(permits=permits, criteria=criteria)
         app.store.put_vendor_profile(profile)
+        adaptive.vendor_changed(app, org_id, before_profile)
     return {
         "permitsAdded": added["permits"],
         "permitsUpdated": updated["permits"],
