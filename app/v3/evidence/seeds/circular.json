@@ -2860,5 +2860,212 @@
       "virginEnergyMjPerKg": 107.0,
       "recycledEnergyMjPerKg": 8.58
     }
+  },
+  {
+    "id": "ref:REMADE2019:PET-비정질-참고-energy@2019",
+    "kind": "ref",
+    "label": "REMADE2019 · PET-비정질 원료 생산 에너지 차이",
+    "value": 46.0,
+    "unit": "GJ/t",
+    "excerpt": "PET: 85.0 − 39.0 MJ/kg. Same numerical factor in GJ/t.",
+    "source": "REMADE Institute, Energy and CO₂ Calculations (2019)",
+    "asOf": "2019-11-12",
+    "validUntil": null,
+    "access": [
+      "*"
+    ],
+    "version": 1,
+    "meta": {
+      "series": "REMADE2019",
+      "item": "PET-비정질-reference-energy",
+      "period": "2019",
+      "url": "https://remadeinstitute.org/wp-content/uploads/2024/01/EnergyandCO2CalculationsNov2019update.pdf",
+      "metric": "energy",
+      "material": "PET-비정질",
+      "route": "recycle",
+      "country": "미국",
+      "year": 2019,
+      "table": "Suggested Embodied Energy and CO₂e Data",
+      "originalUnit": "GJ/t",
+      "conditions": [
+        "재질별 문헌 시나리오를 월 투입량으로 환산합니다."
+      ],
+      "caveats": [
+        "초기 검토용 재질별 생산 에너지 계수입니다. PET는 병급·비병급을 세분하지 않습니다."
+      ],
+      "evidenceClass": "literature",
+      "verificationStatus": "original_checked",
+      "verifiedOn": "2026-11-22",
+      "datasetVersion": "REMADE2019",
+      "functionalUnit": "kg of supplied resin",
+      "systemBoundary": "resin-embodied-energy",
+      "energyType": "supply-chain-energy"
+    }
+  },
+  {
+    "id": "ref:REMADE2019:PS-참고-energy@2019",
+    "kind": "ref",
+    "label": "REMADE2019 · PS 원료 생산 에너지 차이",
+    "value": 49.5,
+    "unit": "GJ/t",
+    "excerpt": "PS: 97.0 − 47.5 MJ/kg. Same numerical factor in GJ/t.",
+    "source": "REMADE Institute, Energy and CO₂ Calculations (2019)",
+    "asOf": "2019-11-12",
+    "validUntil": null,
+    "access": [
+      "*"
+    ],
+    "version": 1,
+    "meta": {
+      "series": "REMADE2019",
+      "item": "PS-reference-energy",
+      "period": "2019",
+      "url": "https://remadeinstitute.org/wp-content/uploads/2024/01/EnergyandCO2CalculationsNov2019update.pdf",
+      "metric": "energy",
+      "material": "PS",
+      "route": "recycle",
+      "country": "미국",
+      "year": 2019,
+      "table": "Suggested Embodied Energy and CO₂e Data",
+      "originalUnit": "GJ/t",
+      "conditions": [
+        "재질별 문헌 시나리오를 월 투입량으로 환산합니다."
+      ],
+      "caveats": [
+        "초기 검토용 재질별 생산 에너지 계수입니다. PET는 병급·비병급을 세분하지 않습니다."
+      ],
+      "evidenceClass": "literature",
+      "verificationStatus": "original_checked",
+      "verifiedOn": "2026-11-22",
+      "datasetVersion": "REMADE2019",
+      "functionalUnit": "kg of supplied resin",
+      "systemBoundary": "resin-embodied-energy",
+      "energyType": "supply-chain-energy"
+    }
+  },
+  {
+    "id": "ref:REMADE2019:ABS-참고-energy@2019",
+    "kind": "ref",
+    "label": "REMADE2019 · ABS 원료 생산 에너지 차이",
+    "value": 48.0,
+    "unit": "GJ/t",
+    "excerpt": "ABS: 94.5 − 46.5 MJ/kg. Same numerical factor in GJ/t.",
+    "source": "REMADE Institute, Energy and CO₂ Calculations (2019)",
+    "asOf": "2019-11-12",
+    "validUntil": null,
+    "access": [
+      "*"
+    ],
+    "version": 1,
+    "meta": {
+      "series": "REMADE2019",
+      "item": "ABS-reference-energy",
+      "period": "2019",
+      "url": "https://remadeinstitute.org/wp-content/uploads/2024/01/EnergyandCO2CalculationsNov2019update.pdf",
+      "metric": "energy",
+      "material": "ABS",
+      "route": "recycle",
+      "country": "미국",
+      "year": 2019,
+      "table": "Suggested Embodied Energy and CO₂e Data",
+      "originalUnit": "GJ/t",
+      "conditions": [
+        "재질별 문헌 시나리오를 월 투입량으로 환산합니다."
+      ],
+      "caveats": [
+        "초기 검토용 재질별 생산 에너지 계수입니다. PET는 병급·비병급을 세분하지 않습니다."
+      ],
+      "evidenceClass": "literature",
+      "verificationStatus": "original_checked",
+      "verifiedOn": "2026-11-22",
+      "datasetVersion": "REMADE2019",
+      "functionalUnit": "kg of supplied resin",
+      "systemBoundary": "resin-embodied-energy",
+      "energyType": "supply-chain-energy"
+    }
+  },
+  {
+    "id": "ref:Schwarz2021:ABS-참고-ghg@2021",
+    "kind": "ref",
+    "label": "Schwarz2021 · ABS 소각 대비 탄소 감축",
+    "value": 2.2,
+    "unit": "tCO2e/t",
+    "excerpt": "Energy recovery 5.2 − open-loop mechanical recycling 3.0 = 2.2 kg CO₂e/kg ABS.",
+    "source": "Schwarz et al. (2021), Waste Management 121, 331–342",
+    "asOf": "2021-02-01",
+    "validUntil": null,
+    "access": [
+      "*"
+    ],
+    "version": 1,
+    "meta": {
+      "series": "Schwarz2021",
+      "item": "ABS-reference-ghg",
+      "period": "2021",
+      "url": "https://publications.tno.nl/publication/34637696/yGZcnE/schwarz-2021-plastic.pdf",
+      "metric": "ghg",
+      "material": "ABS",
+      "route": "recycle",
+      "country": "EU",
+      "year": 2021,
+      "table": "Figure 5(B), ABS matrix model",
+      "originalUnit": "tCO2e/t",
+      "conditions": [
+        "재질별 문헌 시나리오를 월 투입량으로 환산합니다."
+      ],
+      "caveats": [
+        "수거·선별 전처리를 제외한 순수 수지 모형을 참고합니다.",
+        "첨가제와 오염에 따라 실제 회수량과 감축량이 달라집니다."
+      ],
+      "evidenceClass": "literature",
+      "verificationStatus": "original_checked",
+      "verifiedOn": "2026-11-22",
+      "datasetVersion": "Schwarz2021",
+      "functionalUnit": "t input ABS waste",
+      "systemBoundary": "ABS-open-loop",
+      "energyType": null
+    }
+  },
+  {
+    "id": "ref:Schwarz2021:ABS-참고-virgin@2021",
+    "kind": "ref",
+    "label": "Schwarz2021 · ABS 신재 대체율",
+    "value": 40.0,
+    "unit": "%",
+    "excerpt": "Recycling efficiency 80% × quality factor 50% = 40% virgin replacement per unit of waste.",
+    "source": "Schwarz et al. (2021), Waste Management 121, 331–342",
+    "asOf": "2021-02-01",
+    "validUntil": null,
+    "access": [
+      "*"
+    ],
+    "version": 1,
+    "meta": {
+      "series": "Schwarz2021",
+      "item": "ABS-reference-virgin",
+      "period": "2021",
+      "url": "https://publications.tno.nl/publication/34637696/yGZcnE/schwarz-2021-plastic.pdf",
+      "metric": "virgin",
+      "material": "ABS",
+      "route": "recycle",
+      "country": "EU",
+      "year": 2021,
+      "table": "Table 1, mechanical open-loop",
+      "originalUnit": "%",
+      "conditions": [
+        "재질별 문헌 시나리오를 월 투입량으로 환산합니다."
+      ],
+      "caveats": [
+        "수거·선별 전처리를 제외한 순수 수지 모형을 참고합니다.",
+        "첨가제와 오염에 따라 실제 회수량과 감축량이 달라집니다."
+      ],
+      "evidenceClass": "literature",
+      "verificationStatus": "original_checked",
+      "verifiedOn": "2026-11-22",
+      "datasetVersion": "Schwarz2021",
+      "functionalUnit": "t input ABS waste",
+      "systemBoundary": "ABS-open-loop",
+      "energyType": null
+    }
   }
 ]

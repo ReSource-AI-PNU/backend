@@ -312,7 +312,7 @@ def test_ldpe_reference_uses_matched_mass_without_vendor_process(reg, process):
     assert all(strict[m]["status"] == "hold" for m in circular.METRICS)
 
 
-@pytest.mark.parametrize("material", ["PP+ABS", "PE"])
+@pytest.mark.parametrize("material", ["PVC", "PE+ABS"])
 def test_reference_estimate_does_not_invent_material_factors(reg, material):
     rows = [{"stream": stream(material=material), "kg": 300}]
     found = circular.reference_estimates(rec(reg), rows, [{"vendor": {"id": "vendor"}}])
@@ -323,7 +323,7 @@ def test_reference_excludes_unassigned_mass_and_keeps_partial_totals(reg):
     r = rec(reg)
     rows = [
         {"stream": stream(id="pp"), "kg": 300},
-        {"stream": stream(id="ps", material="PS"), "kg": 200},
+        {"stream": stream(id="eps", material="EPS"), "kg": 200},
         {"stream": film(), "kg": 450},
     ]
     choices = [{"vendor": {"id": "vendor"}}, {"vendor": {"id": "vendor"}}, {}]
@@ -333,10 +333,10 @@ def test_reference_excludes_unassigned_mass_and_keeps_partial_totals(reg):
     assert values[found["monthlyKg"]] == 500
     energy = found["totals"]["energy"]
     assert energy["status"] == "partial"
-    assert energy["heldStreams"] == ["ps"]
+    assert energy["heldStreams"] == ["eps"]
     assert values[energy["heldKg"]] == 200
     assert values[energy["claim"]] == pytest.approx(181.305 / 1000 * (96.0 - 4.87))
-    assert values[found["totals"]["ghg"]["claim"]] == pytest.approx(0.5388 + 0.344)
+    assert values[found["totals"]["ghg"]["claim"]] == pytest.approx(0.5388 + 0.3978)
 
 
 def test_reference_uses_a_fixed_comparison_even_if_existing_route_is_recycling(reg):
@@ -354,3 +354,47 @@ def test_reference_uses_a_fixed_comparison_even_if_existing_route_is_recycling(r
     ghg = found["totals"]["ghg"]
     assert ghg["status"] == "estimated"
     assert next(c["value"] for c in r.claims if c["id"] == ghg["claim"]) == pytest.approx(0.5388)
+
+
+@pytest.mark.parametrize("form", ["가공 전", "분쇄", "압축", "필름", "펠릿"])
+@pytest.mark.parametrize("material", ["PP", "PE", "LDPE", "ABS", "PS", "PET", "PP+ABS"])
+def test_all_registration_materials_have_three_reference_estimates(reg, material, form):
+    r = rec(reg)
+    rows = [{"stream": stream(material=material, form=form), "kg": 400}]
+    result = circular.reference_estimates(r, rows, [{"vendor": {"id": "vendor"}}])
+    values = {c["id"]: c["value"] for c in r.claims}
+    assert values[result["monthlyKg"]] == 400
+    for total in result["totals"].values():
+        assert total["status"] == "estimated" and values[total["claim"]] > 0
+        if material in {"PE", "PET", "PP+ABS"}:
+            assert values[total["upper"]] > values[total["claim"]]
+        else:
+            assert total["upper"] is None
+
+
+def test_pet_runner_uses_both_literature_grades_without_changing_strict_scenario(reg):
+    r = rec(reg)
+    pet = stream(name="러너", material="PET", form="가공 전")
+    rows = [{"stream": pet, "kg": 400}]
+    result = circular.reference_estimates(r, rows, [{"vendor": {"id": "vendor"}}])
+    values = {c["id"]: c["value"] for c in r.claims}
+    ghg = result["totals"]["ghg"]
+    assert values[ghg["claim"]] == pytest.approx(0.886)
+    assert values[ghg["upper"]] == pytest.approx(1.2588)
+    assert all(row["assumptions"][0].startswith("PET 등급") for row in result["rows"])
+    strict = circular.stream_effect(rec(reg), pet, 400, "incineration", False, "recycle")
+    assert all(strict[metric]["status"] == "hold" for metric in circular.METRICS)
+
+
+def test_reference_sums_range_with_single_value_without_double_counting_mass(reg):
+    r = rec(reg)
+    rows = [
+        {"stream": stream(id="pp", material="PP"), "kg": 100},
+        {"stream": stream(id="pet", material="PET"), "kg": 400},
+    ]
+    result = circular.reference_estimates(r, rows, [{"vendor": {"id": "vendor"}}] * 2)
+    values = {c["id"]: c["value"] for c in r.claims}
+    assert values[result["monthlyKg"]] == 500
+    ghg = result["totals"]["ghg"]
+    assert values[ghg["claim"]] == pytest.approx(0.1796 + 0.886)
+    assert values[ghg["upper"]] == pytest.approx(0.1796 + 1.2588)
