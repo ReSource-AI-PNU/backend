@@ -697,7 +697,7 @@ def test_negotiation_test_company_runs_three_price_rounds_without_cross_matching
     assert assignment["unitPrice"]["value"] == 155
 
 
-def test_live_find_explains_missing_candidates_and_hides_old_example_quotes(world):
+def test_live_find_runs_material_specific_pilot_without_approving_a_trade(world):
     client, state, _ = world
     user = signup(client, "example-comparison@example.com")
     company = new_org(client, user, "일반 배출 사업장", "emitter")["id"]
@@ -711,7 +711,7 @@ def test_live_find_explains_missing_candidates_and_hides_old_example_quotes(worl
             "wasteItem": "폐플라스틱",
             "material": "LDPE",
             "form": "필름",
-            "monthlyKg": 300,
+            "monthlyKg": 250,
             "origin": "PIR",
             "currentTreatment": {"method": "소각", "unitCostKrwPerKg": 250},
         },
@@ -723,6 +723,12 @@ def test_live_find_explains_missing_candidates_and_hides_old_example_quotes(worl
     view = answer_until_settled(client, session_id, headers)
 
     assert "vendorComparison" not in view
+    pilot = view["mvpMatches"][0]
+    assert pilot["streamId"] == stream
+    assert [quote["name"] for quote in pilot["quotes"]] == ["필름자원", "순환소재"]
+    assert [quote["finalPrice"] for quote in pilot["quotes"]] == [138, 155]
+    assert all(quote["requestedPrice"] > quote["firstPrice"] for quote in pilot["quotes"])
+    assert all(quote["conditional"] for quote in pilot["quotes"])
     assert not view["threads"] and not view["approvals"] and not view["documents"]
     assignment = view["result"]["assignments"][0]
     assert assignment["vendorOrgId"] is None
@@ -735,7 +741,21 @@ def test_live_find_explains_missing_candidates_and_hides_old_example_quotes(worl
     state.store.put_session(session)
     stored = client.get(f"/api/v3/sessions/{session_id}", headers=headers).json()
     assert "vendorComparison" not in stored
+    assert stored["mvpMatches"] == view["mvpMatches"]
     assert stored["result"]["assignments"][0]["vendorSearchNote"] == assignment["vendorSearchNote"]
     other = signup(client, "unrelated-comparison@example.com")
     other_org = new_org(client, other, "다른 회사", "emitter")["id"]
     assert error(client.get(f"/api/v3/sessions/{session_id}", headers=bff(other, other_org)), 404) == "SESSION_NOT_FOUND"
+
+
+def test_pilot_profiles_are_distinct_for_each_supported_material():
+    from app.v3.demo import mvp_match, negotiation_test
+
+    names = set()
+    for material in negotiation_test.MATERIALS:
+        vendors = mvp_match.eligible_vendors({"material": material, "monthlyKg": 300})
+        assert len(vendors) == 3
+        names.update(option[0] for option in vendors.values())
+    assert len(names) == 3 * len(negotiation_test.MATERIALS)
+    assert not mvp_match.eligible_vendors({"material": "LDPE", "monthlyKg": 99})
+    assert not mvp_match.eligible_vendors({"material": "LDPE", "monthlyKg": 300, "measure": {"contaminationPct": 6}})

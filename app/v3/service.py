@@ -55,7 +55,7 @@ from app.v3.agents.policy_rule import RulePolicy
 from app.v3.agents.pool import ClaimPool, is_private
 from app.v3.agents.vendor import VendorAgent
 from app.v3.complex_partners import plan as complex_partners_plan
-from app.v3.demo import negotiation_test
+from app.v3.demo import mvp_match, negotiation_test
 from app.v3.demo.seed import DEMO_ANSWERS, EMITTER, ORGS, seed_demo, share_evidence
 from app.v3.evidence import search
 from app.v3.evidence.model import KINDS, PUBLIC, Evidence
@@ -1539,8 +1539,28 @@ def _execute(app: App, session_id: str, run_id: str) -> None:
     except Exception as error:
         _run_failed(app, orchestrator, session_id, run_id, error)
         raise
-    # 아무것도 바꾸지 않고 끝났어도 마지막 상태를 남긴다(같은 값이면 남지 않는다)
-    orchestrator.feed.status(app.store.get_session(session_id))
+    finished = app.store.get_session(session_id)
+    work = finished["work"]
+    if (
+        app.auth_mode == "bff"
+        and not app.read_only
+        and negotiation_test.match_group(emitter) == "live"
+        and finished["status"] in ("idle", "awaiting_approval")
+        and work.get("result")
+        and "mvpMatches" not in work
+    ):
+        unassigned = {
+            row["streamId"]
+            for row in work["result"]["assignments"]
+            if not row.get("vendorOrgId") and row.get("route") != "reuse"
+        }
+        if unassigned:
+            try:
+                work["mvpMatches"] = mvp_match.match(app, emitter, unassigned)
+                finished = app.store.put_session(finished)
+            except Exception:
+                logger.exception("시범 업체 매칭 실패: %s", session_id)
+    orchestrator.feed.status(finished)
 
 
 def _run_failed(
@@ -2434,6 +2454,13 @@ def get_view(app: App, session_id: str, viewer: str) -> dict[str, Any]:
         and negotiation_test.match_group(me) == "live"
     )
     result = _result_view(session, viewer, owner, show_search_note=show_search_note)
+    pilot = []
+    if show_search_note and result:
+        unassigned = {
+            row["streamId"] for row in result["assignments"]
+            if not row.get("vendorOrgId") and row.get("route") != "reuse"
+        }
+        pilot = [item for item in work.get("mvpMatches", []) if item["streamId"] in unassigned]
     return {
         "session": {
             "id": session["id"],
@@ -2449,6 +2476,7 @@ def get_view(app: App, session_id: str, viewer: str) -> dict[str, Any]:
         "threads": [_thread_view(app, t, session, viewer) for t in threads],
         "graph": _graph(app, session, threads, streams, viewer),
         "result": _outside_view(app, session, result) if owner and result else result,
+        **({"mvpMatches": pilot} if pilot else {}),
         "questions": [_question_view(q) for q in questions],
         "questionBatch": _question_batch(questions) if owner else None,
         "unresolved": list(work.get("unresolved") or []) if owner else [],
