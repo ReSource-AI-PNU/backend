@@ -139,7 +139,10 @@ def test_contract_routes_are_read():
     assert ("GET", "/sessions/{}/adaptive") in routes
     assert ("POST", "/sessions/{}/scenarios/preview") in routes
     assert ("POST", "/sessions/{}/scenarios/apply") in routes
-    assert len(routes) == 44  # 조건 변경 알림·미리보기·재협상 적용 포함
+    assert ("POST", "/vendors/{}/onboarding/confirm") in routes
+    assert ("GET", "/vendors/{}/permit-catalog") in routes
+    assert ("DELETE", "/vendors/{}/mcp-keys/{}") in routes  # 업체 MCP 연결 키 3개
+    assert len(routes) == 52  # 업체 연결 8개와 조건 비교 3개 포함
 
 
 def test_devserver_routes_equal_the_contract():

@@ -28,17 +28,28 @@
         "한국 공식 계수가 아니다. 환경성적표지 평가계수(공공데이터포털 15120968)에 열분해 항목이 없어 쓴 네덜란드 파일럿 문헌값이다",
         "환경성적표지 소각·재활용 값처럼 크레딧을 빼기 전 값이지만 지역과 기초 데이터(ecoinvent 3.7.1, 네덜란드 전력)가 다르다",
         "독립 출처 JRC 2023(EUR 31423 EN) 0.85~1.36, BASF/Sphera 2020 약 1.16과 범위가 맞는다",
-        "열분해유를 연료로 파는 업체에는 맞지 않는다"
+        "열분해유를 연료로 파는 업체에는 맞지 않는다",
+        "원문은 세척·미세척 두 경우를 1156~1239 범위로만 적었다. 1.239는 범위의 위 끝이며 어느 경우인지는 원문에 없다",
+        "기반시설과 운송은 원문 경계에서 빠져 있다. 국내 환경성적표지 계수와 경계가 달라 처리 배출 비교에는 쓰지 않는다"
       ],
       "evidenceClass": "literature",
-      "verificationStatus": "not_rechecked",
-      "valueRange": null,
-      "publicationDate": null,
-      "dataYear": "2024-12",
-      "functionalUnit": null,
-      "systemBoundary": null,
-      "datasetVersion": "문헌값@2024-12",
-      "excludes": []
+      "verificationStatus": "original_checked",
+      "valueRange": {
+        "min": 1.156,
+        "max": 1.239
+      },
+      "publicationDate": "2024-12-31 (online); 2025-08 issue 43(8)",
+      "dataYear": "2020–2022",
+      "functionalUnit": "waste management of 1000 kg DKR-350",
+      "systemBoundary": "cradle-to-gate, gross excl. credits; infrastructure and transport excluded",
+      "datasetVersion": "ecoinvent 3.7.1 cut-off; IPCC 2013 GWP100a V1.03",
+      "excludes": [],
+      "verifiedOn": "2026-11-22",
+      "doi": "10.1177/0734242X241306605",
+      "table": "Results › Waste management perspective 본문, 인쇄 p.1226 (Figure 3 왼쪽; 표 아님)",
+      "originalUnit": "kg CO2 eq./1000 kg DKR-350 (credits excluded)",
+      "region": "EU",
+      "country": "NL"
     }
   }
 ]

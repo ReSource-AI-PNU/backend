@@ -123,6 +123,23 @@ def test_a_typed_permit_stays_candidate_but_cannot_be_confirmed():
     assert _approval(after, SAEGIL)["permitHold"] is True
 
 
+def test_a_catalog_permit_stays_candidate_but_cannot_be_confirmed():
+    app = _runner_world()
+    service.update_vendor(app, SAEGIL, {"permits": []}, SAEGIL)
+    profile = service.update_vendor(
+        app, SAEGIL, {"appendPermits": [{"code": "51-03-01", "materials": ["PP"]}]}, SAEGIL
+    )
+    assert profile["permits"][0]["entrySource"] == "manual"
+    assert profile["permits"][0]["evidence"][0].startswith("human:")
+    view = to_approval(app)
+    assert _row(view)["vendorOrgId"] == SAEGIL
+    assert _row(view)["permit"]["level"] == "registered"
+    approval = _approval(view, SAEGIL)
+    with pytest.raises(service.ServiceError) as error:
+        service.approve(app, view["session"]["id"], approval["threadId"], HANBIT)
+    assert error.value.code == "PERMIT_UNVERIFIED"
+
+
 def test_a_registry_name_collision_does_not_verify_typed_permit():
     """재현된 결함: 가상 업체의 상호가 공공 명부의 실제 상호와 같고 차고지가 없으면 met이 됐다."""
     reg = registry()

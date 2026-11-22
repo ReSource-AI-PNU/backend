@@ -234,7 +234,10 @@ cat >"$TMP/remote.sh" <<'REMOTE'
 set -euo pipefail
 cd /opt/rsai
 chmod 600 env/*.env
+# Caddyfile은 파일 하나를 바인드 마운트하므로 mv로 바꾸면 컨테이너가 예전 파일을 계속 본다. 바뀌었으면 caddy를 다시 만든다
+caddy_before="$(sha256sum Caddyfile 2>/dev/null | cut -d' ' -f1 || true)"
 mv upload/compose.yml upload/Caddyfile .
+caddy_after="$(sha256sum Caddyfile | cut -d' ' -f1)"
 mv upload/compose.env .env
 for repo in backend frontend; do
   rm -rf "src/$repo.new" && mkdir -p "src/$repo.new"
@@ -245,6 +248,9 @@ rm -f upload/*.tar.gz
 docker compose build --pull backend frontend
 docker compose run --rm -T migrate
 docker compose up -d --remove-orphans
+if [ "$caddy_before" != "$caddy_after" ]; then
+  docker compose up -d --no-deps --force-recreate caddy
+fi
 # 앱 VM의 Ollama는 2026-11-22에 없앴다(업체 측 모델은 H100). 남은 모델 볼륨(약 8GB)을 지운다
 docker volume rm rsai_ollama >/dev/null 2>&1 || true
 docker image prune -f >/dev/null

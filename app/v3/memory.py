@@ -17,20 +17,29 @@
 - 계약 검토(agents/reviewer.py)는 같은 두 회사 사이의 검수만 쓴다. 검토는 양쪽이 함께 보므로, 다른 업체와의
   검수 이력을 상대 업체에게 드러내지 않는다.
 - 회사가 끄면(org.memory.enabled = False) 계약 검토에 쓰지 않는다. 기록 자체는 지우지 않는다(업체 소유 기록도 있다).
+
+판정 반영(개인화, 2026-11-22): 배출 기업 담당자가 승인하면(org.memory.applied) 최적 배정이 회사별 보정(judge/personal.py)으로
+업체마다 예상 단가를 맞춰 고른다. 승인은 human 근거로 남고 그 값이 보정 강도다(코드에 상수를 두지 않는다: 승인 기록 없는
+가정값을 판정에 쓰지 않는 규칙). 회사 측 AI는 같은 업체와의 지난 검수 요약(숫자 없이)을 대화 맥락으로 받는다.
 """
 
 from __future__ import annotations
 
 from typing import Any
 
-from app.v3 import feedback
+from app.v3 import feedback, ids
 from app.v3.agents.questions import FIELDS as QUESTION_FIELDS
+from app.v3.evidence.model import Evidence
 from app.v3.intake import grade_model
+from app.v3.judge import personal
 from app.v3.store import NotFound
 from app.v3.untrusted import stream_label
 
 # 이 건수부터 판단(계약 검토)에 쓴다. 적은 표본으로 판단을 바꾸지 않는다(feedback.CALIBRATION_NOTE)
 MIN_RECORDS = 3
+# 판정 반영을 승인할 때 화면이 제안하는 보정 강도(계약 단가 쪽을 기록 몇 건 몫으로 믿는가). 담당자가 승인한 값만
+# 근거(human)가 되어 판정에 쓰인다. 기록이 이만큼 쌓이면 회사 기록과 계약 단가를 반반 믿는다
+PROPOSED_STRENGTH = 3
 _EPS = 1e-9
 
 
@@ -336,12 +345,201 @@ def org_memory(app: Any, org_id: str) -> dict[str, Any]:
         },
         "streams": per_stream,
         "deals": deals,
+        "calibration": _calibration(app, org, rows, names, streams),
     }
+
+
+def applied(org: dict[str, Any]) -> dict[str, Any] | None:
+    """판정 반영 승인(켜져 있을 때만). {evidence, strength, approvedOn}."""
+    memo = org.get("memory") or {}
+    found = memo.get("applied")
+    if not enabled(org) or not isinstance(found, dict) or not found.get("evidence"):
+        return None
+    return found
+
+
+def observations(
+    rows: list[dict[str, Any]], stream_ids: set[str] | None = None
+) -> list[dict[str, Any]]:
+    """검수 줄 → 보정 관측(judge/personal.py). 합의 단가와 실제 단가가 모두 있는 건만."""
+    out = []
+    for row in rows:
+        if stream_ids is not None and row["streamId"] not in stream_ids:
+            continue
+        agreed, actual = row.get("agreedPrice"), row.get("actualPrice")
+        if not agreed or not actual:
+            continue
+        rel = personal.relative(float(actual["value"]), float(agreed["value"]))
+        if rel is None:
+            continue
+        out.append(
+            {
+                "streamId": row["streamId"],
+                "vendorOrgId": row["vendorOrgId"],
+                "inspectionId": row["inspectionId"],
+                "rel": round(rel, 6),
+                "evidence": list(dict.fromkeys([*actual["evidence"], *agreed["evidence"]])),
+            }
+        )
+    return out
+
+
+def _calibration(app, org, rows, names, streams) -> dict[str, Any]:
+    """자료 화면에 보이는 보정 미리 보기. 승인했으면 그 강도로, 아니면 제안 강도로 계산한다(숫자는 검수 표에서 따라간다)."""
+    found = applied(org)
+    strength = float(found["strength"]) if found else float(PROPOSED_STRENGTH)
+    obs = observations(rows)
+    out = []
+    for sid in dict.fromkeys(o["streamId"] for o in obs):
+        if sid not in streams:
+            continue
+        vendors = []
+        for vendor in dict.fromkeys(o["vendorOrgId"] for o in obs if o["streamId"] == sid):
+            made = personal.estimate(obs, strength, sid, vendor)
+            if made is None:
+                continue
+            vendors.append(
+                {
+                    "vendorOrgId": vendor,
+                    "vendorName": names.get(vendor) or _name(app, vendor),
+                    "records": made["records"],
+                    "ratePct": round(made["rate"] * 100, 1),
+                }
+            )
+        base = personal.estimate(obs, strength, sid, "")
+        out.append(
+            {
+                "streamId": sid,
+                "name": stream_label(streams[sid]),
+                "records": base["streamRecords"] if base else 0,
+                # 아직 거래하지 않은 업체에 쓰는 비율(이 회사의 이 폐기물 기록만으로)
+                "streamRatePct": round(base["streamRate"] * 100, 1) if base else None,
+                "vendors": vendors,
+            }
+        )
+    return {
+        "applied": found,
+        "strength": strength,
+        "proposedStrength": PROPOSED_STRENGTH,
+        "streams": out,
+    }
+
+
+def judgment_history(
+    app: Any, emitter_id: str, stream_ids: list[str], session_id: str
+) -> dict[str, Any] | None:
+    """최적 배정 도구에 넘길 회사 기록(승인했을 때만). {approval, observations}."""
+    try:
+        org = app.store.get_org(emitter_id)
+    except NotFound:
+        return None
+    found = applied(org)
+    if found is None:
+        return None
+    rows = inspection_rows(app, emitter_id, exclude_session=session_id)
+    obs = observations(rows, set(stream_ids))
+    if not obs:
+        return None
+    return {"approval": found["evidence"], "observations": obs}
+
+
+def agent_history(
+    app: Any, emitter_id: str, vendor_id: str, stream_ids: list[str], session_id: str
+) -> list[dict[str, Any]] | None:
+    """회사 측 AI가 받는 같은 업체와의 지난 검수 요약. 숫자(단가)는 싣지 않는다: 메시지의 숫자는 근거가 있어야 하고,
+    이 요약은 말투와 물을 것을 정하는 데만 쓴다. 회사가 껐거나 기록이 없으면 None."""
+    pairs = pair_history(app, emitter_id, vendor_id, stream_ids, session_id)
+    if not pairs:
+        return None
+    rows = inspection_rows(
+        app, emitter_id, vendor_id=vendor_id, stream_ids=set(stream_ids), exclude_session=session_id
+    )
+    out = []
+    for sid, summary in pairs.items():
+        if summary["status"] == "none":
+            continue
+        out.append(
+            {
+                "streamId": sid,
+                "status": summary["status"],
+                "records": summary["count"],
+                "gradeLower": summary["gradeLower"],
+                "priceLower": summary["priceLower"],
+                "inspections": [
+                    {
+                        "inspectedOn": r["inspectedOn"],
+                        # 등급은 정해진 값만 싣는다(업체가 적은 기준표 글이 AI 맥락에 들어가지 않게)
+                        "agreedGrade": r["agreedGrade"]
+                        if r["agreedGrade"] in grade_model.GRADES
+                        else None,
+                        "actualGrade": r["actualGrade"]
+                        if r["actualGrade"] in grade_model.GRADES
+                        else None,
+                        "grade": r["grade"],
+                        "price": r["price"],
+                    }
+                    for r in rows
+                    if r["streamId"] == sid
+                ],
+            }
+        )
+    return out or None
 
 
 def set_enabled(app: Any, org_id: str, value: bool) -> dict[str, Any]:
     """기록 사용 켜기·끄기. 조직 기록에 memory.enabled로 남긴다. 권한은 service가 확인한다."""
+    return update(app, org_id, {"enabled": value})
+
+
+def update(app: Any, org_id: str, body: dict[str, Any]) -> dict[str, Any]:
+    """PUT /orgs/{orgId}/memory. enabled(계약 검토·AI 맥락에 쓰기)와 applyToJudgment(판정 반영 승인)를 받는다.
+
+    판정 반영을 켜면 담당자 승인을 human 근거로 남기고(값이 보정 강도) 그 ID를 org.memory.applied에 둔다. 끄면
+    applied만 지운다(지난 승인 근거는 그대로 남는다). 기록 사용을 끄면 판정 반영도 함께 멈춘다. 권한은 service가 확인한다.
+    """
     org = dict(app.store.get_org(org_id))
-    org["memory"] = {**(org.get("memory") or {}), "enabled": bool(value)}
+    memo = dict(org.get("memory") or {})
+    if "enabled" in body:
+        memo["enabled"] = bool(body["enabled"])
+        if not memo["enabled"]:
+            memo["applied"] = None
+    if "applyToJudgment" in body:
+        if not body["applyToJudgment"]:
+            memo["applied"] = None
+        elif memo.get("enabled") is False:
+            raise ValueError("회사 기록 사용을 먼저 켜 주세요.")
+        elif not (memo.get("applied") or {}).get("evidence"):
+            now = feedback._now(app)
+            evidence_id = ids.human_id(
+                org_id, f"회사기록-판정반영-승인-{ids.digest({'org': org_id, 'at': now})[:12]}"
+            )
+            app.registry.put(
+                Evidence(
+                    id=evidence_id,
+                    kind="human",
+                    label="회사 기록 판정 반영 승인",
+                    value=float(PROPOSED_STRENGTH),
+                    unit="건",
+                    excerpt=(
+                        "배출 기업 담당자가 지난 검수 기록으로 업체별 예상 단가를 맞추는 보정을 판정에 반영하도록 "
+                        f"승인했습니다. 보정 강도는 계약 단가를 검수 기록 {PROPOSED_STRENGTH}건 몫으로 믿는다는 뜻입니다."
+                    ),
+                    source="배출 기업 담당자 승인(자료 화면 회사 기록)",
+                    as_of=app.today,
+                    access=(org_id,),
+                    meta={
+                        "ownerOrgId": org_id,
+                        "memoryApproval": True,
+                        "strength": PROPOSED_STRENGTH,
+                        "approvedAt": now,
+                    },
+                )
+            )
+            memo["applied"] = {
+                "evidence": evidence_id,
+                "strength": PROPOSED_STRENGTH,
+                "approvedOn": app.today,
+            }
+    org["memory"] = memo
     app.store.put_org(org)
     return org_memory(app, org_id)

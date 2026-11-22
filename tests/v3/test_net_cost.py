@@ -91,21 +91,25 @@ def test_unknown_transport_fee_is_left_out_and_flagged():
     assert check["status"] == "conditional" and "확인 필요" in check["text"]
 
 
-def test_pretreatment_labor_needs_the_companys_own_rate_and_never_uses_the_minimum_wage():
+def test_pretreatment_labor_uses_the_minimum_wage_only_as_a_floor():
     reg = registry()
-    # 작업 시간만 있고 시간당 인건비가 없으면 최저임금을 실제 작업비로 대입하지 않는다(잠정 금액)
+    # 작업 시간만 있고 시간당 인건비가 없으면 고시된 최저 시급으로 하한을 넣고 잠정 금액으로 둔다
     sorted_by_hand = stream(pretreatHoursPerMonth=6)
     done = run(reg, "optimize_assignment", streams=[sorted_by_hand], vendors=[vendor()])
     item = done["output"]["assignments"][0]
-    assert item["labor"] is None and item["costPending"] is True
-    assert claim(done, item["monthlyAfter"])["value"] == 320 * 600
+    floor = 6 * 10320
+    assert claim(done, item["labor"])["value"] == floor and item["costPending"] is True
+    assert claim(done, item["monthlyAfter"])["value"] == 320 * 600 - floor
     after = claim(done, item["monthlyAfter"])
     assert "잠정" in reg.get(after["evidence"][0], EMITTER).label
-    assert all("ref:최저임금" not in str(c["evidence"]) for c in done["claims"])
+    used = [reg.get(e).meta.get("originalId", e) for e in claim(done, item["labor"])["evidence"]]
+    assert "ref:최저임금:시간급@2026" in used
     cost = run(reg, "cost_carbon", stream=sorted_by_hand, vendor=vendor())
-    assert all(c["id"] != "monthlyLabor" for c in cost["claims"])
+    assert claim(cost, "monthlyLabor")["value"] == floor
     check = next(c for c in cost["checks"] if c["key"] == "labor_unknown")
-    assert check["status"] == "conditional" and "최저임금" in check["text"]
+    assert (
+        check["status"] == "conditional" and "최저임금" in check["text"] and "하한" in check["text"]
+    )
     assert cost["output"]["costPending"] is True
     # 회사가 시간당 인건비를 넣으면 그 값으로 뺀다
     own = stream(pretreatHoursPerMonth=6, laborCostKrwPerHour=15000)
@@ -162,7 +166,7 @@ def test_vendor_monthly_capacity_is_a_constraint():
 
 
 def test_carbon_is_held_without_original_checked_factors_or_an_explicit_process():
-    """시드 배출계수(환경성적표지)는 원문 경계를 확인하지 못해(metadata_only) 탄소를 보류한다."""
+    """시드 배출계수(환경성적표지)는 원문 경계를 확인하지 못해(값은 원본과 같지만 경계 미공개, value_checked) 탄소를 보류한다."""
     reg = registry()
     held = run(reg, "cost_carbon", stream=stream(), vendor=vendor(process="재활용"))
     assert held["output"]["carbon"] is None

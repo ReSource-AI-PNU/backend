@@ -199,6 +199,17 @@ class _Company(_Base):
         asks = self._asks(stream_ids)
         if asks:
             lines += ["조건을 정할 때 다음도 함께 알려 주세요.", *asks]
+        # 회사 기록: 이 업체와의 지난 검수가 합의보다 낮게 나온 적이 많으면 검수 기준을 조건에 적어 달라고 한다
+        below = [
+            self.name(h["streamId"])
+            for h in self.b.get("pastInspections") or []
+            if h.get("status") == "below" and h.get("streamId") in stream_ids
+        ]
+        if below:
+            lines.append(
+                f"지난 반입 검수에서 {', '.join(below)}의 등급이나 단가가 합의보다 낮게 나온 적이 여러 번 있었습니다. "
+                "이번에는 반입 검수에서 등급과 단가를 어떻게 정하는지 조건에 함께 적어 주세요."
+            )
         return {
             "type": "inquiry",
             "stage": 4,

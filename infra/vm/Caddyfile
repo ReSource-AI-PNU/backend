@@ -1,5 +1,11 @@
 # SITE_ADDRESS(VM의 공용 이름)로 Let's Encrypt 인증서를 받아 HTTPS로 연다. 80은 443으로 넘긴다.
 {$SITE_ADDRESS} {
 	encode zstd gzip
-	reverse_proxy frontend:3000
+	# 업체가 자기 AI 에이전트를 연결하는 MCP 입구는 BFF를 거치지 않고 백엔드로 바로 간다(업체 연결 키가 조직을 정한다)
+	handle /mcp/* {
+		reverse_proxy backend:8000
+	}
+	handle {
+		reverse_proxy frontend:3000
+	}
 }

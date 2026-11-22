@@ -2510,7 +2510,7 @@
     "unit": "t/t",
     "excerpt": "Our life cycle inventory (LCI) calculations show that every tonne of scrap used for steel production avoids the emission of 1.5 tonnes of CO2 and the consumption of 1.4 tonnes of iron ore, 740 kg of coal, and 120 kg of limestone.",
     "source": "worldsteel Association · About steel · Raw materials (Scrap)",
-    "asOf": "2026-11-19",
+    "asOf": "2021-05-31",
     "validUntil": null,
     "access": [
       "*"
@@ -2527,10 +2527,10 @@
       "resource": "철광석",
       "route": "recycle",
       "baseline": null,
-      "region": "세계",
-      "country": "세계 평균",
-      "year": null,
-      "table": "Raw materials 페이지 Scrap 절(표 번호 없음)",
+      "region": "세계철강협회",
+      "country": null,
+      "year": 2021,
+      "table": "Raw materials 페이지 Scrap 절(표 없음). 같은 문장이 Fact sheet 'Scrap use in the steel industry'(2021-05) 1쪽에 있고 주3이 worldsteel LCI database",
       "originalUnit": "1.4 tonnes of iron ore",
       "appliesTo": {
         "material": [
@@ -2543,19 +2543,20 @@
       ],
       "caveats": [
         "소각 대비 회피계수가 아니라 철강 생산 원료 대체의 참고값이다",
-        "기준 연도가 페이지에 없어 확인한 날을 기준일로 적었다",
+        "원문에 지역·조사 연도·LCI 판과 계산 경계가 적혀 있지 않다. 2021-05 자료집의 문장을 기준으로 삼았다",
         "알루미늄·구리 등 다른 금속에는 쓰지 않는다"
       ],
       "evidenceClass": "literature",
-      "verificationStatus": "not_rechecked",
-      "verifiedOn": null,
+      "verificationStatus": "original_checked",
+      "verifiedOn": "2026-11-22",
       "valueRange": null,
-      "publicationDate": null,
+      "publicationDate": "2021-05 (fact sheet); web page modified 2026-06-15",
       "dataYear": null,
-      "functionalUnit": null,
+      "functionalUnit": "1 t scrap used for steel production",
       "systemBoundary": null,
-      "datasetVersion": "worldsteel@2026-11",
-      "excludes": []
+      "datasetVersion": "worldsteel LCI database (판 미표기)",
+      "excludes": [],
+      "factSheet": "https://worldsteel.org/wp-content/uploads/Fact-sheet-on-scrap_2021.pdf"
     }
   },
   {
@@ -2566,7 +2567,7 @@
     "unit": "kg/t",
     "excerpt": "Our life cycle inventory (LCI) calculations show that every tonne of scrap used for steel production avoids the emission of 1.5 tonnes of CO2 and the consumption of 1.4 tonnes of iron ore, 740 kg of coal, and 120 kg of limestone.",
     "source": "worldsteel Association · About steel · Raw materials (Scrap)",
-    "asOf": "2026-11-19",
+    "asOf": "2021-05-31",
     "validUntil": null,
     "access": [
       "*"
@@ -2583,10 +2584,10 @@
       "resource": "석탄",
       "route": "recycle",
       "baseline": null,
-      "region": "세계",
-      "country": "세계 평균",
-      "year": null,
-      "table": "Raw materials 페이지 Scrap 절(표 번호 없음)",
+      "region": "세계철강협회",
+      "country": null,
+      "year": 2021,
+      "table": "Raw materials 페이지 Scrap 절(표 없음). 같은 문장이 Fact sheet 'Scrap use in the steel industry'(2021-05) 1쪽에 있고 주3이 worldsteel LCI database",
       "originalUnit": "740 kg of coal",
       "appliesTo": {
         "material": [
@@ -2599,19 +2600,20 @@
       ],
       "caveats": [
         "소각 대비 회피계수가 아니라 철강 생산 원료 대체의 참고값이다",
-        "기준 연도가 페이지에 없어 확인한 날을 기준일로 적었다",
+        "원문에 지역·조사 연도·LCI 판과 계산 경계가 적혀 있지 않다. 2021-05 자료집의 문장을 기준으로 삼았다",
         "알루미늄·구리 등 다른 금속에는 쓰지 않는다"
       ],
       "evidenceClass": "literature",
-      "verificationStatus": "not_rechecked",
-      "verifiedOn": null,
+      "verificationStatus": "original_checked",
+      "verifiedOn": "2026-11-22",
       "valueRange": null,
-      "publicationDate": null,
+      "publicationDate": "2021-05 (fact sheet); web page modified 2026-06-15",
       "dataYear": null,
-      "functionalUnit": null,
+      "functionalUnit": "1 t scrap used for steel production",
       "systemBoundary": null,
-      "datasetVersion": "worldsteel@2026-11",
-      "excludes": []
+      "datasetVersion": "worldsteel LCI database (판 미표기)",
+      "excludes": [],
+      "factSheet": "https://worldsteel.org/wp-content/uploads/Fact-sheet-on-scrap_2021.pdf"
     }
   },
   {
@@ -2622,7 +2624,7 @@
     "unit": "kg/t",
     "excerpt": "Our life cycle inventory (LCI) calculations show that every tonne of scrap used for steel production avoids the emission of 1.5 tonnes of CO2 and the consumption of 1.4 tonnes of iron ore, 740 kg of coal, and 120 kg of limestone.",
     "source": "worldsteel Association · About steel · Raw materials (Scrap)",
-    "asOf": "2026-11-19",
+    "asOf": "2021-05-31",
     "validUntil": null,
     "access": [
       "*"
@@ -2639,10 +2641,10 @@
       "resource": "석회석",
       "route": "recycle",
       "baseline": null,
-      "region": "세계",
-      "country": "세계 평균",
-      "year": null,
-      "table": "Raw materials 페이지 Scrap 절(표 번호 없음)",
+      "region": "세계철강협회",
+      "country": null,
+      "year": 2021,
+      "table": "Raw materials 페이지 Scrap 절(표 없음). 같은 문장이 Fact sheet 'Scrap use in the steel industry'(2021-05) 1쪽에 있고 주3이 worldsteel LCI database",
       "originalUnit": "120 kg of limestone",
       "appliesTo": {
         "material": [
@@ -2655,19 +2657,20 @@
       ],
       "caveats": [
         "소각 대비 회피계수가 아니라 철강 생산 원료 대체의 참고값이다",
-        "기준 연도가 페이지에 없어 확인한 날을 기준일로 적었다",
+        "원문에 지역·조사 연도·LCI 판과 계산 경계가 적혀 있지 않다. 2021-05 자료집의 문장을 기준으로 삼았다",
         "알루미늄·구리 등 다른 금속에는 쓰지 않는다"
       ],
       "evidenceClass": "literature",
-      "verificationStatus": "not_rechecked",
-      "verifiedOn": null,
+      "verificationStatus": "original_checked",
+      "verifiedOn": "2026-11-22",
       "valueRange": null,
-      "publicationDate": null,
+      "publicationDate": "2021-05 (fact sheet); web page modified 2026-06-15",
       "dataYear": null,
-      "functionalUnit": null,
+      "functionalUnit": "1 t scrap used for steel production",
       "systemBoundary": null,
-      "datasetVersion": "worldsteel@2026-11",
-      "excludes": []
+      "datasetVersion": "worldsteel LCI database (판 미표기)",
+      "excludes": [],
+      "factSheet": "https://worldsteel.org/wp-content/uploads/Fact-sheet-on-scrap_2021.pdf"
     }
   }
 ]

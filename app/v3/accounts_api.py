@@ -87,6 +87,12 @@ async def create_org(request: Request):
     return created(await call(accounts.create_org, user_id, body))
 
 
+@router.post("/orgs/negotiation-test")
+@guarded
+async def create_negotiation_test(request: Request):
+    return created(await call(accounts.create_negotiation_test, _user_id(request)))
+
+
 @router.patch("/orgs/{org_id}")
 @guarded
 async def update_org(org_id: str, request: Request):

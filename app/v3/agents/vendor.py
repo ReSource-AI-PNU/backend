@@ -587,6 +587,8 @@ class VendorAgent:
     # ── 도구 입력: ID → 레코드 ─────────────────────────────────────────
     def _other_stops(self, vendor_org: str, emitter_org: str) -> list[dict[str, Any]]:
         """이 업체가 이미 맡은 다른 배출 기업의 수거 지점. 노선 계산에만 쓰고 밖으로 내지 않는다."""
+        if self.store.get_org(emitter_org).get("simulation"):
+            return []
         stops = []
         for other in self.store.list_threads(org_id=vendor_org):
             if (
@@ -989,6 +991,11 @@ class VendorAgent:
             offered = claims.get(item["claimId"]) if item else None
             if asked is None or offered is None:
                 continue
+            ceiling = guard.get("ceilingPriceKrwPerKg")
+            premium = profile.get("simulationCounterPremium")
+            first = _price(offered)
+            if profile.get("synthetic") is True and _is_number(premium) and first is not None:
+                ceiling = first + float(premium)
             result = negotiate.reply_price(
                 self.registry,
                 org_id=vendor_org,
@@ -996,7 +1003,7 @@ class VendorAgent:
                 stream_id=sid,
                 asked=asked,
                 offered=offered.to_dict(),
-                ceiling=guard.get("ceilingPriceKrwPerKg"),
+                ceiling=ceiling,
                 emitter_org=thread.emitter_org,
             )
             found = next((c for c in result["claims"] if c["id"] == "replyPrice"), None)

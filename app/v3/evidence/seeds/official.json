@@ -12,7 +12,7 @@
     "access": [
       "*"
     ],
-    "version": 1,
+    "version": 2,
     "meta": {
       "series": "환경성적표지",
       "item": "혼합폐플라스틱-소각",
@@ -29,17 +29,18 @@
         "파일 이름의 날짜(2024-09-06)를 기준일로 적었다"
       ],
       "evidenceClass": "official",
-      "verificationStatus": "metadata_only",
-      "verifiedOn": "2026-11-21",
+      "verificationStatus": "value_checked",
+      "verifiedOn": "2026-11-22",
       "valueRange": null,
       "dataYear": "2021 per dataset description; file date 2024-09-06 is not inventory year",
       "systemBoundary": null,
       "functionalUnit": "kgCO2e/kg",
       "country": "KR",
-      "holdReason": "공공데이터 설명은 확인했으나 원본 CSV 및 에너지 회수·운송·적재·빈차 포함 경계 미확인",
+      "holdReason": "값은 원본 엑셀과 일치하지만 계산 경계가 공개되어 있지 않다. KEITI 공고 제2021-126호와 평가계수 안내에는 '폐기물 1kg 처리 등 기준단위당 환경영향'이라는 설명뿐이고, 에너지 회수 크레딧·수거 운송·적재율·빈 차 회송 포함 여부가 없다. 2017년 KEITI 탄소 배출계수 표와 비교하면 소각(2.35→3.41)·매립(0.0798→0.0132)·트럭(0.249→0.192)은 다시 계산됐지만 재활용(1.86E-02)은 그대로여서, 재활용과 소각의 차이를 같은 기준의 비교로 볼 근거가 없다(2026-11-22 조사)",
       "publicationDate": null,
       "datasetVersion": "환경성적표지@2024-09",
-      "excludes": []
+      "excludes": [],
+      "verifiedAgainst": "한국환경산업기술원 환경성적표지 평가계수 원본 엑셀(제정 2021-08-02, api.ecosq.or.kr 내려받기)과 값 일치"
     }
   },
   {
@@ -55,7 +56,7 @@
     "access": [
       "*"
     ],
-    "version": 1,
+    "version": 2,
     "meta": {
       "series": "환경성적표지",
       "item": "혼합폐플라스틱-재활용",
@@ -72,17 +73,18 @@
         "파일 이름의 날짜(2024-09-06)를 기준일로 적었다"
       ],
       "evidenceClass": "official",
-      "verificationStatus": "metadata_only",
-      "verifiedOn": "2026-11-21",
+      "verificationStatus": "value_checked",
+      "verifiedOn": "2026-11-22",
       "valueRange": null,
       "dataYear": "2021 per dataset description; file date 2024-09-06 is not inventory year",
       "systemBoundary": null,
       "functionalUnit": "kgCO2e/kg",
       "country": "KR",
-      "holdReason": "공공데이터 설명은 확인했으나 원본 CSV 및 에너지 회수·운송·적재·빈차 포함 경계 미확인",
+      "holdReason": "값은 원본 엑셀과 일치하지만 계산 경계가 공개되어 있지 않다. KEITI 공고 제2021-126호와 평가계수 안내에는 '폐기물 1kg 처리 등 기준단위당 환경영향'이라는 설명뿐이고, 에너지 회수 크레딧·수거 운송·적재율·빈 차 회송 포함 여부가 없다. 2017년 KEITI 탄소 배출계수 표와 비교하면 소각(2.35→3.41)·매립(0.0798→0.0132)·트럭(0.249→0.192)은 다시 계산됐지만 재활용(1.86E-02)은 그대로여서, 재활용과 소각의 차이를 같은 기준의 비교로 볼 근거가 없다(2026-11-22 조사)",
       "publicationDate": null,
       "datasetVersion": "환경성적표지@2024-09",
-      "excludes": []
+      "excludes": [],
+      "verifiedAgainst": "한국환경산업기술원 환경성적표지 평가계수 원본 엑셀(제정 2021-08-02, api.ecosq.or.kr 내려받기)과 값 일치"
     }
   },
   {
@@ -98,7 +100,7 @@
     "access": [
       "*"
     ],
-    "version": 1,
+    "version": 2,
     "meta": {
       "series": "환경성적표지",
       "item": "트럭-운송",
@@ -115,17 +117,18 @@
         "연료 생산부터 연소까지를 담은 전 과정 값이라 배출권 산정용 연료 연소 계수(경유 2.582 kgCO2e/L)와 다르다"
       ],
       "evidenceClass": "official",
-      "verificationStatus": "metadata_only",
-      "verifiedOn": "2026-11-21",
+      "verificationStatus": "value_checked",
+      "verifiedOn": "2026-11-22",
       "valueRange": null,
       "dataYear": "2021 per dataset description; file date 2024-09-06 is not inventory year",
       "systemBoundary": null,
       "functionalUnit": "kgCO2e/tkm",
       "country": "KR",
-      "holdReason": "공공데이터 설명은 확인했으나 원본 CSV 및 에너지 회수·운송·적재·빈차 포함 경계 미확인",
+      "holdReason": "값은 원본 엑셀과 일치하지만 계산 경계가 공개되어 있지 않다. KEITI 공고 제2021-126호와 평가계수 안내에는 '폐기물 1kg 처리 등 기준단위당 환경영향'이라는 설명뿐이고, 에너지 회수 크레딧·수거 운송·적재율·빈 차 회송 포함 여부가 없다. 2017년 KEITI 탄소 배출계수 표와 비교하면 소각(2.35→3.41)·매립(0.0798→0.0132)·트럭(0.249→0.192)은 다시 계산됐지만 재활용(1.86E-02)은 그대로여서, 재활용과 소각의 차이를 같은 기준의 비교로 볼 근거가 없다(2026-11-22 조사)",
       "publicationDate": null,
       "datasetVersion": "환경성적표지@2024-09",
-      "excludes": []
+      "excludes": [],
+      "verifiedAgainst": "한국환경산업기술원 환경성적표지 평가계수 원본 엑셀(제정 2021-08-02, api.ecosq.or.kr 내려받기)과 값 일치"
     }
   },
   {
@@ -141,7 +144,7 @@
     "access": [
       "*"
     ],
-    "version": 1,
+    "version": 2,
     "meta": {
       "series": "환경성적표지",
       "item": "혼합폐플라스틱-매립",
@@ -158,17 +161,18 @@
         "파일 이름의 날짜(2024-09-06)를 기준일로 적었다"
       ],
       "evidenceClass": "official",
-      "verificationStatus": "metadata_only",
-      "verifiedOn": "2026-11-21",
+      "verificationStatus": "value_checked",
+      "verifiedOn": "2026-11-22",
       "valueRange": null,
       "dataYear": "2021 per dataset description; file date 2024-09-06 is not inventory year",
       "systemBoundary": null,
       "functionalUnit": "kgCO2e/kg",
       "country": "KR",
-      "holdReason": "공공데이터 설명은 확인했으나 원본 CSV 및 에너지 회수·운송·적재·빈차 포함 경계 미확인",
+      "holdReason": "값은 원본 엑셀과 일치하지만 계산 경계가 공개되어 있지 않다. KEITI 공고 제2021-126호와 평가계수 안내에는 '폐기물 1kg 처리 등 기준단위당 환경영향'이라는 설명뿐이고, 에너지 회수 크레딧·수거 운송·적재율·빈 차 회송 포함 여부가 없다. 2017년 KEITI 탄소 배출계수 표와 비교하면 소각(2.35→3.41)·매립(0.0798→0.0132)·트럭(0.249→0.192)은 다시 계산됐지만 재활용(1.86E-02)은 그대로여서, 재활용과 소각의 차이를 같은 기준의 비교로 볼 근거가 없다(2026-11-22 조사)",
       "publicationDate": null,
       "datasetVersion": "환경성적표지@2024-09",
-      "excludes": []
+      "excludes": [],
+      "verifiedAgainst": "한국환경산업기술원 환경성적표지 평가계수 원본 엑셀(제정 2021-08-02, api.ecosq.or.kr 내려받기)과 값 일치"
     }
   },
   {
@@ -177,37 +181,44 @@
     "label": "2026년 적용 최저임금 시간급",
     "value": 10320.0,
     "unit": "원/시간",
-    "excerpt": "2026년 1월 1일부터 2026년 12월 31일까지 적용되는 최저임금액: 모든 산업 시간급 10,320원 (월 환산액 2,156,880원, 월 209시간 기준)",
-    "source": "고용노동부 고시 제2025-47호 · 2026년 적용 최저임금 고시 (2025-08-05)",
+    "excerpt": "◈ 월 환산액 2,156,880원: 주 소정근로 40시간을 근무할 경우, 월 환산 기준시간 수 209시간(주당 유급주휴 8시간 포함) 기준",
+    "source": "고용노동부고시 제2025-47호 · 2026년 적용 최저임금 고시 (2025-08-05)",
     "asOf": "2026-01-01",
     "validUntil": "2026-12-31",
     "access": [
       "*"
     ],
-    "version": 1,
+    "version": 2,
     "meta": {
       "series": "최저임금",
       "item": "시간급",
       "period": "2026",
-      "url": "https://www.moel.go.kr/news/enews/report/enewsView.do?news_seq=18144",
-      "retrievedAt": "2026-11-17T16:40:00.000Z",
+      "url": "https://www.law.go.kr/LSW/admRulInfoR.do?admRulSeq=2100000262710",
+      "retrievedAt": "2026-11-22T04:30:00Z",
       "conditions": [
         "시간급",
-        "모든 산업"
+        "사업의 종류별 구분 없이 모든 사업장에 동일하게 적용",
+        "적용 기간 2026. 1. 1. ~ 2026. 12. 31."
       ],
       "caveats": [
-        "전처리 작업의 실제 인건비가 아니라 법정 최저 시간급이다. 회사의 실제 시간당 인건비를 넣으면 그 값을 쓴다"
+        "법정 최저 시간급이다. 회사의 실제 시간당 인건비(4대 보험·퇴직급여 포함)는 이보다 크다",
+        "회사가 시간당 인건비를 넣지 않았을 때 전처리 인건비의 하한으로만 쓴다"
       ],
       "evidenceClass": "official",
-      "verificationStatus": "metadata_only",
-      "verifiedOn": "2026-11-21",
+      "verificationStatus": "original_checked",
+      "verifiedOn": "2026-11-22",
       "valueRange": null,
-      "publicationDate": null,
+      "publicationDate": "2025-08-05",
       "dataYear": "2026",
-      "functionalUnit": null,
+      "functionalUnit": "1시간(시간급)",
       "systemBoundary": null,
-      "datasetVersion": "최저임금@2026",
-      "excludes": []
+      "datasetVersion": "고용노동부고시 제2025-47호",
+      "excludes": [],
+      "pdf": "https://www.law.go.kr/LSW/flDownload.do?flSeq=155278071",
+      "pressRelease": "https://www.moel.go.kr/news/enews/report/enewsView.do?news_seq=18144",
+      "table": "고시 본문 1. 최저임금액 (1쪽): 모든 산업 10,320원",
+      "originalUnit": "원(시간급)",
+      "country": "KR"
     }
   }
 ]

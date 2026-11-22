@@ -25,10 +25,11 @@ import secrets
 from datetime import timedelta
 from typing import Any
 
-from app.v3 import service
+from app.v3 import ids, service
 from app.v3.a2a.policy import evidence_owner
 from app.v3.account_store import EmailTaken, iso, parse_iso
 from app.v3.agents.orchestrator import Orchestrator
+from app.v3.demo import negotiation_test
 from app.v3.demo.seed import ORGS as SEED_ORGS
 from app.v3.evidence.model import PUBLIC
 from app.v3.service import App, ServiceError
@@ -174,6 +175,7 @@ def _membership_view(app: App, membership: dict[str, Any]) -> dict[str, Any] | N
         "orgName": org.get("name"),
         "kind": org.get("role"),
         "memberRole": membership["memberRole"],
+        **({"simulation": True} if org.get("simulation") else {}),
     }
 
 
@@ -301,6 +303,48 @@ def create_org(app: App, user_id: str, body: dict[str, Any]) -> dict[str, Any]:
         }
     )
     return {**org_view(org), "memberRole": "owner"}
+
+
+def create_negotiation_test(app: App, user_id: str) -> dict[str, Any]:
+    """Open the current user's test workspace, creating it on first use."""
+    _user(app, user_id)
+    stem = f"org_negotiation_{ids.digest(user_id)}"
+    suffix = 0
+    while True:
+        org_id = stem if suffix == 0 else f"{stem}_{suffix}"
+        try:
+            org = app.store.get_org(org_id)
+        except NotFound:
+            org = {
+                "id": org_id,
+                "name": negotiation_test.COMPANY_NAME,
+                "role": "emitter",
+                "region": negotiation_test.REGION,
+                "location": negotiation_test.LOCATION,
+                "simulation": True,
+                "demo": False,
+                "synthetic": True,
+                "createdAt": iso(app.accounts.now()),
+            }
+            app.store.put_org(org)
+            break
+        if not org.get("deleted"):
+            if org.get("simulation") is not True or org.get("role") != "emitter":
+                raise ServiceError("ORG_EXISTS", "테스트 회사 ID가 충돌했습니다.", 409)
+            break
+        suffix += 1
+
+    negotiation_test.ensure_vendors(app.store, app.registry, app.today)
+    negotiation_test.request_policy(app.registry, org_id, app.today)
+    app.accounts.add_membership(
+        {
+            "userId": user_id,
+            "orgId": org_id,
+            "memberRole": "owner",
+            "createdAt": org["createdAt"],
+        }
+    )
+    return org_view(org)
 
 
 def list_members(app: App, user_id: str, org_id: str) -> list[dict[str, Any]]:

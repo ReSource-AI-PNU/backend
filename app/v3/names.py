@@ -73,6 +73,7 @@ ROLES = tuple(LABELS)
 
 # claim 키(끝부분, 대소문자 무시) -> (role, 이름). 이름이 None이면 LABELS[role]을 쓴다.
 _KEYS: dict[str, tuple[str, str | None]] = {
+    "expectedUnitPrice": ("unitPrice", "회사 기록 반영 예상 단가"),
     "unitPrice": ("unitPrice", None),
     "currentUnitCost": ("currentUnitCost", None),
     "currentUnitPrice": ("currentUnitPrice", None),

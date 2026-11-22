@@ -158,7 +158,7 @@ def film_vendor():
     )
 
 
-# 처리 배출계수 시드(환경성적표지)는 원문 경계를 확인하지 못해(metadata_only) 새 계산에 쓰지 않는다. 계산식
+# 처리 배출계수 시드(환경성적표지)는 원문 경계를 확인하지 못해(값은 원본과 같지만 경계 미공개, value_checked) 새 계산에 쓰지 않는다. 계산식
 # 자체를 보는 시험만 아래 두 도우미로 "원문 확인 모의" 시험 전용(testOnly) 계수를 쓴다(evidence_fixtures와 같은 방식)
 TEST_FACTOR_META = {
     "verificationStatus": "original_checked",

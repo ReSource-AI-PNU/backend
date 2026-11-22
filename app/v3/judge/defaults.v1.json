@@ -11,6 +11,7 @@
   "missing": [],
   "refs": {
     "kau.price": [
+      "ref:KAU:KAU26-종가@2026-11-20",
       "ref:KAU:KAU26-종가@2026-11-16"
     ],
     "reference.price.PP.압축": [

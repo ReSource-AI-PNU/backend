@@ -192,8 +192,9 @@ def test_result_sheet_assigns_every_stream(demo):
     assert value(purge["monthlyNow"]) == -250 * 250 and purge["currentAssumed"] is False
     assert all(a["currentAssumed"] is False for a in result["assignments"])
     assert result["assumptions"] == [] and result["sensitivity"] == []
-    # 참고 시세는 원문을 확인하지 못해 보이지 않는다(손익 계산에는 원래 쓰지 않았다)
-    assert result["referencePrices"] == []
+    # 참고 시세는 원문(가격조사 월별 책자)과 대조해 보인다. 손익 계산에는 쓰지 않는다
+    assert {p["material"] for p in result["referencePrices"]} == {"PP"}
+    assert all(p["key"].startswith("reference.price.PP.") for p in result["referencePrices"])
 
     # 결과 한 장의 모든 claim이 검증기를 통과한다
     claims = []

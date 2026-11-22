@@ -250,7 +250,7 @@ def test_recovery_evidence_access_and_range_are_enforced_by_service():
     assert caught.value.status == 404
 
 
-def test_unverified_domestic_and_worldsteel_factors_are_not_used():
+def test_unverified_domestic_factors_are_not_used_and_checked_worldsteel_is():
     reg = circular_registry()
     rec = recorder(reg)
     assert (
@@ -259,7 +259,9 @@ def test_unverified_domestic_and_worldsteel_factors_are_not_used():
         )["claim"]
         is None
     )
-    assert circular.resource_refs(rec, stream(material="철"), 1000, "recycle") == []
+    # 세계철강협회 원료 절감 참고값은 2021-05 자료집 원문과 대조했다
+    found = circular.resource_refs(rec, stream(material="철"), 1000, "recycle")
+    assert [r["name"] for r in found] == ["철광석", "석탄", "석회석"]
 
 
 def test_source_units_convert_without_combining_energy_types():

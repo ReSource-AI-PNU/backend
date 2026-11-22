@@ -55,6 +55,37 @@ OK_CODES = ("200", "00")
 PAGE_SIZE = 100
 LOOK_BACK_MONTHS = 6
 
+# 조사 기준은 한국환경공단 월별 책자(재활용가능자원 가격조사, 2026년 10월호)의 문구다. API 응답에는 없다.
+CONDITIONS = (
+    "단위 원/kg, 부가가치세(VAT) 포함, 물류비 제외",
+    "매월 10일 조사, 매월 26일 공표",
+    "각 권역 내 품목별 조사업체 가격의 평균, 업체별 가격은 다를 수 있음",
+    "조사 권역 경남: 부산광역시, 울산광역시, 경상남도",
+)
+STAGES = {
+    "압축": "원재료를 선별･압축하여 압축품을 원료로 제품(플레이크, 펠렛 등)을 제조하는 업체에 판매하는 가격 (VAT 포함)",
+    "플레이크": "파쇄시설을 갖춘 업체가 세척 파쇄품(플레이크)을 원료로 제품(펠렛 등)을 제조하는 업체에 판매하는 가격 (VAT 포함)",
+    "펠렛": "용융･압출시설을 갖춘 업체가 펠렛을 원료로 제품을 제조하는 업체에 판매하는 가격 (VAT 포함)",
+}
+CAVEATS = (
+    "asOf는 기준월의 말일로 적었다",
+    "API는 권역 평균을 원 단위로 반올림해 준다. 월별 책자는 소수 한 자리까지 싣는다",
+    "중간 가공품(압축·플레이크·펠렛)의 판매가격이라 가공 전 폐기물의 매입 단가와 다르다. 손익 계산에는 쓰지 않는다",
+    "품질 등급은 잡색(생활계 혼합)이다. 공정 스크랩처럼 단일 재질·단색이면 실제 거래가는 이와 다를 수 있다",
+)
+# API는 발행 기관(한국환경공단)이 직접 내는 원자료라 받은 값 그대로를 원문 확인 값으로 둔다.
+BOOKLET_URL = "https://www.recycling-info.or.kr/sds/marketIndex.do"
+VERIFIED_META = {
+    "evidenceClass": "official",
+    "verificationStatus": "original_checked",
+    "verifiedAgainst": "발행 기관 API 응답(원 단위)과 월별 책자의 조사 기준",
+    "freightIncluded": False,
+    "vatIncluded": True,
+    "qualityGrade": "잡색(생활계 혼합)",
+    "priceRole": "reference_index",
+    "bookletPage": BOOKLET_URL,
+}
+
 # transport(url) -> (status, body). url에는 인증키가 들어 있으므로 기록하지 않는다
 Transport = Callable[[str], tuple[int, bytes]]
 
@@ -215,12 +246,7 @@ def to_seed_row(
     item = f"{material}-{form}-{region}"
     year, number = month.split("-")
     value = float(price)
-    caveats = [
-        "asOf는 기준월의 말일로 적었다",
-        "API는 권역 평균을 원 단위로 준다(소수점 아래가 없다). 업체별 가격은 다를 수 있다",
-        "부가세·물류비 포함 여부와 품질·거래 단계 기준은 API 응답에 없다",
-        "부산은 조사 권역에 따로 없다. 경남 권역 값을 참고로 쓴다",
-    ]
+    caveats = list(CAVEATS)
     if previous is not None and previous.get("value") != value:
         caveats.append(
             f"이전 값 {number_text(float(previous['value']))} {previous.get('unit') or ''}"
@@ -254,8 +280,13 @@ def to_seed_row(
             "retrievedAt": retrieved_at,
             "regionCode": str(row.get("stdgCd") or ""),
             "receivedOn": str(row.get("telgmRcptnYmd") or ""),
-            "conditions": ["단위 원/kg", "권역 내 조사업체 가격의 평균"],
+            "conditions": [
+                *CONDITIONS,
+                *([f"가격조사 단계: {STAGES[form]}"] if form in STAGES else []),
+            ],
             "caveats": caveats,
+            **VERIFIED_META,
+            "verifiedOn": retrieved_at[:10],
         },
     }
 

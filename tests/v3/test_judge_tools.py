@@ -482,16 +482,19 @@ def test_kau_reference_feeds_cost_carbon_only_when_checked_against_the_original(
     assert basis.resolve(reg, EMITTER, "kau.price") is None
     load_seed_dir(reg)
     with_test_factors(reg)
-    # 시드의 KAU 종가는 원문을 다시 확인하지 않아(not_rechecked) 환산에 쓰지 않는다
-    seeded = next(e for e in reg.list(org_id=None) if e.id.startswith("ref:KAU:"))
-    assert seeded.meta.get("verificationStatus") != "original_checked"
-    assert basis.resolve(reg, EMITTER, "kau.price") is None
     recycler = vendor(process="재활용")
+    # 원문을 다시 확인하지 않은 종가는 환산에 쓰지 않는다
+    seeded = basis.resolve(reg, EMITTER, "kau.price")
+    reg.put(replace(seeded, meta={**seeded.meta, "verificationStatus": "not_rechecked"}))
+    older = next(e for e in reg.list(org_id=None) if e.id == "ref:KAU:KAU26-종가@2026-11-16")
+    reg.put(replace(older, meta={**older.meta, "verificationStatus": "not_rechecked"}))
+    assert basis.resolve(reg, EMITTER, "kau.price") is None
     r = run(reg, "cost_carbon", stream=stream(), vendor=recycler, origin=ORIGIN)
     assert r["output"]["kau"] is None and any(c["key"] == "kau" for c in r["checks"])
-    # 원문을 확인한 시세면 처리 단계 배출 변화에 곱해 판단용 환산액을 낸다
-    reg.put(replace(seeded, meta={**seeded.meta, "verificationStatus": "original_checked"}))
+    # 시드의 종가는 한국거래소 원문으로 다시 확인했다: 처리 단계 배출 변화에 곱해 판단용 환산액을 낸다
+    reg.put(seeded)
     kau = basis.resolve(reg, EMITTER, "kau.price")
+    assert kau.id == "ref:KAU:KAU26-종가@2026-11-20" and kau.value == 29550
     assert kau.kind == "ref" and kau.unit == "원/tCO2e" and kau.meta["per"] == "tCO2e"
     r = run(reg, "cost_carbon", stream=stream(), vendor=recycler, origin=ORIGIN)
     value = claim(r, "kauValue")
@@ -576,11 +579,7 @@ def test_reference_prices_are_shown_but_never_used_in_profit():
     reg = registry()
     assert basis.reference_prices(reg, EMITTER) == []  # 근거 시드가 없으면 비어 있다
     load_seed_dir(reg)
-    # 시드의 가격조사는 원문을 다시 확인하지 않아(not_rechecked) 참고 시세로도 보이지 않는다
-    assert basis.reference_prices(reg, EMITTER) == []
-    for e in reg.list(org_id=None):
-        if e.id.startswith("ref:가격조사"):
-            reg.put(replace(e, meta={**e.meta, "verificationStatus": "original_checked"}))
+    # 시드의 가격조사는 발행 기관 API 값이고 월별 책자와 대조했다: 참고 시세로 보인다
     prices = basis.reference_prices(reg, EMITTER, ["PP"])
     assert [p["form"] for p in prices] == ["압축", "펠렛", "플레이크"]
     assert all(p["evidence"].kind == "ref" and p["evidence"].unit == "원/kg" for p in prices)
@@ -588,6 +587,13 @@ def test_reference_prices_are_shown_but_never_used_in_profit():
         "ref:가격조사:PP-펠렛"
     )
     assert len(basis.reference_prices(reg, EMITTER)) == 6
+    assert all(p["evidence"].meta["freightIncluded"] is False for p in prices)
+    # 원문을 다시 확인하지 않은 행은 보이지 않는다
+    for e in reg.list(org_id=None):
+        if e.id.startswith("ref:가격조사:PP-"):
+            reg.put(replace(e, meta={**e.meta, "verificationStatus": "not_rechecked"}))
+    assert basis.reference_prices(reg, EMITTER, ["PP"]) == []
+    assert len(basis.reference_prices(reg, EMITTER)) == 3
     # 손익을 내는 도구의 계산 사슬에 참고 시세가 들어가지 않는다
     for name, args in (
         ("judge_route", {"stream": stream(), "vendor": vendor()}),

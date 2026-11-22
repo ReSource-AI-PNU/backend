@@ -286,3 +286,88 @@ def test_greenest_never_trades_an_unknown_process_carbon():
     assert purge["route"] == "treat" and purge["carbonProcess"] is None
     greenest = result["greenest"]
     assert greenest is None
+
+
+def test_reference_estimate_for_pp_keeps_original_unknowns(reg):
+    import copy
+
+    pp = stream(monthlyKg=300, currentTreatment={"methodAssumed": True})
+    rows = [{"stream": pp, "kg": 300, "baseline": None, "baselineAssumed": True, "dest": "unknown"}]
+    original = copy.deepcopy(rows)
+    r = rec(reg)
+    found = circular.reference_estimates(r, rows, [{"vendor": {"process": "재활용"}}])
+    assert rows == original
+    values = {
+        x["metric"]: next(c["value"] for c in r.claims if c["id"] == x["claim"])
+        for x in found["rows"]
+    }
+    assert values["ghg"] == pytest.approx(0.5388)
+    assert values["energy"] == pytest.approx(8.97, abs=0.005)
+    assert values["virgin"] == pytest.approx(181.305)
+    assert all(len(x["assumptions"]) == 3 for x in found["rows"])
+    assert all(x["status"] == "estimated" for x in found["totals"].values())
+    # Strict results remain held: estimates cannot authorize a route or certify performance.
+    strict = circular.stream_effect(rec(reg), pp, 300, None, True, "unknown")
+    assert all(strict[m]["status"] == "hold" for m in circular.METRICS)
+
+
+@pytest.mark.parametrize(
+    "material,dest,process",
+    [
+        ("PP+ABS", "recycle", "재활용"),
+        ("PP", "pyrolysis", "열분해"),
+        ("PE", "unknown", "재활용"),
+        ("PP", "unknown", "미확인"),
+    ],
+)
+def test_reference_estimate_does_not_invent_material_or_route(reg, material, dest, process):
+    rows = [
+        {
+            "stream": stream(material=material),
+            "kg": 300,
+            "baseline": None,
+            "baselineAssumed": True,
+            "dest": dest,
+        }
+    ]
+    found = circular.reference_estimates(rec(reg), rows, [{"vendor": {"process": process}}])
+    assert all(x["claim"] is None for x in found["totals"].values())
+
+
+def test_reference_partial_sum_and_missing_energy_are_not_zero(reg):
+    r = rec(reg)
+    rows = [
+        {
+            "stream": stream(id="pp", origin="PCR"),
+            "kg": 300,
+            "baseline": "incineration",
+            "baselineAssumed": False,
+            "dest": "recycle",
+        },
+        {"stream": film(), "kg": 300, "baseline": None, "baselineAssumed": True, "dest": "unknown"},
+    ]
+    found = circular.reference_estimates(r, rows, [{"vendor": {"process": "재활용"}}] * 2)
+    energy = found["totals"]["energy"]
+    assert energy["status"] == "partial"
+    assert energy["heldStreams"] == ["st_film"]
+    assert next(c["value"] for c in r.claims if c["id"] == energy["claim"]) == pytest.approx(
+        8.97, abs=0.005
+    )
+    ghg = found["totals"]["ghg"]
+    assert next(c["value"] for c in r.claims if c["id"] == ghg["claim"]) == pytest.approx(
+        0.5388 + 0.4143
+    )
+
+
+def test_reference_respects_known_recycling_baseline(reg):
+    rows = [
+        {
+            "stream": stream(),
+            "kg": 300,
+            "baseline": "recycle",
+            "baselineAssumed": False,
+            "dest": "recycle",
+        }
+    ]
+    found = circular.reference_estimates(rec(reg), rows, [{"vendor": {"process": "재활용"}}])
+    assert all(x["status"] == "zero" and x["claim"] is None for x in found["totals"].values())

@@ -42,6 +42,7 @@ from app.v3.agents.draft import (
 )
 from app.v3.agents.pool import safe_id
 from app.v3.agents.vendor import public_profile
+from app.v3.demo import negotiation_test
 from app.v3.demo.seed import share_evidence, share_stream, share_vendor_terms
 from app.v3.evidence.model import Evidence
 from app.v3.evidence.registry import EvidenceForbidden, EvidenceNotFound
@@ -68,6 +69,7 @@ from app.v3.judge.common import (
 )
 from app.v3.judge.toolbox import TOOLS, call_tool
 from app.v3.live import STATUS_NOTES, Recorder
+from app.v3.onboarding.tools import discoverable
 from app.v3.store import NotFound
 from app.v3.textutil import josa
 from app.v3.untrusted import org_label, stream_label
@@ -111,16 +113,19 @@ def discoverable_profiles(store: Any, emitter: dict[str, Any]) -> dict[str, dict
     - 허가 품목이나 매입 기준이 하나도 없는 프로필(가입만 하고 아직 채우지 않은 업체)은 뺀다.
     - 시연 배출 기업(demo: true)은 시연 업체만 본다. 체험하기로 열리는 시연 진단에 실제 업체가 섞이지
       않게 하려는 것이다. 실제 배출 기업에는 시연 업체를 후보로 제시하지 않는다.
+    - 로그인한 협상 테스트 회사는 별도의 가상 처리 업체만 본다.
     - 탈퇴한 업체(departed: true. 다른 회사와 확정한 거래 기록 때문에 프로필만 남았다)는 뺀다.
     """
-    demo_only = bool(emitter.get("demo"))
-    demo_ids = {o["id"] for o in store.list_orgs() if o.get("demo")}
+    group = negotiation_test.match_group(emitter)
+    groups = {
+        org["id"]: negotiation_test.match_group(org)
+        for org in store.list_orgs()
+        if org.get("role") == "vendor" and not org.get("deleted")
+    }
     return {
         p["orgId"]: p
         for p in store.list_vendor_profiles()
-        if (p.get("permits") or p.get("criteria"))
-        and not p.get("departed")
-        and ((p["orgId"] in demo_ids) == demo_only)
+        if discoverable(p) and groups.get(p["orgId"]) == group
     }
 
 
@@ -1062,8 +1067,9 @@ class Orchestrator:
                     share_evidence(self.registry, evidence_id, org_id)
         publics = {v: public_profile(p, fleet_cost=False) for v, p in profiles.items()}
         work["stages"].update({"3": "running", "4": "running"})
-        self._find_outside(session, emitter, streams)
-        self._find_complex(session, emitter, streams)
+        if not emitter.get("simulation"):
+            self._find_outside(session, emitter, streams)
+            self._find_complex(session, emitter, streams)
 
         matched: dict[str, list[dict]] = {v: [] for v in publics}
         refused: dict[str, list[dict]] = {v: [] for v in publics}
@@ -1257,6 +1263,7 @@ class Orchestrator:
                     vendor=publics[thread.vendor_org],
                     vendor_org=self.store.get_org(thread.vendor_org),
                     memo=work["threadTools"][thread.id],
+                    history=self._pair_memory(session, thread),
                 )
             self._send(session, thread, outcome, trace, stage=4)
         return False
@@ -1693,6 +1700,7 @@ class Orchestrator:
         if exclude:
             arguments["exclude"] = exclude
         self._with_origin(session, arguments)
+        self._with_history(session, arguments)
         optimized = self._tool(
             session,
             "optimize_assignment",
@@ -2130,6 +2138,7 @@ class Orchestrator:
                     "cannotAskUser": exhausted or bool(work["cannotAsk"].get(thread.id)),
                     "unresolved": list(work.get("unresolved") or []),
                 },
+                history=self._pair_memory(session, thread),
             )
         if outcome.kind == ACCEPT:
             self._flush(session["id"], trace, thread.id, thread.emitter_org)
@@ -2516,6 +2525,23 @@ class Orchestrator:
         if location:
             arguments["origin"] = list(location)
 
+    def _with_history(self, session: dict[str, Any], arguments: dict[str, Any]) -> None:
+        """배출 기업이 회사 기록을 판정에 반영하도록 승인했으면 지난 검수 관측을 최적 배정에 넘긴다(memory.py)."""
+        found = memory.judgment_history(
+            self.app,
+            session["emitterOrgId"],
+            [s["id"] for s in arguments.get("streams") or []],
+            session["id"],
+        )
+        if found:
+            arguments["history"] = found
+
+    def _pair_memory(self, session: dict[str, Any], thread: Thread) -> list[dict[str, Any]] | None:
+        """회사 측 AI가 받는 같은 업체와의 지난 검수 요약(숫자 없이). 회사가 껐거나 기록이 없으면 None."""
+        return memory.agent_history(
+            self.app, thread.emitter_org, thread.vendor_org, list(thread.stream_ids), session["id"]
+        )
+
     def _public(self, session: dict[str, Any], profile: dict[str, Any]) -> dict[str, Any]:
         """판단 도구에 넘기는 업체 프로필. 이 진단에서 협상한 단가가 있으면 그 매입 기준의 단가와 근거를 바꾼다.
 
@@ -2532,7 +2558,7 @@ class Orchestrator:
         criteria = []
         for criterion in shown.get("criteria") or []:
             deal = deals.get(str(criterion.get("id")))
-            if deal:
+            if deal and criterion.get("priceMode") != "negotiated":
                 # 협상 단가 근거를 맨 앞에 두고 매입 기준표 근거는 그대로 잇는다(협상 단가 계산의 입력이다)
                 criterion = {
                     **criterion,
@@ -2618,7 +2644,7 @@ class Orchestrator:
         return dict(answer) if answer else self._profile_haul(session, profile, measure=measure)
 
     def _negotiate(self, session, live: list[Thread], assigned: dict[str, list[str]]) -> set[str]:
-        """⑥ 합의 전 단가 협상 한 번. 배정된 흐름마다 회사 측이 요청 폭만큼 나은 단가를 요청하고(코드가 쓴 질문,
+        """⑥ 합의 전 단가 협상 한 번. 지정된 흐름마다 회사 측이 요청 폭만큼 나은 단가를 요청하고(코드가 쓴 질문,
         claim은 요청 단가 계산 근거), 업체 측이 자기 범위 안에서 답한다. 단가가 바뀐 대화의 ID를 돌려준다.
 
         한 대화에 한 번만 한다(다시 실행해도 다시 묻지 않는다). 요청을 보낼 수 없으면(턴 상한, 근거 검사) 건너뛴다.
@@ -2626,6 +2652,7 @@ class Orchestrator:
         work = session["work"]
         if not getattr(self.app, "negotiate", True):
             return set()
+        simulation = self.store.get_org(session["emitterOrgId"]).get("simulation") is True
         done = work.setdefault("negotiation", {})
         changed: set[str] = set()
         for thread in live:
@@ -2645,6 +2672,7 @@ class Orchestrator:
                     stream_id=sid,
                     offer=offer["claim"],
                     vendor_org=thread.vendor_org,
+                    simulation=simulation,
                 )
                 found = next((c for c in result["claims"] if c["id"] == "askedPrice"), None)
                 if found is None:
@@ -2791,6 +2819,7 @@ class Orchestrator:
             if exclude:
                 arguments["exclude"] = exclude
             self._with_origin(session, arguments)
+            self._with_history(session, arguments)
             optimized = self._tool(
                 session,
                 "optimize_assignment",
@@ -2810,7 +2839,12 @@ class Orchestrator:
 
         optimized, assigned = optimize(live)
         # ⑥ 합의 전에 단가를 한 번 협상하고, 단가가 바뀌었으면 그 단가로 비용과 최적안을 다시 계산한다
-        changed = self._negotiate(session, live, assigned)
+        if self.store.get_org(org_id).get("simulation"):
+            # 시연에서는 모든 업체의 조정 답을 비교한 뒤 최종안을 고른다.
+            requests = {t.id: list(work["offers"][t.id]) for t in live}
+        else:
+            requests = assigned
+        changed = self._negotiate(session, live, requests)
         live = [t for t in live if t.status == "open" and work["offers"].get(t.id)]
         if changed:
             cost_tools([t for t in live if t.id in changed])
@@ -2941,6 +2975,7 @@ class Orchestrator:
                             "grade",
                             "form",
                             "unitPriceKrwPerKg",
+                            "priceMode",
                             "minMonthlyKg",
                             "maxContaminationPct",
                             "maxMoisturePct",
@@ -3331,7 +3366,9 @@ class Orchestrator:
                 other_cost = tool_of(other_id, "cost_carbon", streamId=sid)
                 other_after = claim_in(
                     other_cost, "monthlyAfter", f"{tag}_alt_{safe_id(other_id)}_monthlyAfter"
-                ) or claim_in(
+                )
+                cost_pending = other_after is None
+                other_after = other_after or claim_in(
                     other_route, "monthlyAfter", f"{tag}_alt_{safe_id(other_id)}_monthlyAfter"
                 )
                 now_claim = claim_in(optimized, item.get("monthlyNow"), "x")
@@ -3360,6 +3397,15 @@ class Orchestrator:
                     None,
                 )
                 other_pending = bool(other_output.get("transportPending")) and not no_pickup
+                # 회사 기록 보정을 썼으면 이 업체의 예상 단가(배정과 같은 기준). 한 달 값은 보정 전 계산이다
+                candidate = next(
+                    (
+                        x
+                        for x in optimized["output"].get("personalCandidates") or []
+                        if x["streamId"] == sid and x["vendorOrgId"] == other_id
+                    ),
+                    None,
+                )
                 alternatives.append(
                     {
                         "vendorOrgId": other_id,
@@ -3380,6 +3426,9 @@ class Orchestrator:
                         "permit": self._permit_of(session, by_id[sid], other_id),
                         # 운반비가 정해지지 않아 한 달 값이 별도 운반비 반영 전이다(확정 견적과 견줄 때 밝힌다)
                         "transportPending": other_pending,
+                        "costPending": not no_pickup and (
+                            cost_pending or bool(other_output.get("costPending"))
+                        ),
                         "pickupStatus": other_output.get("pickupStatus"),
                         "note": "허가 근거가 맞지 않아 배정하지 않았습니다. " + excluded["text"]
                         if excluded
@@ -3392,7 +3441,15 @@ class Orchestrator:
                             if other["type"] == "conditional"
                             else "선택되지 않은 제안"
                         )
-                        + (" · 한 달 값은 별도 운반비 반영 전" if other_pending else ""),
+                        + (" · 한 달 값은 별도 운반비 반영 전" if other_pending else "")
+                        + (" · 한 달 값은 회사 기록 보정 전" if candidate else ""),
+                        "personalUnitPrice": claim_in(
+                            optimized,
+                            candidate["expectedUnitPrice"],
+                            f"{tag}_alt_{safe_id(other_id)}_expectedUnitPrice",
+                        )
+                        if candidate
+                        else None,
                     }
                 )
             entry = {
@@ -3450,6 +3507,17 @@ class Orchestrator:
                 "alternatives": alternatives,
                 # 허가 확인 결과 이 경로로 진행할 수 없는 업체(사유와 함께). 예상 손익은 싣지 않는다
                 "blockedRoutes": blocked_routes,
+                # 회사 기록 보정(담당자가 판정 반영을 승인했을 때): 보정 비율, 예상 단가, 쓴 검수 건수
+                "personal": {
+                    "rate": claim_in(optimized, adjusted["rate"], f"{tag}_personalRate"),
+                    "expectedUnitPrice": claim_in(
+                        optimized, adjusted["expectedUnitPrice"], f"{tag}_expectedUnitPrice"
+                    ),
+                    "records": adjusted["records"],
+                    "streamRecords": adjusted["streamRecords"],
+                }
+                if (adjusted := item.get("personal"))
+                else None,
             }
             assignments.append(entry)
             for found in ((route or {}).get("output", {}).get("current") or {}).get(
@@ -3512,7 +3580,9 @@ class Orchestrator:
             assumptions += done["grade"].get("assumptions") or []
         if work.get("negotiated"):
             # 협상 단가는 요청 폭(가정값)으로 요청한 결과다
-            found = basis.resolve(self.registry, org_id, negotiate.ASK_KEY)
+            found = negotiate.request_basis(
+                self.registry, org_id, simulation=bool(self.store.get_org(org_id).get("simulation"))
+            )
             if found is not None:
                 assumptions.append(found.id)
         materials = {
@@ -3675,6 +3745,38 @@ class Orchestrator:
                     "rows": rows,
                 }
             )
+        reference = None
+        if found.get("reference"):
+            raw = found["reference"]
+            reference = {
+                "totals": {
+                    metric: {
+                        "status": total["status"],
+                        "total": claim(total.get("claim")),
+                        "countedKg": claim(total.get("countedKg")),
+                        "heldKg": claim(total.get("heldKg")),
+                        "heldStreams": [
+                            {"streamId": sid, "streamName": name_of(sid)}
+                            for sid in total.get("heldStreams") or []
+                        ],
+                    }
+                    for metric, total in raw["totals"].items()
+                },
+                "rows": [],
+            }
+            for row in raw["rows"]:
+                used.extend(e for e in row["basis"] if e.startswith("ref:"))
+                reference["rows"].append(
+                    {
+                        "streamId": row["streamId"],
+                        "streamName": name_of(row["streamId"]),
+                        "metric": row["metric"],
+                        "value": claim(row.get("claim")),
+                        "assumptions": row["assumptions"],
+                        "reason": row["reason"],
+                        "status": row["status"],
+                    }
+                )
         sources = []
         for evidence_id in dict.fromkeys(used):
             try:
@@ -3708,6 +3810,7 @@ class Orchestrator:
         bundle = found.get("bundle") or {}
         return {
             "scenarios": scenarios,
+            "reference": reference,
             "baselines": dict(found.get("baselines") or {}),
             "bundle": {
                 "available": bool(bundle.get("available")),

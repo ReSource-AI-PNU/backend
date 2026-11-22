@@ -118,6 +118,11 @@ SYSTEM_PROMPT = "\n".join(
             "accept하지 않고 그 폐기물만 question으로 묻는다."
         ),
         "- 같은 질문을 두 번 보내지 않는다. 상대가 이미 답했거나 조건으로 건 항목은 다시 묻지 않는다.",
+        (
+            "- pastInspections는 이 업체와의 지난 반입 검수 요약이다(같은 두 회사 사이의 기록만). status가 below면 "
+            "합의보다 낮게 나온 검수가 많았다는 뜻이니, 첫 문의에서 반입 검수에서 등급과 단가를 어떻게 정하는지 "
+            "조건에 적어 달라고 요청한다. 지난 검수의 날짜·등급·단가 같은 숫자는 본문에 쓰지 않는다."
+        ),
         "- handoff는 상대가 받을 수 없다고 했고 이 대화에서 더 할 일이 없을 때만 쓴다.",
         "- 본문에서 폐기물과 매입 기준은 이름으로 부른다. st_, pc_ 같은 식별자는 본문에 쓰지 않는다.",
         "",
@@ -314,8 +319,12 @@ class CompanyAgent:
         vendor_org: dict[str, Any],
         memo: list[dict[str, Any]],
         state: dict[str, Any] | None = None,
+        history: list[dict[str, Any]] | None = None,
     ) -> tuple[Outcome, Trace]:
-        """task: inquiry(첫 문의) | reply(상대 메시지에 답) | confirm(양쪽 승인 뒤 확정 통지)."""
+        """task: inquiry(첫 문의) | reply(상대 메시지에 답) | confirm(양쪽 승인 뒤 확정 통지).
+
+        history는 이 업체와의 지난 검수 요약(memory.agent_history, 숫자 없음). 없으면 None.
+        """
         state = dict(state or {})
         cannot_ask = bool(state.get("cannotAskUser"))
         trace = Trace()
@@ -475,6 +484,8 @@ class CompanyAgent:
                         if isinstance(u, dict) and u.get("streamId") in thread.stream_ids
                     ],
                 },
+                # 이 업체와의 지난 검수(회사 기록). 합의보다 낮게 나온 기록이 많으면 검수 기준을 조건에 적어 달라고 한다
+                "pastInspections": history,
                 "userQuestionFields": sorted(questions.FIELDS),
                 "tools": tools.catalog(),
                 "toolResults": tools.results,

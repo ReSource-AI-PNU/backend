@@ -312,6 +312,15 @@ def quality(stream: dict) -> dict:
 _ESTIMATED = {"photo_estimate": "사진 추정값", "answered": "담당자가 답한 값"}
 
 
+def permit_covers(stream: dict, permit: dict) -> bool:
+    materials = permit.get("materials") or []
+    if permit.get("entrySource") == "manual" and not materials:
+        return False
+    return permit.get("wasteItem") == stream.get("wasteItem") and (
+        not materials or stream.get("material") in materials
+    )
+
+
 def permit_match(stream: dict, vendor: dict):
     """(일치 여부 | None, 허가 근거 ID). 허가 품목이 올라와 있지 않으면 None."""
     permits = vendor.get("permits") or []
@@ -319,10 +328,7 @@ def permit_match(stream: dict, vendor: dict):
     if not permits:
         return None, evidence
     for permit in permits:
-        materials = permit.get("materials") or []
-        if permit.get("wasteItem") == stream.get("wasteItem") and (
-            not materials or stream.get("material") in materials
-        ):
+        if permit_covers(stream, permit):
             return True, list(permit.get("evidence") or [])
     return False, evidence
 
@@ -414,12 +420,14 @@ def _ranked_criteria(stream: dict, vendor: dict, q: dict) -> list[tuple]:
         if criterion.get("material") != stream.get("material"):
             continue
         price = num(criterion.get("unitPriceKrwPerKg"))
-        if price is None:
+        negotiated = criterion.get("priceMode") == "negotiated"
+        if price is None and not negotiated:
             continue
         checks = criterion_checks(stream, criterion, q)
         unmet = sum(1 for c in checks if c[1] == "unmet")
         conditional = sum(1 for c in checks if c[1] == "conditional")
-        ranked.append(((unmet, conditional, -price, str(criterion.get("id"))), criterion, checks))
+        rank = (unmet, conditional, negotiated, -price if not negotiated else 0, str(criterion.get("id")))
+        ranked.append((rank, criterion, checks))
     ranked.sort(key=lambda r: r[0])
     return ranked
 
@@ -541,6 +549,10 @@ def transport_charge(vendor: dict, pickups=None) -> dict:
     return out
 
 
+LABOR_FLOOR_KEY = "labor.costPerHour"
+LABOR_FLOOR_PREFIX = "ref:최저임금:"
+
+
 def labor_cost(rec: Recorder, stream: dict):
     """(월 전처리 인건비 | None, 근거 ID, 시간, 시간당 단가). 작업 시간을 넣지 않았으면 None."""
     hours = num(stream.get("pretreatHoursPerMonth"))
@@ -556,19 +568,35 @@ def labor_cost(rec: Recorder, stream: dict):
     own = num(stream.get("laborCostKrwPerHour"))
     if own is not None:
         return hours * own, list(stream.get("pretreatEvidence") or []), hours, own
+    # 회사 시급이 없으면 고시된 법정 최저 시급으로 하한만 넣는다. 실제 작업비는 이보다 크므로 잠정 금액으로 둔다
+    floor = rec.basis(LABOR_FLOOR_KEY)
+    rate = num(floor.value) if floor is not None else None
+    if rate is None or rate <= 0:
+        rec.check(
+            "labor_unknown",
+            "conditional",
+            "전처리 인건비 미정: 시간당 인건비 근거가 없어 월 손익은 이 비용 반영 전입니다.",
+        )
+        return None, [], hours, None
     rec.check(
         "labor_unknown",
         "conditional",
-        "전처리 인건비 미정: 최저임금을 실제 작업비로 대입하지 않았습니다. 월 손익은 이 비용 반영 전입니다.",
+        "전처리 인건비는 회사 시간당 인건비를 몰라 법정 최저임금(시간급)으로 넣은 하한입니다. "
+        "실제 작업비는 이보다 크니 회사의 시간당 인건비를 알려 주세요. 월 손익은 잠정 금액입니다.",
     )
-    return None, [], hours, None
+    return hours * rate, [*(stream.get("pretreatEvidence") or []), floor.id], hours, rate
+
+
+def labor_is_floor(labor_ev) -> bool:
+    """인건비가 회사 시급이 아니라 최저임금 하한으로 계산됐다(잠정)."""
+    return any(str(e).startswith(LABOR_FLOOR_PREFIX) for e in labor_ev or [])
 
 
 # ── 탄소 ───────────────────────────────────────────────────────────────
 # 탄소 변화 = 처리 방식이 바뀌어 달라지는 배출 + 업체로 실어 가는 운송 배출.
 # 처리 배출 = (옮긴 뒤 처리의 배출계수 − 현행 처리의 배출계수) × 월 발생량.
 # 운송 배출 = 트럭 운송 배출계수(kgCO2e/ton·km) × 월 발생량(t) × 공장 → 업체 거리(km).
-# 원문 경계가 확인된 계수만 허용한다. 기존 환경성적표지 시드는 메타데이터만 확인되어 보류한다.
+# 원문 경계가 확인된 계수만 허용한다. 환경성적표지 시드는 값이 원본과 같지만 경계가 공개되지 않아 보류한다.
 # 빈 차 회송·적재율 포함 여부를 추측하지 않는다. 신재 대체 효과는 넣지 않는다.
 _AFTER_PROCESS = {"재활용": "recycle", "물질 재활용": "recycle", "열분해": "pyrolysis"}
 CARBON_FORMULA = "(옮긴 뒤 처리의 배출계수 − 현행 처리의 배출계수) × 월 발생량. 신재 대체 효과는 넣지 않았습니다."

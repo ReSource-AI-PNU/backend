@@ -26,7 +26,7 @@ def test_totals_chain_to_the_per_stream_calculations():
         key: [a[key]["evidence"][0] for a in result["assignments"] if a.get(key)]
         for key in ("monthlyNow", "monthlyAfter", "difference")
     }
-    # 시드 처리 배출계수는 원문 경계를 확인하지 못했고(metadata_only), 운송 배출도 실제 사업장 거리·적재·회송
+    # 시드 처리 배출계수는 원문 경계를 확인하지 못했고(값은 원본과 같지만 경계 미공개, value_checked), 운송 배출도 실제 사업장 거리·적재·회송
     # 조건이 확인되지 않아 탄소는 흐름별로도 합계로도 산정 보류한다(0으로 합치지 않는다)
     assert result["totals"]["carbon"] is None
     assert all(a["carbon"] is None and a["carbonTransport"] is None for a in result["assignments"])
