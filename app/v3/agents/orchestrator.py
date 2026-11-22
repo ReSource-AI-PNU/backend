@@ -3671,6 +3671,38 @@ class Orchestrator:
                     "rows": rows,
                 }
             )
+        reference = None
+        if found.get("reference"):
+            raw = found["reference"]
+            reference = {
+                "totals": {
+                    metric: {
+                        "status": total["status"],
+                        "total": claim(total.get("claim")),
+                        "countedKg": claim(total.get("countedKg")),
+                        "heldKg": claim(total.get("heldKg")),
+                        "heldStreams": [
+                            {"streamId": sid, "streamName": name_of(sid)}
+                            for sid in total.get("heldStreams") or []
+                        ],
+                    }
+                    for metric, total in raw["totals"].items()
+                },
+                "rows": [],
+            }
+            for row in raw["rows"]:
+                used.extend(e for e in row["basis"] if e.startswith("ref:"))
+                reference["rows"].append(
+                    {
+                        "streamId": row["streamId"],
+                        "streamName": name_of(row["streamId"]),
+                        "metric": row["metric"],
+                        "value": claim(row.get("claim")),
+                        "assumptions": row["assumptions"],
+                        "reason": row["reason"],
+                        "status": row["status"],
+                    }
+                )
         sources = []
         for evidence_id in dict.fromkeys(used):
             try:
@@ -3704,6 +3736,7 @@ class Orchestrator:
         bundle = found.get("bundle") or {}
         return {
             "scenarios": scenarios,
+            "reference": reference,
             "baselines": dict(found.get("baselines") or {}),
             "bundle": {
                 "available": bool(bundle.get("available")),

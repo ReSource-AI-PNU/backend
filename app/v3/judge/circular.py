@@ -779,6 +779,125 @@ def baseline_emission(rec: Recorder, rows: list[dict]) -> dict:
     return {"claim": total, "missing": missing}
 
 
+def reference_estimates(rec: Recorder, rows: list[dict], choices: list[dict]) -> dict:
+    """문헌 조건으로 환산한 참고 추정. 실제 경로·원산지·엄격 산정 결과는 바꾸지 않는다.
+
+    선택된 물질 재활용 후보만 대상으로 한다. 불명확한 재질·열분해·현행 유지는
+    확대 해석하지 않고, 원문에 없는 계수도 다른 재질로 대체하지 않는다.
+    """
+    details, totals = [], {}
+    for metric in METRICS:
+        values, counted, held = [], [], []
+        for i, (row, choice) in enumerate(zip(rows, choices, strict=True)):
+            stream, kg = row["stream"], row["kg"]
+            effect = stream_effect(
+                rec,
+                stream,
+                kg,
+                row["baseline"],
+                row["baselineAssumed"],
+                row["dest"],
+                row.get("reuseKg"),
+                row.get("reuseEv") or (),
+            )[metric]
+            assumptions = []
+            vendor = choice.get("vendor") or {}
+            eligible = row["dest"] == "recycle" or (
+                row["dest"] == "unknown" and vendor.get("process") == "재활용"
+            )
+            material, _ = material_key(stream)
+            if effect["status"] == "hold" and eligible and material:
+                baseline = row["baseline"]
+                if (
+                    not baseline
+                    or row["baselineAssumed"]
+                    or (stream.get("currentTreatment") or {}).get("methodAssumed")
+                ):
+                    baseline = "incineration"
+                    assumptions.append(
+                        "현재 처리 방식 미확인: 에너지 회수 소각을 비교 기준으로 사용"
+                    )
+                if row["dest"] == "unknown":
+                    assumptions.append("업체 세부 공정 미확인: 기계적 재활용을 전제로 계산")
+                if stream.get("origin") != "PCR":
+                    assumptions.append(
+                        "소비 후 폐플라스틱 연구 조건을 같은 재질·물량에 환산한 참고값"
+                        "(공정 스크랩의 실제 성과를 뜻하지 않음)"
+                    )
+                # 별도 문헌 표본이다. 원래 stream이나 원문 적용 범위를 수정하지 않는다.
+                specimen = {**stream, "origin": "PCR", "currentTreatment": {}}
+                functions = {"ghg": ghg_effect, "energy": energy_effect, "virgin": virgin_effect}
+                effect = functions[metric](rec, specimen, kg, baseline, "recycle")
+            item = {
+                "streamId": stream.get("id"),
+                "metric": metric,
+                "claim": None,
+                "basis": rec.visible(effect["basis"]),
+                "assumptions": assumptions,
+                "reason": effect["reason"],
+                "status": effect["status"],
+            }
+            if effect["status"] == "estimated":
+                formula = effect["formula"]
+                if assumptions:
+                    formula = "문헌 기준 참고 추정. " + "; ".join(assumptions) + ". " + formula
+                made = rec.number(
+                    f"ceRef_s{i}{SUFFIX[metric]}",
+                    effect["value"],
+                    UNIT[metric],
+                    formula,
+                    [*effect["basis"], *_kg_evidence(stream)],
+                    label=f"{stream.get('name') or '폐기물'} 문헌 기준 {names.LABELS[names.role_of(SUFFIX[metric])]} 추정 계산",
+                    private=True,
+                )
+                item["claim"] = made["id"]
+                values.append(made)
+                counted.append(i)
+            elif effect["status"] == "zero":
+                counted.append(i)
+            else:
+                held.append(i)
+            details.append(item)
+
+        def quantity(indices: list[int], suffix: str, metric: str = metric) -> str | None:
+            if not indices:
+                return None
+            return rec.number(
+                f"ceRef_{metric}{suffix}RoutedKg",
+                math.fsum(rows[i]["kg"] for i in indices),
+                "kg/월",
+                "문헌 기준 추정의 " + ("계산한" if suffix == "Counted" else "제외한") + " 물량 합",
+                [e for i in indices for e in _kg_evidence(rows[i]["stream"])],
+                private=True,
+            )["id"]
+
+        total = None
+        if values:
+            total = rec.number(
+                f"ceRef_total{SUFFIX[metric]}",
+                math.fsum(float(v["value"]) for v in values),
+                UNIT[metric],
+                "문헌 기준 추정의 합. 계수 없는 항목은 제외하며 0으로 간주하지 않습니다.",
+                [v["evidence"][0] for v in values],
+                label=f"문헌 기준 {names.LABELS[names.role_of(SUFFIX[metric])]} 추정 합계 계산",
+                private=True,
+            )["id"]
+        totals[metric] = {
+            "status": "partial"
+            if held and values
+            else "hold"
+            if held
+            else "estimated"
+            if values
+            else "zero",
+            "claim": total,
+            "countedKg": quantity(counted, "Counted"),
+            "heldKg": quantity(held, "Held"),
+            "heldStreams": [rows[i]["stream"].get("id") for i in held],
+        }
+    return {"totals": totals, "rows": details}
+
+
 def build(
     rec: Recorder,
     usable: list[dict],
@@ -885,6 +1004,7 @@ def build(
         baselines[key] = baselines.get(key, 0) + 1
     return {
         "scenarios": scenarios,
+        "reference": reference_estimates(rec, a_rows, best),
         "baselines": baselines,
         "bundle": bundle,
         "excluded": [{"streamId": s.get("streamId"), "reason": s.get("reason")} for s in skipped],
