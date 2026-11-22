@@ -23,7 +23,11 @@ import math
 from collections.abc import Callable, Mapping
 from typing import Any
 
-from app.ml.contract import ITEM_OF, LABEL_KO  # 재질 분류 → 품목, 한국어 이름(순수 파이썬)
+from app.ml.contract import (  # 재질 분류 → 품목, 한국어 이름(순수 파이썬)
+    ITEM_OF,
+    LABEL_KO,
+    PLASTICS,
+)
 from app.v3 import ids
 from app.v3.evidence.model import Evidence
 from app.v3.intake._http import Transport, default_transport
@@ -39,6 +43,26 @@ ENV_ENDPOINT, ENV_KEY, ENV_DEPLOYMENT = (
     "V3_DETECTOR_API_KEY",
     "V3_DETECTOR_DEPLOYMENT",
 )
+
+
+# 사진 재질 분류를 판단(업체에 보내는 문의서 등)에 쓰는 최소 신뢰도. 그 아래는 화면에 참고로만 보인다.
+# 운영에서 PP 포대 사진이 목재 0.58, PP 베일 사진이 종이·골판지 0.81로 나왔다(2026-11-22): 탐지 모델은
+# 공개 폐기물 사진으로 배운 큰 분류(플라스틱·종이·목재·금속)이고 사출 스크랩·포대에는 자주 틀린다
+MATERIAL_MIN_CONFIDENCE = 0.85
+# 담당자가 재질을 모른다고 한 값. 이때는 사진 분류와 견줄 것이 없다
+UNKNOWN_MATERIALS = ("", "혼합·모름", "모름", "확인 필요")
+
+
+def material_check(stream: Mapping[str, Any], cls: str, confidence: float | None) -> dict[str, Any]:
+    """사진 재질 분류를 등록한 재질과 견준다.
+
+    이 서비스의 폐기물은 플라스틱이라 담당자가 재질(PP·PE 등)을 적었으면 사진 분류도 플라스틱이어야 맞다.
+    agrees: 맞음(True)·다름(False)·견줄 것 없음(None). usable: 다르지 않고 신뢰도가 기준 이상일 때만 참이다.
+    """
+    registered = str(stream.get("material") or "").strip()
+    agrees = None if registered in UNKNOWN_MATERIALS else cls in PLASTICS
+    usable = agrees is not False and (confidence or 0.0) >= MATERIAL_MIN_CONFIDENCE
+    return {"registeredMaterial": registered or None, "agrees": agrees, "usable": usable}
 
 
 class DetectorError(RuntimeError):
@@ -271,12 +295,18 @@ def register_detection(
     if primary is not None:
         item = next(i for i in result["items"] if i["material"] == primary)
         label = LABEL_KO.get(primary, primary)
+        check = material_check(stream, primary, item["confidence"])
+        differs = (
+            f" · 등록한 재질({check['registeredMaterial']})과 다름"
+            if check["agrees"] is False
+            else ""
+        )
         evidence = registry.put(
             Evidence(
                 id=ids.model_id(MODEL_NAME, version, f"{sid}-재질"),
                 kind="model",
                 label="사진 추정 재질",
-                excerpt=f"사진에서 가장 넓게 잡힌 재질 분류: {label} (수지 종류는 사진으로 가르지 못함)",
+                excerpt=f"사진에서 가장 넓게 잡힌 재질 분류: {label} (수지 종류는 사진으로 가르지 못함){differs}",
                 source=source,
                 as_of=today,
                 access=(org_id,),
@@ -290,6 +320,7 @@ def register_detection(
             "wasteItem": ITEM_OF.get(primary),  # 대회 품목 밖(유리·전지)이면 None
             "confidence": item["confidence"],
             "evidence": [evidence.id],
+            **check,
         }
     contamination = None
     objects = None
@@ -298,7 +329,9 @@ def register_detection(
         # 검증된 촬영 환경(선별장)이 아닌 사진은 이물 비율(%)을 등록하지 않는다. 상태 모델이 깨끗한 물체에는 박스를
         # 거의 그리지 않아, 비율의 분모가 이물이 보인 물체만으로 차서 거의 항상 100%가 된다(공개 검증 사진 564장 중
         # 비율이 나온 299장의 298장이 100%, 2026-11-22). 대신 탐지한 물체와 이물이 보인 곳의 개수만 남긴다
-        objects = _object_counts(registry, org_id, sid, result, found, version, source, base_meta, today)
+        objects = _object_counts(
+            registry, org_id, sid, result, found, version, source, base_meta, today
+        )
         registered.append(objects["evidence"][0])
     elif found is not None:
         percent = round(found["overallRatio"] * 100.0, 4)

@@ -428,7 +428,10 @@ def quote_request(
         estimated = stream.get("materialBasis") == "estimated"
         fact("material", "재질", material, "추정" if estimated else "담당자 입력")
     else:
-        fact("material", "재질", safe_text(estimate.get("label")) or None, "사진 추정")
+        # 사진 재질 분류는 신뢰도가 높고 등록한 재질과 어긋나지 않을 때만 알린다(detector.material_check).
+        # 그 전에 저장한 추정(usable 없음)은 쓰지 않는다: PP 포대가 목재로 나간 일이 있었다
+        shown = safe_text(estimate.get("label")) if estimate.get("usable") is True else ""
+        fact("material", "재질", shown or None, "사진 추정")
     form = form_key(stream.get("form"))
     fact("form", "형태", form, "담당자 입력")
     fact("origin", "출처", ORIGIN_WORDS.get(str(stream.get("origin"))), "담당자 입력")

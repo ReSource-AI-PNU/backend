@@ -2,7 +2,7 @@
 
 import pytest
 
-from app.v3 import service
+from app.v3 import outreach, service
 from app.v3.evidence.validator import find_numbers
 from app.v3.public_vendors import treatment
 from tests.v3.runtime_fixtures import HANBIT, SAEGIL, answer_all, make_app, start
@@ -263,3 +263,38 @@ def test_plastic_to_plastic_change_still_fits_and_the_letter_uses_the_current_da
     assert letter["changes"] == [
         {"field": "material", "label": "재질", "before": "PP", "after": "PE"}
     ]
+
+
+@pytest.mark.parametrize(
+    ("estimate", "shown"),
+    [
+        # 신뢰도가 낮거나, 등록한 재질과 다르거나, 기준이 생기기 전에 저장한 추정은 알리지 않는다
+        ({"label": "목재", "confidence": 0.58, "agrees": None, "usable": False}, "- 재질: 미확인"),
+        ({"label": "종이·골판지", "confidence": 0.81}, "- 재질: 미확인"),
+        (
+            {"label": "필름", "confidence": 0.9, "agrees": None, "usable": True},
+            "- 재질: 필름 (사진 추정)",
+        ),
+    ],
+)
+def test_letter_uses_the_photo_material_only_when_it_can_be_trusted(estimate, shown):
+    app = make_app()
+    view = answer_all(app, start(app))
+    if view["session"]["status"] == "awaiting_answers":
+        view = answer_all(app, view)
+    candidate = next(
+        c
+        for s in view["result"]["outsideVendors"]["streams"]
+        if s["streamId"] == "st_defect"
+        for c in s["candidates"]
+        if c["match"] == "confirmed"
+    )
+    # 재질을 비워 둔 폐기물이면 요청서가 사진 재질 분류로 재질 칸을 채우려 한다(서비스는 후보를 찾은 뒤 재질이
+    # 비면 요청서를 막으므로, 요청서를 만드는 함수를 바로 부른다)
+    stream = app.store.get_stream("st_defect")
+    stream["material"] = ""
+    stream["photo"] = {**(stream.get("photo") or {}), "materialEstimate": estimate}
+    letter = outreach.quote_request(
+        app.registry, app.store.get_org(HANBIT), stream, candidate["id"], app.today
+    )
+    assert shown in letter["rendered"]

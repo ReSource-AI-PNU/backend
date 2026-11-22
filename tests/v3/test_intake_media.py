@@ -253,6 +253,10 @@ def test_photo_registers_model_evidence_and_updates_the_stream_photo():
         "wasteItem": "포장재",
         "confidence": 0.82,
         "evidence": [mat_id],
+        # 등록한 재질(LDPE)과 같은 플라스틱이지만 신뢰도가 기준(0.85) 아래라 판단에는 쓰지 않는다
+        "registeredMaterial": "LDPE",
+        "agrees": True,
+        "usable": False,
     }
     after = app.store.get_stream("st_film")
     assert after["photo"]["contaminationPct"] == 12.5 and after["photo"]["evidence"] == [cont_id]
@@ -467,3 +471,42 @@ def test_unsupported_format_over_http_without_a_detector():
         thread.join(timeout=5)
     assert refused[0] == 415 and refused[1]["error"]["code"] == "UNSUPPORTED_MEDIA"
     assert accepted[0] == 200 and accepted[1]["detectorUnavailable"] is True
+
+
+@pytest.mark.parametrize(
+    ("material", "cls", "confidence", "agrees", "usable"),
+    [
+        (
+            "PP",
+            "wood",
+            0.95,
+            False,
+            False,
+        ),  # 운영에서 PP 포대가 목재로 나온 경우: 등록한 재질과 다르다
+        ("PP", "paper", 0.81, False, False),
+        ("PP", "plastic_rigid", 0.9, True, True),
+        ("PP", "plastic_rigid", 0.6, True, False),  # 맞아도 신뢰도가 낮으면 참고만
+        ("", "wood", 0.9, None, True),  # 견줄 재질이 없으면 신뢰도로만 본다
+        ("혼합·모름", "plastic", 0.5, None, False),
+    ],
+)
+def test_material_check_compares_the_photo_class_with_the_registered_material(
+    material, cls, confidence, agrees, usable
+):
+    check = detector.material_check({"material": material}, cls, confidence)
+    assert check == {"registeredMaterial": material or None, "agrees": agrees, "usable": usable}
+
+
+def test_photo_material_that_differs_from_the_registered_one_says_so():
+    wood = {
+        **PHOTO,
+        "primary_material": "wood",
+        "items": [{**PHOTO["items"][0], "material": "wood"}],
+    }
+    app = make_app(detector=client(wood))
+    assert app.store.get_stream("st_defect")["material"] == "PP"
+    result = service.upload_media(app, HANBIT, "st_defect", "pp-bag.jpg", b"jpeg", HANBIT)
+    assert result["material"]["agrees"] is False and result["material"]["usable"] is False
+    evidence = app.registry.get(result["material"]["evidence"][0], HANBIT)
+    assert evidence.excerpt.endswith("등록한 재질(PP)과 다름")
+    assert app.store.get_stream("st_defect")["material"] == "PP"  # 사진은 재질을 바꾸지 않는다
