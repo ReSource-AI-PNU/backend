@@ -482,7 +482,7 @@ def test_kau_reference_feeds_cost_carbon_only_when_checked_against_the_original(
     assert basis.resolve(reg, EMITTER, "kau.price") is None
     load_seed_dir(reg)
     with_test_factors(reg)
-    recycler = vendor(process="재활용")
+    recycler = vendor(process="물질 재활용")
     # 원문을 다시 확인하지 않은 종가는 환산에 쓰지 않는다
     seeded = basis.resolve(reg, EMITTER, "kau.price")
     reg.put(replace(seeded, meta={**seeded.meta, "verificationStatus": "not_rechecked"}))

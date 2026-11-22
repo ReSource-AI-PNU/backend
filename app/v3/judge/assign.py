@@ -480,13 +480,18 @@ def optimize_assignment(
             grade, _ = grade_of(
                 rec, stream.get("material"), q["contaminationPct"], q["moisturePct"]
             )
-        reuse_ok = all(c[1] == "met" for c in reuse_checks(stream, grade))
+        # 불충족이 없으면 후보로 넣는다. 조건부가 남으면(공통 등급 보류, 측정값 없음) 배정도 조건부다.
+        # 전에는 모두 충족해야 했는데, 공통 등급 기준이 가정값이라 보류되는 동안 재투입이 후보에 오를 수 없었다
+        reuse_found = reuse_checks(stream, grade)
+        reuse_ok = not any(c[1] == "unmet" for c in reuse_found)
+        reuse_conditional = any(c[1] == "conditional" for c in reuse_found)
         numbers = reuse_numbers(stream, kg, cost) if reuse_ok else None
         if numbers is not None:
             choices.append(
                 {
                     **keep,
                     "reuse": True,
+                    "conditional": reuse_conditional,
                     "value": numbers[3],
                     "revenue": numbers[1],
                     "ev": [*list((stream.get("reuse") or {}).get("evidence") or []), *cost_ev],

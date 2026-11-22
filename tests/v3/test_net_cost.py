@@ -181,11 +181,15 @@ def test_carbon_is_held_without_original_checked_factors_or_an_explicit_process(
 def test_carbon_needs_a_factor_for_both_sides():
     """계산식만 본다: 시험 전용 원문 확인 모의 계수(값은 시드와 같다)를 쓴다."""
     reg = with_test_factors(registry())
-    recycler = vendor(process="재활용")
+    recycler = vendor(process="물질 재활용")
     base = run(reg, "cost_carbon", stream=stream(), vendor=recycler)
     assert claim(base, "carbonDifference")["value"] == pytest.approx(
         (0.0186 - 3.412554039) * 0.6, abs=1e-6
     )
+    # "재활용"만으로는 물질 재활용인지 에너지 회수(고형연료 등)인지 몰라 물질 재활용 계수를 쓰지 않는다
+    generic = run(reg, "cost_carbon", stream=stream(), vendor=vendor(process="재활용"))
+    assert generic["output"]["carbon"] is None
+    assert any(c["key"] == "carbon" and "'재활용'으로만" in c["text"] for c in generic["checks"])
     # 열분해는 공식 표에 계수가 없다
     pyro = run(reg, "cost_carbon", stream=stream(), vendor=vendor(process="열분해"))
     assert pyro["output"]["carbon"] is None
@@ -332,6 +336,23 @@ def test_optimizer_picks_reuse_when_it_beats_selling_and_only_when_eligible():
     dirty = stream(reuse=REUSE, contaminants=[{"name": "금속 인서트", "ratio": 0.02}])
     done = run(reg, "optimize_assignment", streams=[dirty], vendors=[])
     assert done["output"]["assignments"][0]["route"] == "keep"
+
+
+def test_reuse_stays_a_conditional_candidate_while_the_common_grade_is_held():
+    """운영 상태(공통 등급 기준이 가정값이라 보류)에서도 재투입이 배정 후보에 오른다. 품질은 확정하지 못했으므로
+    배정은 조건부다. 전에는 모든 조건이 충족이어야 해서 보류 중에는 재투입이 한 번도 후보에 오르지 못했다."""
+    reg = registry()
+    done = run(reg, "optimize_assignment", streams=[stream(reuse=REUSE)], vendors=[vendor()])
+    item = done["output"]["assignments"][0]
+    assert item["route"] == "reuse" and item["status"] == "conditional"
+    assert claim(done, item["monthlyAfter"])["value"] == pytest.approx(SAVING - REST)
+    # 불충족(혼입물, 쓰고 난 뒤 나온 것)은 보류 중에도 후보가 아니다
+    for bad in (
+        stream(reuse=REUSE, contaminants=[{"name": "금속 인서트", "ratio": 0.02}]),
+        stream(reuse=REUSE, origin="PCR"),
+    ):
+        done = run(reg, "optimize_assignment", streams=[bad], vendors=[])
+        assert done["output"]["assignments"][0]["route"] == "keep"
 
 
 @pytest.mark.usefixtures("grade_gate")

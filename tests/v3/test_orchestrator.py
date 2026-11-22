@@ -177,7 +177,8 @@ def test_result_sheet_assigns_every_stream(demo):
         assert keys["carbon"]["status"] == "conditional"
         assert keys["transport_carbon"]["status"] == "conditional"
     sprue_carbon = by_stream["st_sprue"]
-    assert "배출계수" in {c["key"]: c for c in sprue_carbon["checks"]}["carbon"]["text"]
+    # 시연 업체는 처리 방식을 "재활용"으로만 밝혀 물질 재활용 계수를 쓰지 않는다(에너지 회수일 수 있다)
+    assert "'재활용'으로만" in {c["key"]: c for c in sprue_carbon["checks"]}["carbon"]["text"]
     # 시험 시드(conftest.py, V3_DEMO_PERMITS=verified)는 한빛정밀 담당자가 허가증 원문을 대조해 둔 상태다
     assert sprue_carbon["permit"]["level"] == "verified"
     assert (

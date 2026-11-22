@@ -626,7 +626,10 @@ def labor_is_floor(labor_ev) -> bool:
 # 운송 배출 = 트럭 운송 배출계수(kgCO2e/ton·km) × 월 발생량(t) × 공장 → 업체 거리(km).
 # 원문 경계가 확인된 계수만 허용한다. 환경성적표지 시드는 값이 원본과 같지만 경계가 공개되지 않아 보류한다.
 # 빈 차 회송·적재율 포함 여부를 추측하지 않는다. 신재 대체 효과는 넣지 않는다.
-_AFTER_PROCESS = {"재활용": "recycle", "물질 재활용": "recycle", "열분해": "pyrolysis"}
+# "재활용"만으로는 물질 재활용인지 고형연료 제조 같은 에너지 회수인지 알 수 없다(폐기물관리법의 재활용에는 둘 다
+# 들어간다). 그래서 물질 재활용 배출계수를 쓰지 않는다. 자원순환 효과(circular.destination)도 같은 이유로 unknown이다
+_AFTER_PROCESS = {"물질 재활용": "recycle", "열분해": "pyrolysis"}
+GENERIC_RECYCLE = "재활용"
 CARBON_FORMULA = "(옮긴 뒤 처리의 배출계수 − 현행 처리의 배출계수) × 월 발생량. 신재 대체 효과는 넣지 않았습니다."
 TRANSPORT_EF_KEY = "emission.transport.truck"
 TRANSPORT_CARBON_FORMULA = (
@@ -749,6 +752,15 @@ def carbon_per_kg(rec: Recorder, stream: dict, vendor: dict, unit_price, method)
     if now_key is None:
         return None, [], "현행 처리 방식의 배출계수가 없어 탄소를 계산하지 않았습니다. 확인 필요."
     after_key = after_process(vendor, unit_price)
+    if after_key is None and str(vendor.get("process") or "") == GENERIC_RECYCLE:
+        return (
+            None,
+            [],
+            (
+                "업체가 처리 방식을 '재활용'으로만 밝혀 물질 재활용인지 에너지 회수(고형연료 등)인지 "
+                "알 수 없어 탄소를 계산하지 않았습니다. 확인 필요."
+            ),
+        )
     if after_key is None:
         return None, [], "업체의 처리 방식을 몰라 탄소를 계산하지 않았습니다. 확인 필요."
     now_ef = rec.basis(f"emission.{now_key}.{item}")
