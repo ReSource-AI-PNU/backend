@@ -2259,8 +2259,9 @@ def quote_request(
 def complex_plan(app: App, session_id: str, viewer: str) -> dict[str, Any]:
     """같은 단지 자원순환 후보의 2D 평면도 자료(complex_partners/plan.py). 배출 기업만 본다.
 
-    회사 위치(카카오 주소 검색·VWorld 지오코더)와 건물 도형(VWorld)은 부를 때마다 실시간으로 받고 저장하지
-    않는다(두 서비스의 이용 조건). 열쇠는 환경 변수 KAKAO_REST_API_KEY, VWORLD_API_KEY, VWORLD_DOMAIN이고,
+    회사 위치(카카오 주소 검색·VWorld 지오코더)는 부를 때마다 실시간으로 받고 저장하지 않는다(두 서비스의 이용
+    조건). 건물 도형은 브라우저가 buildingLayer로 VWorld에서 받는다(VWorld가 해외 IP인 운영 VM을 끊는다).
+    열쇠는 환경 변수 KAKAO_REST_API_KEY, VWORLD_API_KEY, VWORLD_DOMAIN이고,
     시험은 app.geo에 가짜를 넣는다. 결과에 같은 단지 후보가 없으면 404다.
     """
     session, owner = _session_for(app, session_id, viewer)
