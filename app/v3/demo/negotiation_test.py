@@ -70,10 +70,14 @@ def request_policy_id(org_id: str) -> str:
     return ids.human_id(org_id, "협상테스트-단가요청폭")
 
 
-def request_policy(registry, org_id: str, today: str) -> None:
+def request_policy(
+    registry, org_id: str, today: str, *, vendors: tuple[str, ...] | None = None
+) -> None:
     evidence_id = request_policy_id(org_id)
     if registry.exists(evidence_id):
         return
+    if vendors is None:
+        vendors = tuple(vendor_id(i) for i in range(1, len(VENDOR_OPTIONS) + 1))
     registry.put(
         Evidence(
             id=evidence_id,
@@ -84,7 +88,7 @@ def request_policy(registry, org_id: str, today: str) -> None:
             excerpt="가상 협상에서 최초 단가보다 배출 기업에 10% 유리한 단가를 한 차례 요청합니다.",
             source="협상 테스트 시나리오",
             as_of=today,
-            access=(org_id, *(vendor_id(i) for i in range(1, len(VENDOR_OPTIONS) + 1))),
+            access=(org_id, *vendors),
             meta={"synthetic": True},
         )
     )
@@ -93,9 +97,8 @@ def request_policy(registry, org_id: str, today: str) -> None:
 def ensure_vendors(store, registry, today: str) -> None:
     """Provision the three test vendors once; ordinary matching never sees them."""
     seeder = _Seeder(registry, today)
-    for index, (name, ratio, minimum, contamination, moisture, premium, day, fee) in enumerate(
-        VENDOR_OPTIONS, 1
-    ):
+    for index, option in enumerate(VENDOR_OPTIONS, 1):
+        name = option[0]
         org_id = vendor_id(index)
         try:
             store.get_vendor_profile(org_id)
@@ -107,48 +110,55 @@ def ensure_vendors(store, registry, today: str) -> None:
                 store.put_org({**org, "name": name})
             continue
 
-        store.put_org(
-            {
-                "id": org_id,
-                "name": name,
-                "role": "vendor",
-                "region": REGION,
-                "simulation": True,
-                "synthetic": True,
-            }
+        seed_vendor(store, seeder, org_id, index, option, MATERIALS)
+
+
+def seed_vendor(
+    store, seeder, org_id: str, index: int, option: tuple, materials: tuple[str, ...]
+) -> None:
+    name, ratio, minimum, contamination, moisture, premium, day, fee = option
+    store.put_org(
+        {
+            "id": org_id,
+            "name": name,
+            "role": "vendor",
+            "region": REGION,
+            "simulation": True,
+            "synthetic": True,
+        }
+    )
+    criteria = [
+        seeder.criterion(
+            org_id,
+            f"pc_negotiation_{index}_{ids.slug(material)}_{ids.slug(form or '가공 전')}",
+            material=material,
+            form=form,
+            grade="등외",
+            unitPriceKrwPerKg=price,
+            minMonthlyKg=minimum,
+            maxContaminationPct=contamination,
+            maxMoisturePct=moisture,
         )
-        criteria = [
-            seeder.criterion(
-                org_id,
-                f"pc_negotiation_{index}_{ids.slug(material)}_{ids.slug(form or '가공 전')}",
-                material=material,
-                form=form,
-                grade="등외",
-                unitPriceKrwPerKg=price,
-                minMonthlyKg=minimum,
-                maxContaminationPct=contamination,
-                maxMoisturePct=moisture,
-            )
-            for material in MATERIALS
-            for form, price in quote_prices(material, ratio)
-        ]
-        depot = [128.85 + index * 0.018, 35.13]
-        store.put_vendor_profile(
-            {
-                "orgId": org_id,
-                "permits": [
-                    seeder.typed_permit(org_id, item, list(MATERIALS))
-                    for item in ("폐플라스틱", "포장재")
-                ],
-                "criteria": criteria,
-                "fleet": {
-                    **seeder.fleet(org_id, depot, 3_500, 24, 1_100),
-                    "routes": [{"name": "강서 노선", "days": [day], "regions": [REGION]}],
-                },
-                "transport": seeder.transport(org_id, "vendor" if fee is None else "emitter", fee),
-                "process": "재활용",
-                "guardrails": {"days": [day], "minPickupsPerMonth": 1},
-                "simulationCounterPremium": premium,
-                "synthetic": True,
-            }
-        )
+        for material in materials
+        for form, price in quote_prices(material, ratio)
+    ]
+    depot = [128.85 + index * 0.018, 35.13]
+    store.put_vendor_profile(
+        {
+            "orgId": org_id,
+            "permits": [
+                seeder.typed_permit(org_id, item, list(materials))
+                for item in ("폐플라스틱", "포장재")
+            ],
+            "criteria": criteria,
+            "fleet": {
+                **seeder.fleet(org_id, depot, 3_500, 24, 1_100),
+                "routes": [{"name": "강서 노선", "days": [day], "regions": [REGION]}],
+            },
+            "transport": seeder.transport(org_id, "vendor" if fee is None else "emitter", fee),
+            "process": "재활용",
+            "guardrails": {"days": [day], "minPickupsPerMonth": 1},
+            "simulationCounterPremium": premium,
+            "synthetic": True,
+        }
+    )
