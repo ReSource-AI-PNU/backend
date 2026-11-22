@@ -1921,6 +1921,8 @@ def _result_view(session: dict[str, Any], viewer: str, owner: bool) -> dict[str,
                 "transportKm": None,
                 # 묶음 손해 공개는 배출 기업의 현행 손익 비교다
                 "bundleBelowCurrent": None,
+                # 회사 기록 보정은 배출 기업의 다른 업체 거래 이력에서 나온다
+                "personal": None,
                 # 수거 상태와 운반비 방식만 보인다. 금액은 배출 기업 쪽 계산 근거라 빼고(업체 자신의 견적은 대화의
                 # 조건 답에 있다), 운반비 손익분기(배출 기업의 비교)도 뺀다
                 "pickup": {
@@ -2064,12 +2066,18 @@ def get_memory(app: App, org_id: str, viewer: str) -> dict[str, Any]:
 
 
 def update_memory(app: App, org_id: str, body: dict[str, Any], viewer: str) -> dict[str, Any]:
-    """회사별 기록을 계약 검토에 쓸지 정한다(PUT /orgs/{orgId}/memory {"enabled": bool}). 기록은 지우지 않는다."""
+    """회사별 기록을 쓸지(enabled), 판정에 반영할지(applyToJudgment, 담당자 승인 근거를 남긴다) 정한다. 기록은 지우지 않는다."""
     _owner(app, org_id, viewer, role="emitter")
-    value = body.get("enabled") if isinstance(body, dict) else None
-    if not isinstance(value, bool):
-        raise ServiceError("INVALID_VALUE", "enabled를 참·거짓으로 보내 주세요.", 422)
-    return memory.set_enabled(app, org_id, value)
+    body = body if isinstance(body, dict) else {}
+    keys = [k for k in ("enabled", "applyToJudgment") if k in body]
+    if not keys or any(not isinstance(body[k], bool) for k in keys):
+        raise ServiceError(
+            "INVALID_VALUE", "enabled나 applyToJudgment를 참·거짓으로 보내 주세요.", 422
+        )
+    try:
+        return memory.update(app, org_id, {k: body[k] for k in keys})
+    except ValueError as error:
+        raise ServiceError("MEMORY_DISABLED", str(error), 409) from error
 
 
 def _outside_of(session: dict[str, Any]) -> dict[str, Any]:

@@ -7,7 +7,8 @@ import logging
 import math
 
 from app.v3 import names
-from app.v3.judge import circular
+from app.v3.evidence.registry import EvidenceForbidden, EvidenceNotFound
+from app.v3.judge import circular, personal
 from app.v3.judge.common import (
     CARBON_FORMULA,
     TOTAL_CARBON_FORMULA,
@@ -288,6 +289,50 @@ def _greenest(rec: Recorder, usable, best, green) -> dict | None:
     }
 
 
+def _history(rec, registry, org_id, history) -> tuple[float | None, str | None, list[dict]]:
+    """회사 기록 보정 입력을 확인한다. (보정 강도, 승인 근거 ID, 쓸 관측). 쓸 수 없으면 (None, None, [])."""
+    if not history:
+        return None, None, []
+    approval = str((history or {}).get("approval") or "")
+    try:
+        evidence = registry.get(approval, org_id)
+    except (EvidenceNotFound, EvidenceForbidden):
+        evidence = None
+    meta = (evidence.meta or {}) if evidence else {}
+    strength = num(evidence.value) if evidence else None
+    if (
+        evidence is None
+        or evidence.kind != "human"
+        or not meta.get("memoryApproval")
+        or meta.get("ownerOrgId") != org_id
+        or strength is None
+        or not strength > 0
+    ):
+        rec.check(
+            "history_approval",
+            "conditional",
+            "회사 기록을 판정에 반영하라는 담당자 승인을 확인하지 못해 보정하지 않았습니다. 확인 필요.",
+        )
+        return None, None, []
+    observed = []
+    for item in (history or {}).get("observations") or []:
+        if not isinstance(item, dict):
+            continue
+        rel = num(item.get("rel"))
+        seen = rec.visible(item.get("evidence") or [])
+        if rel is None or not -personal.REL_LIMIT <= rel <= personal.REL_LIMIT or not seen:
+            continue
+        observed.append(
+            {
+                "streamId": str(item.get("streamId")),
+                "vendorOrgId": str(item.get("vendorOrgId")),
+                "rel": rel,
+                "evidence": seen,
+            }
+        )
+    return float(strength), evidence.id, observed
+
+
 def optimize_assignment(
     registry,
     *,
@@ -300,6 +345,7 @@ def optimize_assignment(
     origin=None,
     cp_solver=_AUTO,
     distance_provider=None,
+    history=None,
 ):
     """exclude는 [{"streamId", "vendorOrgId"}]. 업체가 거절했거나 제안하지 않은 짝을 뺀다.
 
@@ -317,6 +363,12 @@ def optimize_assignment(
     MAX_COMBINATIONS 이하이면 완전 탐색과 같은 답일 때만 "ortools", 아니면 완전 탐색의 답을 쓰고
     "exact"라고 남긴다(어느 쪽이든 배정은 같다). 조합이 그보다 많으면 CP-SAT의 답만 쓸 수 있다.
     cp_solver는 테스트에서 가짜로 바꾼다(도구 입력이 아니다): (usable, options, weight) -> 번호들.
+
+    회사 기록 보정(history, 2026-11-22): {"approval": 근거 ID, "observations": [{streamId, vendorOrgId, rel, evidence}]}.
+    approval은 배출 기업 담당자가 판정 반영을 승인한 human 근거(meta.memoryApproval)여야 하고, 그 값이 보정 강도다.
+    승인이 맞으면 업체 선택지마다 예상 단가(judge/personal.py)로 매각 수익과 목적을 계산하고, 고른 배정에 보정 비율과
+    예상 단가를 계산 근거로 남긴다(output.assignments[].personal). 승인을 확인하지 못하면 보정하지 않고 확인 필요로 남긴다.
+    관측의 근거를 이 조직이 볼 수 없으면 그 관측은 쓰지 않는다. 다른 배출 기업의 기록은 받지 않는다(부르는 쪽이 거른다).
     """
     orgs = sorted({str(s.get("orgId")) for s in streams})
     if len(orgs) > 1:
@@ -330,7 +382,10 @@ def optimize_assignment(
         args["exclude"] = [list(pair) for pair in excluded]
     if origin:
         args["origin"] = list(origin)
+    if history:
+        args["history"] = history
     rec = Recorder("optimize_assignment", registry, org_id, today, args)
+    strength, approval_id, observed = _history(rec, registry, org_id, history)
     output = {
         "assignments": [],
         "totals": {},
@@ -338,6 +393,8 @@ def optimize_assignment(
         "carbonPrice": None,
         "skipped": [],
         "solver": None,
+        # 회사 기록 보정을 썼는지(승인 근거와 보정 강도). 쓰지 않았으면 None
+        "personal": {"approval": approval_id, "strength": strength} if strength else None,
     }
     weight, price_ev = num(carbonWeight), []
     if carbonWeight is None:
@@ -483,6 +540,13 @@ def optimize_assignment(
                 )
                 continue
             price = float(criterion["unitPriceKrwPerKg"])
+            # 회사 기록 보정: 승인했고 이 폐기물의 검수 기록이 있으면 업체별 예상 단가로 수익과 목적을 계산한다
+            adjusted = (
+                personal.estimate(observed, strength, str(stream.get("id")), str(vendor.get("orgId")))
+                if strength
+                else None
+            )
+            expected = personal.expected_price(price, adjusted["rate"]) if adjusted else price
             per_kg, carbon_ev, _ = carbon_per_kg(rec, stream, vendor, price, method)
             moved = transport_carbon(rec, distances[str(vendor.get("orgId"))], kg)
             process = (per_kg or 0.0) * kg
@@ -490,10 +554,11 @@ def optimize_assignment(
                 {
                     "vendor": vendor,
                     "price": price,
-                    "revenue": price * kg,
+                    "revenue": expected * kg,
                     "labor": labor or 0.0,
                     # 흐름 하나의 값: 매각 수익(처리비면 음수) − 전처리 인건비. 운반비는 업체 단위로 뺀다
-                    "value": price * kg - (labor or 0.0),
+                    "value": expected * kg - (labor or 0.0),
+                    "personal": {**adjusted, "expected": expected} if adjusted else None,
                     "ev": list(criterion.get("evidence") or []),
                     "criterion": criterion,
                     # 목적에 넣는 탄소: 처리 방식 탄소(배출계수가 없으면 0) + 운송 배출(모르면 0)
@@ -765,6 +830,44 @@ def optimize_assignment(
             return vendor_room
         return fallback if not unresolved_vendor and fallback and fallback[0] > 0 else None
 
+    # 회사 기록 보정을 쓴 경우: 고르지 않은 업체 후보에도 예상 단가를 근거로 남긴다(결과의 다른 제안 줄이 같은 기준으로
+    # 견주게 한다). 고른 배정의 보정 근거는 아래 흐름별 계산에서 남긴다
+    output["personalCandidates"] = []
+    if strength:
+        for i, (item, choices) in enumerate(zip(usable, options, strict=True)):
+            for choice in choices:
+                mine = choice.get("personal")
+                if not mine or choice is best[i]:
+                    continue
+                vendor_id = str(choice["vendor"].get("orgId"))
+                key = f"s{i}Alt{vendors.index(choice['vendor'])}"
+                who = item["stream"].get("name") or None
+                rate = rec.number(
+                    f"{key}PersonalRate",
+                    mine["rate"] * 100,
+                    "%",
+                    personal.FORMULA_RATE,
+                    [*mine["evidence"], approval_id],
+                    label=f"{who + ' ' if who else ''}회사 기록 보정 비율(다른 제안)",
+                )
+                rec.number(
+                    f"{key}ExpectedUnitPrice",
+                    mine["expected"],
+                    "원/kg",
+                    personal.FORMULA_PRICE,
+                    [rate["evidence"][0], *choice["ev"]],
+                    label=f"{who + ' ' if who else ''}회사 기록 반영 예상 단가(다른 제안)",
+                )
+                output["personalCandidates"].append(
+                    {
+                        "streamId": item["stream"].get("id"),
+                        "vendorOrgId": vendor_id,
+                        "rate": f"{key}PersonalRate",
+                        "expectedUnitPrice": f"{key}ExpectedUnitPrice",
+                        "records": mine["records"],
+                    }
+                )
+
     # 합계 계산 근거가 흐름별 계산 근거를 입력으로 잇게 한다(계산 사슬: 합계 → 흐름별 → 원 근거)
     parts: dict[str, list[str]] = {"now": [], "after": [], "difference": [], "carbon": []}
     diffs: dict[int, dict] = {}  # 흐름별 현행 대비 차이 근거(묶음 손해 공개에 쓴다)
@@ -798,17 +901,38 @@ def optimize_assignment(
             after_ev = [made["evidence"][0], *choice["ev"]]
             after_formula = "신재 절감액 − 다시 넣지 못하는 양의 현행 처리비"
         charge = charges.get(i)
+        mine = choice.get("personal") if choice["vendor"] is not None else None
+        revenue_ev, revenue_formula = list(choice["ev"]), "업체 단가 × 월 발생량(처리비면 음수)"
+        if mine:
+            rate = rec.number(
+                f"{tag}PersonalRate",
+                mine["rate"] * 100,
+                "%",
+                personal.FORMULA_RATE,
+                [*mine["evidence"], approval_id],
+                label=f"{who + ' ' if who else ''}회사 기록 보정 비율",
+            )
+            expected_claim = rec.number(
+                f"{tag}ExpectedUnitPrice",
+                mine["expected"],
+                "원/kg",
+                personal.FORMULA_PRICE,
+                [rate["evidence"][0], *choice["ev"]],
+                label=f"{who + ' ' if who else ''}회사 기록 반영 예상 단가",
+            )
+            revenue_ev = [expected_claim["evidence"][0], *choice["ev"]]
+            revenue_formula = "회사 기록 반영 예상 단가 × 월 발생량(처리비면 음수)"
         if choice["vendor"] is not None:
             made = rec.number(
                 f"{tag}Revenue",
                 choice["revenue"],
                 "원/월",
-                "업체 단가 × 월 발생량(처리비면 음수)",
-                choice["ev"],
+                revenue_formula,
+                revenue_ev,
                 label=names.calc_label("revenue", who),
             )
             breakdown["revenue"] = made["id"]
-            after_ev = [made["evidence"][0], *choice["ev"]]
+            after_ev = [made["evidence"][0], *revenue_ev]
             after_formula = "매각 수익(처리비면 음수) − 운반비 − 전처리 인건비"
             haul = hauls.get(str(choice["vendor"].get("orgId"))) or {}
             if charge and charge["monthly"] is not None:
@@ -924,6 +1048,15 @@ def optimize_assignment(
             "transportRoomAgainst": None,
             # 이 흐름만 보면 현행보다 불리하지만 같은 업체 묶음 전체가 나아 함께 보낸다(아래에서 채운다)
             "bundleBelowCurrent": None,
+            # 회사 기록 보정(승인했고 기록이 있을 때): 보정 비율·예상 단가 claim의 키와 쓴 검수 건수
+            "personal": {
+                "rate": f"{tag}PersonalRate",
+                "expectedUnitPrice": f"{tag}ExpectedUnitPrice",
+                "records": mine["records"],
+                "streamRecords": mine["streamRecords"],
+            }
+            if mine
+            else None,
         }
         if pending:
             # 운반비가 정해지지 않은 배정: 운반비가 한 달 얼마를 넘으면 다음으로 나은 선택지가 나은지 남긴다

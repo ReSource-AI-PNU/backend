@@ -1259,6 +1259,7 @@ class Orchestrator:
                     vendor=publics[thread.vendor_org],
                     vendor_org=self.store.get_org(thread.vendor_org),
                     memo=work["threadTools"][thread.id],
+                    history=self._pair_memory(session, thread),
                 )
             self._send(session, thread, outcome, trace, stage=4)
         return False
@@ -1695,6 +1696,7 @@ class Orchestrator:
         if exclude:
             arguments["exclude"] = exclude
         self._with_origin(session, arguments)
+        self._with_history(session, arguments)
         optimized = self._tool(
             session,
             "optimize_assignment",
@@ -2132,6 +2134,7 @@ class Orchestrator:
                     "cannotAskUser": exhausted or bool(work["cannotAsk"].get(thread.id)),
                     "unresolved": list(work.get("unresolved") or []),
                 },
+                history=self._pair_memory(session, thread),
             )
         if outcome.kind == ACCEPT:
             self._flush(session["id"], trace, thread.id, thread.emitter_org)
@@ -2518,6 +2521,23 @@ class Orchestrator:
         if location:
             arguments["origin"] = list(location)
 
+    def _with_history(self, session: dict[str, Any], arguments: dict[str, Any]) -> None:
+        """배출 기업이 회사 기록을 판정에 반영하도록 승인했으면 지난 검수 관측을 최적 배정에 넘긴다(memory.py)."""
+        found = memory.judgment_history(
+            self.app,
+            session["emitterOrgId"],
+            [s["id"] for s in arguments.get("streams") or []],
+            session["id"],
+        )
+        if found:
+            arguments["history"] = found
+
+    def _pair_memory(self, session: dict[str, Any], thread: Thread) -> list[dict[str, Any]] | None:
+        """회사 측 AI가 받는 같은 업체와의 지난 검수 요약(숫자 없이). 회사가 껐거나 기록이 없으면 None."""
+        return memory.agent_history(
+            self.app, thread.emitter_org, thread.vendor_org, list(thread.stream_ids), session["id"]
+        )
+
     def _public(self, session: dict[str, Any], profile: dict[str, Any]) -> dict[str, Any]:
         """판단 도구에 넘기는 업체 프로필. 이 진단에서 협상한 단가가 있으면 그 매입 기준의 단가와 근거를 바꾼다.
 
@@ -2795,6 +2815,7 @@ class Orchestrator:
             if exclude:
                 arguments["exclude"] = exclude
             self._with_origin(session, arguments)
+            self._with_history(session, arguments)
             optimized = self._tool(
                 session,
                 "optimize_assignment",
@@ -3372,6 +3393,15 @@ class Orchestrator:
                     None,
                 )
                 other_pending = bool(other_output.get("transportPending")) and not no_pickup
+                # 회사 기록 보정을 썼으면 이 업체의 예상 단가(배정과 같은 기준). 한 달 값은 보정 전 계산이다
+                candidate = next(
+                    (
+                        x
+                        for x in optimized["output"].get("personalCandidates") or []
+                        if x["streamId"] == sid and x["vendorOrgId"] == other_id
+                    ),
+                    None,
+                )
                 alternatives.append(
                     {
                         "vendorOrgId": other_id,
@@ -3407,7 +3437,15 @@ class Orchestrator:
                             if other["type"] == "conditional"
                             else "선택되지 않은 제안"
                         )
-                        + (" · 한 달 값은 별도 운반비 반영 전" if other_pending else ""),
+                        + (" · 한 달 값은 별도 운반비 반영 전" if other_pending else "")
+                        + (" · 한 달 값은 회사 기록 보정 전" if candidate else ""),
+                        "personalUnitPrice": claim_in(
+                            optimized,
+                            candidate["expectedUnitPrice"],
+                            f"{tag}_alt_{safe_id(other_id)}_expectedUnitPrice",
+                        )
+                        if candidate
+                        else None,
                     }
                 )
             entry = {
@@ -3465,6 +3503,17 @@ class Orchestrator:
                 "alternatives": alternatives,
                 # 허가 확인 결과 이 경로로 진행할 수 없는 업체(사유와 함께). 예상 손익은 싣지 않는다
                 "blockedRoutes": blocked_routes,
+                # 회사 기록 보정(담당자가 판정 반영을 승인했을 때): 보정 비율, 예상 단가, 쓴 검수 건수
+                "personal": {
+                    "rate": claim_in(optimized, adjusted["rate"], f"{tag}_personalRate"),
+                    "expectedUnitPrice": claim_in(
+                        optimized, adjusted["expectedUnitPrice"], f"{tag}_expectedUnitPrice"
+                    ),
+                    "records": adjusted["records"],
+                    "streamRecords": adjusted["streamRecords"],
+                }
+                if (adjusted := item.get("personal"))
+                else None,
             }
             assignments.append(entry)
             for found in ((route or {}).get("output", {}).get("current") or {}).get(

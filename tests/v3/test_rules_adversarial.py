@@ -1885,6 +1885,8 @@ BRIEFING_KEYS = {
         "role", "task", "guide", "today", "org", "counterpart", "thread", "streams",
         "vendorCriteria", "incoming", "history", "state", "userQuestionFields", "tools",
         "toolResults", "pool", "rejections",
+        # 회사 기록(memory.agent_history): 같은 업체와의 지난 검수의 날짜·등급(정해진 값)·견줌 결과만. 문서 글은 없다
+        "pastInspections",
     },
     "vendor": {
         "role", "task", "guide", "today", "org", "counterpart", "thread", "guardrails", "streams",

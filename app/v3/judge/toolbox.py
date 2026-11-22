@@ -123,7 +123,7 @@ _SPECS = [
         "배출권 시세로 환산해 함께 본다.",
         _schema(
             {"streams": ARR, "vendors": ARR},
-            {"carbonWeight": NUM, "exclude": ARR, "origin": POINT},
+            {"carbonWeight": NUM, "exclude": ARR, "origin": POINT, "history": OBJ},
         ),
         optimize_assignment,
     ),
