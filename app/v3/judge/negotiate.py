@@ -13,6 +13,9 @@ from __future__ import annotations
 
 from typing import Any
 
+from app.v3.demo.negotiation_test import request_policy_id
+from app.v3.evidence.registry import EvidenceForbidden, EvidenceNotFound
+from app.v3.judge import basis
 from app.v3.judge.common import Recorder, num
 
 ASK_KEY = "negotiation.askPct"
@@ -26,7 +29,16 @@ def _offer_view(claim: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-def ask_price(registry, *, org_id, today, stream_id, offer, vendor_org):
+def request_basis(registry, org_id: str, *, simulation: bool = False):
+    if not simulation:
+        return basis.resolve(registry, org_id, ASK_KEY)
+    try:
+        return registry.get(request_policy_id(org_id), org_id)
+    except (EvidenceForbidden, EvidenceNotFound):
+        return None
+
+
+def ask_price(registry, *, org_id, today, stream_id, offer, vendor_org, simulation=False):
     """회사 측 요청 단가. offer는 업체가 낸 단가 claim(원/kg)이다."""
     rec = Recorder(
         "negotiate_ask",
@@ -37,7 +49,7 @@ def ask_price(registry, *, org_id, today, stream_id, offer, vendor_org):
         [vendor_org],
     )
     price = num(offer.get("value"))
-    pct = rec.basis(ASK_KEY)
+    pct = request_basis(registry, org_id, simulation=simulation)
     output = {"streamId": stream_id, "asked": None}
     if price is None or pct is None or num(pct.value) is None or not 0 <= pct.value <= 100:
         rec.check(

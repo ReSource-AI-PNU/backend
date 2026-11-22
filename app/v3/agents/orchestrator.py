@@ -42,6 +42,7 @@ from app.v3.agents.draft import (
 )
 from app.v3.agents.pool import safe_id
 from app.v3.agents.vendor import public_profile
+from app.v3.demo import negotiation_test
 from app.v3.demo.seed import share_evidence, share_stream, share_vendor_terms
 from app.v3.evidence.model import Evidence
 from app.v3.evidence.registry import EvidenceForbidden, EvidenceNotFound
@@ -112,14 +113,19 @@ def discoverable_profiles(store: Any, emitter: dict[str, Any]) -> dict[str, dict
     - 허가 품목이나 매입 기준이 하나도 없는 프로필(가입만 하고 아직 채우지 않은 업체)은 뺀다.
     - 시연 배출 기업(demo: true)은 시연 업체만 본다. 체험하기로 열리는 시연 진단에 실제 업체가 섞이지
       않게 하려는 것이다. 실제 배출 기업에는 시연 업체를 후보로 제시하지 않는다.
+    - 로그인한 협상 테스트 회사는 별도의 가상 처리 업체만 본다.
     - 탈퇴한 업체(departed: true. 다른 회사와 확정한 거래 기록 때문에 프로필만 남았다)는 뺀다.
     """
-    demo_only = bool(emitter.get("demo"))
-    demo_ids = {o["id"] for o in store.list_orgs() if o.get("demo")}
+    group = negotiation_test.match_group(emitter)
+    groups = {
+        org["id"]: negotiation_test.match_group(org)
+        for org in store.list_orgs()
+        if org.get("role") == "vendor" and not org.get("deleted")
+    }
     return {
         p["orgId"]: p
         for p in store.list_vendor_profiles()
-        if discoverable(p) and ((p["orgId"] in demo_ids) == demo_only)
+        if discoverable(p) and groups.get(p["orgId"]) == group
     }
 
 
@@ -1057,8 +1063,9 @@ class Orchestrator:
                     share_evidence(self.registry, evidence_id, org_id)
         publics = {v: public_profile(p, fleet_cost=False) for v, p in profiles.items()}
         work["stages"].update({"3": "running", "4": "running"})
-        self._find_outside(session, emitter, streams)
-        self._find_complex(session, emitter, streams)
+        if not emitter.get("simulation"):
+            self._find_outside(session, emitter, streams)
+            self._find_complex(session, emitter, streams)
 
         matched: dict[str, list[dict]] = {v: [] for v in publics}
         refused: dict[str, list[dict]] = {v: [] for v in publics}
@@ -2613,7 +2620,7 @@ class Orchestrator:
         return dict(answer) if answer else self._profile_haul(session, profile, measure=measure)
 
     def _negotiate(self, session, live: list[Thread], assigned: dict[str, list[str]]) -> set[str]:
-        """⑥ 합의 전 단가 협상 한 번. 배정된 흐름마다 회사 측이 요청 폭만큼 나은 단가를 요청하고(코드가 쓴 질문,
+        """⑥ 합의 전 단가 협상 한 번. 지정된 흐름마다 회사 측이 요청 폭만큼 나은 단가를 요청하고(코드가 쓴 질문,
         claim은 요청 단가 계산 근거), 업체 측이 자기 범위 안에서 답한다. 단가가 바뀐 대화의 ID를 돌려준다.
 
         한 대화에 한 번만 한다(다시 실행해도 다시 묻지 않는다). 요청을 보낼 수 없으면(턴 상한, 근거 검사) 건너뛴다.
@@ -2621,6 +2628,7 @@ class Orchestrator:
         work = session["work"]
         if not getattr(self.app, "negotiate", True):
             return set()
+        simulation = self.store.get_org(session["emitterOrgId"]).get("simulation") is True
         done = work.setdefault("negotiation", {})
         changed: set[str] = set()
         for thread in live:
@@ -2640,6 +2648,7 @@ class Orchestrator:
                     stream_id=sid,
                     offer=offer["claim"],
                     vendor_org=thread.vendor_org,
+                    simulation=simulation,
                 )
                 found = next((c for c in result["claims"] if c["id"] == "askedPrice"), None)
                 if found is None:
@@ -2805,7 +2814,12 @@ class Orchestrator:
 
         optimized, assigned = optimize(live)
         # ⑥ 합의 전에 단가를 한 번 협상하고, 단가가 바뀌었으면 그 단가로 비용과 최적안을 다시 계산한다
-        changed = self._negotiate(session, live, assigned)
+        if self.store.get_org(org_id).get("simulation"):
+            # 시연에서는 모든 업체의 조정 답을 비교한 뒤 최종안을 고른다.
+            requests = {t.id: list(work["offers"][t.id]) for t in live}
+        else:
+            requests = assigned
+        changed = self._negotiate(session, live, requests)
         live = [t for t in live if t.status == "open" and work["offers"].get(t.id)]
         if changed:
             cost_tools([t for t in live if t.id in changed])
@@ -3513,7 +3527,9 @@ class Orchestrator:
             assumptions += done["grade"].get("assumptions") or []
         if work.get("negotiated"):
             # 협상 단가는 요청 폭(가정값)으로 요청한 결과다
-            found = basis.resolve(self.registry, org_id, negotiate.ASK_KEY)
+            found = negotiate.request_basis(
+                self.registry, org_id, simulation=bool(self.store.get_org(org_id).get("simulation"))
+            )
             if found is not None:
                 assumptions.append(found.id)
         materials = {

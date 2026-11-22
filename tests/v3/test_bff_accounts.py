@@ -630,3 +630,68 @@ def test_demo_reset_uses_the_real_models_and_falls_back_to_rules_cleanly(world, 
     # 실패한 진단은 남지 않는다: 시연 진단(맨 앞)과 지난 거래 하나씩
     assert sessions[0]["id"] == reset["demoSessionId"] and len(sessions) == 2
     assert "규칙 정책으로" in caplog.text
+
+
+def test_negotiation_test_company_runs_three_price_rounds_without_cross_matching(world):
+    from app.v3.agents.orchestrator import discoverable_profiles
+    from app.v3.demo import negotiation_test
+
+    client, state, _ = world
+    user = signup(client, "simulation@example.com")
+    other = signup(client, "ordinary@example.com")
+    ordinary = new_org(client, other, "일반 배출 사업장", "emitter")["id"]
+    route = "/api/v3/orgs/negotiation-test"
+    created = client.post(route, headers=bff(user))
+    assert created.status_code == 201, created.text
+    company = created.json()["id"]
+    assert client.post(route, headers=bff(user)).json()["id"] == company
+    me = client.get("/api/v3/accounts/me", headers=bff(user)).json()
+    assert next(m for m in me["memberships"] if m["orgId"] == company)["simulation"] is True
+
+    ids = {negotiation_test.vendor_id(i) for i in range(1, 4)}
+    test_profiles = discoverable_profiles(state.store, state.store.get_org(company))
+    assert set(test_profiles) == ids
+    assert not ids.intersection(discoverable_profiles(state.store, state.store.get_org(ordinary)))
+    assert not ids.intersection(discoverable_profiles(state.store, state.store.get_org(HANBIT)))
+    assert all(
+        {row["material"] for row in p["criteria"]} == set(negotiation_test.MATERIALS)
+        for p in test_profiles.values()
+    )
+
+    headers = bff(user, company)
+    saved = client.put(
+        f"/api/v3/orgs/{company}/streams/st_negotiation_case01",
+        headers=headers,
+        json={
+            "name": "포장필름",
+            "wasteItem": "폐플라스틱",
+            "material": "LDPE",
+            "form": "필름",
+            "monthlyKg": 300,
+            "origin": "PIR",
+            "currentTreatment": {"method": "소각", "unitCostKrwPerKg": 250},
+        },
+    )
+    assert saved.status_code == 200, saved.text
+    opened = client.post("/api/v3/sessions", headers=headers, json={})
+    assert opened.status_code in (200, 201), opened.text
+    session_id = opened.json()["session"]["id"]
+    assert (
+        error(client.get(f"/api/v3/sessions/{session_id}", headers=bff(other, company)), 403)
+        == "NOT_A_MEMBER"
+    )
+    view = answer_until_settled(client, session_id, headers)
+    assert view["session"]["status"] == "awaiting_approval", view["session"]
+    assert {t["vendorOrgId"] for t in view["threads"]} == ids
+    assert not view["result"].get("outsideVendors") and not view["result"].get("complexPartners")
+
+    stored = state.store.get_session(session_id)["work"]
+    assert {row["result"]["st_negotiation_case01"]["after"] for row in stored["negotiation"].values()} == {
+        138,
+        155,
+        170,
+    }
+    assignment = view["result"]["assignments"][0]
+    # 170원 업체는 별도 수거비가 있어, 운반비 포함 155원 업체가 최종 선택된다.
+    assert assignment["vendorOrgId"] == negotiation_test.vendor_id(2)
+    assert assignment["unitPrice"]["value"] == 155
