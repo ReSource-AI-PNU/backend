@@ -31,7 +31,7 @@ INDEX=1 bash infra/vm/deploy-vm.sh         # 끝에 백엔드 컨테이너 안�
 | 구성 | 내용 |
 |---|---|
 | `infra/vm.bicep` | Central US의 VM `vm-rsai-demo-app`(Standard_D4as_v5, 4 vCPU·16GB, Ubuntu 22.04, 디스크 128GB), 공용 IP와 DNS 이름, 별도 VNet `vnet-rsai-demo-app`, NSG(80·443은 인터넷, 22는 `sshSourcePrefix`만). cloud-init이 Docker를 설치한다 |
-| `infra/vm/compose.yml` | Caddy(HTTPS, Let's Encrypt), frontend, backend(API), detector(탐지 채점 서버 `app/ml/score_api.py`, CPU 추론. Azure ML 엔드포인트 대신 `V3_DETECTOR_ENDPOINT`가 부른다). 업체 측 오픈 모델(Ollama)은 이 VM에 두지 않고 H100 계산 인스턴스에서 돌린다(2026-11-22에 VM의 CPU Ollama 컨테이너를 없앴다). 인터넷에는 Caddy만 열리고 나머지는 Compose 네트워크 안에서만 닿는다 |
+| `infra/vm/compose.yml` | Caddy(HTTPS, Let's Encrypt), frontend, backend(API). 업체 측 오픈 모델(Ollama)과 사진·영상 탐지 채점 서버(`app/ml/score_api.py`)는 이 VM에 두지 않고 H100 계산 인스턴스에서 돌린다(2026-11-22에 VM의 CPU Ollama·detector 컨테이너를 없앴다. 탐지는 `infra/h100/detector/setup-detector.sh`로 깔고 백엔드의 `V3_DETECTOR_ENDPOINT`가 사설 주소 8095를 부른다. H100을 끄면 사진·영상 분석만 쉰다). 인터넷에는 Caddy만 열리고 나머지는 Compose 네트워크 안에서만 닿는다 |
 | `infra/vm/deploy-vm.sh` | Key Vault에서 비밀을 읽어 VM의 `/opt/rsai/env/*.env`(권한 600)에만 쓰고, `git archive`한 소스를 올려 VM 안에서 이미지를 빌드한다. 마이그레이션 → 시작 → Ollama 모델 받기 → HTTPS 응답 확인 순서다 |
 
 - **지역:** PostgreSQL·AI Search와 같은 Central US에 둔다. East US 2에 두었을 때 DB 왕복이 평균 39ms라 근거를 하나씩 읽는 진단 실행 한 번이 10분을 넘겼다.

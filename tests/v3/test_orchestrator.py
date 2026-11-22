@@ -60,12 +60,16 @@ def test_first_stop_is_a_batch_of_questions(demo):
     sprue = asked["streams"][-1]
     # 공통 품질 등급 기준이 검증되지 않아 측정값이 있어도 등급을 매기지 않는다(2026-11-21). 업체가 등록한
     # 매입 기준과 반입 검수는 따로 본다
+    reference = sprue["grade"].pop("reference")
     assert sprue["grade"] == {
         "value": None,
         "basis": None,
         "label": "공통 등급 산정 보류",
         "evidence": [],
     }
+    # 측정값이 있으면 가정값 기준의 참고 등급만 따로 보인다(판정에는 쓰지 않는다)
+    assert reference["grade"] == "A" and reference["basis"] == "measured"
+    assert reference["evidence"][0].startswith("assumption:")
     assert value(sprue["monthlyKg"]) == 600 and sprue["monthlyKg"]["evidence"]
     assert sprue["currentTreatment"]["assumed"] is False
     assert value(sprue["currentTreatment"]["unitCost"]) == 250
@@ -400,12 +404,14 @@ def test_answered_moisture_becomes_evidence_and_grade():
     assert value(film["moisture"]) == FILM_MOISTURE
     assert film["moisture"]["evidence"] == ["human:org_hanbit:st_film-수분"]
     # 답한 수분은 근거가 되지만 공통 등급은 매기지 않는다(2026-11-21, 업체 매입 기준 대조는 따로 한다)
+    reference = film["grade"].pop("reference")
     assert film["grade"] == {
         "value": None,
         "basis": None,
         "label": "공통 등급 산정 보류",
         "evidence": [],
     }
+    assert reference["basis"] == "photo_estimate"  # 사진 추정 오염도와 답한 수분으로 낸 참고 등급
     defect = next(s for s in view["streams"] if s["id"] == "st_defect")
     assert defect["moisture"] is None and defect["unknownFields"] == ["moisturePct"]
     inquiry = thread_of(view, SAEGIL)["messages"][0]

@@ -75,7 +75,7 @@ class DomainGate:
         import pickle
 
         from torchvision import models, transforms
-        self.dev = dev or ("mps" if torch.backends.mps.is_available() else "cpu")
+        self.dev = dev or ("cuda" if torch.cuda.is_available() else ("mps" if torch.backends.mps.is_available() else "cpu"))
         with open(Path(clf_dir) / "clf.pkl", "rb") as f:
             self.clf = pickle.load(f)
         m = models.resnet18(weights=models.ResNet18_Weights.IMAGENET1K_V1); m.fc = torch.nn.Identity()
@@ -88,6 +88,17 @@ class DomainGate:
         x = torch.stack([self.tf(cv2.cvtColor(f, cv2.COLOR_BGR2RGB)) for f in bgr_frames]).to(self.dev)
         p = self.clf.predict_proba(self.m(x).cpu().numpy()).mean(0)
         return self.clf.classes_[int(p.argmax())], float(p.max())
+
+
+_GATES: dict = {}
+
+
+def domain_gate(clf_dir):
+    """도메인 판정기는 디렉터리마다 한 번만 만든다(resnet18 가중치를 부를 때마다 읽으면 사진 한 장에 0.4초가 더 든다)."""
+    key = str(clf_dir)
+    if key not in _GATES:
+        _GATES[key] = DomainGate(clf_dir)
+    return _GATES[key]
 
 
 def frames(src, fps):
@@ -281,7 +292,7 @@ def run(model, src, out=None, fps=4.0, conf=None, cond_model=None, save_vis=True
     if cdet is not None and gate is None:
         gate_dir = os.getenv("DOMAIN_CLF_DIR", "")
         if gate_dir and (Path(gate_dir) / "clf.pkl").exists():
-            gate = DomainGate(gate_dir)
+            gate = domain_gate(gate_dir)
     def chunks(it, n):
         buf = []
         for item in it:

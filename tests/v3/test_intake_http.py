@@ -1,4 +1,4 @@
-"""intake HTTP 호출: https만 부르고, 내부 서비스는 V3_INTERNAL_HTTP_HOSTS에 적은 한 단어 이름만 http로 부른다."""
+"""intake HTTP 호출: https만 부르고, 내부 서비스(V3_INTERNAL_HTTP_HOSTS의 한 단어 이름, 사설 IPv4 주소)만 http로 부른다."""
 
 import pytest
 
@@ -40,3 +40,19 @@ def test_default_transport_refuses_before_opening_a_connection(monkeypatch):
     monkeypatch.setattr(_http.urllib.request, "urlopen", boom)
     with pytest.raises(ValueError):
         _http.default_transport("POST", "http://detector:8000/score", {}, b"{}")
+
+
+def test_private_ipv4_gets_http_and_the_long_timeout():
+    """H100 계산 인스턴스의 탐지 서버는 VNet 피어링으로 사설 주소에서만 닿는다."""
+    assert _http.timeout_for("http://10.72.0.4:8095/score", {}) == _http.INTERNAL_TIMEOUT
+    assert _http.timeout_for("http://192.168.0.2/score", {}) == _http.INTERNAL_TIMEOUT
+
+
+def test_metadata_and_public_addresses_are_not_internal():
+    for url in (
+        "http://169.254.169.254/metadata",
+        "http://0.0.0.0:8095/score",
+        "http://20.9.38.56:8095/score",
+    ):
+        with pytest.raises(ValueError):
+            _http.timeout_for(url, {})

@@ -62,7 +62,7 @@ from app.v3.evidence.registry import EvidenceForbidden, EvidenceNotFound
 from app.v3.evidence.seeds import load_seed_dir
 from app.v3.evidence.units import UnitError, same_value
 from app.v3.evidence.validator import validate_message, validate_text
-from app.v3.intake import criteria_llm, csv_measure, documents, permit_docs, shields
+from app.v3.intake import criteria_llm, csv_measure, documents, labels, permit_docs, shields
 from app.v3.intake import detector as media
 from app.v3.judge import basis
 from app.v3.judge.common import quality, without_emitter_only
@@ -633,9 +633,12 @@ def update_stream(
         if not patch.get("name"):
             raise ServiceError("STREAM_NOT_FOUND", "그런 폐기물이 없습니다.", 404) from None
         stream = {"id": stream_id, "orgId": org_id, "contaminants": []}
+    before_material = stream.get("material")
     for key in STREAM_FIELDS:
         if key in patch:
             stream[key] = patch[key]
+    if "material" in patch:
+        _material_source(stream, patch, before_material)
     if "monthlyKg" in patch:
         value = patch["monthlyKg"]
         if value is None:
@@ -715,6 +718,26 @@ def update_stream(
     saved = app.store.put_stream(stream)
     _recheck(app, org_id)
     return saved
+
+
+def _material_source(stream: dict[str, Any], patch: dict[str, Any], before: Any) -> None:
+    """재질을 고칠 때 그 출처를 맞춘다.
+
+    materialSource="label"이면 사진에서 읽은 재질 표기(photo.labelMaterials)에 그 재질이 있어야 하고,
+    재질의 출처가 label, 근거가 표기 읽기 근거가 된다. 다른 값으로 고치면 표기 출처를 지운다.
+    """
+    source = patch.get("materialSource")
+    if source == "label":
+        label = (stream.get("photo") or {}).get("labelMaterials") or {}
+        names = {item.get("material") for item in label.get("found") or []}
+        if stream.get("material") not in names:
+            raise ServiceError("INVALID_VALUE", "사진에서 읽은 재질 표기에 없는 재질입니다.", 422)
+        stream.update(materialBasis="label", materialEvidence=list(label.get("evidence") or []))
+    elif source is not None:
+        raise ServiceError("INVALID_VALUE", "재질 출처는 label만 받습니다.", 422)
+    elif stream.get("materialBasis") == "label" and stream.get("material") != before:
+        stream.pop("materialBasis", None)
+        stream.pop("materialEvidence", None)
 
 
 def _amount(value: Any, message: str, *, positive: bool = False) -> float:
@@ -1515,6 +1538,9 @@ def _stream_view(
         "process": stream.get("process"),
         "wasteItem": stream.get("wasteItem"),
         "material": stream.get("material"),
+        # 재질의 출처: label(사진 속 표기를 담당자가 등록) | estimated | null(담당자 입력)
+        "materialBasis": stream.get("materialBasis"),
+        "materialEvidence": _visible_ids(app, stream.get("materialEvidence"), viewer),
         "origin": stream.get("origin"),
         "form": stream.get("form"),
         "lot": stream.get("lot"),
@@ -1527,6 +1553,8 @@ def _stream_view(
         "monthlyKgBasis": stream.get("monthlyKgBasis"),
         "contamination": _claim(pool, facts.get("contaminationPct")),
         "photoContamination": _claim(pool, facts.get("photoContaminationPct")),
+        # 탐지 모델이 검증 안 된 참고값이라고 표시했으면 False(판정에서는 상한을 넘어도 조건부로 본다)
+        "photoReliable": (stream.get("photo") or {}).get("reliable"),
         "moisture": _claim(pool, facts.get("moisturePct")),
         # contamination·moisture 값의 출처: measured(측정) | answered(담당자 답) | photo_estimate | null
         "contaminationBasis": _basis_of(
@@ -1539,6 +1567,7 @@ def _stream_view(
             "basis": grade.get("basis"),
             "label": grade.get("label") or "확인 필요",
             "evidence": _visible_ids(app, grade.get("evidence"), viewer),
+            "reference": _reference_view(app, grade.get("reference"), viewer) if owner else None,
         },
         "currentTreatment": None,
     }
@@ -1574,6 +1603,19 @@ def _stream_view(
             else None,
         }
     return view
+
+
+def _reference_view(app: App, reference: Any, viewer: str) -> dict[str, Any] | None:
+    """참고 등급(가정값 기준, 판정에 쓰지 않음). 배출 기업에게만 보인다."""
+    if not isinstance(reference, dict) or not reference.get("grade"):
+        return None
+    return {
+        "grade": reference["grade"],
+        "basis": reference.get("basis"),
+        "meaning": reference.get("meaning"),
+        "note": reference.get("note"),
+        "evidence": _visible_ids(app, reference.get("evidence"), viewer),
+    }
 
 
 def _basis_of(claim_id: str | None, basis_name: str | None) -> str | None:
@@ -2985,8 +3027,10 @@ def upload_media(
 ) -> dict[str, Any]:
     """사진·영상을 탐지 모델에 보내 재질 추정과 이물 비율을 model 근거로 등록한다.
 
-    탐지 모델(Azure ML 엔드포인트)이 연결되지 않았으면 파일을 쓰지 않고 그렇다고 답한다.
-    탐지 결과를 지어내지 않는다. 사진으로는 수지 종류를 가르지 못하므로 흐름의 재질은 바꾸지 않는다.
+    사진이면 Document Intelligence 글자 읽기로 재질 표기(포대 라벨, 분리배출 표시)도 읽는다(intake.labels).
+    표기 읽기는 탐지 서버와 따로 돈다. H100을 꺼 두어 탐지 서버에 닿지 않아도 표기는 읽고,
+    detectorUnavailable·detectorOffline을 참으로 답한다.
+    탐지 결과를 지어내지 않는다. 사진으로 읽은 재질은 후보일 뿐이라 흐름의 재질은 바꾸지 않는다.
     """
     _owner(app, org_id, viewer, "emitter")
     try:
@@ -3006,20 +3050,37 @@ def upload_media(
             + ") 파일만 올릴 수 있습니다.",
             415,
         )
+    label = _read_label(app, org_id, stream, filename, data)
     client = app.detector
-    if client is None or not client.configured:
+    result, offline = None, False
+    if client is not None and client.configured:
+        try:
+            result = client.detect(data, filename)
+        except media.DetectorOffline:
+            offline = True
+        except media.DetectorError as error:
+            raise ServiceError("DETECTOR_FAILED", str(error), 502) from error
+    photo = dict(stream.get("photo") or {})
+    if label is not None and label["found"]:
+        photo["labelMaterials"] = label
+    if result is None:
+        if label is not None and label["found"]:
+            stream["photo"] = photo
+            stream = app.store.put_stream(stream)
+            _recheck(app, org_id)
         return {
             "detectorUnavailable": True,
-            "message": "탐지 모델이 연결되지 않았습니다",
+            "detectorOffline": offline,
+            "message": "지금은 사진·영상 분석을 쉬고 있습니다"
+            if offline
+            else "탐지 모델이 연결되지 않았습니다",
             "streamId": stream["id"],
-            "evidence": [],
+            "filename": filename,
+            "label": label,
+            "evidence": list(label["evidence"]) if label else [],
+            "stream": stream,
         }
-    try:
-        result = client.detect(data, filename)
-    except media.DetectorError as error:
-        raise ServiceError("DETECTOR_FAILED", str(error), 502) from error
     found = media.register_detection(app.registry, org_id, stream, result, filename, app.today)
-    photo = dict(stream.get("photo") or {})
     contamination = found["contamination"]
     if contamination is not None:
         photo.update(
@@ -3046,6 +3107,7 @@ def upload_media(
         )
     return {
         "detectorUnavailable": False,
+        "detectorOffline": False,
         "streamId": stream["id"],
         "filename": filename,
         "mode": result["mode"],
@@ -3057,10 +3119,34 @@ def upload_media(
         if contamination is None
         else {"claim": claim, "reliable": contamination["reliable"], "note": contamination["note"]},
         "detections": result["detections"],
-        "evidence": found["evidence"],
+        "label": label,
+        "evidence": [*found["evidence"], *(label["evidence"] if label else [])],
         "stream": saved,
         "note": "사진 추정값입니다. 재질(수지 종류)과 이물 비율은 담당자가 확인해 주세요.",
     }
+
+
+def _read_label(
+    app: App, org_id: str, stream: dict[str, Any], filename: str, data: bytes
+) -> dict[str, Any] | None:
+    """사진 속 재질 표기를 읽어 근거로 등록한다. 읽을 수 없으면 None(영상, webp, Document Intelligence 미연결).
+
+    글자 읽기가 실패해도 탐지는 계속한다. 실패하면 {"found": [], "error": 화면 문장}이다.
+    """
+    client = app.documents
+    if client is None or not client.configured or not labels.readable(filename):
+        return None
+    try:
+        found = labels.read(client, data)
+    except documents.DocumentError as error:
+        logger.warning("재질 표기 읽기 실패: %s", error)
+        return {
+            "found": [],
+            "suggestion": None,
+            "evidence": [],
+            "error": "사진의 글자를 읽지 못했습니다.",
+        }
+    return labels.register(app.registry, org_id, stream, found, filename, app.today)
 
 
 def confirm_document(

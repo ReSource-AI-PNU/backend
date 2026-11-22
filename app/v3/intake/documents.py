@@ -55,12 +55,16 @@ class DocumentIntelligenceClient:
         return bool(self.endpoint and self.api_key)
 
     def begin_analyze(self, data: bytes, *, model: str = "prebuilt-layout") -> str:
-        """분석을 맡기고 결과를 물어볼 주소(Operation-Location)를 돌려준다."""
+        """분석을 맡기고 결과를 물어볼 주소(Operation-Location)를 돌려준다.
+
+        키-값 쌍(features=keyValuePairs)은 layout 모델에만 붙인다. 글자 읽기(prebuilt-read)는 이 기능을 받지 않는다.
+        """
         if not self.configured:
             raise DocumentError("Document Intelligence가 설정되지 않았습니다.")
+        features = "&features=keyValuePairs" if model == "prebuilt-layout" else ""
         url = (
             f"{self.endpoint}/documentintelligence/documentModels/{model}:analyze"
-            f"?api-version={API_VERSION}&features=keyValuePairs"
+            f"?api-version={API_VERSION}{features}"
         )
         body = json.dumps({"base64Source": base64.b64encode(data).decode("ascii")}).encode("ascii")
         headers = {"Content-Type": "application/json", "Ocp-Apim-Subscription-Key": self.api_key}

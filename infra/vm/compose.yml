@@ -47,15 +47,9 @@ services:
     volumes:
       - backend_models:/app/models
 
-  # 사진·영상 탐지(app/ml/score_api.py). 백엔드의 V3_DETECTOR_ENDPOINT가 http://detector:8000/score 를 부른다
-  detector:
-    image: rsai-backend:local
-    restart: unless-stopped
-    env_file: ./env/backend.env
-    environment:
-      APP_ROLE: detector
-    volumes:
-      - backend_models:/app/models
+  # 사진·영상 탐지 채점 서버(app/ml/score_api.py)는 이 VM에 두지 않는다. 2026-11-22부터 H100 계산 인스턴스의
+  # rsai-detector(infra/h100/detector)가 GPU로 돌고, 백엔드가 사설 주소로 부른다(V3_DETECTOR_ENDPOINT).
+  # 배포의 up --remove-orphans가 예전 detector 컨테이너를 지운다
 
   # 배포 때 한 번 돌리고 끝난다: docker compose run --rm -T migrate
   migrate:

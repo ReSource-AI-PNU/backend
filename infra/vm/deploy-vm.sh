@@ -111,7 +111,7 @@ if ! kv_has auth-secret; then
   kv_set_file auth-secret "$TMP/auth"; rm -f "$TMP/auth"
 fi
 if ! kv_has detector-api-key; then
-  say "Key Vault에 detector-api-key 가 없어 새로 만든다 (VM 안 탐지 채점 서버 키)"
+  say "Key Vault에 detector-api-key 가 없어 새로 만든다 (H100 탐지 채점 서버 키, setup-detector.sh가 H100에도 넣는다)"
   python3 -I -c 'import secrets; print(secrets.token_urlsafe(32))' >"$TMP/det"
   kv_set_file detector-api-key "$TMP/det"; rm -f "$TMP/det"
 fi
@@ -197,11 +197,15 @@ if [ -n "$SEARCH_NAME" ]; then
   fi
 else say "Azure AI Search 를 찾지 못했다. 근거 검색은 로컬 검색으로 돈다"; fi
 put_secret "$B" MODEL_BLOB_URL model-blob-url
-# 사진·영상 탐지: 같은 VM의 detector 서비스(app/ml/score_api.py). 두 이름에 같은 키를 넣는다
-put "$B" V3_DETECTOR_ENDPOINT "http://detector:8000/score"
-put "$B" V3_INTERNAL_HTTP_HOSTS detector
-put_secret "$B" V3_DETECTOR_API_KEY detector-api-key
-put_secret "$B" DETECTOR_API_KEY detector-api-key
+# 사진·영상 탐지: H100의 탐지 채점 서버(infra/h100/detector/setup-detector.sh로 깐 rsai-detector, 사설 주소의 8095).
+# 2026-11-22부터 H100에서만 돈다(앱 VM의 CPU detector 컨테이너는 없앴다). H100이 꺼져 있으면 백엔드가 연결 확인으로
+# 알아채고 사진·영상 분석만 쉰다. USE_OLLAMA가 h100이 아니면 탐지 서버도 연결하지 않는다
+if [ "$USE_OLLAMA" = h100 ]; then
+  put "$B" V3_DETECTOR_ENDPOINT "${DETECTOR_URL:-${OLLAMA_URL%:11434}:8095/score}"
+  put_secret "$B" V3_DETECTOR_API_KEY detector-api-key
+else
+  say "USE_OLLAMA=$USE_OLLAMA: 탐지 서버(H100)를 연결하지 않는다. 사진·영상 분석은 '연결되지 않음'으로 답한다"
+fi
 put "$B" V3_AUTH "$V3_AUTH"
 put "$B" V3_DEMO_OPEN false
 if [ "$V3_LLM" = anthropic ]; then put_secret "$B" ANTHROPIC_API_KEY anthropic-api-key; fi

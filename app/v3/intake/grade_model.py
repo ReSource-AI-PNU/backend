@@ -8,6 +8,7 @@
 from __future__ import annotations
 
 import json
+import math
 from collections.abc import Callable, Iterable
 from pathlib import Path
 from typing import Any
@@ -244,6 +245,50 @@ def _evidence_ids(block: dict[str, Any] | None) -> list[str]:
     return list((block or {}).get("evidence") or [])
 
 
+def reference_grade(
+    stream: dict[str, Any], asked_moisture_pct: float | None, evidence_id: str
+) -> dict[str, Any] | None:
+    """참고 등급. 팀이 정한 기준값(가정값)으로 낸 등급이라 판정·배정에는 쓰지 않고 화면에 참고로만 보인다.
+
+    업체 매입 기준이 없을 때 "이 정도면 보통 어느 수준인가"를 알려 주려는 것이다. 값은 측정값, 사진 추정값,
+    담당자 답 순으로 쓴다(judge.common.quality와 같은 순서). 오염도나 수분이 없으면 None이다.
+    """
+    measure, photo = stream.get("measure") or {}, stream.get("photo") or {}
+    answers = stream.get("answers") or {}
+
+    def number(value: Any) -> float | None:
+        if isinstance(value, bool) or not isinstance(value, (int, float)):
+            return None
+        return float(value) if math.isfinite(value) else None
+
+    contamination, basis, inputs = number(measure.get("contaminationPct")), "measured", measure
+    if contamination is None:
+        contamination, inputs = number(photo.get("contaminationPct")), photo
+        basis = "photo_unverified" if photo.get("reliable") is False else "photo_estimate"
+    if contamination is None:
+        contamination, basis, inputs = number(answers.get("contaminationPct")), "answered", answers
+    moisture = number(measure.get("moisturePct"))
+    if moisture is None:
+        moisture = number(asked_moisture_pct)
+    if moisture is None:
+        moisture = number(answers.get("moisturePct"))
+    if contamination is None or moisture is None:
+        return None
+    graded = grade_by_thresholds(stream.get("material"), contamination, moisture)
+    if graded["grade"] is None:
+        return None
+    # 상한 숫자가 든 규칙 문장(graded["rule"])과 입력값은 싣지 않는다. 숫자는 근거에 연결된 값으로만 보인다:
+    # 상한은 기준값 근거(evidence_id)의 원문 표에, 입력값은 측정·사진 근거에 있다
+    return {
+        "grade": graded["grade"],
+        "basis": basis,
+        "meaning": (thresholds().get("meaning") or {}).get(graded["grade"]),
+        "usedDefault": graded["usedDefault"],
+        "evidence": [evidence_id, *_evidence_ids(inputs)],
+        "note": "팀이 정한 기준값(가정값)으로 낸 참고 등급입니다. 판정과 배정에는 쓰지 않습니다.",
+    }
+
+
 def grade_stream(
     registry: Any,
     org_id: str,
@@ -277,6 +322,7 @@ def grade_stream(
             "measured": None,
             "photoEstimate": None,
             "assumptions": [],
+            "reference": reference_grade(stream, asked_moisture_pct, assumption.id),
             "checks": [
                 {
                     "key": "grade_standard",

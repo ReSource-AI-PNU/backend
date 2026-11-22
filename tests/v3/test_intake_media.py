@@ -193,9 +193,13 @@ def test_without_an_endpoint_nothing_is_detected_or_registered():
         result = service.upload_media(app, HANBIT, "st_film", "필름.jpg", b"jpeg", HANBIT)
         assert result == {
             "detectorUnavailable": True,
+            "detectorOffline": False,
             "message": "탐지 모델이 연결되지 않았습니다",
             "streamId": "st_film",
+            "filename": "필름.jpg",
+            "label": None,  # Document Intelligence가 연결되지 않아 표기도 읽지 않았다
             "evidence": [],
+            "stream": before[1],
         }
         assert (len(app.registry.list(org_id=None)), app.store.get_stream("st_film")) == before
         assert service.admin_status(app, ADMIN)["detector"] == {"configured": False}

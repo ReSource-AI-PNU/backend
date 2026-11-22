@@ -38,7 +38,12 @@ from app.v3.untrusted import (
 
 TOOL = "find_outside_vendors"
 ORIGIN_WORDS = {"PIR": "공정에서 나온 것", "PCR": "쓰고 난 뒤 나온 것(포장재 등)"}
-BASIS_WORDS = {"measured": "측정값", "photo_estimate": "사진 추정", "answered": "담당자 답"}
+BASIS_WORDS = {
+    "measured": "측정값",
+    "photo_estimate": "사진 추정",
+    "photo_unverified": "사진 추정(검증 안 됨)",
+    "answered": "담당자 답",
+}
 CHECK_NOTE = "공공데이터에 적힌 처리 폐기물을 믿기 어려워 상호로 고른 곳입니다. 처리 품목을 먼저 확인해 주세요."
 # 시연 회사(가상 자료)의 요청서 첫 줄. 복사한 글에도 남는다
 DEMO_MARK = "※ 시연용 가상 자료입니다. 실제 업체에 보내지 마세요."

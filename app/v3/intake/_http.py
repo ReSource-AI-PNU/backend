@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import ipaddress
 import os
 import urllib.error
 import urllib.parse
@@ -12,7 +13,7 @@ from collections.abc import Callable
 Transport = Callable[[str, str, dict[str, str], bytes | None], tuple[int, dict[str, str], bytes]]
 
 TIMEOUT = 30
-# 같은 Docker 네트워크 안의 서비스(앱 VM의 detector 등). CPU 추론이라 영상은 30초를 넘을 수 있다
+# 내부 서비스(H100의 탐지 서버 등). 영상은 프레임이 많아 30초를 넘을 수 있다
 INTERNAL_TIMEOUT = 180
 
 
@@ -27,15 +28,39 @@ def internal_hosts(env: dict[str, str] | None = None) -> frozenset[str]:
     )
 
 
-def timeout_for(url: str, env: dict[str, str] | None = None) -> int:
-    """https 주소는 30초, V3_INTERNAL_HTTP_HOSTS의 http 주소는 180초. 그 밖의 주소는 ValueError."""
+def private_host(host: str) -> bool:
+    """사설 IPv4 주소(10.x, 172.16-31.x, 192.168.x, 루프백)인가. 링크 로컬(169.254, 메타데이터)과 0.0.0.0은 뺀다.
+
+    H100 계산 인스턴스의 서비스(탐지 서버, 재구성 서버)는 VNet 피어링으로 사설 주소에서만 닿는다.
+    """
+    try:
+        address = ipaddress.ip_address(host)
+    except ValueError:
+        return False
+    return (
+        isinstance(address, ipaddress.IPv4Address)
+        and address.is_private
+        and not address.is_link_local
+        and not address.is_unspecified
+    )
+
+
+def internal_http(url: str, env: dict[str, str] | None = None) -> bool:
+    """평문 http로 불러도 되는 내부 주소인가: V3_INTERNAL_HTTP_HOSTS의 이름이거나 사설 IPv4 주소."""
     parts = urllib.parse.urlsplit(url)
-    scheme = parts.scheme.lower()
-    if scheme == "https":
+    host = (parts.hostname or "").lower()
+    if parts.scheme.lower() != "http" or not host:
+        return False
+    return host in internal_hosts(env) or private_host(host)
+
+
+def timeout_for(url: str, env: dict[str, str] | None = None) -> int:
+    """https 주소는 30초, 내부 http 주소(internal_http)는 180초. 그 밖의 주소는 ValueError."""
+    if urllib.parse.urlsplit(url).scheme.lower() == "https":
         return TIMEOUT
-    if scheme == "http" and (parts.hostname or "").lower() in internal_hosts(env):
+    if internal_http(url, env):
         return INTERNAL_TIMEOUT
-    raise ValueError("https 주소나 V3_INTERNAL_HTTP_HOSTS의 내부 서비스만 호출한다")
+    raise ValueError("https 주소나 내부 서비스(사설 주소, V3_INTERNAL_HTTP_HOSTS)만 호출한다")
 
 
 def default_transport(

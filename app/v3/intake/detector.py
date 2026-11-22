@@ -1,4 +1,4 @@
-"""사진·영상 경로. 탐지 모델(Azure ML 관리형 온라인 엔드포인트)을 부르고 결과를 model 근거로 등록한다.
+"""사진·영상 경로. 탐지 채점 서버(H100의 rsai-detector)를 부르고 결과를 model 근거로 등록한다.
 
 - 엔드포인트가 설정되지 않았으면 부르지 않는다. 탐지 결과를 지어내지 않는다(서비스가
   detectorUnavailable로 답한다).
@@ -10,9 +10,9 @@
 - 사진으로는 수지 종류(PP·PE·ABS)를 가를 수 없다. 재질 추정은 탐지 분류(경질 플라스틱, 필름 등)까지만
   등록하고 흐름의 material은 바꾸지 않는다.
 
-주의: 탐지 모델의 Azure ML 엔드포인트는 아직 배포되지 않았다. 요청 본문은 여기서 정한 모양이고
-(REQUEST_SHAPE), 엔드포인트의 score.py가 이 모양을 받아 위 계약으로 답해야 한다. 실제 엔드포인트로는
-돌려 보지 못했고 가짜 transport로만 확인했다.
+탐지 서버는 H100 계산 인스턴스의 rsai-detector(app/ml/score_api.py를 GPU로 띄운 것, infra/h100/detector)다.
+요청 본문은 여기서 정한 모양(REQUEST_SHAPE)이다. H100은 서비스하지 않을 때 끄므로, 꺼져 있으면 DetectorOffline이고
+서비스는 사진·영상 분석만 쉰다(CPU 예비 서버는 두지 않는다, 2026-11-22 결정).
 """
 
 from __future__ import annotations
@@ -20,7 +20,7 @@ from __future__ import annotations
 import base64
 import json
 import math
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from typing import Any
 
 from app.ml.contract import ITEM_OF, LABEL_KO  # 재질 분류 → 품목, 한국어 이름(순수 파이썬)
@@ -43,6 +43,30 @@ ENV_ENDPOINT, ENV_KEY, ENV_DEPLOYMENT = (
 
 class DetectorError(RuntimeError):
     """탐지 엔드포인트 호출이나 응답이 잘못됐다."""
+
+
+class DetectorOffline(DetectorError):
+    """탐지 서버에 닿지 않는다. H100 계산 인스턴스를 꺼 두었을 때다(서비스하지 않을 때 끈다)."""
+
+
+# 탐지 서버가 꺼져 있으면 사설 주소로 보낸 연결이 응답 없이 시간을 넘긴다. 보내기 전에 짧게 확인한다
+PROBE_TIMEOUT = 3.0
+
+
+def tcp_probe(url: str, timeout: float = PROBE_TIMEOUT) -> bool:
+    """주소의 포트에 TCP 연결이 열리는가. 요청은 보내지 않는다."""
+    import socket
+    import urllib.parse
+
+    parts = urllib.parse.urlsplit(url)
+    if not parts.hostname:
+        return False
+    port = parts.port or (443 if parts.scheme == "https" else 80)
+    try:
+        with socket.create_connection((parts.hostname, port), timeout=timeout):
+            return True
+    except OSError:
+        return False
 
 
 def media_type(filename: str) -> str | None:
@@ -136,7 +160,11 @@ def read_result(payload: Any) -> dict[str, Any]:
 
 
 class DetectorClient:
-    """Azure ML 관리형 온라인 엔드포인트(탐지). 주소가 없으면 configured가 거짓이고 부르지 않는다."""
+    """탐지 채점 서버(H100 계산 인스턴스의 rsai-detector, infra/h100/detector). 주소가 없으면 configured가 거짓이고
+    부르지 않는다. 서버에 닿지 않으면(H100을 꺼 두었을 때) DetectorOffline이다.
+
+    probe(url) -> bool은 보내기 전 연결 확인이다. 주지 않으면 기본 transport일 때만 TCP 연결로 확인한다.
+    """
 
     def __init__(
         self,
@@ -144,11 +172,13 @@ class DetectorClient:
         api_key: str = "",
         transport: Transport | None = None,
         deployment: str = "",
+        probe: Callable[[str], bool] | None = None,
     ) -> None:
         self.endpoint_url = (endpoint_url or "").strip()
         self.api_key = api_key or ""
         self.transport = transport or default_transport
         self.deployment = (deployment or "").strip()
+        self.probe = probe
 
     @property
     def configured(self) -> bool:
@@ -174,6 +204,10 @@ class DetectorClient:
         headers = {"Content-Type": "application/json", "Authorization": f"Bearer {self.api_key}"}
         if self.deployment:
             headers["azureml-model-deployment"] = self.deployment
+        # 실제로 연결하는 transport일 때만 확인한다(시험의 가짜 transport는 연결하지 않는다)
+        probe = self.probe or (tcp_probe if self.transport is default_transport else None)
+        if probe is not None and not probe(self.endpoint_url):
+            raise DetectorOffline("사진·영상 분석 서버가 지금 꺼져 있습니다.")
         try:
             status, _, raw = self.transport("POST", self.endpoint_url, headers, body)
         except (OSError, ValueError) as error:

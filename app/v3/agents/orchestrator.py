@@ -905,6 +905,8 @@ class Orchestrator:
                         "modelBasis": grade.get("modelBasis"),
                         "evidence": list(grade.get("evidence") or []),
                         "assumptions": list(grade.get("assumptions") or []),
+                        # 가정값 기준으로 낸 참고 등급. 판정·배정에 쓰지 않고 화면에만 보인다
+                        "reference": grade.get("reference"),
                     },
                 }
                 work["identify"][sid] = done

@@ -98,10 +98,15 @@ def test_media_upload_says_so_when_the_detector_is_not_connected(client):
         content=b"jpeg-bytes",
     )
     assert uploaded.status_code == 200, uploaded.text
-    assert uploaded.json() == {
+    body = uploaded.json()
+    assert body.pop("stream")["id"] == "st_film"  # 바뀌지 않은 흐름 기록
+    assert body == {
         "detectorUnavailable": True,
+        "detectorOffline": False,
         "message": "탐지 모델이 연결되지 않았습니다",
         "streamId": "st_film",
+        "filename": "필름.jpg",
+        "label": None,
         "evidence": [],
     }
     other = client.post(

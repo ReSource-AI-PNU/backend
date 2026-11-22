@@ -9,7 +9,6 @@
 from __future__ import annotations
 
 import hashlib
-import ipaddress
 import json
 import re
 import urllib.error
@@ -18,7 +17,7 @@ import urllib.request
 from collections.abc import Callable, Mapping, Sequence
 from typing import Any
 
-from app.v3.intake._http import internal_hosts
+from app.v3.intake._http import internal_http
 
 ENV_URL = "V3_RECON_URL"
 HEALTH_TIMEOUT = 2.0
@@ -61,27 +60,9 @@ def _default_transport(
 
 
 def allowed_url(url: str, env: Mapping[str, str] | None = None) -> bool:
-    parts = urllib.parse.urlsplit(url)
-    host = (parts.hostname or "").lower()
-    if not host:
-        return False
-    if parts.scheme == "https":
-        return True
-    if parts.scheme != "http":
-        return False
-    if host in internal_hosts(dict(env) if env is not None else None):
-        return True
-    try:
-        address = ipaddress.ip_address(host)
-    except ValueError:
-        return False
-    # 10.x, 172.16-31.x, 192.168.x, 루프백(로컬 점검)만. 링크 로컬(169.254, 메타데이터)과 0.0.0.0은 뺀다
-    return (
-        isinstance(address, ipaddress.IPv4Address)
-        and address.is_private
-        and not address.is_link_local
-        and not address.is_unspecified
-    )
+    if urllib.parse.urlsplit(url).scheme == "https":
+        return bool(urllib.parse.urlsplit(url).hostname)
+    return internal_http(url, dict(env) if env is not None else None)
 
 
 def multipart(files: Sequence[tuple[str, bytes]], field: str = "frames") -> tuple[str, bytes]:

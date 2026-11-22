@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # H100 계산 인스턴스(Azure ML 작업 영역 team-workspace의 rsai-h100, Standard_NC40ads_H100_v5, H100 NVL 94GB)를
-# 켜고 끄고 상태를 본다. 업체 측 오픈 모델(Ollama)이 여기서 돈다. az 로그인과 SSH 키가 있는 곳(맥)에서 돌린다.
+# 켜고 끄고 상태를 본다. 업체 측 오픈 모델(Ollama), 보관장 3D 스캔 재구성 서버(8090), 사진·영상 탐지 서버(8095)가 여기서 돈다. az 로그인과 SSH 키가 있는 곳(맥)에서 돌린다.
 #
 #   bash infra/h100/h100.sh up        # 켜고 Ollama가 답할 때까지 기다린다. 사설 주소가 바뀌었으면 앱의 Ollama 주소도 고친다
 #   bash infra/h100/h100.sh down      # 끈다. 서비스하지 않을 때 끈다(디스크와 받은 모델은 남는다)
@@ -31,7 +31,8 @@ private_ip() { get "properties.properties.connectivityEndpoints.privateIpAddress
 
 ssh_cmd() {
   # 계산 인스턴스의 공용 SSH(50000)는 닿지 않아서 앱 VM을 거쳐 사설 주소로 들어간다(NSG AllowSshFromApp)
-  app true  # 앱 VM SSH 허용 주소를 먼저 맞춘다
+  # 앱 VM SSH 허용 주소를 먼저 맞춘다. 표준 입력을 닫아 두어야 `h100.sh ssh 명령 < 파일`의 입력이 H100까지 간다
+  app true </dev/null
   local port user
   port="$(get properties.properties.sshSettings.sshPort)"
   user="$(get properties.properties.sshSettings.adminUserName)"
@@ -55,19 +56,21 @@ app() {
   ssh -i "$APP_KEY" -o StrictHostKeyChecking=accept-new -o ConnectTimeout=15 -o BatchMode=yes "rsai@$APP_HOST" "$@"
 }
 
-# 앱이 쓰는 Ollama 주소가 H100의 사설 주소와 다르면 고치고 백엔드만 다시 띄운다(배포하지 않아도 된다)
+# 앱이 쓰는 Ollama·탐지 서버 주소가 H100의 사설 주소와 다르면 고치고 백엔드만 다시 띄운다(배포하지 않아도 된다)
 point_app() {
-  local want now
+  local want det now
   [ "${SKIP_APP:-}" = 1 ] && return  # 배포가 앱 설정을 새로 쓸 때
   want="http://$1:11434"
-  now="$(app "sudo grep -E '^OLLAMA_BASE_URL=' /opt/rsai/env/backend.env | cut -d= -f2-" || true)"
-  if [ "$now" = "$want" ]; then
-    say "앱의 Ollama 주소가 이미 $want"
+  det="http://$1:8095/score"
+  # 배포는 값을 작은따옴표로 감싸 쓴다(deploy-vm.sh put). 따옴표를 떼고 견준다
+  now="$(app "sudo grep -E '^(OLLAMA_BASE_URL|V3_DETECTOR_ENDPOINT)=' /opt/rsai/env/backend.env | tr -d \"'\" | sort | tr '\n' ' '" || true)"
+  if [ "$now" = "OLLAMA_BASE_URL=$want V3_DETECTOR_ENDPOINT=$det " ]; then
+    say "앱의 Ollama·탐지 서버 주소가 이미 $1"
     return
   fi
-  say "앱의 Ollama 주소를 ${now:-없음} → $want 로 고치고 백엔드를 다시 띄운다"
-  # 보관장 3D 스캔 재구성 서버(infra/h100/recon)도 같은 사설 주소의 8090이다
-  app "sudo sed -i '/^OLLAMA_BASE_URL=/d;/^OLLAMA_FALLBACK=/d;/^V3_RECON_URL=/d' /opt/rsai/env/backend.env && printf 'OLLAMA_BASE_URL=%s\nOLLAMA_FALLBACK=1\nV3_RECON_URL=http://%s:8090\n' '$want' '$1' | sudo tee -a /opt/rsai/env/backend.env >/dev/null && cd /opt/rsai && sudo docker compose up -d --force-recreate backend >/dev/null 2>&1"
+  say "앱의 Ollama·탐지 서버 주소를 ${now:-없음} → $1 로 고치고 백엔드를 다시 띄운다"
+  # 보관장 3D 스캔 재구성 서버(infra/h100/recon)는 같은 사설 주소의 8090, 탐지 서버(infra/h100/detector)는 8095다
+  app "sudo sed -i '/^OLLAMA_BASE_URL=/d;/^OLLAMA_FALLBACK=/d;/^V3_RECON_URL=/d;/^V3_DETECTOR_ENDPOINT=/d' /opt/rsai/env/backend.env && printf 'OLLAMA_BASE_URL=%s\nOLLAMA_FALLBACK=1\nV3_RECON_URL=http://%s:8090\nV3_DETECTOR_ENDPOINT=%s\n' '$want' '$1' '$det' | sudo tee -a /opt/rsai/env/backend.env >/dev/null && cd /opt/rsai && sudo docker compose up -d --force-recreate backend >/dev/null 2>&1"
 }
 
 case "${1:-status}" in
@@ -97,6 +100,7 @@ BIND
     point_app "$ip"
     # 앱 VM에서 닿는지(피어링과 NSG) 확인한다
     app "curl -fsS -m 5 http://$ip:11434/api/version" >/dev/null && say "켜짐. 앱에서 http://$ip:11434 에 닿는다" || say "앱 VM에서 Ollama에 닿지 않는다(피어링·NSG 확인)"
+    app "curl -fsS -m 5 http://$ip:8095/healthz" >/dev/null && say "앱에서 탐지 서버 http://$ip:8095 에 닿는다" || say "앱 VM에서 탐지 서버에 닿지 않는다(infra/h100/detector/setup-detector.sh, NSG AllowDetectorFromApp)"
     ;;
   down)
     now="$(state)"
