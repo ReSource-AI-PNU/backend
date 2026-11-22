@@ -532,3 +532,43 @@ def test_an_invented_grade_is_dropped_not_kept():
         },
     )
     assert out["written"] == ["criteria"] and ctx.draft["criteria"]["value"][0]["grade"] is None
+
+
+def test_numbers_are_read_from_the_quote_when_the_model_writes_junk():
+    row = onboarding._criterion_row(
+        _crit(
+            "PP",
+            "PP 분쇄품 A등급은 kg당 300원에 매입하고 한 달 최소 1톤, 이물 3% 이하만 받아요",
+            price="math.nan",
+            minMonthlyKg="math.nan",
+            maxContaminationPct="math.nan",
+        )
+    )
+    assert (row["unitPriceKrwPerKg"], row["minMonthlyKg"], row["maxContaminationPct"]) == (
+        300,
+        1000,
+        3,
+    )
+    fee = onboarding._criterion_row(_crit("PE", "PE 필름은 처리비 kg당 80원 받습니다", price="?"))
+    assert fee["unitPriceKrwPerKg"] == -80
+    assert onboarding._quote_numbers("PET 톤당 35만 원에 매입")["unitPriceKrwPerKg"] == 350
+    assert onboarding._coerce("fleet.maxPickupKm", "math(40 * 1000)", "차고지에서 40km 안쪽") == 40
+    assert onboarding._coerce("fleet.capacityKg", "?", "5톤 트럭이에요") == 5000
+    assert (
+        onboarding._coerce("fleet.vehicleCount", "?", "5톤 트럭 2대") == "?"
+    )  # 숫자가 둘이면 읽지 않는다
+
+
+def test_registry_confirm_needs_the_person_to_say_yes():
+    app, _ = _app([_said(CONFIRM), _said(CONFIRM)])
+    state = onboarding.post_message(app, NEW, {"text": "안녕하세요 이거 뭐 하는 건가요?"}, NEW)
+    assert state["draft"] == []
+    state = onboarding.post_message(app, NEW, {"text": "아니요 저희는 그 주소가 아니에요"}, NEW)
+    assert state["draft"] == []
+    assert onboarding._affirms("네 금정구 거기 맞아요")
+
+
+def test_one_retry_after_a_model_failure():
+    app, _ = _app([LLMError("잘림"), _said(CONFIRM)])
+    state = onboarding.post_message(app, NEW, {"text": "네 맞아요"}, NEW)
+    assert [d["key"] for d in state["draft"]] == ["permits", "fleet.depot"]

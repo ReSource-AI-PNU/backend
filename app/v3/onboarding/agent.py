@@ -39,7 +39,7 @@ SYSTEM = """너는 폐기물 처리 업체 "{company}" 한 곳만 대변하는 �
   - 다른 상호나 지역을 말하면 action "search"와 query(상호), region(시·군·구, 없으면 null).
   - 그 밖에는 action "none".
 - fields: 맨 마지막 말에 담긴 값. 항목마다 key, value(글), quote(담당자의 말 그대로, 고치지 않고 일부만 옮겨도 됨).
-  - 숫자 항목의 value는 숫자 하나만 쓴다(계산식 금지). 적재 중량만 톤을 kg로 바꾼다(5톤 → "5000").
+  - 숫자 항목의 value는 "300"처럼 아라비아 숫자 글자만 쓴다. 적재 중량만 톤을 kg로 바꾼다(5톤 → "5000").
     거리는 km 그대로(40km → "40"), 횟수·대수는 그 수 그대로("두 번" → "2", "다섯 대" → "5").
   - 요일, 수거 가능 지역, 받지 않는 조건은 쉼표로 나눈 글로 쓴다(예: "월, 수, 금").
   - 처리 방식은 재활용, 물질 재활용, 열분해, 소각, 매립 가운데 하나다.
@@ -369,7 +369,7 @@ EXTRACT_SCHEMA = {
 }
 
 
-def _coerce(key: str, text: Any) -> Any:
+def _coerce(key: str, text: Any, quote: str = "") -> Any:
     """모델이 글로 낸 값 → 도구가 받는 모양(숫자, 목록, 글). 읽을 수 없으면 글 그대로(도구가 거절한다).
 
     숫자 항목은 숫자가 하나만 든 글이면 그 숫자를 쓴다("2대" → 2). 적재 중량에 톤이 붙으면 kg로 바꾼다.
@@ -379,7 +379,14 @@ def _coerce(key: str, text: Any) -> Any:
         cleaned = raw.replace(",", "").replace("−", "-").replace(" ", "")
         found = re.findall(r"-?\d+(?:\.\d+)?", cleaned)
         if len(found) != 1:
-            return raw
+            # 모델이 숫자를 제대로 내지 못했으면 인용(담당자의 말)에 숫자가 하나뿐일 때만 그 숫자를 쓴다
+            said = T._digits(quote)
+            if len(said) != 1:
+                return raw
+            number, unit = said[0]
+            if key == "fleet.capacityKg" and unit in ("톤", "t", "T"):
+                number *= 1_000
+            return int(number) if number == int(number) else number
         number = float(found[0])
         if key == "fleet.capacityKg" and re.search(r"톤|t(?![a-z])", cleaned, re.IGNORECASE):
             number *= 1_000
@@ -401,19 +408,65 @@ def _one_number(text: Any, tons: bool = False) -> float | None:
     return number
 
 
-def _criterion_row(row: dict[str, Any]) -> dict[str, Any]:
-    """모델이 글로 낸 매입 기준 한 줄 → propose_criteria 입력."""
-    fee = str(row.get("collectionFee") or "").strip().lower()
+_NUM = r"(\d[\d,]*(?:\.\d+)?)"
+
+
+def _from_quote(pattern: str, quote: str) -> float | None:
+    found = re.search(pattern, quote)
+    return float(found.group(1).replace(",", "")) if found else None
+
+
+def _quote_numbers(quote: str) -> dict[str, float | None]:
+    """담당자의 말(인용)에서 매입 기준의 숫자를 직접 읽는다. 모델이 숫자 칸을 제대로 내지 못했을 때 쓴다."""
+    price = None
+    per = re.search(rf"(kg당|킬로당|키로당|톤당)\s*{_NUM}\s*(만)?\s*원", quote)
+    if per:
+        price = float(per.group(2).replace(",", "")) * (10_000 if per.group(3) else 1)
+        if per.group(1) == "톤당":
+            price /= 1_000
+    monthly = None
+    amount = re.search(rf"(?:최소|월|한\s*달)[^\d%]{{0,8}}{_NUM}\s*(톤|t|kg|킬로)", quote)
+    if amount:
+        monthly = float(amount.group(1).replace(",", "")) * (
+            1_000 if amount.group(2) in ("톤", "t") else 1
+        )
     return {
-        "material": str(row.get("material") or "").strip().upper(),
-        "grade": row.get("grade") or None,
-        "form": row.get("form") or None,
+        "unitPriceKrwPerKg": price,
+        "minMonthlyKg": monthly,
+        "maxContaminationPct": _from_quote(rf"(?:이물|오염)[^\d%]{{0,10}}{_NUM}\s*%", quote),
+        "maxMoisturePct": _from_quote(rf"수분[^\d%]{{0,10}}{_NUM}\s*%", quote),
+    }
+
+
+def _criterion_row(row: dict[str, Any]) -> dict[str, Any]:
+    """모델이 글로 낸 매입 기준 한 줄 → propose_criteria 입력.
+
+    숫자 칸이 숫자로 읽히지 않으면("math.nan" 같은 글) 인용에서 직접 읽는다. 어느 쪽이든 도구가 그 숫자가
+    담당자의 말에 있는지 다시 대조한다.
+    """
+    fee = str(row.get("collectionFee") or "").strip().lower()
+    quote = str(row.get("quote") or "")
+    read = _quote_numbers(quote)
+    model = {
         "unitPriceKrwPerKg": _one_number(row.get("price")),
         "minMonthlyKg": _one_number(row.get("minMonthlyKg"), tons=True),
         "maxContaminationPct": _one_number(row.get("maxContaminationPct")),
         "maxMoisturePct": _one_number(row.get("maxMoisturePct")),
+    }
+    numbers = {k: (v if v is not None else read[k]) for k, v in model.items()}
+    if (
+        numbers["unitPriceKrwPerKg"] is not None
+        and model["unitPriceKrwPerKg"] is None
+        and "처리비" in quote
+    ):
+        numbers["unitPriceKrwPerKg"] = -numbers["unitPriceKrwPerKg"]
+    return {
+        "material": str(row.get("material") or "").strip().upper(),
+        "grade": row.get("grade") or None,
+        "form": row.get("form") or None,
+        **numbers,
         "collectionFee": fee if fee in ("included", "separate") else None,
-        "quote": str(row.get("quote") or ""),
+        "quote": quote,
     }
 
 
@@ -442,12 +495,19 @@ def reply(app: Any, org_id: str, text: str) -> dict[str, Any]:
 
 
 def _ask_model(
-    llm: Any, app: Any, org_id: str, profile: dict[str, Any], state: dict[str, Any]
+    llm: Any,
+    app: Any,
+    org_id: str,
+    profile: dict[str, Any],
+    state: dict[str, Any],
+    *,
+    last_only: bool = False,
 ) -> dict:
     company = str(app.store.get_org(org_id).get("name") or "")
+    history = _history(state["messages"])
     convo: list[dict[str, Any]] = [
         {"role": "system", "content": SYSTEM.format(company=company)},
-        *_history(state["messages"]),
+        *(history[-1:] if last_only else history),
         {"role": "system", "content": _context_note(app, org_id, profile, state)},
     ]
     out = llm.complete(convo, response_schema=EXTRACT_SCHEMA)
@@ -462,7 +522,12 @@ def _ask_model(
 
 def _run(llm, app, org_id, profile, state, used) -> str:
     try:
-        parsed = _ask_model(llm, app, org_id, profile, state)
+        try:
+            parsed = _ask_model(llm, app, org_id, profile, state)
+        except LLMError:
+            # 한 번은 다시 부른다. 모델이 같은 글을 되풀이하다 길이 제한에 걸리는 일이 가끔 있는데, 온도 0이라
+            # 같은 입력이면 같은 결과가 나오므로 두 번째는 지난 대화를 빼고 담당자의 마지막 말만 보낸다
+            parsed = _ask_model(llm, app, org_id, profile, state, last_only=True)
     except LLMError as error:
         log.warning("onboarding model failed: %s", error)
         return (
@@ -479,6 +544,8 @@ def _run(llm, app, org_id, profile, state, used) -> str:
         action = (
             None  # 허가 품목이 이미 있으면 명부를 다시 다루지 않는다(모델이 같은 확인을 되풀이해도)
         )
+    if action == "confirm" and not _affirms(state["messages"][-1]["text"]):
+        action = None  # 담당자가 맞다고 하지 않았는데 모델이 확인으로 읽은 경우(잡담·질문·부정)
     if action == "confirm" and registry.get("registryId"):
         result, summary = T.call_tool(
             ctx, "use_registry_vendor", {"registryId": str(registry["registryId"])}
@@ -516,7 +583,7 @@ def _run(llm, app, org_id, profile, state, used) -> str:
     fields = [
         {
             "key": f.get("key"),
-            "value": _coerce(str(f.get("key")), f.get("value")),
+            "value": _coerce(str(f.get("key")), f.get("value"), str(f.get("quote") or "")),
             "quote": f.get("quote"),
         }
         for f in parsed.get("fields") or []
@@ -633,6 +700,15 @@ _WORDS = (
     ("차량", "fleet.vehicleCount"),
     ("지역", "fleet.serviceAreas"),
 )
+
+
+_YES = ("맞", "네", "예", "그렇", "응", "그래", "확인", "거기", "그곳", "그 사업장", "저희")
+_NO = ("아니", "아닙", "틀려", "틀립", "다른 곳", "다른 데", "말고")
+
+
+def _affirms(text: str) -> bool:
+    """명부 후보가 우리 사업장이 맞다는 말인가. 긍정 낱말이 있고 부정 낱말이 없어야 한다."""
+    return any(w in text for w in _YES) and not any(w in text for w in _NO)
 
 
 def _unknown(text: str) -> bool:
