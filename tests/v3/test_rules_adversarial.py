@@ -2308,6 +2308,8 @@ def test_chapter4_nothing_is_sent_outside_the_app():
         r"anthropic\.com|"
         # 도로 거리 조회(읽기 전용: 좌표 두 개를 보내고 거리를 받는다. V3_DISTANCE=kakao일 때만 부른다)
         r"kakaomobility\.com|"
+        # 같은 단지 평면도(읽기 전용: 공개 주소를 보내 좌표를, 범위를 보내 건물 도형을 받는다. 열쇠가 있을 때만 부른다)
+        r"kakao\.com|vworld\.kr|"
         # 인용 출처(부르지 않는다): 보관장 3D 스캔의 필름 겉보기 밀도(US EPA 2016 환산표)
         r"epa\.gov|nvlpubs\.nist\.gov|developers\.google\.com|"
         # 인용 출처(부르지 않는다): 가격조사 월별 책자를 싣는 한국환경공단 순환자원정보센터

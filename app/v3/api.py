@@ -747,6 +747,13 @@ async def quote_request(session_id: str, request: Request):
     )
 
 
+@router.get("/sessions/{session_id}/complex-plan")
+@guarded
+async def complex_plan(session_id: str, request: Request):
+    # 같은 단지 평면도. 지도 서비스를 실시간으로 부르므로 이벤트 루프 밖(스레드)에서 돈다
+    return await call(service.complex_plan, session_id, await viewer_of(request))
+
+
 @router.post("/sessions/{session_id}/run")
 @guarded
 async def run_session(session_id: str, request: Request):

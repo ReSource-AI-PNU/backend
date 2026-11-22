@@ -15,6 +15,7 @@ import contextlib
 import copy
 import logging
 import math
+import os
 from collections.abc import Iterator
 from dataclasses import replace
 from datetime import datetime, timedelta, timezone
@@ -53,6 +54,7 @@ from app.v3.agents.orchestrator import (
 from app.v3.agents.policy_rule import RulePolicy
 from app.v3.agents.pool import ClaimPool, is_private
 from app.v3.agents.vendor import VendorAgent
+from app.v3.complex_partners import plan as complex_partners_plan
 from app.v3.demo.seed import DEMO_ANSWERS, EMITTER, ORGS, seed_demo, share_evidence
 from app.v3.evidence import search
 from app.v3.evidence.model import KINDS, PUBLIC, Evidence
@@ -2175,6 +2177,28 @@ def quote_request(
     if letter is None:
         raise ServiceError("NOT_FOUND", "그 업체는 허가 명부에 없습니다.", 404)
     return letter
+
+
+def complex_plan(app: App, session_id: str, viewer: str) -> dict[str, Any]:
+    """같은 단지 자원순환 후보의 2D 평면도 자료(complex_partners/plan.py). 배출 기업만 본다.
+
+    회사 위치(카카오 주소 검색·VWorld 지오코더)와 건물 도형(VWorld)은 부를 때마다 실시간으로 받고 저장하지
+    않는다(두 서비스의 이용 조건). 열쇠는 환경 변수 KAKAO_REST_API_KEY, VWORLD_API_KEY, VWORLD_DOMAIN이고,
+    시험은 app.geo에 가짜를 넣는다. 결과에 같은 단지 후보가 없으면 404다.
+    """
+    session, owner = _session_for(app, session_id, viewer)
+    if not owner:
+        raise ServiceError("FORBIDDEN", "배출 기업만 단지 평면도를 볼 수 있습니다.", 403)
+    partners = (session["work"].get("result") or {}).get("complexPartners")
+    if not partners or not partners.get("complex"):
+        raise ServiceError("NOT_FOUND", "이 찾기에는 같은 단지 후보가 없습니다.", 404)
+    emitter = app.store.get_org(session["emitterOrgId"])
+    geo = getattr(app, "geo", None) or _complex_plan_geo()
+    return complex_partners_plan.build(partners, emitter, geo)
+
+
+def _complex_plan_geo() -> Any:
+    return complex_partners_plan.Geo.from_env(os.environ)
 
 
 def _outside_view(app: App, session: dict[str, Any], result: dict[str, Any]) -> dict[str, Any]:

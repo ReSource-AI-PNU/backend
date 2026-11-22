@@ -206,6 +206,8 @@ put "$B" V3_AUTH "$V3_AUTH"
 put "$B" V3_DEMO_OPEN false
 if [ "$V3_LLM" = anthropic ]; then put_secret "$B" ANTHROPIC_API_KEY anthropic-api-key; fi
 if kv_has kakao-rest-api-key; then put "$B" V3_DISTANCE kakao; put_secret "$B" KAKAO_REST_API_KEY kakao-rest-api-key; fi
+# 같은 단지 평면도의 건물 도형·지오코더(VWorld). 키는 발급 때 적은 서비스 주소(이 VM의 공용 이름)에 묶여 있다
+if kv_has vworld-api-key; then put_secret "$B" VWORLD_API_KEY vworld-api-key; put "$B" VWORLD_DOMAIN "https://$FQDN"; fi
 
 put_secret "$F" AUTH_SECRET auth-secret
 put "$F" AUTH_URL "https://$FQDN"
