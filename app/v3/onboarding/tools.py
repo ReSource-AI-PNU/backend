@@ -23,6 +23,7 @@ from typing import Any
 from app.v3 import fleet as fleet_input
 from app.v3 import public_vendors
 from app.v3.a2a.guardrails import validate_policy
+from app.v3.intake import criteria_llm
 
 PROCESSES = ("재활용", "물질 재활용", "열분해", "소각", "매립")
 WEEKDAYS = fleet_input.WEEKDAYS
@@ -31,6 +32,7 @@ CANDIDATES = 5
 # 키 → (화면 이름, 구역, 대화로 받을 수 있는가)
 FIELDS: dict[str, tuple[str, str, bool]] = {
     "permits": ("허가 품목", "permits", False),
+    "criteria": ("매입 기준", "criteria", False),
     "fleet.depot": ("차고지 위치", "fleet", False),
     "fleet.serviceAreas": ("수거 가능 지역", "fleet", True),
     "fleet.maxPickupKm": ("최대 수거 거리", "fleet", True),
@@ -98,6 +100,8 @@ class Context:
     draft: dict[str, dict[str, Any]]
     # 담당자가 이 대화에서 한 말. None이면 대화 밖(MCP)에서 부른 것이라 인용을 대조할 대화가 없다
     said: list[str] | None = None
+    # 초안 출처에 적을 이름(MCP 키 이름 등). 없으면 기본 문구
+    label: str | None = None
 
 
 @dataclass(frozen=True)
@@ -313,7 +317,7 @@ def _number_in(value: float, key: str, quote: str) -> bool:
             options.add(number * 10_000)
         if unit == "천":
             options.add(number * 1_000)
-        if key == "fleet.capacityKg" and unit in ("톤", "t", "T"):
+        if key in ("fleet.capacityKg", "criteria.minMonthlyKg") and unit in ("톤", "t", "T"):
             options.add(number * 1_000)
         if any(abs(abs(value) - o) < 1e-6 for o in options):
             return True
@@ -322,6 +326,26 @@ def _number_in(value: float, key: str, quote: str) -> bool:
 
 def _squash(text: Any) -> str:
     return "".join(str(text or "").split())
+
+
+def quoted(quote: str, said: str) -> bool:
+    """인용이 담당자의 말에서 온 것인가.
+
+    글자 그대로 들어 있거나, 모델이 조사 몇 개를 빼고 옮긴 정도(인용 글자의 90% 이상이 말과 순서대로 겹침)면
+    맞다고 본다. 다만 인용 속 숫자는 하나도 빠짐없이 말에 있어야 한다(숫자를 바꿔 옮긴 인용은 거절).
+    """
+    q, s = _squash(quote), _squash(said)
+    if not q:
+        return False
+    if q in s:
+        return True
+    said_numbers = {n for n, _ in _digits(said)}
+    if any(n not in said_numbers for n, _ in _digits(quote)):
+        return False
+    matched = sum(
+        block.size for block in SequenceMatcher(None, q, s, autojunk=False).get_matching_blocks()
+    )
+    return matched >= 0.9 * len(q)
 
 
 def _days(value: Any, quote: str) -> list[str]:
@@ -358,6 +382,17 @@ def _close(item: str, said: str) -> bool:
     return match.size >= max(2, len(a) * 2 / 3)
 
 
+_PLACE_SUFFIX = re.compile(r"(특별자치시|특별자치도|광역시|특별시|전역|일대|지역|시|군|구|도)$")
+
+
+def _place_in(item: str, said: str) -> bool:
+    """지역 이름을 행정 단위만 붙여 옮긴 경우("김해" → "김해시", "부산 전역" → "부산광역시 전역")."""
+    parts = [p for p in re.split(r"\s+", str(item).strip()) if p]
+    cores = [_PLACE_SUFFIX.sub("", p) for p in parts]
+    cores = [c for c in cores if len(c) >= 2]
+    return bool(cores) and all(c in said for c in cores)
+
+
 def _texts_in(key: str, value: Any, quote: str) -> list[str]:
     value = _as_list(value)
     if not isinstance(value, list) or not value:
@@ -365,7 +400,11 @@ def _texts_in(key: str, value: Any, quote: str) -> list[str]:
     items = [str(v).strip() for v in value if str(v).strip()]
     said = _squash(quote)
     for item in items:
-        if _squash(item) in said or (key == "guardrails.autoDecline" and _close(item, said)):
+        if (
+            _squash(item) in said
+            or (key in ("guardrails.autoDecline", "fleet.serviceAreas") and _close(item, said))
+            or (key == "fleet.serviceAreas" and _place_in(item, said))
+        ):
             continue
         raise ToolError(f"인용한 말에 '{item}'이(가) 없습니다. 담당자가 말한 낱말 그대로 넣으세요.")
     return items
@@ -462,7 +501,7 @@ def propose_fields(ctx: Context, args: dict[str, Any]) -> dict[str, Any]:
                 )
             if not quote:
                 raise ToolError("담당자의 말을 quote에 그대로 인용하세요.")
-            if ctx.said is not None and not any(_squash(quote) in _squash(s) for s in ctx.said):
+            if ctx.said is not None and not any(quoted(quote, s) for s in ctx.said):
                 raise ToolError(
                     "quote가 담당자가 이 대화에서 한 말에 없습니다. 담당자의 말을 그대로 옮기세요."
                 )
@@ -476,12 +515,215 @@ def propose_fields(ctx: Context, args: dict[str, Any]) -> dict[str, Any]:
             "text": text,
             "source": {
                 "kind": "conversation" if ctx.said is not None else "agent",
-                "label": "담당자 답변" if ctx.said is not None else "연결한 에이전트가 제출",
+                "label": ctx.label
+                or ("담당자 답변" if ctx.said is not None else "연결한 에이전트가 제출"),
                 "quote": quote,
             },
         }
         written.append(key)
     return {"written": written, "rejected": rejected}
+
+
+# ── 매입 기준(대화) ───────────────────────────────────────────────────
+# 재질 코드를 우리말로 말한 경우. 코드나 이 낱말이 담당자의 말에 있어야 그 재질로 넣는다
+_MATERIAL_WORDS = {
+    "PP": ("폴리프로필렌", "피피"),
+    "PE": ("폴리에틸렌", "피이"),
+    "HDPE": ("고밀도", "에이치디"),
+    "LDPE": ("저밀도", "엘디"),
+    "LLDPE": ("선형 저밀도", "선형저밀도"),
+    "PET": ("페트",),
+    "PS": ("폴리스티렌",),
+    "ABS": ("에이비에스",),
+    "PVC": ("염화비닐", "피브이씨"),
+    "PC": ("폴리카보네이트",),
+    "PA": ("나일론", "폴리아미드"),
+}
+_INCLUDED_WORDS = (
+    "수거비 포함",
+    "운반비 포함",
+    "수거비는 포함",
+    "운반비는 포함",
+    "무료 수거",
+    "무상 수거",
+    "수거비 없",
+)
+_SEPARATE_WORDS = (
+    "수거비 별도",
+    "운반비 별도",
+    "수거비는 별도",
+    "운반비는 따로",
+    "수거비는 따로",
+    "수거비 따로",
+)
+
+
+def _material_in(material: str, quote: str) -> bool:
+    upper = quote.upper()
+    if re.search(rf"(?<![A-Z]){re.escape(material)}(?![A-Z])", upper):
+        return True
+    return any(word in quote for word in _MATERIAL_WORDS.get(material, ()))
+
+
+def _price_in(value: float, quote: str) -> bool:
+    """kg당 단가가 말에 있는가. "톤당 30만 원"처럼 톤으로 말했으면 1,000배 한 값이 말에 있어야 한다."""
+    if _number_in(value, "criteria.price", quote):
+        return True
+    return "톤당" in quote and _number_in(value * 1_000, "criteria.price", quote)
+
+
+def criterion_text(row: dict[str, Any]) -> str:
+    head = " ".join(
+        part
+        for part in (
+            row["material"],
+            f"{row['grade']}등급" if row.get("grade") else None,
+            row.get("form"),
+        )
+        if part
+    )
+    parts = [head]
+    price = row.get("unitPriceKrwPerKg")
+    if row.get("priceMode") == "negotiated":
+        parts.append("단가 건별 협의")
+    elif price is not None:
+        amount = f"{abs(price):,.0f}" if float(price) == int(price) else f"{abs(price):,}"
+        parts.append(f"kg당 {amount}원 " + ("매입" if price >= 0 else "처리비"))
+    if row.get("minMonthlyKg") is not None:
+        parts.append(f"한 달 최소 {row['minMonthlyKg']:,.0f} kg")
+    if row.get("maxContaminationPct") is not None:
+        parts.append(f"이물 {row['maxContaminationPct']:g}% 이하")
+    if row.get("maxMoisturePct") is not None:
+        parts.append(f"수분 {row['maxMoisturePct']:g}% 이하")
+    if row.get("collectionFee"):
+        parts.append("수거비 포함" if row["collectionFee"] == "included" else "수거비 별도")
+    return " · ".join(parts)
+
+
+def _number_arg(row: dict[str, Any], key: str) -> float | None:
+    value = row.get(key)
+    if value in (None, ""):
+        return None
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        raise ToolError(f"{key}는 숫자여야 합니다.")
+    return float(value)
+
+
+def _criterion(row: dict[str, Any], quote: str) -> dict[str, Any]:
+    """대화로 받은 매입 기준 한 줄을 검사한다. 값은 모두 담당자의 말(quote)에 있어야 한다."""
+    material = str(row.get("material") or "").strip().upper()
+    if material not in criteria_llm.MATERIAL_CODES:
+        raise ToolError(f"재질은 {', '.join(criteria_llm.MATERIAL_CODES)} 가운데 하나여야 합니다.")
+    if not _material_in(material, quote):
+        raise ToolError(f"인용한 말에 재질 {material}이(가) 없습니다.")
+    # 등급·형태는 고를 수 있는 칸이라, 말에 없으면 줄을 버리지 않고 그 칸만 비운다(지어낸 값은 넣지 않는다)
+    grade = str(row.get("grade") or "").strip().upper().replace("등급", "") or None
+    if grade is not None and (
+        grade not in criteria_llm.GRADE_CODES
+        or not re.search(rf"(?<![A-Z]){re.escape(grade)}(?![A-Z])", quote.upper())
+    ):
+        grade = None
+    form = str(row.get("form") or "").strip() or None
+    if form is not None and not (_squash(form) in _squash(quote) or _close(form, _squash(quote))):
+        form = None
+    negotiated = "협의" in quote
+    price = _number_arg(row, "unitPriceKrwPerKg")
+    if negotiated and price is None:
+        mode = "negotiated"
+    else:
+        mode = "fixed"
+        if price is None:
+            raise ToolError(
+                "kg당 단가가 없습니다. 단가를 묻거나, 건별 협의라고 하면 단가를 비우세요."
+            )
+        if not _price_in(price, quote):
+            raise ToolError("인용한 말에 그 단가가 없습니다.")
+        fee = any(w in quote for w in _FEE_WORDS)
+        buy = any(w in quote for w in _BUY_WORDS)
+        if not fee and not buy:
+            raise ToolError(SIGN_UNCLEAR)
+        if fee and not buy and price > 0:
+            price = -price  # 처리비라고 말한 단가는 음수다
+        if buy and not fee and price < 0:
+            raise ToolError("담당자가 매입이라고 했는데 처리비(음수)로 넣었습니다.")
+    out: dict[str, Any] = {
+        "material": material,
+        "grade": grade,
+        "form": form,
+        "priceMode": mode,
+        "unitPriceKrwPerKg": price if mode == "fixed" else None,
+    }
+    for key, check in (
+        ("minMonthlyKg", "criteria.minMonthlyKg"),
+        ("maxContaminationPct", "criteria.pct"),
+        ("maxMoisturePct", "criteria.pct"),
+    ):
+        value = _number_arg(row, key)
+        if value is not None and not _number_in(value, check, quote):
+            raise ToolError(f"인용한 말에 {key} 값({value:g})이 없습니다.")
+        out[key] = value
+    fee_kind = row.get("collectionFee") or None
+    if fee_kind == "included" and not any(
+        w in _squash(quote) for w in map(_squash, _INCLUDED_WORDS)
+    ):
+        fee_kind = None
+    if fee_kind == "separate" and not any(
+        w in _squash(quote) for w in map(_squash, _SEPARATE_WORDS)
+    ):
+        fee_kind = None
+    out["collectionFee"] = fee_kind if fee_kind in ("included", "separate") else None
+    try:
+        criteria_llm.clean_rows([{**out, "manual": True}])
+    except criteria_llm.RowError as error:
+        raise ToolError(str(error).replace("1번째 줄: ", "")) from None
+    return out
+
+
+def propose_criteria(ctx: Context, args: dict[str, Any]) -> dict[str, Any]:
+    rows = args.get("rows")
+    if not isinstance(rows, list) or not rows:
+        raise ToolError("rows에 매입 기준 줄 목록을 넣으세요.")
+    entry = ctx.draft.get("criteria") or {"value": [], "quotes": []}
+    current = list(entry.get("value") or [])
+    quotes = list(entry.get("quotes") or [])
+    written, rejected = [], []
+    for row in rows[:20]:
+        if not isinstance(row, dict):
+            rejected.append({"key": "criteria", "reason": "줄은 객체여야 합니다."})
+            continue
+        quote = str(row.get("quote") or "").strip()
+        try:
+            if not quote:
+                raise ToolError("담당자의 말을 quote에 그대로 인용하세요.")
+            if ctx.said is not None and not any(quoted(quote, s) for s in ctx.said):
+                raise ToolError("quote가 담당자가 이 대화에서 한 말에 없습니다.")
+            clean = _criterion(row, quote)
+        except ToolError as error:
+            material = str(row.get("material") or "").strip().upper() or None
+            rejected.append({"key": "criteria", "reason": str(error), "material": material})
+            continue
+        same = (clean["material"], clean["grade"], _squash(clean["form"] or ""))
+        kept = [
+            (r, q)
+            for r, q in zip(current, quotes + [""] * (len(current) - len(quotes)), strict=False)
+            if (r["material"], r.get("grade"), _squash(r.get("form") or "")) != same
+        ]
+        current = [r for r, _ in kept] + [clean]
+        quotes = [q for _, q in kept] + [quote]
+        written.append(criterion_text(clean))
+    if written:
+        ctx.draft["criteria"] = {
+            "value": current,
+            "quotes": quotes,
+            "text": "\n".join(criterion_text(r) for r in current),
+            "source": {
+                "kind": "conversation" if ctx.said is not None else "agent",
+                "label": ctx.label
+                or ("담당자 답변" if ctx.said is not None else "연결한 에이전트가 제출"),
+                "quote": " / ".join(dict.fromkeys(quotes)),
+            },
+        }
+    return {"written": ["criteria"] if written else [], "rows": written, "rejected": rejected}
 
 
 def checks(profile: dict[str, Any]) -> list[dict[str, Any]]:
@@ -501,7 +743,7 @@ def checks(profile: dict[str, Any]) -> list[dict[str, Any]]:
             "key": "criteria",
             "label": "매입 기준표",
             "done": bool(profile.get("criteria")),
-            "note": "기준표가 없어도 매입 기준을 추가할 수 있습니다. 기준표 파일은 담당자가 확인한 줄만 저장합니다.",
+            "note": "대화로 말하거나 매입 기준을 직접 추가할 수 있습니다. 기준표 파일은 담당자가 확인한 줄만 저장합니다.",
         },
         {
             "key": "depot",
@@ -628,6 +870,53 @@ TOOLS: dict[str, OnboardingTool] = {
             },
             propose_fields,
             _proposed_summary,
+        ),
+        OnboardingTool(
+            "propose_criteria",
+            "담당자가 말한 매입 기준(재질, 등급, 형태, kg당 단가, 한 달 최소 물량, 이물·수분 상한, 수거비)을 "
+            "초안에 넣는다. 줄마다 담당자의 말을 quote에 그대로 인용한다. 단가는 말에 매입이나 처리비가 있어야 "
+            "넣고(처리비는 음수), 건별 협의면 단가를 비운다. 톤당 단가는 kg당으로 바꾼다. "
+            f"재질 코드: {', '.join(criteria_llm.MATERIAL_CODES)}",
+            {
+                "type": "object",
+                "properties": {
+                    "rows": {
+                        "type": "array",
+                        "items": {
+                            "type": "object",
+                            "properties": {
+                                "material": {
+                                    "type": "string",
+                                    "enum": list(criteria_llm.MATERIAL_CODES),
+                                },
+                                "grade": {"type": ["string", "null"]},
+                                "form": {"type": ["string", "null"]},
+                                "unitPriceKrwPerKg": {"type": ["number", "null"]},
+                                "minMonthlyKg": {"type": ["number", "null"]},
+                                "maxContaminationPct": {"type": ["number", "null"]},
+                                "maxMoisturePct": {"type": ["number", "null"]},
+                                "collectionFee": {
+                                    "type": ["string", "null"],
+                                    "enum": ["included", "separate", None],
+                                },
+                                "quote": {"type": "string"},
+                            },
+                            "required": ["material", "quote"],
+                        },
+                    }
+                },
+                "required": ["rows"],
+                "additionalProperties": False,
+            },
+            propose_criteria,
+            lambda args, out: (
+                f"매입 기준 초안에 넣음: {len(out.get('rows') or [])}줄"
+                + (
+                    f" · 말과 맞지 않아 뺀 것 {len(out['rejected'])}줄"
+                    if out.get("rejected")
+                    else ""
+                )
+            ),
         ),
         OnboardingTool(
             "profile_status",

@@ -944,7 +944,8 @@ def get_vendor(app: App, org_id: str, viewer: str) -> dict[str, Any]:
     except NotFound:
         raise ServiceError("VENDOR_NOT_FOUND", "그런 업체가 없습니다.", 404) from None
     if viewer == org_id or me.get("role") == "admin":
-        return {**profile, "name": org.get("name")}
+        # MCP 연결 키의 해시는 내보내지 않는다(키 목록은 GET /vendors/{id}/mcp-keys)
+        return {**{k: v for k, v in profile.items() if k != "mcpKeys"}, "name": org.get("name")}
     if app.auth_mode == "bff" and not org.get("demo"):
         # 실제 업체의 공개 프로필은 대화 상대(그 업체와 스레드가 있는 배출 기업)에게만 보인다
         counterpart = any(

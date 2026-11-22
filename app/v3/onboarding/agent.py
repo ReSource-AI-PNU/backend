@@ -27,6 +27,7 @@ log = logging.getLogger(__name__)
 KEEP_MESSAGES = 40
 MAX_TEXT = 1_000
 HISTORY = 16  # 모델에 넣는 지난 메시지 수
+CRITERIA_DOCUMENT = "업체 측 AI 대화(담당자 확인)"  # 대화로 받은 매입 기준의 근거에 적는 출처 이름
 
 SYSTEM = """너는 폐기물 처리 업체 "{company}" 한 곳만 대변하는 업체 측 AI다. 이 업체가 막 가입해서,
 배출 기업의 문의를 받을 수 있도록 업체 정보 초안을 담당자와 함께 채운다.
@@ -38,14 +39,22 @@ SYSTEM = """너는 폐기물 처리 업체 "{company}" 한 곳만 대변하는 �
   - 다른 상호나 지역을 말하면 action "search"와 query(상호), region(시·군·구, 없으면 null).
   - 그 밖에는 action "none".
 - fields: 맨 마지막 말에 담긴 값. 항목마다 key, value(글), quote(담당자의 말 그대로, 고치지 않고 일부만 옮겨도 됨).
-  - 숫자 항목의 value는 숫자만 쓴다. 톤은 kg로 바꾼다(5톤 → 5000).
+  - 숫자 항목의 value는 숫자 하나만 쓴다(계산식 금지). 적재 중량만 톤을 kg로 바꾼다(5톤 → "5000").
+    거리는 km 그대로(40km → "40"), 횟수·대수는 그 수 그대로("두 번" → "2", "다섯 대" → "5").
   - 요일, 수거 가능 지역, 받지 않는 조건은 쉼표로 나눈 글로 쓴다(예: "월, 수, 금").
   - 처리 방식은 재활용, 물질 재활용, 열분해, 소각, 매립 가운데 하나다.
   - 단가는 업체가 돈을 주고 사는 매입이면 양수, 업체가 처리비를 받으면 음수다. 말로 어느 쪽인지 분명하지
     않으면 넣지 말고 ask에서 매입 단가인지 처리비인지 묻는다.
   - 담당자가 말하지 않은 값은 절대 넣지 않는다. 맨 마지막 말에 없는 값은 넣지 않는다(지난 말의 값은 이미 초안에 있다).
   - 담당자가 앞에서 말한 값을 고치면(예: "2대가 아니라 4대예요") 그 항목을 새 값으로 다시 넣는다.
-- skipped: 담당자가 모른다, 없다, 해당 없다고 한 항목의 key(예: "최대 거리는 잘 모르겠어요" →
+- criteria: 맨 마지막 말에 담긴 매입 기준(어떤 재질을 어떤 조건으로 받는지). 줄마다 material(재질 코드
+  PP·PE·HDPE·LDPE·LLDPE·PET·PS·ABS·PVC·PC·PA), grade(A·B·C·등외 또는 null), form(분쇄품·펠릿·필름 같은 형태 또는 null),
+  price(kg당 단가 숫자만, 톤당이면 1000으로 나눔, 건별 협의면 null), minMonthlyKg(한 달 최소 물량 kg, 톤은 kg로),
+  maxContaminationPct·maxMoisturePct(이물·수분 상한 %), collectionFee("included" 수거비 포함 | "separate" 별도 | null),
+  quote(그 조건을 말한 담당자의 말 그대로). 말에 없는 칸은 null이다. 재질이 둘이면 줄도 둘이다.
+  매입이면 price는 양수, 처리비를 받으면 음수다. 어느 쪽인지 말에 없으면 그 줄을 넣지 말고 ask로 묻는다.
+- skipped: 담당자가 모른다, 없다, 해당 없다고 한 항목의 key("PVC 섞인 건 안 받습니다"는 모름이 아니라
+  받지 않는 조건의 값이다)(예: "최대 거리는 잘 모르겠어요" →
   ["fleet.maxPickupKm"], "받지 않는 조건은 없어요" → ["guardrails.autoDecline"]).
 - ask: 담당자의 말이 애매해서 되물어야 할 때만 짧은 질문 한 문장(존댓말). 아니면 null.
 """
@@ -130,7 +139,11 @@ def greeting(app: Any, org_id: str) -> dict[str, Any]:
             f"공공 허가 명부에서 '{name}' 상호를 찾지 못했습니다. 허가증에 적힌 상호나 소재지(시·군·구)를 알려 주시면 다시 찾겠습니다. "
             "명부에 없어도 아래 허가 품목에서 '목록에서 선택' 또는 '직접 입력'으로 등록할 수 있습니다."
         )
-    tail = "매입 기준표가 없어도 '매입 기준 추가'로 조건을 저장할 수 있습니다. 거래 확정에는 허가증 원본의 품목과 처리 방식 대조가 필요합니다."
+    tail = (
+        "그다음에 어떤 재질을 어떤 조건(단가, 최소 물량, 이물 상한)으로 받으시는지 말로 알려 주시면 매입 기준 초안도 만들겠습니다"
+        "(아래 '매입 기준 추가'로 직접 적어도 됩니다). "
+        "거래 확정에는 허가증 원본의 품목과 처리 방식 대조가 필요합니다."
+    )
     return {
         "id": "greeting",
         "role": "assistant",
@@ -209,6 +222,7 @@ def _history(messages: list[dict[str, Any]]) -> list[dict[str, Any]]:
 
 # 대화로 물을 항목의 순서. 앞의 것부터 두 가지씩 묻는다
 ASK_ORDER = (
+    "criteria",
     "fleet.vehicleCount",
     "fleet.capacityKg",
     "fleet.serviceAreas",
@@ -226,6 +240,8 @@ def _saved(profile: dict[str, Any], key: str) -> bool:
         return bool(profile.get("permits"))
     if key == "process":
         return bool(profile.get("process"))
+    if key == "criteria":
+        return bool(profile.get("criteria"))
     section, _, name = key.partition(".")
     value = (profile.get(section) or {}).get(name)
     return value not in (None, "", [], {})
@@ -275,6 +291,7 @@ def _context_note(app: Any, org_id: str, profile: dict[str, Any], state: dict[st
 
 
 QUESTIONS = {
+    "criteria": "어떤 재질을 어떤 조건으로 받으시나요? 예: PP 분쇄품 A등급 kg당 300원 매입, 한 달 최소 1톤, 이물 3% 이하.",
     "fleet.vehicleCount": "수거 차량은 몇 대인가요?",
     "fleet.capacityKg": "차량 한 대에 몇 kg(또는 몇 톤)까지 싣나요?",
     "fleet.serviceAreas": "어느 지역까지 수거하러 가시나요?",
@@ -286,6 +303,8 @@ QUESTIONS = {
     "fleet.maxPickupKm": "차고지에서 최대 몇 km까지 수거하러 가시나요?",
 }
 _ASKABLE = [k for k, f in T.FIELDS.items() if f[2]]
+_SKIPPABLE = [*_ASKABLE, "criteria"]
+_NULL_TEXT = {"type": ["string", "null"]}
 EXTRACT_SCHEMA = {
     "type": "object",
     "properties": {
@@ -313,10 +332,39 @@ EXTRACT_SCHEMA = {
                 "additionalProperties": False,
             },
         },
-        "skipped": {"type": "array", "items": {"type": "string", "enum": _ASKABLE}},
+        "criteria": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "material": {"type": "string"},
+                    "grade": _NULL_TEXT,
+                    "form": _NULL_TEXT,
+                    "price": _NULL_TEXT,
+                    "minMonthlyKg": _NULL_TEXT,
+                    "maxContaminationPct": _NULL_TEXT,
+                    "maxMoisturePct": _NULL_TEXT,
+                    "collectionFee": _NULL_TEXT,
+                    "quote": {"type": "string"},
+                },
+                "required": [
+                    "material",
+                    "grade",
+                    "form",
+                    "price",
+                    "minMonthlyKg",
+                    "maxContaminationPct",
+                    "maxMoisturePct",
+                    "collectionFee",
+                    "quote",
+                ],
+                "additionalProperties": False,
+            },
+        },
+        "skipped": {"type": "array", "items": {"type": "string", "enum": _SKIPPABLE}},
         "ask": {"type": ["string", "null"]},
     },
-    "required": ["registry", "fields", "skipped", "ask"],
+    "required": ["registry", "fields", "criteria", "skipped", "ask"],
     "additionalProperties": False,
 }
 
@@ -339,6 +387,34 @@ def _coerce(key: str, text: Any) -> Any:
     if key in T.LIST_KEYS:
         return [part.strip() for part in raw.replace("、", ",").split(",") if part.strip()]
     return raw
+
+
+def _one_number(text: Any, tons: bool = False) -> float | None:
+    """글 속 숫자 하나("1톤" → 1000 if tons). 숫자가 없거나 둘 이상이면 None."""
+    raw = str(text if text is not None else "").replace(",", "").replace("−", "-").replace(" ", "")
+    found = re.findall(r"-?\d+(?:\.\d+)?", raw)
+    if len(found) != 1:
+        return None
+    number = float(found[0])
+    if tons and re.search(r"톤|t(?![a-z])", raw, re.IGNORECASE):
+        number *= 1_000
+    return number
+
+
+def _criterion_row(row: dict[str, Any]) -> dict[str, Any]:
+    """모델이 글로 낸 매입 기준 한 줄 → propose_criteria 입력."""
+    fee = str(row.get("collectionFee") or "").strip().lower()
+    return {
+        "material": str(row.get("material") or "").strip().upper(),
+        "grade": row.get("grade") or None,
+        "form": row.get("form") or None,
+        "unitPriceKrwPerKg": _one_number(row.get("price")),
+        "minMonthlyKg": _one_number(row.get("minMonthlyKg"), tons=True),
+        "maxContaminationPct": _one_number(row.get("maxContaminationPct")),
+        "maxMoisturePct": _one_number(row.get("maxMoisturePct")),
+        "collectionFee": fee if fee in ("included", "separate") else None,
+        "quote": str(row.get("quote") or ""),
+    }
 
 
 def reply(app: Any, org_id: str, text: str) -> dict[str, Any]:
@@ -447,11 +523,11 @@ def _run(llm, app, org_id, profile, state, used) -> str:
         if isinstance(f, dict)
     ]
     # 이번 말에 없는 인용(모델이 지난 말의 값을 되풀이한 것)과 초안에 이미 같은 값이 있는 항목은 조용히 뺀다
-    latest = T._squash(state["messages"][-1]["text"])
+    latest = state["messages"][-1]["text"]
     fields = [
         f
         for f in fields
-        if T._squash(f["quote"]) in latest
+        if T.quoted(str(f["quote"] or ""), latest)
         and not (f["key"] in state["draft"] and state["draft"][f["key"]].get("value") == f["value"])
     ]
     if fields:
@@ -469,6 +545,28 @@ def _run(llm, app, org_id, profile, state, used) -> str:
             else:
                 parts.append(f"{josa(label, '은는')} 말씀과 맞는지 확인하지 못해 넣지 않았습니다.")
 
+    rows = [_criterion_row(r) for r in parsed.get("criteria") or [] if isinstance(r, dict)]
+    unquoted = [r for r in rows if not T.quoted(r["quote"], latest)]
+    rows = [r for r in rows if r not in unquoted and r["material"]]
+    for r in unquoted:
+        parts.append(
+            f"매입 기준 한 줄({r['material'] or '재질 모름'})은 말씀과 맞는지 확인하지 못해 넣지 않았습니다."
+        )
+    if rows:
+        result, summary = T.call_tool(ctx, "propose_criteria", {"rows": rows})
+        used.append({"name": "propose_criteria", "summary": summary})
+        if result.get("rows"):
+            parts.append("매입 기준 초안에 넣었습니다: " + "; ".join(result["rows"]) + ".")
+        for item in result.get("rejected") or []:
+            if item.get("reason") == T.SIGN_UNCLEAR:
+                parts.append(f"매입 기준: {T.SIGN_UNCLEAR} 매입인지 처리비인지 알려 주세요.")
+            else:
+                parts.append(
+                    f"매입 기준 한 줄({item.get('material') or '재질 모름'})은 말씀과 맞는지 확인하지 못해 "
+                    "넣지 않았습니다. 재질과 kg당 단가, 매입인지 처리비인지 다시 알려 주세요."
+                )
+        fields = fields or rows  # 아래 '모름' 판단에서 값이 있던 차례로 본다
+
     skipped = [k for k in parsed.get("skipped") or [] if k in T.FIELDS]
     if not skipped and not fields and _unknown(state["messages"][-1]["text"]):
         # 모델이 놓쳐도 "모르겠어요"는 코드가 읽는다: 말에 든 항목 이름, 없으면 지난번에 물은 항목
@@ -479,7 +577,14 @@ def _run(llm, app, org_id, profile, state, used) -> str:
         parts.append(f"알겠습니다. {josa(names, '은는')} 비워 두고 넘어가겠습니다.")
 
     ask = parsed.get("ask")
-    if isinstance(ask, str) and ask.strip() and not any(w in ask for w in _SAVED_WORDS):
+    # 되묻기는 이번 차례에 아무것도 넣거나 빼지 않았을 때만 쓴다(그 밖에는 코드가 다음 질문을 고른다)
+    acted = any(u["name"] in ("propose_fields", "propose_criteria") for u in used)
+    if (
+        not acted
+        and isinstance(ask, str)
+        and ask.strip()
+        and not any(w in ask for w in _SAVED_WORDS)
+    ):
         parts.append(ask.strip()[:200])
     else:
         parts.append(_next_questions(profile, state))
@@ -498,12 +603,9 @@ def _next_questions(profile: dict[str, Any], state: dict[str, Any]) -> str:
     tail = ""
     if not profile.get("criteria") and not state.get("fileHint"):
         state["fileHint"] = True
-        tail = " 기준표가 없어도 '매입 기준 추가'로 저장할 수 있습니다. 파일이 있으면 '기준표 업로드'로 읽을 수 있습니다."
+        tail = " 매입 기준표 파일이 있으면 '기준표 업로드'로 올려도 됩니다."
     if "permits" not in state["draft"] and not profile.get("permits"):
-        return (
-            "허가 품목이 아직 없습니다. 아래에서 품목을 선택하거나 직접 입력해 주세요."
-            + tail
-        )
+        return "허가 품목이 아직 없습니다. 아래에서 품목을 선택하거나 직접 입력해 주세요." + tail
     if not missing:
         return (
             "필요한 항목을 모두 여쭈었습니다. 아래 초안을 확인하고 맞는 항목을 저장해 주세요."
@@ -550,6 +652,8 @@ def patch_for(draft: dict[str, Any], keys: list[str], profile: dict[str, Any]) -
         if not entry or key not in T.FIELDS:
             continue
         value = entry.get("value")
+        if key == "criteria":
+            continue  # 매입 기준은 confirm_criteria 경로로 저장한다(confirm)
         if key == "permits":
             kept = [dict(permit) for permit in profile.get("permits") or []]
             have = {p["wasteItem"] for p in kept}
@@ -571,7 +675,17 @@ def confirm(app: Any, org_id: str, keys: list[str], viewer: str) -> dict[str, An
     if not picked:
         raise service.ServiceError("NOTHING_TO_CONFIRM", "저장할 초안 항목을 골라 주세요.", 422)
     patch = patch_for(state["draft"], picked, profile)
-    service.update_vendor(app, org_id, patch, viewer)
+    if patch:
+        service.update_vendor(app, org_id, patch, viewer)
+    if "criteria" in picked:
+        # 직접 추가한 매입 기준과 같은 경로(검사, 값마다 담당자 입력 근거, 재질·등급·형태로 맞춰 더하기)
+        entry = state["draft"]["criteria"]
+        quotes = list(entry.get("quotes") or [])
+        rows = [
+            {**row, "manual": True, "source": {"quote": quotes[i] if i < len(quotes) else None}}
+            for i, row in enumerate(entry.get("value") or [])
+        ]
+        service.confirm_criteria(app, org_id, CRITERIA_DOCUMENT, rows, viewer)
     state = _state(_profile(app, org_id))
     for key in picked:
         state["draft"].pop(key, None)

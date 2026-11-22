@@ -179,6 +179,64 @@ HELD_OUT: list[dict[str, Any]] = [
     },
 ]
 
+# 매입 기준을 대화로 받게 한 뒤 새로 쓴 대본(2026-11-22 오후, 한 번만 돌려 결과를 그대로 적는다)
+HELD_OUT_2: list[dict[str, Any]] = [
+    {
+        "id": "C1 매입 기준 두 줄",
+        "org": WOORI,
+        "turns": [
+            "네 맞아요",
+            "HDPE 펠릿은 kg당 450원 매입이고요, PS는 처리비로 kg당 120원 받습니다",
+        ],
+        "expect": {
+            "permits": "registry",
+            "fleet.depot": "registry",
+            "criteria": [("HDPE", 450), ("PS", -120)],
+        },
+    },
+    {
+        "id": "C2 톤당 단가·최소 물량",
+        "org": WOORI,
+        "turns": ["맞습니다", "PET 플레이크 톤당 35만 원에 매입하고 한 달 최소 2톤은 돼야 합니다"],
+        "expect": {
+            "permits": "registry",
+            "fleet.depot": "registry",
+            "criteria": [("PET", 350)],
+        },
+    },
+    {
+        "id": "C3 건별 협의",
+        "org": WOORI,
+        "turns": ["예 그 사업장입니다", "ABS는 단가를 건별로 협의해서 정합니다"],
+        "expect": {
+            "permits": "registry",
+            "fleet.depot": "registry",
+            "criteria": [("ABS", None)],
+        },
+    },
+    {
+        "id": "C4 부호 없는 단가는 넣지 않음",
+        "org": WOORI,
+        "turns": ["맞아요", "LDPE는 kg당 70원이에요"],
+        "expect": {"permits": "registry", "fleet.depot": "registry"},
+    },
+    {
+        "id": "C5 차량과 매입 기준 함께",
+        "org": WOORI,
+        "turns": [
+            "맞습니다",
+            "2.5톤 트럭 세 대 있고, PP는 kg당 250원에 매입합니다. 수거비는 별도예요",
+        ],
+        "expect": {
+            "permits": "registry",
+            "fleet.depot": "registry",
+            "fleet.vehicleCount": 3,
+            "fleet.capacityKg": 2500,
+            "criteria": [("PP", 250)],
+        },
+    },
+]
+
 
 def make_llm(spec: str) -> Any:
     if spec == "foundry":
@@ -200,6 +258,10 @@ def _matches(key: str, got: Any, want: Any) -> bool:
         return isinstance(got, list) and any(str(want) in str(item) for item in got)
     if key == "fleet.serviceAreas":
         return isinstance(got, list) and all(any(w in str(g) for g in got) for w in want)
+    if key == "criteria":
+        # [(재질, kg당 단가 | None=건별 협의)]: 줄 수와 재질·단가가 모두 맞아야 맞음
+        rows = {(r.get("material"), r.get("unitPriceKrwPerKg")) for r in got or []}
+        return rows == {(m, float(p) if p is not None else None) for m, p in want}
     if isinstance(want, list):
         return isinstance(got, list) and sorted(got) == sorted(want)
     if isinstance(want, (int, float)) and isinstance(got, (int, float)):
@@ -233,6 +295,8 @@ def run_script(llm: Any, script: dict[str, Any]) -> dict[str, Any]:
     if ANY_PRICE in expect:
         want = expect.pop(ANY_PRICE)
         got = [draft[k] for k in price_keys if k in draft]
+        # 2026-11-22 오후부터 단가는 매입 기준 줄로도 받는다. 그 줄의 kg당 단가도 같은 값이면 맞음으로 본다
+        got += [r.get("unitPriceKrwPerKg") for r in draft.pop("criteria", None) or []]
         (out["correct"] if any(_matches("", g, want) for g in got) else out["missed"]).append(
             ANY_PRICE
         )
@@ -255,10 +319,10 @@ def main(argv: list[str] | None = None) -> None:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--model", default="ollama:qwen2.5:32b")
     parser.add_argument("--out", default="")
-    parser.add_argument("--set", choices=("dev", "held_out"), default="dev")
+    parser.add_argument("--set", choices=("dev", "held_out", "held_out_2"), default="dev")
     args = parser.parse_args(argv)
     llm = make_llm(args.model)
-    scripts = SCRIPTS if args.set == "dev" else HELD_OUT
+    scripts = {"dev": SCRIPTS, "held_out": HELD_OUT, "held_out_2": HELD_OUT_2}[args.set]
     results = [run_script(llm, script) for script in scripts]
     totals = {
         k: sum(len(r[k]) for r in results) for k in ("correct", "wrong", "missed", "invented")

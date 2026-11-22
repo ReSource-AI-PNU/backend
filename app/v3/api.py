@@ -43,6 +43,8 @@ from app.v3 import accounts, httpio, live, service
 from app.v3.agents.factory import build_llm_factory
 from app.v3.demo.scope import demo_app
 from app.v3.onboarding import agent as onboarding
+from app.v3.onboarding import keys as mcp_keys
+from app.v3.onboarding import mcp_http
 from app.v3.scan import views as scans
 
 logger = logging.getLogger(__name__)
@@ -644,6 +646,61 @@ async def vendor_onboarding_confirm(org_id: str, request: Request):
 @guarded
 async def vendor_onboarding_reset(org_id: str, request: Request):
     return await call(onboarding.delete_onboarding, org_id, await viewer_of(request))
+
+
+# 업체가 자기 AI 에이전트를 MCP로 연결하는 키(app/v3/onboarding/keys.py). 원문은 만들 때 한 번만 준다
+@router.get("/vendors/{org_id}/mcp-keys")
+@guarded
+async def vendor_mcp_keys(org_id: str, request: Request):
+    return await call(mcp_keys.get_keys, org_id, await viewer_of(request))
+
+
+@router.post("/vendors/{org_id}/mcp-keys")
+@guarded
+async def vendor_mcp_key_create(org_id: str, request: Request):
+    viewer = await viewer_of(request)
+    body = await json_object(request)
+    return await call(mcp_keys.post_key, org_id, body, viewer)
+
+
+@router.delete("/vendors/{org_id}/mcp-keys/{key_id}")
+@guarded
+async def vendor_mcp_key_delete(org_id: str, key_id: str, request: Request):
+    return await call(mcp_keys.delete_key, org_id, key_id, await viewer_of(request))
+
+
+# 업체 연결 키로 붙는 MCP 입구. /api/v3 밖이라 BFF를 거치지 않고(Caddy가 /mcp/*를 백엔드로 보낸다) 키가 조직을 정한다
+mcp_router = APIRouter(tags=["mcp"])
+
+
+@mcp_router.post(mcp_keys.PATH)
+async def vendor_mcp(request: Request):
+    try:
+        body = json.loads(await request.body() or b"null")
+    except (UnicodeDecodeError, json.JSONDecodeError):
+        return JSONResponse(
+            {"jsonrpc": "2.0", "id": None, "error": {"code": -32700, "message": "JSON이 아닙니다."}},
+            status_code=400,
+        )
+    authorization = request.headers.get("authorization", "")
+
+    def work() -> tuple[int, Any]:
+        app = get_state()
+        if settings.database_url:
+            return mcp_http.handle(app, authorization, body)
+        with _memory_lock:
+            return mcp_http.handle(app, authorization, body)
+
+    status, answer = await run_in_threadpool(work)
+    if answer is None:
+        return Response(status_code=status)
+    return JSONResponse(answer, status_code=status)
+
+
+@mcp_router.get(mcp_keys.PATH)
+async def vendor_mcp_stream():
+    # 서버가 먼저 보내는 메시지가 없어 SSE 흐름을 열지 않는다(MCP streamable HTTP에서 허용하는 405)
+    return Response(status_code=405, headers={"Allow": "POST"})
 
 
 # ── 진단 ─────────────────────────────────────────────────────────────

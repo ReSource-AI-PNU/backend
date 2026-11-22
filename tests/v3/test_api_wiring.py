@@ -138,7 +138,8 @@ def test_contract_routes_are_read():
     assert ("GET", "/orgs/{}/memory") in routes and ("PUT", "/orgs/{}/memory") in routes
     assert ("POST", "/vendors/{}/onboarding/confirm") in routes
     assert ("GET", "/vendors/{}/permit-catalog") in routes
-    assert len(routes) == 46
+    assert ("DELETE", "/vendors/{}/mcp-keys/{}") in routes  # 업체 MCP 연결 키 3개
+    assert len(routes) == 49
 
 
 def test_devserver_routes_equal_the_contract():

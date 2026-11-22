@@ -5,6 +5,7 @@ from app.api.router import router
 from app.core.config import settings
 from app.v3 import httpio
 from app.v3.accounts_api import router as v3_accounts_router
+from app.v3.api import mcp_router as v3_mcp_router
 from app.v3.api import router as v3_router
 
 app = FastAPI(
@@ -27,3 +28,4 @@ app.add_middleware(
 app.include_router(router)
 app.include_router(v3_router)  # 설계안 v3: /api/v3
 app.include_router(v3_accounts_router)  # 설계안 v3 계정·조직(V3_AUTH=bff): /api/v3/accounts 등
+app.include_router(v3_mcp_router)  # 업체 연결 키로 붙는 MCP: /mcp/vendor

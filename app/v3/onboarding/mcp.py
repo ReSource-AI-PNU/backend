@@ -61,16 +61,37 @@ def tool_definitions() -> list[dict[str, Any]]:
     ]
 
 
-def run_tool(app: Any, org_id: str, name: str, arguments: Any) -> dict[str, Any]:
-    """도구 하나를 그 업체의 초안 위에서 돌리고, 초안을 저장한다(대화 기록은 그대로 둔다)."""
+def run_tool(
+    app: Any, org_id: str, name: str, arguments: Any, *, label: str | None = None
+) -> dict[str, Any]:
+    """도구 하나를 그 업체의 초안 위에서 돌리고 초안을 저장한다.
+
+    초안을 고쳤으면 온보딩 대화에 "연결한 에이전트가 넣었다"는 한 줄을 남겨, 담당자가 화면에서 보고 확인하게 한다.
+    """
     if name not in T.TOOLS:
         raise ValueError(f"알 수 없는 도구: {name}")
     org = app.store.get_org(org_id)
     if org.get("role") != "vendor":
         raise ValueError("업체 조직에 묶인 키가 아닙니다.")
+    who = f"연결한 에이전트({label})" if label else "연결한 에이전트"
     state = onboarding._state(onboarding._profile(app, org_id))
-    ctx = T.Context(app=app, org_id=org_id, draft=state["draft"], said=None)
-    result, _ = T.call_tool(ctx, name, arguments)
+    ctx = T.Context(app=app, org_id=org_id, draft=state["draft"], said=None, label=f"{who}가 제출")
+    result, summary = T.call_tool(ctx, name, arguments)
+    written = [T.FIELDS[k][0] for k in result.get("written") or [] if k in T.FIELDS]
+    if written:
+        if not state["messages"]:
+            first = onboarding.greeting(app, org_id)
+            first.pop("candidates", None)
+            first["at"] = app.store.now()
+            state["messages"].append(first)
+        state["messages"].append(
+            onboarding._message(
+                app,
+                "assistant",
+                f"{who}가 초안에 넣었습니다: {', '.join(written)}. 아래 초안에서 확인한 항목만 저장됩니다.",
+                [{"name": name, "summary": summary}],
+            )
+        )
     onboarding._save(app, org_id, state)
     return result
 

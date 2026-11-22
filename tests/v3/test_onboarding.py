@@ -146,12 +146,12 @@ def test_skipped_items_are_not_asked_again():
 
 def test_i_dont_know_is_read_by_code_when_the_model_misses_it():
     app, _ = _app([_said(CONFIRM), _said(), _said()])
-    onboarding.post_message(app, NEW, {"text": "맞아요"}, NEW)  # 차량 수·적재 중량을 묻는다
+    onboarding.post_message(app, NEW, {"text": "맞아요"}, NEW)  # 매입 기준·차량 수를 묻는다
     state = onboarding.post_message(app, NEW, {"text": "최대 거리는 잘 모르겠어요"}, NEW)
     assert "최대 수거 거리는 비워 두고" in state["messages"][-1]["text"]
     state = onboarding.post_message(app, NEW, {"text": "그건 잘 몰라요"}, NEW)
     text = state["messages"][-1]["text"]
-    assert "차량 수, 차량 한 대 적재 중량은 비워 두고" in text
+    assert "매입 기준, 차량 수는 비워 두고" in text
     assert "몇 대" not in text and "어느 지역까지" in text
 
 
@@ -363,7 +363,9 @@ def test_manual_catalog_reuses_registered_mapping_without_expanding_materials():
 
 def test_onboarding_guides_vendor_after_registry_miss_without_requiring_files():
     app, _ = _app()
-    app.store.put_org({"id": "org_no_registry", "name": "테스트 명부 미등록 업체", "role": "vendor"})
+    app.store.put_org(
+        {"id": "org_no_registry", "name": "테스트 명부 미등록 업체", "role": "vendor"}
+    )
     message = onboarding.greeting(app, "org_no_registry")["text"]
     assert "목록에서 선택" in message and "직접 입력" in message
     assert "매입 기준 추가" in message
@@ -371,7 +373,162 @@ def test_onboarding_guides_vendor_after_registry_miss_without_requiring_files():
 
 
 def test_registry_draft_preserves_manual_permit_scope():
-    manual = {"wasteItem": "폐목재", "materials": [], "entrySource": "manual", "evidence": ["human:x"]}
+    manual = {
+        "wasteItem": "폐목재",
+        "materials": [],
+        "entrySource": "manual",
+        "evidence": ["human:x"],
+    }
     draft = {"permits": {"value": [{"wasteItem": "폐플라스틱", "materials": ["PP"]}]}}
     patch = onboarding.patch_for(draft, ["permits"], {"permits": [manual]})
     assert patch["permits"][0] == manual
+
+
+# ── 매입 기준(대화) ──────────────────────────────────────────────────
+def _crit(material, quote, **values):
+    row = {
+        "material": material,
+        "grade": None,
+        "form": None,
+        "price": None,
+        "minMonthlyKg": None,
+        "maxContaminationPct": None,
+        "maxMoisturePct": None,
+        "collectionFee": None,
+        "quote": quote,
+    }
+    row.update(values)
+    return row
+
+
+def test_purchase_criteria_from_conversation_are_drafted_and_saved_like_manual_rows():
+    said = "PP 분쇄품 A등급은 kg당 300원에 매입하고 한 달 최소 1톤, 이물 3% 이하만 받아요. 수거비 포함입니다"
+    app, _ = _app(
+        [
+            {
+                **_said(),
+                "criteria": [
+                    _crit(
+                        "PP",
+                        said,
+                        grade="A",
+                        form="분쇄품",
+                        price="300",
+                        minMonthlyKg="1톤",
+                        maxContaminationPct="3",
+                        collectionFee="included",
+                    )
+                ],
+            }
+        ]
+    )
+    state = onboarding.post_message(app, NEW, {"text": said}, NEW)
+    entry = {d["key"]: d for d in state["draft"]}["criteria"]
+    assert entry["section"] == "criteria"
+    assert entry["value"][0]["unitPriceKrwPerKg"] == 300
+    assert entry["value"][0]["minMonthlyKg"] == 1000
+    assert (
+        entry["text"]
+        == "PP A등급 분쇄품 · kg당 300원 매입 · 한 달 최소 1,000 kg · 이물 3% 이하 · 수거비 포함"
+    )
+    assert "매입 기준 초안에 넣었습니다" in state["messages"][-1]["text"]
+    assert app.store.get_vendor_profile(NEW)["criteria"] == []
+
+    out = onboarding.post_confirm(app, NEW, {"keys": ["criteria"]}, NEW)
+    saved = app.store.get_vendor_profile(NEW)["criteria"]
+    assert [(c["material"], c["grade"], c["unitPriceKrwPerKg"]) for c in saved] == [
+        ("PP", "A", 300)
+    ]
+    assert saved[0]["evidence"]  # 값마다 담당자 입력 근거
+    assert out["onboarding"]["discoverable"] is True
+    assert "criteria" not in {d["key"] for d in out["onboarding"]["draft"]}
+
+
+def test_criteria_rules_sign_tons_negotiation_and_invented_values():
+    app, _ = _app()
+
+    def run(said, **row):
+        ctx = T.Context(app=app, org_id=NEW, draft={}, said=[said])
+        return T.propose_criteria(ctx, {"rows": [{"quote": said, **row}]}), ctx
+
+    out, ctx = run(
+        "PET 플레이크는 톤당 30만 원에 매입합니다", material="PET", unitPriceKrwPerKg=300
+    )
+    assert out["written"] == ["criteria"]
+    out, ctx = run("PE 필름은 처리비 kg당 80원 받아요", material="PE", unitPriceKrwPerKg=80)
+    assert ctx.draft["criteria"]["value"][0]["unitPriceKrwPerKg"] == -80  # 처리비는 음수
+    out, _ = run("PS는 kg당 50원이요", material="PS", unitPriceKrwPerKg=50)
+    assert out["rejected"][0]["reason"] == T.SIGN_UNCLEAR
+    out, ctx = run("ABS는 단가 건별 협의입니다", material="ABS")
+    assert ctx.draft["criteria"]["value"][0]["priceMode"] == "negotiated"
+    out, _ = run("PP는 kg당 300원 매입", material="PP", unitPriceKrwPerKg=350)
+    assert out["written"] == []  # 말에 없는 단가
+    out, _ = run("PP는 kg당 300원 매입", material="PVC", unitPriceKrwPerKg=300)
+    assert out["written"] == []  # 말에 없는 재질
+    out, _ = run("폴리프로필렌은 kg당 300원 매입", material="PP", unitPriceKrwPerKg=300)
+    assert out["written"] == ["criteria"]
+
+
+def test_a_second_row_for_the_same_material_grade_form_replaces_the_first():
+    app, _ = _app()
+    ctx = T.Context(
+        app=app, org_id=NEW, draft={}, said=["PP는 kg당 300원 매입", "아니 PP는 kg당 280원 매입"]
+    )
+    T.propose_criteria(
+        ctx,
+        {"rows": [{"material": "PP", "unitPriceKrwPerKg": 300, "quote": "PP는 kg당 300원 매입"}]},
+    )
+    T.propose_criteria(
+        ctx,
+        {
+            "rows": [
+                {"material": "PP", "unitPriceKrwPerKg": 280, "quote": "아니 PP는 kg당 280원 매입"}
+            ]
+        },
+    )
+    assert [r["unitPriceKrwPerKg"] for r in ctx.draft["criteria"]["value"]] == [280]
+
+
+def test_a_quote_may_drop_particles_but_not_change_numbers():
+    said = "PP 분쇄품 A등급은 kg당 300원에 매입하고 한 달 최소 1톤 받아요"
+    assert T.quoted("PP 분쇄품 A등급 kg당 300원에 매입하고 한 달 최소 1톤", said)
+    assert not T.quoted("PP 분쇄품 A등급은 kg당 350원에 매입하고 한 달 최소 1톤", said)
+    assert not T.quoted("PE 필름은 처리비 kg당 80원", said)
+
+
+def test_the_model_question_does_not_replace_the_next_questions_after_writing():
+    app, _ = _app(
+        [
+            _said(CONFIRM),
+            _said(fields=[("fleet.vehicleCount", "2", "차량 2대")], ask="더 알려 주실 게 있나요?"),
+        ]
+    )
+    onboarding.post_message(app, NEW, {"text": "맞아요"}, NEW)
+    state = onboarding.post_message(app, NEW, {"text": "차량 2대"}, NEW)
+    text = state["messages"][-1]["text"]
+    assert "더 알려 주실 게" not in text and "어떤 재질을" in text
+
+
+def test_service_areas_may_add_administrative_suffixes():
+    assert T._place_in("김해시", "부산전역이랑김해까지가요")
+    assert T._place_in("부산광역시 전역", "부산전역이랑김해까지가요")
+    assert not T._place_in("양산시", "부산전역이랑김해까지가요")
+
+
+def test_an_invented_grade_is_dropped_not_kept():
+    app, _ = _app()
+    ctx = T.Context(app=app, org_id=NEW, draft={}, said=["PP 깨끗한 건 kg당 200원에 매입합니다"])
+    out = T.propose_criteria(
+        ctx,
+        {
+            "rows": [
+                {
+                    "material": "PP",
+                    "grade": "A",
+                    "unitPriceKrwPerKg": 200,
+                    "quote": "PP 깨끗한 건 kg당 200원에 매입합니다",
+                }
+            ]
+        },
+    )
+    assert out["written"] == ["criteria"] and ctx.draft["criteria"]["value"][0]["grade"] is None

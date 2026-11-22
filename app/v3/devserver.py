@@ -69,6 +69,7 @@ from app.v3.evidence.registry import InMemoryRegistry, JsonFileRegistry
 from app.v3.intake import criteria_llm, detector, documents, shields
 from app.v3.judge.distance import distance_provider_from_env
 from app.v3.onboarding import agent as onboarding
+from app.v3.onboarding import keys as mcp_keys
 from app.v3.scan import client as scan_client
 from app.v3.scan import views as scans
 from app.v3.store import InMemoryStore, JsonFileStore
@@ -283,6 +284,12 @@ def route(app: service.App, request: Request) -> Any:
             return onboarding.post_confirm(app, org_id, request.json(), viewer)
         case ("DELETE", ["vendors", org_id, "onboarding"]):
             return onboarding.delete_onboarding(app, org_id, viewer)
+        case ("GET", ["vendors", org_id, "mcp-keys"]):
+            return mcp_keys.get_keys(app, org_id, viewer)
+        case ("POST", ["vendors", org_id, "mcp-keys"]):
+            return mcp_keys.post_key(app, org_id, request.json(), viewer)
+        case ("DELETE", ["vendors", org_id, "mcp-keys", key_id]):
+            return mcp_keys.delete_key(app, org_id, key_id, viewer)
         case ("POST", ["sessions"]):
             body = request.json()
             return service.create_session(app, str(body.get("emitterOrgId") or viewer), viewer)
