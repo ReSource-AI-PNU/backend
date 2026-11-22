@@ -1,6 +1,6 @@
 {
   "version": "v1",
-  "source": "기후에너지환경부·한국환경공단 2024 전국 폐기물 발생 및 처리현황 (부록) 산업단지별 발생 및 처리현황",
+  "source": "기후에너지환경부·한국환경공단 전국 폐기물 발생 및 처리현황 (부록) 산업단지별 발생 및 처리현황",
   "url": "https://www.recycling-info.or.kr/rrs/stat/envStatDetail.do?menuNo=M130601&bbsId=BBSMSTR_000000000002&nttId=1596",
   "sheet": "1-가. 사업장배출시설계 산업단지별 발생량",
   "waste": "폐합성수지류",

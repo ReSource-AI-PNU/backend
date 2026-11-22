@@ -536,7 +536,8 @@ PERMIT_DOCUMENT_KEYS = {"quote", "itemQuote", "processQuote", "address", "permit
 # 가입하지 않은 업체 후보(결과 한 장의 outsideVendors)에서 공공데이터 원문을 옮긴 칸
 PUBLIC_RECORD_KEYS = {"url", "asOfRange", "address", "phone", "permitDate", "code"}
 # 같은 단지 자원순환 후보(complexPartners)에서 공공데이터 원문을 옮긴 칸(회사가 신고한 생산품과 그 품목, 허가 명부 ID)
-COMPLEX_RECORD_KEYS = PUBLIC_RECORD_KEYS | {"product", "items", "vendorId"}
+# dataYear: 단지 집계(stats)의 통계 기준 연도(공공 통계 원문 식별 정보, 값은 근거가 열리는 claim으로 따로 있다)
+COMPLEX_RECORD_KEYS = PUBLIC_RECORD_KEYS | {"product", "items", "vendorId", "dataYear"}
 
 
 def _loose_numbers(node, path, out):

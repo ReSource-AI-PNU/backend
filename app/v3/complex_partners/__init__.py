@@ -61,23 +61,26 @@ STAT_FIELDS = (
 )
 
 
-def stats_evidence(complex_id: str) -> Evidence | None:
-    """단지 집계 한 줄을 원문 그대로 발췌한 ref 근거. 그 단지의 집계가 없으면 None."""
+def stats_evidence(complex_id: str, key: str) -> Evidence | None:
+    """단지 집계의 한 값(key)을 담은 ref 근거. 발췌는 그 단지 줄 전체를 원문 그대로 싣는다. 집계가 없으면 None."""
     data = stats()
     row = data["complexes"].get(complex_id)
     if row is None:
         return None
     unit = data["unit"]
+    names = dict(STAT_FIELDS)
     parts = [f"{row['sheetName']} · {data['waste']}"] + [
-        f"{name} {row[key]:,.2f} {unit}" for key, name in STAT_FIELDS
+        f"{name} {row[field]:,.2f} {unit}" for field, name in STAT_FIELDS
     ]
     parts.append(
         f"재활용 중 물질재활용 {row['materialRecycled']:,.2f} · 에너지회수 {row['energyRecovered']:,.2f}"
     )
     return Evidence(
-        id=ids.ref_id("폐기물통계", f"{complex_id}-{data['waste']}", data["dataYear"]),
+        id=ids.ref_id("폐기물통계", f"{complex_id}-{data['waste']}-{names[key]}", data["dataYear"]),
         kind="ref",
-        label=f"{row['sheetName']} 폐합성수지 발생·처리 ({data['dataYear']})",
+        label=f"{row['sheetName']} 폐합성수지 {names[key]} ({data['dataYear']})",
+        value=row[key],
+        unit=unit,
         excerpt=" | ".join(parts),
         source=data["source"],
         as_of=data["publishedOn"],
@@ -95,28 +98,27 @@ def stats_evidence(complex_id: str) -> Evidence | None:
 
 def complex_stats(registry: Any, complex_id: str) -> dict[str, Any] | None:
     """결과 한 장의 complexPartners.stats. 단지 전체 합계를 근거가 열리는 값으로 보인다(표시만)."""
-    evidence = stats_evidence(complex_id)
-    if evidence is None:
-        return None
     data = stats()
-    row = data["complexes"][complex_id]
-    stored = registry.put(evidence).id
+    row = data["complexes"].get(complex_id)
+    if row is None:
+        return None
+    values = {}
+    for key, name in STAT_FIELDS:
+        stored = registry.put(stats_evidence(complex_id, key)).id
+        values[key] = {
+            "id": f"complexStat_{key}",
+            "kind": "number",
+            "value": row[key],
+            "unit": data["unit"],
+            "evidence": [stored],
+            "label": f"단지 폐합성수지 {name}",
+            "evidenceClass": "official",
+        }
     return {
         "sheetName": row["sheetName"],
         "waste": data["waste"],
         "dataYear": data["dataYear"],
-        "values": {
-            key: {
-                "id": f"complexStat_{key}",
-                "kind": "number",
-                "value": row[key],
-                "unit": data["unit"],
-                "evidence": [stored],
-                "label": f"단지 폐합성수지 {name}",
-                "evidenceClass": "official",
-            }
-            for key, name in STAT_FIELDS
-        },
+        "values": values,
         "note": data["note"],
         "source": {"name": data["source"], "url": data["url"], "publishedOn": data["publishedOn"]},
     }

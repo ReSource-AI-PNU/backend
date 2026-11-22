@@ -42,7 +42,7 @@ COLUMNS = {
 }
 
 
-def build(xlsx: Path) -> dict:
+def build(xlsx: Path, url: str) -> dict:
     import openpyxl
 
     sheet = openpyxl.load_workbook(xlsx, read_only=True)[SHEET]
@@ -57,8 +57,8 @@ def build(xlsx: Path) -> dict:
         raise SystemExit(f"통계표에서 찾지 못한 단지: {missing}")
     return {
         "version": "v1",
-        "source": "기후에너지환경부·한국환경공단 2024 전국 폐기물 발생 및 처리현황 (부록) 산업단지별 발생 및 처리현황",
-        "url": "https://www.recycling-info.or.kr/rrs/stat/envStatDetail.do?menuNo=M130601&bbsId=BBSMSTR_000000000002&nttId=1596",
+        "source": "기후에너지환경부·한국환경공단 전국 폐기물 발생 및 처리현황 (부록) 산업단지별 발생 및 처리현황",
+        "url": url,
         "sheet": SHEET,
         "waste": WASTE,
         "dataYear": "2024",
@@ -72,8 +72,11 @@ def build(xlsx: Path) -> dict:
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--xlsx", type=Path, required=True)
+    # 게시물 주소. 주지 않으면 지금 stats.v1.json에 적힌 주소를 그대로 쓴다
+    parser.add_argument("--url", default=None)
     args = parser.parse_args()
-    data = build(args.xlsx)
+    url = args.url or json.loads(OUT.read_text(encoding="utf-8"))["url"]
+    data = build(args.xlsx, url)
     OUT.write_text(json.dumps(data, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     for key, item in data["complexes"].items():
         print(key, item["sheetName"], item["generated"], "톤/년")
