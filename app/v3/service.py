@@ -62,7 +62,15 @@ from app.v3.evidence.registry import EvidenceForbidden, EvidenceNotFound
 from app.v3.evidence.seeds import load_seed_dir
 from app.v3.evidence.units import UnitError, same_value
 from app.v3.evidence.validator import validate_message, validate_text
-from app.v3.intake import criteria_llm, csv_measure, documents, labels, permit_docs, shields
+from app.v3.intake import (
+    criteria_llm,
+    csv_measure,
+    documents,
+    grade_model,
+    labels,
+    permit_docs,
+    shields,
+)
 from app.v3.intake import detector as media
 from app.v3.judge import basis
 from app.v3.judge.common import quality, without_emitter_only
@@ -433,6 +441,10 @@ def _latest(app: App, session_id: str) -> None:
 
 
 DEMO_HISTORY_DAYS_AGO = (21, 7)  # 지난 거래의 검수일: 오늘로부터 며칠 전(두 번)
+# 회사 기록 시연(2026-11-22): 이 폐기물은 세 번 검수하고 두 번은 합의보다 한 등급 낮게, 단가는 합의의 90%로 받았다(가상).
+# (며칠 전, 등급을 몇 단계 내렸는지, 합의 단가에서 깎인 비율). 시연 회사는 회사 기록을 판정에 반영하도록 승인해 둔다
+DEMO_BELOW_STREAM = "st_sprue"
+DEMO_BELOW = ((35, 0, 0.0), (21, 1, 0.1), (7, 1, 0.1))
 
 
 def _demo_history(app: App) -> str | None:
@@ -476,7 +488,13 @@ def _demo_history(app: App) -> str | None:
                 kg, price = streams.get(stream_id, {}).get("monthlyKg"), prices.get(stream_id)
                 if kg is None or price is None:
                     continue
-                for n, days in enumerate(DEMO_HISTORY_DAYS_AGO):
+                plan = (
+                    DEMO_BELOW
+                    if stream_id == DEMO_BELOW_STREAM
+                    else tuple((days, 0, 0.0) for days in DEMO_HISTORY_DAYS_AGO)
+                )
+                for n, (days, step, cut) in enumerate(plan):
+                    grade = _lower_grade(grades.get(stream_id), step)
                     record_outcome(
                         app,
                         session_id,
@@ -486,20 +504,32 @@ def _demo_history(app: App) -> str | None:
                             # 시연 되돌리기를 다시 돌려도 같은 검수 건이 되도록 요청 번호를 고정한다
                             "requestId": f"demo-{thread['id']}-{stream_id}-{days}",
                             "inspectedOn": (today - timedelta(days=days)).isoformat(),
-                            "actualUnitPriceKrwPerKg": float(price),
+                            # 깎인 만큼 배출 기업에 나쁜 쪽(매입은 덜 받고 처리비는 더 낸다)
+                            "actualUnitPriceKrwPerKg": round(float(price) - abs(float(price)) * cut, 2),
                             "actualKg": round(float(kg) * (0.94 if n == 0 else 0.98)),
-                            # 검수 등급은 합의한 매입 기준의 등급 그대로(가상)
-                            **({"actualGrade": grades[stream_id]} if grades.get(stream_id) else {}),
-                            "note": "시연용 가상 검수 기록",
+                            # 검수 등급은 합의한 매입 기준의 등급 그대로이거나 정해진 단계만큼 낮다(가상)
+                            **({"actualGrade": grade} if grade else {}),
+                            "note": "시연용 가상 검수 기록"
+                            + (" · 합의보다 낮게 나온 건" if step or cut else ""),
                         },
                         thread["vendorOrgId"],
                     )
+        # 시연 회사는 회사 기록을 판정에 반영하도록 승인해 둔다(체험하기에서 보정이 보이게. 승인 근거도 시연 자료다)
+        memory.update(app, EMITTER, {"applyToJudgment": True})
         # 실적 리포트의 계산 근거를 미리 만들어 둔다(체험하기는 읽기 전용이라 새 근거를 쓰지 못한다)
         report.build(app, EMITTER, None, None)
         return session_id
     except Exception:  # 지난 거래 때문에 시연 되돌리기가 멈추면 안 된다
         logger.warning("시연 지난 거래를 만들지 못했다", exc_info=True)
         return None
+
+
+def _lower_grade(grade: str | None, step: int) -> str | None:
+    """등급을 step 단계 낮춘다(맨 아래 등급에서 멈춘다). 등급을 모르면 None."""
+    if grade not in grade_model.GRADES:
+        return grade
+    index = min(grade_model.GRADES.index(grade) + step, len(grade_model.GRADES) - 1)
+    return grade_model.GRADES[index]
 
 
 def _agreed_grade(
@@ -2127,8 +2157,13 @@ def get_report(
 
 
 def get_memory(app: App, org_id: str, viewer: str) -> dict[str, Any]:
-    """회사별 기록(memory.py): 지난 답변·검수·교정·거래. 배출 기업 본인과 운영자만 본다. 읽기라서 체험하기에서도 열린다."""
-    _owner(app, org_id, viewer, role="emitter")
+    """회사별 기록(memory.py). 배출 기업은 지난 답변·검수·교정·거래와 판정 반영, 처리 업체는 배출 기업별 검수와 거래.
+    그 회사 본인과 운영자만 본다. 읽기라서 체험하기에서도 열린다."""
+    org = _owner(app, org_id, viewer)
+    if org.get("role") == "vendor":
+        return memory.vendor_memory(app, org_id)
+    if org.get("role") != "emitter":
+        raise ServiceError("WRONG_ROLE", "배출 기업이나 처리 업체만 볼 수 있는 기록입니다.", 403)
     return memory.org_memory(app, org_id)
 
 
@@ -3552,7 +3587,11 @@ def admin_status(app: App, viewer: str) -> dict[str, Any]:
         "vendorGateway": type(app.vendor_gateway).__name__,
         "store": type(app.store).__name__,
         # 재학습 표: 실제 등급 라벨 수, 교정 건수, 배포 게이트, 기준값 보정 후보, 모델 버전
-        "retrain": feedback.retrain_table(app, None),
+        "retrain": {
+            **feedback.retrain_table(app, None),
+            # 회사 기록 보정 강도 제안(실제 검수로 다시 정하기). 판정에 자동으로 쓰지 않는다
+            "personalStrength": memory.strength_suggestion(app),
+        },
     }
 
 

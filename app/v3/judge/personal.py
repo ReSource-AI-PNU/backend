@@ -68,3 +68,55 @@ def estimate(
 
 def expected_price(price: float, rate: float) -> float:
     return price + rate * abs(price)
+
+
+# ── 보정 강도 제안(운영 화면) ──────────────────────────────────────────
+# 실제 검수가 이만큼 쌓여야 제안한다: 검수가 두 건 이상인 (배출 기업, 폐기물) 묶음 수와 전체 검수 수
+SUGGEST_MIN_GROUPS = 5
+SUGGEST_MIN_RECORDS = 15
+
+
+def suggest_strength(groups: dict[Any, list[float]]) -> dict[str, Any]:
+    """실제 검수 기록으로 보정 강도 k를 다시 정하는 제안(모멘트법 경험적 베이즈). 판정에 자동으로 쓰지 않는다.
+
+    groups는 (배출 기업, 폐기물)마다 검수 상대 차이 목록이다. 묶음 안의 흔들림 σ²(검수 한 건이 얼마나 튀는가)과 묶음
+    사이의 차이 τ²(회사·폐기물마다 실제로 얼마나 다른가)를 재서 k = σ² ÷ τ²를 낸다. 묶음 사이 차이가 작을수록 k가 커져
+    계약 단가 쪽을 더 믿는다. 기록이 적거나 τ²가 0 이하이면 제안하지 않는다(그 까닭을 적는다).
+    """
+    records = sum(len(v) for v in groups.values())
+    usable = {k: list(v) for k, v in groups.items() if len(v) >= 2}
+    out: dict[str, Any] = {
+        "records": records,
+        "groups": len(usable),
+        "minGroups": SUGGEST_MIN_GROUPS,
+        "minRecords": SUGGEST_MIN_RECORDS,
+        "withinVariance": None,
+        "betweenVariance": None,
+        "suggested": None,
+    }
+    if len(usable) < SUGGEST_MIN_GROUPS or records < SUGGEST_MIN_RECORDS:
+        out["reason"] = (
+            "실제 검수 기록이 아직 적어 제안하지 않습니다. 검수가 두 건 이상인 회사·폐기물 묶음 "
+            f"{len(usable)}/{SUGGEST_MIN_GROUPS}개, 검수 {records}/{SUGGEST_MIN_RECORDS}건입니다."
+        )
+        return out
+    means = {k: math.fsum(v) / len(v) for k, v in usable.items()}
+    within = math.fsum((x - means[k]) ** 2 for k, v in usable.items() for x in v)
+    within /= sum(len(v) - 1 for v in usable.values())
+    grand = math.fsum(means.values()) / len(means)
+    spread = math.fsum((m - grand) ** 2 for m in means.values()) / (len(means) - 1)
+    between = spread - within * math.fsum(1 / len(v) for v in usable.values()) / len(usable)
+    out["withinVariance"] = round(within, 6)
+    out["betweenVariance"] = round(between, 6)
+    if between <= 1e-12:
+        out["reason"] = (
+            "회사·폐기물 사이의 차이가 검수 한 건의 흔들림보다 작습니다. 회사별 보정이 거의 필요 없다는 뜻이라 "
+            "보정 강도를 제안하지 않습니다(지금 값보다 크게 두면 계약 단가 쪽을 더 믿습니다)."
+        )
+        return out
+    out["suggested"] = round(within / between, 2)
+    out["reason"] = (
+        "묶음 안 흔들림 ÷ 묶음 사이 차이로 낸 제안입니다. 판정에 자동으로 쓰지 않습니다. 바꾸려면 정책 승인을 거쳐 "
+        "담당자 승인 화면의 제안값을 고칩니다."
+    )
+    return out

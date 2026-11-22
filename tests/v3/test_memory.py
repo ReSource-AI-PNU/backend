@@ -129,8 +129,10 @@ def test_only_the_company_itself_reads_or_changes_its_memory(dealt):
     with pytest.raises(service.ServiceError) as caught:
         service.update_memory(app, HANBIT, {"enabled": "no"}, HANBIT)
     assert caught.value.status == 422
+    # 처리 업체는 자기 쪽 기록(배출 기업별 검수와 거래)을 본다. 판정 반영은 배출 기업만 정한다
+    assert service.get_memory(app, SAEGIL, SAEGIL)["role"] == "vendor"
     with pytest.raises(service.ServiceError) as caught:
-        service.get_memory(app, SAEGIL, SAEGIL)  # 처리 업체에는 아직 회사 기록 화면이 없다
+        service.update_memory(app, SAEGIL, {"enabled": False}, SAEGIL)
     assert caught.value.code == "WRONG_ROLE"
 
 

@@ -112,7 +112,7 @@ def _compare(actual: Any, agreed: Any, *, grade: bool) -> str | None:
 
 def inspection_rows(
     app: Any,
-    emitter_id: str,
+    emitter_id: str | None,
     *,
     vendor_id: str | None = None,
     stream_ids: set[str] | None = None,
@@ -121,13 +121,14 @@ def inspection_rows(
     """배출 기업의 검수 한 건마다 합의와 견준 줄. 검수일 순서다.
 
     vendor_id를 주면 그 업체와의 검수만, stream_ids를 주면 그 폐기물만, exclude_session을 주면 그 찾기의 검수는 뺀다.
+    emitter_id가 None이면 vendor_id의 모든 배출 기업과의 검수다(업체 쪽 회사 기록). 출처는 기준 조직(배출 기업, 없으면 업체)으로 정한다.
     """
-    origin = feedback.data_origin(app, emitter_id)
+    origin = feedback.data_origin(app, emitter_id or vendor_id)
     origin = origin if origin in ("real", "demo") else "real"
     cache: dict[str, dict[str, Any]] = {}
     rows = []
     for record in feedback.outcomes(app, origin=origin):
-        if record.get("emitterOrgId") != emitter_id:
+        if emitter_id is not None and record.get("emitterOrgId") != emitter_id:
             continue
         if vendor_id is not None and record.get("vendorOrgId") != vendor_id:
             continue
@@ -145,6 +146,7 @@ def inspection_rows(
                 "sessionId": record["sessionId"],
                 "streamId": record["streamId"],
                 "vendorOrgId": record["vendorOrgId"],
+                "emitterOrgId": record["emitterOrgId"],
                 "agreedGrade": agreed_grade,
                 "actualGrade": record.get("actualGrade"),
                 "grade": _compare(record.get("actualGrade"), agreed_grade, grade=True),
@@ -330,6 +332,7 @@ def org_memory(app: Any, org_id: str) -> dict[str, Any]:
     deals = _deals(app, org_id)
     return {
         "orgId": org_id,
+        "role": "emitter",
         "enabled": enabled(org),
         "dataOrigin": origin,
         "minRecords": MIN_RECORDS,
@@ -346,6 +349,56 @@ def org_memory(app: Any, org_id: str) -> dict[str, Any]:
         "streams": per_stream,
         "deals": deals,
         "calibration": _calibration(app, org, rows, names, streams),
+    }
+
+
+def vendor_memory(app: Any, vendor_id: str) -> dict[str, Any]:
+    """처리 업체 하나의 기록 묶음(GET /orgs/{orgId}/memory, 업체). 자기가 기록한 검수와 함께 확정한 거래를 배출 기업별로 묶는다.
+
+    업체가 당사자인 기록만 쓴다. 폐기물 이름은 상대에게 보이는 이름(stream_label)이다. 판정에는 쓰지 않고 보여 주기만 한다
+    (업체 측 AI는 이 기록을 받지 않는다). 권한은 service가 확인한다.
+    """
+    origin = feedback.data_origin(app, vendor_id)
+    origin = origin if origin in ("real", "demo") else "real"
+    rows = inspection_rows(app, None, vendor_id=vendor_id)
+    labels: dict[str, str] = {}
+    for row in rows:
+        sid = row["streamId"]
+        if sid not in labels:
+            try:
+                labels[sid] = stream_label(app.store.get_stream(sid))
+            except NotFound:
+                labels[sid] = "폐기물"
+        row["streamName"] = labels[sid]
+    deals: dict[str, int] = {}
+    for thread in app.store.list_threads(org_id=vendor_id):
+        if thread.get("status") == "confirmed" and thread.get("vendorOrgId") == vendor_id:
+            emitter = str(thread.get("emitterOrgId"))
+            deals[emitter] = deals.get(emitter, 0) + 1
+    emitters = []
+    for emitter in sorted({*deals, *(r["emitterOrgId"] for r in rows)}):
+        mine = [r for r in rows if r["emitterOrgId"] == emitter]
+        emitters.append(
+            {
+                "emitterOrgId": emitter,
+                "emitterName": _name(app, emitter),
+                "deals": deals.get(emitter, 0),
+                "inspections": summarize(mine),
+                "inspectionRows": mine,
+            }
+        )
+    return {
+        "orgId": vendor_id,
+        "role": "vendor",
+        "dataOrigin": origin,
+        "minRecords": MIN_RECORDS,
+        "summary": {
+            "emitters": len(emitters),
+            "inspections": len(rows),
+            "below": sum(1 for r in rows if "lower" in (r["grade"], r["price"])),
+            "deals": sum(deals.values()),
+        },
+        "emitters": emitters,
     }
 
 
@@ -543,3 +596,18 @@ def update(app: Any, org_id: str, body: dict[str, Any]) -> dict[str, Any]:
     org["memory"] = memo
     app.store.put_org(org)
     return org_memory(app, org_id)
+
+
+def strength_suggestion(app: Any) -> dict[str, Any]:
+    """운영 화면의 보정 강도 제안(judge/personal.suggest_strength). 실제 회사 사이의 검수만 쓰고, 묶음은 (배출 기업, 폐기물)이다."""
+    groups: dict[tuple[str, str], list[float]] = {}
+    for record in feedback.outcomes(app, origin="real"):
+        agreed = _agreed_price(record)
+        actual = record.get("actualUnitPriceKrwPerKg")
+        if agreed is None or actual is None:
+            continue
+        rel = personal.relative(float(actual), float(agreed["value"]))
+        if rel is None:
+            continue
+        groups.setdefault((record["emitterOrgId"], record["streamId"]), []).append(rel)
+    return {**personal.suggest_strength(groups), "current": PROPOSED_STRENGTH}

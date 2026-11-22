@@ -403,7 +403,19 @@ def test_demo_history_still_records_its_inspections():
     sid = service._demo_history(app)
     assert sid is not None
     found = feedback.outcomes(app, sid)
-    assert found and len(found) % len(service.DEMO_HISTORY_DAYS_AGO) == 0
+    per_stream = {}
+    for r in found:
+        per_stream[r["streamId"]] = per_stream.get(r["streamId"], 0) + 1
+    # 회사 기록 시연 폐기물은 세 번, 나머지는 두 번 검수한다
+    assert per_stream and all(
+        n
+        == (
+            len(service.DEMO_BELOW)
+            if stream == service.DEMO_BELOW_STREAM
+            else len(service.DEMO_HISTORY_DAYS_AGO)
+        )
+        for stream, n in per_stream.items()
+    )
     assert len({r["inspectionId"] for r in found}) == len(found)
     assert all(r["revision"] == 1 and r["requestId"].startswith("demo-") for r in found)
 

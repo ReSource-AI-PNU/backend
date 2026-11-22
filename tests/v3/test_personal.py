@@ -213,3 +213,57 @@ def test_memory_view_previews_the_calibration(below):
     sprue = next(s for s in calibration["streams"] if s["streamId"] == "st_sprue")
     assert sprue["records"] == 3 and sprue["streamRatePct"] < 0
     assert sprue["vendors"][0]["vendorOrgId"] == SAEGIL and sprue["vendors"][0]["ratePct"] < 0
+
+
+# ── 업체 쪽 회사 기록, 보정 강도 제안, 체험하기 ──────────────────────
+
+
+def test_vendor_sees_its_own_inspections_grouped_by_emitter(below):
+    found = service.get_memory(below, SAEGIL, SAEGIL)
+    assert found["role"] == "vendor" and found["summary"]["inspections"] == 3
+    (hanbit,) = [e for e in found["emitters"] if e["emitterOrgId"] == HANBIT]
+    assert hanbit["deals"] >= 1 and hanbit["inspections"]["status"] == "below"
+    assert all(r["streamName"] and r["vendorOrgId"] == SAEGIL for r in hanbit["inspectionRows"])
+    # 다른 업체(미소환경)는 새길의 검수를 보지 못한다
+    miso = service.get_memory(below, MISO, MISO)
+    assert miso["summary"]["inspections"] == 0
+
+
+def test_strength_is_suggested_only_with_enough_real_records():
+    small = personal.suggest_strength({("a", "s"): [-0.1, -0.1]})
+    assert small["suggested"] is None and "적어" in small["reason"]
+    groups = {
+        (f"e{i}", "s"): [base + d for d in (-0.02, 0.0, 0.02)]
+        for i, base in enumerate((-0.3, -0.1, 0.0, 0.1, 0.2, -0.2))
+    }
+    found = personal.suggest_strength(groups)
+    # 묶음 안 흔들림이 작고 묶음 사이 차이가 크면 k가 작다(회사 기록을 빨리 믿는다)
+    assert found["suggested"] is not None and 0 < found["suggested"] < 1
+    same = {(f"e{i}", "s"): [-0.1, 0.1, 0.0] for i in range(6)}
+    assert personal.suggest_strength(same)["suggested"] is None
+
+
+def test_admin_status_carries_the_suggestion_but_nothing_changes(below):
+    from tests.v3.runtime_fixtures import ADMIN
+
+    status = service.admin_status(below, ADMIN)
+    suggestion = status["retrain"]["personalStrength"]
+    # 시연 회사 사이의 기록은 실제 기록이 아니라 세지 않는다
+    assert suggestion["records"] == 0 and suggestion["suggested"] is None
+    assert suggestion["current"] == memory.PROPOSED_STRENGTH
+
+
+def test_demo_shows_the_adjustment():
+    """체험하기: 시연 지난 거래의 스프루 검수 셋 중 둘이 합의보다 낮고, 시연 회사는 판정 반영을 승인해 둔다."""
+    from app.v3.evidence.registry import InMemoryRegistry
+    from app.v3.store import InMemoryStore
+
+    app = service.App(InMemoryStore(), InMemoryRegistry(), auth_mode="bff", today="2026-11-17")
+    found = service.reset_demo(app)
+    view = service.get_view(app, found["demoSessionId"], HANBIT)
+    sprue = _sprue(view)
+    assert sprue["personal"] is not None and sprue["personal"]["rate"]["value"] < 0
+    approval = next(a for a in view["approvals"] if a["threadId"] == thread_of(view, SAEGIL)["id"])
+    history = next(i for i in approval["review"]["items"] if i["key"] == "history")
+    assert history["status"] == "check"
+    assert service.get_memory(app, HANBIT, HANBIT)["calibration"]["applied"] is not None
