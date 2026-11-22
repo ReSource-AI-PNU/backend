@@ -3613,6 +3613,30 @@ class Orchestrator:
                 basis.reference_prices(self.registry, org_id, sorted(materials)), 1
             )
         ]
+        # 공식 처리단가 고시(참고값). 플라스틱 흐름이 있을 때만 싣고, 현행 처리비와 손익 계산에는 쓰지 않는다
+        reference_costs = (
+            [
+                {
+                    "key": found["key"],
+                    "label": found["evidence"].label,
+                    "asOf": found["evidence"].as_of,
+                    "cost": naming.annotate(
+                        {
+                            "id": f"referenceCost{index}",
+                            "kind": "number",
+                            "value": found["evidence"].value,
+                            "unit": found["evidence"].unit,
+                            "evidence": [found["evidence"].id],
+                        },
+                        "referenceCost",
+                    ),
+                    "note": basis.REFERENCE_COST_NOTE,
+                }
+                for index, found in enumerate(basis.reference_costs(self.registry, org_id), 1)
+            ]
+            if materials
+            else []
+        )
         statuses = [a["status"] for a in assignments] or ["needs_information"]
         shown_totals = {
             key: claim_in(optimized, totals.get(key), f"total_{key}")
@@ -3629,6 +3653,7 @@ class Orchestrator:
             "assumptions": self._assumptions(sorted(dict.fromkeys(assumptions)), org_id),
             "sensitivity": sensitivity,
             "referencePrices": reference,
+            "referenceCosts": reference_costs,
             "carbonInObjective": bool(optimized["output"].get("carbonInObjective")),
             # 탄소를 배정에 넣을 때 쓴 내부 탄소 가격(배출권 시세, 원/tCO2e)
             "carbonPrice": claim_in(

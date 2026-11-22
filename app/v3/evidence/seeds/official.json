@@ -220,5 +220,53 @@
       "originalUnit": "원(시간급)",
       "country": "KR"
     }
+  },
+  {
+    "id": "ref:처리단가고시:폐합성수지-처분업@2025-10-01",
+    "kind": "ref",
+    "label": "폐기물 종류별 처리단가 고시 · 폐합성수지(수집·운반·처분업자)",
+    "value": 297000.0,
+    "unit": "원/톤",
+    "excerpt": "1. 폐기물 수집ㆍ운반업자, 중간처분업자, 최종처분업자 및 종합처분업자 (단위: 원/톤) | 폐유, 폐유기용제(비할로겐족), 폐합성수지, 폐합성고무 297,000",
+    "source": "환경부고시 제2025-165호 · 방치폐기물 처리이행보증보험금 산출 등을 위한 폐기물의 종류별 처리단가 (2025-10-01 시행)",
+    "asOf": "2025-10-01",
+    "validUntil": "2026-12-31",
+    "access": [
+      "*"
+    ],
+    "version": 1,
+    "meta": {
+      "series": "처리단가고시",
+      "item": "폐합성수지-처분업",
+      "period": "2025-10-01",
+      "url": "https://www.law.go.kr/LSW/admRulInfoP.do?admRulSeq=2100000266574",
+      "pdf": "https://www.law.go.kr/LSW/flDownload.do?flSeq=157859351",
+      "retrievedAt": "2026-11-22T05:00:00Z",
+      "conditions": [
+        "[별표] 1. 폐기물 수집ㆍ운반업자, 중간처분업자, 최종처분업자 및 종합처분업자에 적용하는 처리단가",
+        "단위 원/톤 (kg당 297원)",
+        "같은 별표 2. 재활용업자 표의 폐합성수지는 269,000원/톤으로 따로 정한다"
+      ],
+      "caveats": [
+        "방치폐기물 처리이행보증보험금과 과징금 산정 등에 쓰는 공식 단가다. 공장이 처리 업체와 맺은 실제 위탁 계약 단가가 아니다",
+        "운반 거리·물량·처리 방식에 따라 실제 계약 단가는 이보다 높거나 낮다",
+        "화면에 비교용 참고값으로만 보이고 한 달 손익 계산에는 쓰지 않는다",
+        "개정 고시(제2026-67호, 2026-03-24 고시)는 2027-01-01부터 316,000원/톤을 적용한다"
+      ],
+      "evidenceClass": "official",
+      "verificationStatus": "original_checked",
+      "verifiedOn": "2026-11-22",
+      "valueRange": null,
+      "publicationDate": "2025-10-01",
+      "dataYear": "2025",
+      "functionalUnit": "폐기물 1톤 처리",
+      "systemBoundary": null,
+      "datasetVersion": "환경부고시 제2025-165호",
+      "excludes": [],
+      "table": "[별표] 1. 폐기물 수집ㆍ운반업자, 중간처분업자, 최종처분업자 및 종합처분업자 (1쪽)",
+      "originalUnit": "원/톤",
+      "country": "KR",
+      "priceRole": "reference_index"
+    }
   }
 ]

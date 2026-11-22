@@ -75,3 +75,28 @@ def reference_prices(registry, org_id: str | None, materials=None) -> list[dict]
             continue
         out.append({"key": key, "material": material, "form": form, "evidence": evidence})
     return out
+
+
+REFERENCE_COST_PREFIX = "reference.cost."
+REFERENCE_COST_NOTE = (
+    "공식 처리단가 고시의 단가입니다. 방치폐기물 처리이행보증보험금 산정 등에 쓰는 기준값이라 실제 위탁 계약 "
+    "단가와 다르며, 지금 처리비와 견주어 보는 참고로만 보였고 손익 계산에는 쓰지 않았습니다."
+)
+
+
+def reference_costs(registry, org_id: str | None) -> list[dict]:
+    """참고 처리단가(`reference.cost.<처리>.<폐기물>`). 화면에 보여 주기만 하고 손익 계산에는 쓰지 않는다.
+
+    회사가 넣은 현행 처리비를 대신하지 않는다(현행 처리비는 회사 입력만 쓴다). 근거가 레지스트리에 없거나
+    원문 대조 전이면 그 항목은 빠진다.
+    """
+    out = []
+    for key in keys():
+        if not key.startswith(REFERENCE_COST_PREFIX):
+            continue
+        treatment, _, waste = key[len(REFERENCE_COST_PREFIX) :].partition(".")
+        evidence = resolve(registry, org_id, key)
+        if evidence is None or evidence.kind != "ref":
+            continue
+        out.append({"key": key, "treatment": treatment, "waste": waste, "evidence": evidence})
+    return out

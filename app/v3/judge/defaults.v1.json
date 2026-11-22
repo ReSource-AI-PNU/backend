@@ -175,6 +175,9 @@
     ],
     "circular.resource.철.석회석": [
       "ref:worldsteel:철스크랩-석회석절감@2026-11"
+    ],
+    "reference.cost.disposal.폐합성수지": [
+      "ref:처리단가고시:폐합성수지-처분업@2025-10-01"
     ]
   },
   "items": [
