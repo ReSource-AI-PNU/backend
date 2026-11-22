@@ -33,3 +33,12 @@
 프런트: 기존 개발 로그인 설정으로 `NEXT_PUBLIC_API_BASE=/api/v3`, `V3_BACKEND_URL=http://localhost:8097/api/v3`, `V3_AUTH=header`를 지정하고 `npm run dev -- --port 3097`. header 모드는 로컬 검증 전용이다.
 
 기능 테스트: `E2E_BASE_URL=http://localhost:3097 E2E_API=http://localhost:8097/api/v3 npx playwright test e2e/adaptive.spec.ts`.
+
+## 배포 전 최신 main 통합 검증 (2026-11-22)
+
+백엔드 `654809b`, 프런트 `2907fac`까지 병합했다. 업체 연결 경로와 조건 비교 경로를 모두 보존해 API 계약 검사의 경로 수를 52개로 맞췄다. 프런트 E2E 기본 API 주소는 CI의 8000 포트로 맞췄다.
+
+- 백엔드 전체: 2,033개 통과, 5개 건너뜀, 하위 테스트 40개 통과. Ruff 통과.
+- 프런트: 단위 테스트 291개 통과, 2개 건너뜀. 타입 검사·린트·프로덕션 빌드 통과. 로컬 개발 서버 생성물 `.next-dev/**`만 린트 대상에서 제외했다.
+- 브라우저 전체: 9개 통과, 로컬 header 모드에서 BFF 가입 전용 1개 건너뜀.
+- 운영 VM의 별도 태그로 백엔드·프런트 Docker 이미지 빌드 통과. 실행 중인 서비스와 인증·모델 설정은 이 단계에서 변경하지 않았다.
