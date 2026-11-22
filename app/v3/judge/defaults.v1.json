@@ -119,6 +119,18 @@
     "circular.yield.EPS.recycle": [
       "ref:JRC2021:EPS-수율-신재대체율@2021"
     ],
+    "circular.reference.energy.PP": [
+      "ref:Uekert2023:PP-생산에너지차이@2023"
+    ],
+    "circular.reference.energy.HDPE": [
+      "ref:Uekert2023:HDPE-생산에너지차이@2023"
+    ],
+    "circular.reference.energy.LDPE": [
+      "ref:Uekert2023:LDPE-생산에너지차이@2023"
+    ],
+    "circular.reference.energy.PET-병급": [
+      "ref:Uekert2023:PET-병급-생산에너지차이@2023"
+    ],
     "circular.energy.PP.recycle": [
       "ref:WARM16:PP-recycle-순에너지@2023-12"
     ],

@@ -779,55 +779,68 @@ def baseline_emission(rec: Recorder, rows: list[dict]) -> dict:
     return {"claim": total, "missing": missing}
 
 
-def reference_estimates(rec: Recorder, rows: list[dict], choices: list[dict]) -> dict:
-    """문헌 조건으로 환산한 참고 추정. 실제 경로·원산지·엄격 산정 결과는 바꾸지 않는다.
+def reference_energy_effect(rec: Recorder, stream: dict, virgin: dict) -> dict:
+    """Energy to supply the same amount of virgin and recycled resin, for display only."""
+    if virgin["status"] != "estimated":
+        return _hold(virgin["reason"])
+    material, _ = material_key(stream)
+    factor = rec.basis(f"circular.reference.energy.{material}")
+    if not compatible(factor, metric="energy") or factor.meta.get("material") != material:
+        return _hold(f"{material}의 신재·재생원료 생산 에너지 문헌값이 없습니다.")
+    try:
+        per_t = convert(factor.value, factor.unit, "GJ/t")
+    except UnitError:
+        return _hold("생산 에너지 계수의 단위를 확인해야 합니다.")
+    return _estimated(
+        virgin["value"] * per_t / 1000,
+        "literature",
+        [factor.id, *virgin["basis"]],
+        "예상 신재 대체량(t/월) × 신재와 기계적 재생수지의 공급망 에너지 차이(GJ/t). "
+        "Uekert 외 2023 Table S27의 같은 재질·같은 생산량을 비교합니다.",
+    )
 
-    선택된 물질 재활용 후보만 대상으로 한다. 불명확한 재질·열분해·현행 유지는
-    확대 해석하지 않고, 원문에 없는 계수도 다른 재질로 대체하지 않는다.
-    """
+
+def reference_estimates(rec: Recorder, rows: list[dict], choices: list[dict]) -> dict | None:
+    """Estimate an illustrative mechanical-recycling scenario from matched monthly mass."""
+    matched = [
+        row for row, choice in zip(rows, choices, strict=True) if choice.get("vendor") is not None
+    ]
+    if not matched:
+        return None
+
+    mass = rec.number(
+        "ceRef_monthlyKg",
+        math.fsum(row["kg"] for row in matched),
+        "kg/월",
+        "기계적 재활용을 가정한 배정 품목의 월 발생량 합",
+        [ev for row in matched for ev in _kg_evidence(row["stream"])],
+        private=True,
+    )["id"]
+    effects = []
+    baseline = "incineration"
+    for row in matched:
+        stream, kg = row["stream"], row["kg"]
+        specimen = {**stream, "origin": "PCR", "currentTreatment": {}}
+        virgin = virgin_effect(rec, specimen, kg, baseline, "recycle")
+        effects.append(
+            {
+                "ghg": ghg_effect(rec, specimen, kg, baseline, "recycle"),
+                "energy": reference_energy_effect(rec, specimen, virgin),
+                "virgin": virgin,
+            }
+        )
+
     details, totals = [], {}
     for metric in METRICS:
         values, counted, held = [], [], []
-        for i, (row, choice) in enumerate(zip(rows, choices, strict=True)):
-            stream, kg = row["stream"], row["kg"]
-            effect = stream_effect(
-                rec,
-                stream,
-                kg,
-                row["baseline"],
-                row["baselineAssumed"],
-                row["dest"],
-                row.get("reuseKg"),
-                row.get("reuseEv") or (),
-            )[metric]
-            assumptions = []
-            vendor = choice.get("vendor") or {}
-            eligible = row["dest"] == "recycle" or (
-                row["dest"] == "unknown" and vendor.get("process") == "재활용"
+        for i, (row, by_metric) in enumerate(zip(matched, effects, strict=True)):
+            stream = row["stream"]
+            effect = by_metric[metric]
+            assumptions = (
+                ["소비 후 폐플라스틱 연구를 같은 재질과 물량에 환산했습니다."]
+                if stream.get("origin") != "PCR"
+                else []
             )
-            material, _ = material_key(stream)
-            if effect["status"] == "hold" and eligible and material:
-                baseline = row["baseline"]
-                if (
-                    not baseline
-                    or row["baselineAssumed"]
-                    or (stream.get("currentTreatment") or {}).get("methodAssumed")
-                ):
-                    baseline = "incineration"
-                    assumptions.append(
-                        "현재 처리 방식 미확인: 에너지 회수 소각을 비교 기준으로 사용"
-                    )
-                if row["dest"] == "unknown":
-                    assumptions.append("업체 세부 공정 미확인: 기계적 재활용을 전제로 계산")
-                if stream.get("origin") != "PCR":
-                    assumptions.append(
-                        "소비 후 폐플라스틱 연구 조건을 같은 재질·물량에 환산한 참고값"
-                        "(공정 스크랩의 실제 성과를 뜻하지 않음)"
-                    )
-                # 별도 문헌 표본이다. 원래 stream이나 원문 적용 범위를 수정하지 않는다.
-                specimen = {**stream, "origin": "PCR", "currentTreatment": {}}
-                functions = {"ghg": ghg_effect, "energy": energy_effect, "virgin": virgin_effect}
-                effect = functions[metric](rec, specimen, kg, baseline, "recycle")
             item = {
                 "streamId": stream.get("id"),
                 "metric": metric,
@@ -838,9 +851,7 @@ def reference_estimates(rec: Recorder, rows: list[dict], choices: list[dict]) ->
                 "status": effect["status"],
             }
             if effect["status"] == "estimated":
-                formula = effect["formula"]
-                if assumptions:
-                    formula = "문헌 기준 참고 추정. " + "; ".join(assumptions) + ". " + formula
+                formula = "월 물량의 기계적 재활용을 가정한 문헌 추정. " + effect["formula"]
                 made = rec.number(
                     f"ceRef_s{i}{SUFFIX[metric]}",
                     effect["value"],
@@ -864,10 +875,10 @@ def reference_estimates(rec: Recorder, rows: list[dict], choices: list[dict]) ->
                 return None
             return rec.number(
                 f"ceRef_{metric}{suffix}RoutedKg",
-                math.fsum(rows[i]["kg"] for i in indices),
+                math.fsum(matched[i]["kg"] for i in indices),
                 "kg/월",
                 "문헌 기준 추정의 " + ("계산한" if suffix == "Counted" else "제외한") + " 물량 합",
-                [e for i in indices for e in _kg_evidence(rows[i]["stream"])],
+                [e for i in indices for e in _kg_evidence(matched[i]["stream"])],
                 private=True,
             )["id"]
 
@@ -893,9 +904,9 @@ def reference_estimates(rec: Recorder, rows: list[dict], choices: list[dict]) ->
             "claim": total,
             "countedKg": quantity(counted, "Counted"),
             "heldKg": quantity(held, "Held"),
-            "heldStreams": [rows[i]["stream"].get("id") for i in held],
+            "heldStreams": [matched[i]["stream"].get("id") for i in held],
         }
-    return {"totals": totals, "rows": details}
+    return {"monthlyKg": mass, "totals": totals, "rows": details}
 
 
 def build(
