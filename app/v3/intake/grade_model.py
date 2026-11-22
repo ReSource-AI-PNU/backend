@@ -46,7 +46,7 @@ def thresholds_evidence() -> Evidence:
         kind="assumption",
         label="재질별 등급 기준값",
         excerpt=_thresholds_text(data),
-        source=f"Re:Source AI 등급 기준 {data['version']} · {data['note']}{_sources_text(data)}",
+        source=f"BYPRO 등급 기준 {data['version']} · {data['note']}{_sources_text(data)}",
         as_of=data["asOf"],
         meta={
             "version": data["version"],

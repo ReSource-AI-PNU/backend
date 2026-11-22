@@ -357,7 +357,7 @@ def _register_volumes(app: App, scan: dict[str, Any]) -> None:
                         "재구성한 카메라 높이를 이 값에 맞춰 실제 크기를 정한다. 다르게 찍으면 "
                         "부피가 높이 비율의 세제곱만큼 달라진다"
                     ),
-                    source="Re:Source AI 보관장 3D 스캔 촬영 안내 v1",
+                    source="BYPRO 보관장 3D 스캔 촬영 안내 v1",
                     as_of="2026-11-20",
                     access=(PUBLIC,),
                 ),
@@ -704,7 +704,7 @@ def _layout(
                     value=rules[key],
                     unit="m",
                     excerpt=f"{text.format(v=rules[key])}: {why}",
-                    source="Re:Source AI 보관장 정리 규칙 v1",
+                    source="BYPRO 보관장 정리 규칙 v1",
                     as_of="2026-11-20",
                     access=(PUBLIC,),
                 ),
