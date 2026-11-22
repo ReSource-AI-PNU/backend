@@ -1381,6 +1381,14 @@ def _exclusive(app: App, session_id: str, mode: str) -> Iterator[dict[str, Any]]
 
 
 def _execute(app: App, session_id: str, run_id: str) -> None:
+    session = app.store.get_session(session_id)
+    if app.store.get_org(session["emitterOrgId"]).get("simulation"):
+        app = copy.copy(app)
+        app.llm_factory = None
+        app.distance_provider = None
+        app.vendor_gateway = LocalVendorGateway(
+            lambda org, message, context: handle_vendor_message(app, org, message, context)
+        )
     orchestrator = Orchestrator(app)
     try:
         _wrap(orchestrator.run, session_id)

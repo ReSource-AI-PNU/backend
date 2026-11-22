@@ -135,7 +135,9 @@ def _registered_names(store: Any) -> tuple[str, ...]:
     names = []
     for profile in store.list_vendor_profiles():
         try:
-            names.append(store.get_org(profile["orgId"]).get("name") or "")
+            org = store.get_org(profile["orgId"])
+            if not org.get("simulation"):
+                names.append(org.get("name") or "")
         except NotFound:  # 지워진 조직은 건너뛴다
             continue
     return tuple(n for n in names if n)
