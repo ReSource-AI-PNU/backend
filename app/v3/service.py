@@ -1189,7 +1189,12 @@ def update_vendor(app: App, org_id: str, patch: dict[str, Any], viewer: str) -> 
                 item = clean_criterion(item)
             except ValueError as error:
                 raise ServiceError("INVALID_VALUE", str(error), 422) from None
-            if original and all(original.get(key) == value for key, value in item.items() if key != "evidence"):
+            # 공개 범위 근거가 아직 없는 범위 기준(문서 확인 저장 직후)은 값이 같아도 근거를 만든다
+            if (
+                original
+                and all(original.get(key) == value for key, value in item.items() if key != "evidence")
+                and (original.get("priceLow") is None or original.get("rangeEvidence"))
+            ):
                 criteria.append(original)
                 continue
             before = list(original.get("evidence") or [])
