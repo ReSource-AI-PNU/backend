@@ -695,3 +695,49 @@ def test_negotiation_test_company_runs_three_price_rounds_without_cross_matching
     # 170원 업체는 별도 수거비가 있어, 운반비 포함 155원 업체가 최종 선택된다.
     assert assignment["vendorOrgId"] == negotiation_test.vendor_id(2)
     assert assignment["unitPrice"]["value"] == 155
+
+
+def test_live_find_shows_example_negotiation_without_adding_a_trade(world):
+    client, state, _ = world
+    user = signup(client, "example-comparison@example.com")
+    company = new_org(client, user, "일반 배출 사업장", "emitter")["id"]
+    headers = bff(user, company)
+    stream = "st_mvp_film_case"
+    saved = client.put(
+        f"/api/v3/orgs/{company}/streams/{stream}",
+        headers=headers,
+        json={
+            "name": "포장필름",
+            "wasteItem": "폐플라스틱",
+            "material": "LDPE",
+            "form": "필름",
+            "monthlyKg": 300,
+            "origin": "PIR",
+            "currentTreatment": {"method": "소각", "unitCostKrwPerKg": 250},
+        },
+    )
+    assert saved.status_code == 200, saved.text
+    opened = client.post("/api/v3/sessions", headers=headers, json={})
+    assert opened.status_code == 200, opened.text
+    session_id = opened.json()["session"]["id"]
+    view = answer_until_settled(client, session_id, headers)
+
+    assert view["vendorComparison"]["status"] == "ready"
+    item = view["vendorComparison"]["items"][0]
+    assert item["streamId"] == stream
+    quotes = item["quotes"]
+    assert [row["name"] for row in quotes] == ["필름자원", "순환소재", "그린원료"]
+    assert [row["finalPrice"] for row in quotes] == [138, 155, 170]
+    assert all(row["requestedPrice"] > row["firstPrice"] for row in quotes)
+    assert [row["selected"] for row in quotes] == [False, True, False]
+    assert quotes[2]["pickupFee"] == 15_000
+    assert not view["threads"] and not view["approvals"] and not view["documents"]
+    assert all(assignment["vendorOrgId"] is None for assignment in view["result"]["assignments"])
+    assert len(state.store.list_sessions(company)) == 1
+    assert not any(org.get("simulation") for org in state.store.list_orgs())
+
+    stored = client.get(f"/api/v3/sessions/{session_id}", headers=headers).json()
+    assert stored["vendorComparison"] == view["vendorComparison"]
+    other = signup(client, "unrelated-comparison@example.com")
+    other_org = new_org(client, other, "다른 회사", "emitter")["id"]
+    assert error(client.get(f"/api/v3/sessions/{session_id}", headers=bff(other, other_org)), 404) == "SESSION_NOT_FOUND"

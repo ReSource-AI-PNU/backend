@@ -59,6 +59,13 @@ def vendor_id(index: int) -> str:
     return f"org_negotiation_vendor_{index}"
 
 
+def display_name(org_id: str | None, name: str | None) -> str | None:
+    """Keep historic results readable without rewriting their saved quotes or messages."""
+    if org_id and org_id.startswith("org_negotiation_vendor_") and name:
+        return name.removeprefix("가상 · ")
+    return name
+
+
 def request_policy_id(org_id: str) -> str:
     return ids.human_id(org_id, "협상테스트-단가요청폭")
 
@@ -92,14 +99,18 @@ def ensure_vendors(store, registry, today: str) -> None:
         org_id = vendor_id(index)
         try:
             store.get_vendor_profile(org_id)
-            continue
         except NotFound:
             pass
+        else:
+            org = store.get_org(org_id)
+            if org.get("simulation") and org.get("name") == f"가상 · {name}":
+                store.put_org({**org, "name": name})
+            continue
 
         store.put_org(
             {
                 "id": org_id,
-                "name": f"가상 · {name}",
+                "name": name,
                 "role": "vendor",
                 "region": REGION,
                 "simulation": True,

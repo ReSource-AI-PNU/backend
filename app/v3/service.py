@@ -55,6 +55,7 @@ from app.v3.agents.policy_rule import RulePolicy
 from app.v3.agents.pool import ClaimPool, is_private
 from app.v3.agents.vendor import VendorAgent
 from app.v3.complex_partners import plan as complex_partners_plan
+from app.v3.demo import negotiation_test, vendor_comparison
 from app.v3.demo.seed import DEMO_ANSWERS, EMITTER, ORGS, seed_demo, share_evidence
 from app.v3.evidence import search
 from app.v3.evidence.model import KINDS, PUBLIC, Evidence
@@ -632,6 +633,8 @@ def list_orgs(app: App, viewer: str | None = None, scoped: bool = False) -> list
         return (not known, float(order) if known else 0.0, str(org.get("id")))
 
     orgs = sorted(app.store.list_orgs(), key=position)
+    for org in orgs:
+        org["name"] = negotiation_test.display_name(org["id"], org.get("name"))
     present = [org for org in orgs if not org.get("deleted")]
     if not scoped:
         return present
@@ -1516,7 +1519,9 @@ def _exclusive(app: App, session_id: str, mode: str) -> Iterator[dict[str, Any]]
 
 def _execute(app: App, session_id: str, run_id: str) -> None:
     session = app.store.get_session(session_id)
-    if app.store.get_org(session["emitterOrgId"]).get("simulation"):
+    emitter = app.store.get_org(session["emitterOrgId"])
+    if emitter.get("simulation"):
+        negotiation_test.ensure_vendors(app.store, app.registry, app.today)
         app = copy.copy(app)
         app.llm_factory = None
         app.distance_provider = None
@@ -1534,8 +1539,25 @@ def _execute(app: App, session_id: str, run_id: str) -> None:
     except Exception as error:
         _run_failed(app, orchestrator, session_id, run_id, error)
         raise
-    # 아무것도 바꾸지 않고 끝났어도(이미 승인 대기 등) 마지막 상태를 남긴다(같은 값이면 남지 않는다)
-    orchestrator.feed.status(app.store.get_session(session_id))
+    finished = app.store.get_session(session_id)
+    work = finished["work"]
+    if (
+        app.auth_mode == "bff"
+        and not app.read_only
+        and negotiation_test.match_group(emitter) == "live"
+        and finished["status"] in ("idle", "awaiting_approval")
+        and work.get("result")
+        and work.get("vendorComparison", {}).get("status") != "ready"
+    ):
+        stream_ids = {item["streamId"] for item in work["result"]["assignments"]}
+        try:
+            work["vendorComparison"] = vendor_comparison.compare(app, emitter["id"], stream_ids)
+        except Exception:
+            logger.exception("예시 업체 견적 비교를 만들지 못했다: %s", session_id)
+            work["vendorComparison"] = {"status": "unavailable", "items": []}
+        finished = app.store.put_session(finished)
+    # 아무것도 바꾸지 않고 끝났어도 마지막 상태를 남긴다(같은 값이면 남지 않는다)
+    orchestrator.feed.status(finished)
 
 
 def _run_failed(
@@ -1790,7 +1812,9 @@ def _thread_view(app: App, thread: dict[str, Any], session: dict[str, Any], view
         "id": thread["id"],
         "emitterOrgId": thread["emitterOrgId"],
         "vendorOrgId": vendor,
-        "vendorName": org_label(app.store.get_org(vendor).get("name"), vendor),
+        "vendorName": org_label(
+            negotiation_test.display_name(vendor, app.store.get_org(vendor).get("name")), vendor
+        ),
         "vendorModel": vendor_model(app, session, profile),
         "vendorAuthor": _author("vendor"),
         "status": thread["status"],
@@ -2054,8 +2078,20 @@ def _event_view(
 
 def _result_view(session: dict[str, Any], viewer: str, owner: bool) -> dict[str, Any] | None:
     result = session["work"].get("result")
-    if result is None or owner:
-        return result
+    if result is None:
+        return None
+    if owner:
+        def display(row: dict) -> dict:
+            name = negotiation_test.display_name(row.get("vendorOrgId"), row.get("vendorName"))
+            return {**row, "vendorName": name} if name != row.get("vendorName") else row
+
+        rows = []
+        for assignment in result["assignments"]:
+            shown = display(assignment)
+            if shown.get("alternatives"):
+                shown = {**shown, "alternatives": [display(row) for row in shown["alternatives"]]}
+            rows.append(shown)
+        return {**result, "assignments": rows}
     mine = []
     for item in result["assignments"]:
         if item["vendorOrgId"] != viewer:
@@ -2411,6 +2447,7 @@ def get_view(app: App, session_id: str, viewer: str) -> dict[str, Any]:
         "result": _outside_view(app, session, _result_view(session, viewer, owner))
         if owner and session["work"].get("result")
         else _result_view(session, viewer, owner),
+        **({"vendorComparison": work["vendorComparison"]} if owner and "vendorComparison" in work else {}),
         "questions": [_question_view(q) for q in questions],
         "questionBatch": _question_batch(questions) if owner else None,
         "unresolved": list(work.get("unresolved") or []) if owner else [],
