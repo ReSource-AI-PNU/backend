@@ -549,12 +549,12 @@ def thread_names(store: Any, thread: Any) -> list[str]:
 
 
 class Orchestrator:
-    def __init__(self, app: Any, *, feed: Recorder | None = None) -> None:
+    def __init__(self, app: Any) -> None:
         self.app = app
         self.store = app.store
         self.registry = app.registry
         self.policy = QuestionPolicy()
-        self.feed = feed if feed is not None else Recorder(app.store)  # 실시간 진행 기록(live.py). 실패해도 진단은 멈추지 않는다
+        self.feed = Recorder(app.store)  # 실시간 진행 기록(live.py). 실패해도 진단은 멈추지 않는다
 
     @property
     def today(self) -> str:

@@ -300,9 +300,8 @@ def _org_of(thread: Any, side: str) -> str:
 class Recorder:
     """진행기가 쓰는 실시간 기록. 기록이 실패해도 진단은 멈추지 않는다(경고만 남긴다)."""
 
-    def __init__(self, store: Any, *, hub: Hub = HUB) -> None:
+    def __init__(self, store: Any) -> None:
         self.store = store
-        self.hub = hub
         self._status: dict[str, tuple[Any, ...]] = {}
 
     def _add(self, session_id: str, entry: dict[str, Any]) -> dict[str, Any] | None:
@@ -312,7 +311,7 @@ class Recorder:
         except Exception:  # 화면 기록 때문에 진단이 멈추면 안 된다
             logger.warning("실시간 진행 기록을 쓰지 못했다", exc_info=True)
             return None
-        self.hub.bump(session_id)
+        HUB.bump(session_id)
         return saved
 
     def activity(
