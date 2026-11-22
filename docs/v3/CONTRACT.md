@@ -687,6 +687,7 @@ VendorProfile {"orgId": "org_saegil",
 | `NOT_FOUND` | 404 | 그런 주소가 없다(bff가 아닌 모드에서 9장의 경로를 부른 경우도) |
 | `ORG_NOT_FOUND`, `VENDOR_NOT_FOUND`, `STREAM_NOT_FOUND`, `SESSION_NOT_FOUND`, `THREAD_NOT_FOUND`, `QUESTION_NOT_FOUND`, `EVIDENCE_NOT_FOUND`, `OUTCOME_NOT_FOUND` | 404 | 없거나 볼 수 없다(볼 수 없는 것은 있는지도 알려 주지 않는다) |
 | `MEMBER_NOT_FOUND` | 404 | 빼거나 소유자로 지정하려는 사용자가 그 조직의 구성원이 아니다(9장) |
+| `ORG_EXISTS` | 409 | 협상 테스트 회사에 배정한 조직 ID를 이미 다른 조직이 쓰고 있다 |
 | `NOT_AGREED` | 409 | 합의된 조건이 없는 대화를 승인하려 했다 |
 | `EMPTY_MESSAGE`, `NOTHING_TO_CONFIRM` | 422 | 업체 온보딩 대화에 빈 말을 보냈다, 또는 저장할 초안 항목을 하나도 고르지 않았다(고른 키가 초안에 없다) |
 | `EMAIL_TAKEN` | 409 | 이미 가입한 이메일이다(대소문자와 앞뒤 공백은 가리지 않는다) |
@@ -837,6 +838,7 @@ HTTP 오류 코드가 아니라 `approvals[].blockedCodes`(배열)와 `blockedRe
 | `POST /accounts/password` | 키, `X-User-Id` | `{currentPassword, newPassword}` → 204. 아래 "비밀번호 바꾸기" |
 | `DELETE /accounts/me` | 키, `X-User-Id` | 탈퇴. 본문 `{password}` → 204. 아래 "탈퇴" |
 | `POST /orgs` | 키, `X-User-Id` | `{name, kind: "emitter" \| "vendor", bizNo?, region?, address?, location?: [경도, 위도]}` → 201 조직. 만든 사람이 owner다 |
+| `POST /orgs/negotiation-test` | 키, `X-User-Id` | 본문 없이 호출 → 201 협상 테스트 회사. 이미 만들었으면 같은 회사를 돌려준다 |
 | `PATCH /orgs/{orgId}` | 키, `X-User-Id`(그 조직의 owner) | `{name?, bizNo?, region?, address?, location?}` → 200 `POST /orgs`의 응답과 같은 모양(`memberRole` 포함). 아래 "조직 고치기" |
 | `GET /orgs/{orgId}/members` | 키, `X-User-Id`(그 조직의 구성원) | `[{userId, name, email, memberRole}]` |
 | `DELETE /orgs/{orgId}/members/{userId}` | 키, `X-User-Id`(owner, 또는 자기 자신) | 204(본문 없음). owner는 누구든 빼고 member는 자기만 뺀다(나가기). 아래 "구성원과 소유자" |
@@ -849,10 +851,16 @@ HTTP 오류 코드가 아니라 `approvals[].blockedCodes`(배열)와 `blockedRe
 - `kind`는 `emitter | vendor | admin`(조직 레코드의 `role`과 같다), `memberRole`은 `owner | member`다. `POST /orgs`로는 `admin`을 만들 수 없다.
 - `POST /orgs`의 응답: `{id, name, kind, bizNo, region, address, location, demo: false, createdAt, memberRole: "owner"}`. `id`는 `org_` + 16진 난수 12자라 시연 조직 ID와 겹치지 않는다. `bizNo`는 숫자 10자리를 `000-00-00000`으로 맞춰 둔다. 조직 레코드 자체는 8장의 저장소(`GET /orgs`)에 들어가므로 8장의 모든 경로가 새 조직에도 그대로 돈다.
 - 새 배출 기업은 흐름 없이 시작한다. 흐름은 `PUT /orgs/{orgId}/streams/{streamId}`(`name` 필수)로 만든다. **흐름 ID는 모든 조직에 걸쳐 하나다.** 다른 조직이 이미 쓴 ID면 404 `STREAM_NOT_FOUND`이므로 BFF가 `st_` + 난수처럼 겹치지 않는 ID를 만든다.
-- 새 업체는 빈 프로필(`permits: [], criteria: [], fleet: {}, guardrails: {}`)로 시작한다. `PUT /vendors/{orgId}`와 문서 올리기로 채운다. 허가 품목이나 매입 기준이 하나라도 생겨야 업체 탐색에 나온다. 실제 배출 기업의 업체 탐색은 시연 업체와 이렇게 채운 가입 업체를 모두 본다. 시연 배출 기업의 진단은 시연 업체만 본다.
+- 새 업체는 빈 프로필(`permits: [], criteria: [], fleet: {}, guardrails: {}`)로 시작한다. `PUT /vendors/{orgId}`와 문서 올리기로 채운다. 허가 품목이나 매입 기준이 하나라도 생겨야 업체 탐색에 나온다. 실제 배출 기업은 프로필을 채운 실제 업체를 찾고, 체험하기의 시연 배출 기업은 시연 업체만 찾는다.
 - 비밀번호는 `hashlib.scrypt`(n=2^14, r=8, p=1, 사용자마다 16바이트 소금)로 저장하고 응답과 기록에 싣지 않는다. 확인은 `hmac.compare_digest`로 하고 없는 이메일도 같은 계산을 한다. 로그인 실패 횟수는 서버 프로세스 메모리에서 이메일마다 센다(로그인에 성공하면 지운다).
 - 초대 토큰은 32바이트 난수(URL에 쓸 수 있는 글)이고 sha256 값만 저장한다. 7일 뒤 만료되고 한 번만 쓸 수 있다. 토큰 원문은 만든 응답에만 한 번 나간다.
 - 저장: 메모리 모드는 프로세스 안, SQL 모드는 `v3_users`, `v3_memberships`, `v3_invites`(마이그레이션 `0005_v3_accounts`). 조직 레코드는 `v3_records`(kind `orgs`)에 그대로 둔다. 조직 고치기·구성원 빼기·비밀번호 바꾸기·탈퇴는 같은 테이블의 행을 고치거나 지우므로 새 마이그레이션이 없다.
+
+### 협상 테스트 회사 (`POST /orgs/negotiation-test`)
+
+로그인한 사용자의 테스트 배출 기업을 열고, 처음 부르면 사용자를 owner로 등록한다. 응답은 조직 정보이고 소속을 조회하면 그 회사의 `simulation: true`가 함께 나온다. 테스트 회사는 PP, PE, LDPE, ABS, PS, PET, PP+ABS의 견적을 가상 업체 세 곳에 요청한다. 조건이 맞아 견적을 낸 업체와 각각 한 차례 단가를 조정한 뒤 수거비를 포함해 비교한다. 각 회사의 폐기물과 대화는 그 회사 소속에서 볼 수 있다. 가상 업체는 일반 매칭과 체험하기 검색에서 제외한다.
+
+매입 조건의 범위는 [한국환경공단 재활용가능자원 가격조사](https://www.data.go.kr/data/3076421/fileData.do), [ReMA PE 필름 등급 기준](https://www.isrispecs.org/wp-content/uploads/2026/01/2026-January-ReMA_ISRI_Specifications.pdf), [Cyclomer LDPE 인수 조건](https://cyclomer.co.uk/we-buy/ldpe-film)을 참고했다. 제시 단가, 최소 물량 및 운반비는 테스트용 가정이다.
 
 ### 조직 고치기 (`PATCH /orgs/{orgId}`)
 

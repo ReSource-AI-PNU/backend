@@ -24,9 +24,7 @@ STAGE_SALES = {
 UNPRICED_BASE = {"ABS": 139, "PS": 82, "PP+ABS": -65}
 
 # 제안 비율, 월 최소 물량, 오염도·수분 상한, 더 낼 수 있는 단가, 방문일, 1회 수거비.
-# 이물·수분을 따로 보는 방식은 ReMA PE 필름 규격과 Cyclomer 구매표를 참고했다.
-# https://www.isrispecs.org/wp-content/uploads/2026/01/2026-January-ReMA_ISRI_Specifications.pdf
-# https://cyclomer.co.uk/we-buy/ldpe-film
+# 이물·수분 조건의 참고 자료는 docs/v3/CONTRACT.md의 협상 테스트 회사 항목에 있다.
 VENDOR_OPTIONS = (
     ("필름자원", 0.26, 100, 5, 3, 15, "화", None),
     ("순환소재", 0.30, 200, 4, 3, 10, "목", None),
