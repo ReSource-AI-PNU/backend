@@ -1,0 +1,101 @@
+{
+  "version": "v1",
+  "source": "기후에너지환경부·한국환경공단 2024 전국 폐기물 발생 및 처리현황 (부록) 산업단지별 발생 및 처리현황",
+  "url": "https://www.recycling-info.or.kr/rrs/stat/envStatDetail.do?menuNo=M130601&bbsId=BBSMSTR_000000000002&nttId=1596",
+  "sheet": "1-가. 사업장배출시설계 산업단지별 발생량",
+  "waste": "폐합성수지류",
+  "dataYear": "2024",
+  "publishedOn": "2025-12-31",
+  "unit": "톤/년",
+  "note": "사업장배출시설계 폐기물의 단지 전체 합계다. 회사별 값이 아니며, 처리 방법은 재활용(물질재활용·에너지회수)·소각·매립·기타로 나뉜다.",
+  "complexes": {
+    "noksan": {
+      "sheetName": "(국가)부산 명지녹산국가산업단지",
+      "district": "강서구",
+      "generated": 8029.59,
+      "recycled": 6554.13,
+      "materialRecycled": 6528.31,
+      "energyRecovered": 25.82,
+      "incinerated": 1435.27,
+      "landfilled": 0.0,
+      "other": 40.19
+    },
+    "sinho": {
+      "sheetName": "(일반)부산 신호일반산업단지",
+      "district": "강서구",
+      "generated": 1151.44,
+      "recycled": 1151.44,
+      "materialRecycled": 1151.44,
+      "energyRecovered": 0.0,
+      "incinerated": 0.0,
+      "landfilled": 0.0,
+      "other": 0.0
+    },
+    "hwajeon": {
+      "sheetName": "(일반)부산 화전지구일반산업단지",
+      "district": "강서구",
+      "generated": 448.3,
+      "recycled": 303.01,
+      "materialRecycled": 303.01,
+      "energyRecovered": 0.0,
+      "incinerated": 145.29,
+      "landfilled": 0.0,
+      "other": 0.0
+    },
+    "mieum": {
+      "sheetName": "(일반)부산 미음일반산업단지",
+      "district": "강서구",
+      "generated": 665.33,
+      "recycled": 665.33,
+      "materialRecycled": 648.48,
+      "energyRecovered": 16.85,
+      "incinerated": 0.0,
+      "landfilled": 0.0,
+      "other": 0.0
+    },
+    "jisa": {
+      "sheetName": "(일반)부산 부산과학일반산업단지",
+      "district": "강서구",
+      "generated": 314.7,
+      "recycled": 140.66,
+      "materialRecycled": 140.66,
+      "energyRecovered": 0.0,
+      "incinerated": 174.04,
+      "landfilled": 0.0,
+      "other": 0.0
+    },
+    "sasang": {
+      "sheetName": "(일반)부산 사상재생사업지구",
+      "district": "사상구",
+      "generated": 16186.03,
+      "recycled": 15561.69,
+      "materialRecycled": 4357.86,
+      "energyRecovered": 11203.83,
+      "incinerated": 624.34,
+      "landfilled": 0.0,
+      "other": 0.0
+    },
+    "changwon": {
+      "sheetName": "(국가)창원 창원국가산업단지",
+      "district": "창원시",
+      "generated": 29920.59,
+      "recycled": 25813.01,
+      "materialRecycled": 21794.1,
+      "energyRecovered": 4018.91,
+      "incinerated": 4107.58,
+      "landfilled": 0.0,
+      "other": 0.0
+    },
+    "yangsan": {
+      "sheetName": "(일반)양산 양산일반산업단지",
+      "district": "양산시",
+      "generated": 958.55,
+      "recycled": 958.55,
+      "materialRecycled": 958.55,
+      "energyRecovered": 0.0,
+      "incinerated": 0.0,
+      "landfilled": 0.0,
+      "other": 0.0
+    }
+  }
+}

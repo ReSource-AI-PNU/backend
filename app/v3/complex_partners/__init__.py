@@ -27,6 +27,7 @@ TOOL = "find_complex_partners"
 _DIR = Path(__file__).resolve().parent
 COMPLEXES_FILE = _DIR / "complexes.v1.json"
 FACTORIES_FILE = _DIR / "factories.v1.json"
+STATS_FILE = _DIR / "stats.v1.json"
 TAKES_LIMIT = 10
 USES_LIMIT = 8
 NO_COMPLEX_REASON = "회사가 산업단지에 등록되어 있지 않아 찾지 않았습니다. 회사 정보에서 산업단지를 고르면 같은 단지의 후보를 찾습니다."
@@ -43,6 +44,82 @@ def complexes() -> list[dict[str, Any]]:
 @lru_cache(maxsize=1)
 def factories() -> dict[str, Any]:
     return json.loads(FACTORIES_FILE.read_text(encoding="utf-8"))
+
+
+@lru_cache(maxsize=1)
+def stats() -> dict[str, Any]:
+    """산업단지별 폐합성수지 발생·처리 집계(2024 전국 폐기물 발생 및 처리현황, scripts/v3/complex_partners/stats.py)."""
+    return json.loads(STATS_FILE.read_text(encoding="utf-8"))
+
+
+# 단지 집계에서 화면에 보일 칸과 이름. 단지 전체 합계라 회사 계산에는 쓰지 않는다
+STAT_FIELDS = (
+    ("generated", "발생량"),
+    ("recycled", "재활용"),
+    ("incinerated", "소각"),
+    ("landfilled", "매립"),
+)
+
+
+def stats_evidence(complex_id: str) -> Evidence | None:
+    """단지 집계 한 줄을 원문 그대로 발췌한 ref 근거. 그 단지의 집계가 없으면 None."""
+    data = stats()
+    row = data["complexes"].get(complex_id)
+    if row is None:
+        return None
+    unit = data["unit"]
+    parts = [f"{row['sheetName']} · {data['waste']}"] + [
+        f"{name} {row[key]:,.2f} {unit}" for key, name in STAT_FIELDS
+    ]
+    parts.append(
+        f"재활용 중 물질재활용 {row['materialRecycled']:,.2f} · 에너지회수 {row['energyRecovered']:,.2f}"
+    )
+    return Evidence(
+        id=ids.ref_id("폐기물통계", f"{complex_id}-{data['waste']}", data["dataYear"]),
+        kind="ref",
+        label=f"{row['sheetName']} 폐합성수지 발생·처리 ({data['dataYear']})",
+        excerpt=" | ".join(parts),
+        source=data["source"],
+        as_of=data["publishedOn"],
+        meta={
+            "url": data["url"],
+            "sheet": data["sheet"],
+            "dataYear": data["dataYear"],
+            "note": data["note"],
+            "evidenceClass": "official",
+            "verificationStatus": "original_checked",
+            "verifiedOn": "2026-11-22",
+        },
+    )
+
+
+def complex_stats(registry: Any, complex_id: str) -> dict[str, Any] | None:
+    """결과 한 장의 complexPartners.stats. 단지 전체 합계를 근거가 열리는 값으로 보인다(표시만)."""
+    evidence = stats_evidence(complex_id)
+    if evidence is None:
+        return None
+    data = stats()
+    row = data["complexes"][complex_id]
+    stored = registry.put(evidence).id
+    return {
+        "sheetName": row["sheetName"],
+        "waste": data["waste"],
+        "dataYear": data["dataYear"],
+        "values": {
+            key: {
+                "id": f"complexStat_{key}",
+                "kind": "number",
+                "value": row[key],
+                "unit": data["unit"],
+                "evidence": [stored],
+                "label": f"단지 폐합성수지 {name}",
+                "evidenceClass": "official",
+            }
+            for key, name in STAT_FIELDS
+        },
+        "note": data["note"],
+        "source": {"name": data["source"], "url": data["url"], "publishedOn": data["publishedOn"]},
+    }
 
 
 def _inside(complex_: dict[str, Any], lon: float, lat: float) -> bool:
@@ -316,6 +393,7 @@ def find(
     }
     if where is None:
         return head
+    head["stats"] = complex_stats(registry, where[0]["id"])
     for stream in streams:
         found = search(stream, emitter, exclude_names=exclude_names)
         head["streams"].append(

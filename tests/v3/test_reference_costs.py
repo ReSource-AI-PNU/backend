@@ -37,3 +37,23 @@ def test_result_shows_reference_cost_without_changing_money():
     # 업체가 보는 결과에는 싣지 않는다
     vendor = service.get_view(app, view["session"]["id"], SAEGIL)
     assert "referenceCosts" not in (vendor.get("result") or {})
+
+
+def test_complex_stats_show_official_totals_for_emitter_complex():
+    # 같은 단지 후보 머리에 단지 전체 폐합성수지 집계(2024 통계)를 근거가 열리는 값으로 싣는다
+    app = make_app()
+    view = to_approval(app)
+    partners = view["result"]["complexPartners"]
+    assert partners["complex"]["id"] == "noksan"
+    stats = partners["stats"]
+    assert stats["sheetName"] == "(국가)부산 명지녹산국가산업단지" and stats["dataYear"] == "2024"
+    values = stats["values"]
+    assert values["generated"]["value"] == 8029.59 and values["generated"]["unit"] == "톤/년"
+    assert values["recycled"]["value"] == 6554.13 and values["incinerated"]["value"] == 1435.27
+    evidence = app.registry.get(values["generated"]["evidence"][0], HANBIT)
+    assert (
+        evidence.kind == "ref" and "명지녹산" in evidence.excerpt and "8,029.59" in evidence.excerpt
+    )
+    # 업체 뷰에는 같은 단지 후보가 없다
+    vendor = service.get_view(app, view["session"]["id"], SAEGIL)
+    assert "complexPartners" not in (vendor.get("result") or {})
