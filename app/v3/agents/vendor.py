@@ -20,7 +20,7 @@ from app.v3.a2a import guardrails as rails
 from app.v3.a2a.message import Claim, Message
 from app.v3.a2a.policy import check_disclosure
 from app.v3.a2a.thread import Thread, ThreadError
-from app.v3.agents import questions
+from app.v3.agents import past, questions
 from app.v3.agents.draft import (
     PERMIT_EXCLUDED,
     RULES,
@@ -515,6 +515,26 @@ def _haul_claims(pool: ClaimPool, haul: dict[str, Any], vendor_org: str) -> dict
             field="transportPickups",
         )
     return {"fee": fee, "pickups": pickups}
+
+
+def _attach_past(
+    reply: Message, terms: dict[str, Any], history: Any, by_id: dict[str, dict[str, Any]]
+) -> None:
+    """이 배출 기업과의 지난 검수가 합의보다 낮게 나온 적이 많은 폐기물을 조건으로 받으면, 검수 등급 확인을 조건과 본문 한
+    줄로 붙인다(모델이 빠뜨려도 같은 조건이 나간다). 조건이 붙으므로 offer는 conditional이 된다."""
+    offered = [i.get("streamId") for i in terms.get("items") or [] if isinstance(i, dict)]
+    below = [sid for sid in past.below_ids(history, offered) if sid in by_id]
+    if not below:
+        return
+    conditions = list(terms.get("conditions") or [])
+    for sid in below:
+        name = str(by_id[sid].get("name") or "폐기물")
+        if not any(past.MARK in c and c.startswith(f"{name}:") for c in conditions):
+            conditions.append(past.vendor_condition(name))
+            reply.text = f"{reply.text.rstrip()}\n{past.vendor_line(name)}"
+    terms["conditions"] = conditions
+    if reply.type == "offer":
+        reply.type = "conditional"
 
 
 def _attach_haul(
@@ -1377,6 +1397,8 @@ class VendorAgent:
                 reply.meta["terms"] = terms
                 # 수거·운반 견적(상태, 운반비 방식, 금액·횟수의 claim)을 본문 한 줄과 terms.pickup으로 붙인다
                 _attach_haul(reply, output, haul, haul_refs, pool)
+                # 회사 기록: 지난 검수가 합의보다 낮게 나온 폐기물에는 검수 등급 확인 조건을 코드가 붙인다
+                _attach_past(reply, terms, context.get("pastInspections"), by_id)
             result = validate_message(reply, self.registry, today=self.today, names=names)
             found += [r.to_dict() for r in result.rejections]
             found += problems

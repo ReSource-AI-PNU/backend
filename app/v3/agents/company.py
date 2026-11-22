@@ -12,7 +12,7 @@ from typing import Any
 from app.v3 import ids
 from app.v3.a2a import guardrails as rails
 from app.v3.a2a.thread import Thread, ThreadError
-from app.v3.agents import questions
+from app.v3.agents import past, questions
 from app.v3.agents.draft import (
     ACCEPT,
     ASK_USER,
@@ -526,6 +526,14 @@ class CompanyAgent:
                 if message.type == "question":
                     names = {s["id"]: stream_label(s) for s in streams}
                     message.text = questions.with_ask_lines(message.text, asks, names)
+            # 회사 기록: 이 업체와의 지난 검수가 합의보다 낮게 나온 폐기물이 있으면 첫 문의에 검수 기준을 묻는 한 줄을
+            # 코드가 붙인다(모델이 빠뜨려도 같은 문장이 나간다)
+            below = past.below_ids(history, thread.stream_ids)
+            if message.type == "inquiry" and below and past.MARK not in message.text:
+                line = past.company_line(
+                    [stream_label(by_id[sid]) for sid in below if sid in by_id]
+                )
+                message.text = f"{message.text.rstrip()}\n{line}"
             if isinstance(output.get("reason"), str) and output["reason"].strip():
                 message.meta["reason"] = output["reason"].strip()
             return message

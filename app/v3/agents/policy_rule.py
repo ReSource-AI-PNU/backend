@@ -11,6 +11,7 @@ import json
 import re
 from typing import Any
 
+from app.v3.agents import past
 from app.v3.evidence.render import format_value
 from app.v3.judge.common import PRIVATE_CHECKS
 from app.v3.textutil import josa, particle
@@ -201,15 +202,10 @@ class _Company(_Base):
             lines += ["조건을 정할 때 다음도 함께 알려 주세요.", *asks]
         # 회사 기록: 이 업체와의 지난 검수가 합의보다 낮게 나온 적이 많으면 검수 기준을 조건에 적어 달라고 한다
         below = [
-            self.name(h["streamId"])
-            for h in self.b.get("pastInspections") or []
-            if h.get("status") == "below" and h.get("streamId") in stream_ids
+            self.name(sid) for sid in past.below_ids(self.b.get("pastInspections"), stream_ids)
         ]
         if below:
-            lines.append(
-                f"지난 반입 검수에서 {', '.join(below)}의 등급이나 단가가 합의보다 낮게 나온 적이 여러 번 있었습니다. "
-                "이번에는 반입 검수에서 등급과 단가를 어떻게 정하는지 조건에 함께 적어 주세요."
-            )
+            lines.append(past.company_line(below))
         return {
             "type": "inquiry",
             "stage": 4,
@@ -537,17 +533,11 @@ class _Vendor(_Base):
             tail_lines.append("부피 적재는 겉보기 밀도를 확인한 뒤에 정하는 조건입니다.")
             conditions.append("겉보기 밀도를 확인해 부피 적재가 가능한지 반입 전에 확인할 것")
         # 회사 기록: 이 배출 기업과의 지난 검수가 합의보다 낮게 나온 적이 많은 폐기물은 검수 등급 확인을 조건으로 건다
-        below = {
-            h.get("streamId")
-            for h in self.b.get("pastInspections") or []
-            if h.get("status") == "below"
-        }
-        for sid in [s for s in stream_ids if s in below and any(i["streamId"] == s for i in items)]:
-            text = "지난 반입 검수에서 합의보다 낮게 나온 적이 여러 번 있어, 반입 검수에서 매입 기준 등급을 다시 확인할 것"
-            conditions.append(f"{self.name(sid)}: {text}")
-            tail_lines.append(
-                f"{josa(self.name(sid), '은는')} {text.replace('확인할 것', '확인하는 조건입니다.')}"
-            )
+        offered_ids = {i["streamId"] for i in items}
+        for sid in past.below_ids(self.b.get("pastInspections"), stream_ids):
+            if sid in offered_ids:
+                conditions.append(past.vendor_condition(self.name(sid)))
+                tail_lines.append(past.vendor_line(self.name(sid)))
         if kind == "offer" and conditions:
             # 노선 묶음처럼 조건이 붙는 답은 그대로 받을 수 있는 제안(offer)이 아니다
             kind = "conditional"

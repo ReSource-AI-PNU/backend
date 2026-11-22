@@ -335,3 +335,51 @@ def test_vendor_context_has_no_history_when_the_emitter_turned_it_off(below):
     view = to_approval(below)
     replies = [m for m in thread_of(view, SAEGIL)["messages"] if m["from"] == SAEGIL]
     assert not any("지난 반입 검수" in m["text"] for m in replies)
+
+
+# ── 모델이 빠뜨려도 코드가 붙이는 지난 검수 문장 ─────────────────────
+
+
+def test_vendor_condition_is_attached_even_if_the_model_left_it_out():
+    from app.v3.a2a.message import Message
+    from app.v3.agents import past
+    from app.v3.agents.vendor import _attach_past
+
+    reply = Message(
+        thread_id="th_1",
+        sender=SAEGIL,
+        recipient=HANBIT,
+        type="offer",
+        stage=5,
+        text="PP 스프루·러너를 받겠습니다.",
+        stream_ids=("st_sprue",),
+    )
+    terms = {"items": [{"streamId": "st_sprue", "unitPriceRef": "x"}], "conditions": []}
+    history = [
+        {"streamId": "st_sprue", "status": "below"},
+        {"streamId": "st_film", "status": "few"},
+    ]
+    _attach_past(reply, terms, history, {"st_sprue": {"name": "PP 스프루·러너"}})
+    assert reply.type == "conditional"
+    assert terms["conditions"] == [past.vendor_condition("PP 스프루·러너")]
+    assert past.MARK in reply.text
+    # 두 번 붙이지 않는다
+    _attach_past(reply, terms, history, {"st_sprue": {"name": "PP 스프루·러너"}})
+    assert len(terms["conditions"]) == 1 and reply.text.count(past.MARK) == 1
+
+
+def test_company_line_is_attached_even_if_the_model_left_it_out(below):
+    from app.v3.agents import past
+    from tests.v3.runtime_fixtures import only_for, rule_fallback, scripted
+
+    def bare(messages, tools, schema):
+        """규칙 정책의 답에서 지난 검수 문장만 뺀 모델(빠뜨린 경우를 흉내 낸다)."""
+        out = rule_fallback(messages, tools, schema)
+        if isinstance(out, dict) and out.get("type") == "inquiry" and out.get("text"):
+            out["text"] = "\n".join(l for l in out["text"].split("\n") if past.MARK not in l)
+        return out
+
+    below.llm_factory = only_for("company", HANBIT, scripted(*[bare] * 400, pad=0))
+    view = to_approval(below)
+    inquiry = next(m for m in thread_of(view, SAEGIL)["messages"] if m["type"] == "inquiry")
+    assert inquiry["text"].count(past.MARK) == 1
