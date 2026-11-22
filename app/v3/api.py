@@ -597,6 +597,12 @@ async def put_stream(org_id: str, stream_id: str, request: Request):
     return await call(service.update_stream, org_id, stream_id, patch, viewer)
 
 
+@router.get("/vendors/{org_id}/permit-catalog")
+@guarded
+async def vendor_permit_catalog(org_id: str, request: Request):
+    return await call(service.vendor_permit_catalog, org_id, await viewer_of(request))
+
+
 @router.get("/vendors/{org_id}")
 @guarded
 async def vendor(org_id: str, request: Request):

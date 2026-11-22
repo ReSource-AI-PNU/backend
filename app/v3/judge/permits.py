@@ -29,7 +29,7 @@ from typing import Any
 from app.v3 import ids, public_vendors
 from app.v3.evidence.model import Evidence
 from app.v3.evidence.registry import EvidenceForbidden, EvidenceNotFound
-from app.v3.judge.common import haversine_km, num
+from app.v3.judge.common import haversine_km, num, permit_covers
 from app.v3.textutil import josa
 
 LEVELS = ("verified", "pending_review", "registered", "mismatch")
@@ -53,10 +53,7 @@ SUBMIT = "폐기물처리업 허가증 사본(재활용이면 재활용 신고�
 def matched_permit(stream: dict, vendor: dict) -> dict | None:
     """이 폐기물의 품목·재질이 든 허가 품목(permit_match와 같은 규칙). 없으면 None."""
     for permit in vendor.get("permits") or []:
-        materials = permit.get("materials") or []
-        if permit.get("wasteItem") == stream.get("wasteItem") and (
-            not materials or stream.get("material") in materials
-        ):
+        if permit_covers(stream, permit):
             return permit
     return None
 

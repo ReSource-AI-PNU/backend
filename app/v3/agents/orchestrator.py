@@ -68,6 +68,7 @@ from app.v3.judge.common import (
 )
 from app.v3.judge.toolbox import TOOLS, call_tool
 from app.v3.live import STATUS_NOTES, Recorder
+from app.v3.onboarding.tools import discoverable
 from app.v3.store import NotFound
 from app.v3.textutil import josa
 from app.v3.untrusted import org_label, stream_label
@@ -118,9 +119,7 @@ def discoverable_profiles(store: Any, emitter: dict[str, Any]) -> dict[str, dict
     return {
         p["orgId"]: p
         for p in store.list_vendor_profiles()
-        if (p.get("permits") or p.get("criteria"))
-        and not p.get("departed")
-        and ((p["orgId"] in demo_ids) == demo_only)
+        if discoverable(p) and ((p["orgId"] in demo_ids) == demo_only)
     }
 
 
@@ -2528,7 +2527,7 @@ class Orchestrator:
         criteria = []
         for criterion in shown.get("criteria") or []:
             deal = deals.get(str(criterion.get("id")))
-            if deal:
+            if deal and criterion.get("priceMode") != "negotiated":
                 # 협상 단가 근거를 맨 앞에 두고 매입 기준표 근거는 그대로 잇는다(협상 단가 계산의 입력이다)
                 criterion = {
                     **criterion,
@@ -2937,6 +2936,7 @@ class Orchestrator:
                             "grade",
                             "form",
                             "unitPriceKrwPerKg",
+                            "priceMode",
                             "minMonthlyKg",
                             "maxContaminationPct",
                             "maxMoisturePct",

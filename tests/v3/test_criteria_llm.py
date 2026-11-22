@@ -952,3 +952,19 @@ def test_broken_files_and_unreachable_reading_are_told_apart(message, code, stat
     with pytest.raises(service.ServiceError) as caught:
         service.upload_document(app, VENDOR, "purchase_criteria", "x.pdf", b"%PDF-1", VENDOR)
     assert (caught.value.code, caught.value.status) == (code, status)
+
+
+def test_clean_rows_distinguishes_negotiated_from_zero_and_missing_price():
+    row = {"material": "PP+ABS", "grade": "혼합", "manual": True}
+    [negotiated] = clean_rows([{**row, "priceMode": "negotiated"}])
+    assert negotiated["priceMode"] == "negotiated"
+    assert negotiated["unitPriceKrwPerKg"] is None
+    assert negotiated["minMonthlyKg"] is None
+    assert negotiated["maxMoisturePct"] is None
+    assert negotiated["maxContaminationPct"] is None
+    [fixed] = clean_rows([{**row, "unitPriceKrwPerKg": 0}])
+    assert fixed["priceMode"] == "fixed" and fixed["unitPriceKrwPerKg"] == 0
+    with pytest.raises(RowError, match="건별 협의"):
+        clean_rows([{**row, "priceMode": "negotiated", "unitPriceKrwPerKg": 0}])
+    with pytest.raises(RowError, match="단가"):
+        clean_rows([{**row, "priceMode": "fixed"}])

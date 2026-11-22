@@ -1397,6 +1397,7 @@ def read_by_rules(layout: dict[str, Any] | None) -> dict[str, Any]:
 # 직접 부른 API가 "범위 300~400"인 행에 300을 넣어 보내도 문서 근거(doc)가 아니라 담당자 입력(human)이 된다.
 
 VALUE_FIELDS = (
+    "priceMode",
     "unitPriceKrwPerKg",
     "minMonthlyKg",
     "maxContaminationPct",
@@ -1578,22 +1579,34 @@ def clean_rows(rows: Any) -> list[dict[str, Any]]:
         if not isinstance(row, dict):
             raise RowError(f"{where}의 모양이 틀렸습니다.")
         material = str(row.get("material") or "").strip().upper()
-        if material not in MATERIAL_CODES:
-            raise RowError(f"{where}: 재질을 {', '.join(MATERIAL_CODES)} 가운데에서 골라 주세요.")
+        manual = row.get("manual") is True and not row.get("draftRow")
+        if material not in MATERIAL_CODES and (
+            not manual or not isinstance(row.get("material"), str) or not 0 < len(material) <= 40
+        ):
+            raise RowError(f"{where}: 재질을 확인해 주세요.")
         grade = row.get("grade")
         grade = str(grade).strip() if grade not in (None, "") else None
         if grade is not None:
             grade = grade.upper() if grade.upper() in GRADE_CODES else grade
-            if grade not in GRADE_CODES:
+            if grade not in GRADE_CODES and (
+                not manual or not isinstance(row.get("grade"), str) or len(grade) > 40
+            ):
                 raise RowError(f"{where}: 등급은 A·B·C·등외 가운데 하나이거나 비워 두세요.")
+            grade = grade or None
         form = row.get("form")
         form = re.sub(r"\s+", " ", str(form)).strip() if form not in (None, "") else None
         if form is not None and len(form) > 40:
             raise RowError(f"{where}: 형태는 40자 이내로 적어 주세요.")
         price = _finite(row.get("unitPriceKrwPerKg"))
-        if price is None:
+        price_mode = row.get("priceMode", "fixed")
+        if price_mode not in ("fixed", "negotiated"):
+            raise RowError(f"{where}: 단가 방식을 골라 주세요.")
+        if price_mode == "negotiated":
+            if row.get("unitPriceKrwPerKg") is not None:
+                raise RowError(f"{where}: 건별 협의에는 단가를 비워 주세요.")
+        elif price is None:
             raise RowError(f"{where}: kg당 단가를 숫자 하나로 적고 매입·처리비를 골라 주세요.")
-        if abs(price) > PRICE_LIMIT:
+        if price is not None and abs(price) > PRICE_LIMIT:
             raise RowError(
                 f"{where}: kg당 단가가 {PRICE_LIMIT:,}원을 넘습니다. 톤당 값이면 1,000으로 나눠 적어 주세요."
             )
@@ -1601,6 +1614,7 @@ def clean_rows(rows: Any) -> list[dict[str, Any]]:
             "material": material,
             "grade": grade,
             "form": form,
+            "priceMode": price_mode,
             "unitPriceKrwPerKg": price,
         }
         for key, label, low, high in (
