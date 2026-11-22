@@ -726,28 +726,39 @@ def optimize_assignment(
     def room_of(i: int) -> tuple[float, dict] | None:
         """(고른 배정의 월 손익 − 이 흐름만 다음으로 나은 선택지로 바꾼 배정의 월 손익, 그 선택지).
 
-        운반비가 정해지지 않은 업체가 이 흐름 하나만 맡을 때만 낸다. 바꾼 배정도 최소 물량·용량을 지켜야 하고,
-        운반비를 모르거나 수거 불가인 다른 업체는 견주지 않는다. 월 손익은 업체마다 한 번 드는 운반비를 뺀 값이다.
+        운반비가 정해지지 않은 업체가 이 흐름 하나만 맡을 때만 낸다. 최소 물량·용량을 지키는 대안 중
+        확인된 비용으로 비교 가능한 업체를 우선한다. 업체 비교에 필요한 비용이 미정이면 현행과의
+        손익분기를 대신 내지 않는다. 월 손익은 업체마다 한 번 드는 운반비를 뺀 값이다.
         """
         choice = best[i]
         if len(groups.get(str(choice["vendor"].get("orgId"))) or []) != 1:
             return None
         base, _ = _money_carbon(best)
-        found = None
+        vendor_room = fallback = None
+        unresolved_vendor = False
         for other in options[i]:
             if other is choice:
                 continue
-            if other["vendor"] is not None:
-                terms = transport_charge(other["vendor"])
-                if terms["pending"] or terms["unavailable"]:
-                    continue
             combo = tuple(other if k == i else c for k, c in enumerate(best))
             if not feasible(combo):
                 continue
+            if other["vendor"] is None:
+                gap = base - _money_carbon(combo)[0]
+                if fallback is None or gap < fallback[0] - 1e-9:
+                    fallback = (gap, other)
+                continue
+            terms = transport_charge(other["vendor"])
+            if terms["unavailable"]:
+                continue
+            if terms["pending"] or _labor_pending(usable[i]):
+                unresolved_vendor = True
+                continue
             gap = base - _money_carbon(combo)[0]
-            if found is None or gap < found[0] - 1e-9:
-                found = (gap, other)
-        return found if found and found[0] > 0 else None
+            if vendor_room is None or gap < vendor_room[0] - 1e-9:
+                vendor_room = (gap, other)
+        if vendor_room is not None:
+            return vendor_room
+        return fallback if not unresolved_vendor and fallback and fallback[0] > 0 else None
 
     # 합계 계산 근거가 흐름별 계산 근거를 입력으로 잇게 한다(계산 사슬: 합계 → 흐름별 → 원 근거)
     parts: dict[str, list[str]] = {"now": [], "after": [], "difference": [], "carbon": []}
@@ -916,9 +927,13 @@ def optimize_assignment(
                     f"{tag}TransportRoom",
                     gap,
                     "원/월",
-                    "별도 운반비 반영 전 월 손익 − 이 폐기물만 다음으로 나은 선택지로 바꿨을 때의 월 손익. "
-                    "이 업체의 월 운반비가 이보다 크면 다음 선택지가 낫습니다",
-                    [after_id, *(other["ev"] if other["vendor"] is not None else [now_id])],
+                    "별도 운반비 반영 전 월 손익 − 이 폐기물만 비교 선택지로 바꿨을 때의 월 손익. "
+                    "이 업체의 월 운반비가 이보다 크면 비교 선택지의 월 손익이 더 높습니다",
+                    [
+                        after_id,
+                        *other["ev"],
+                        *(transport_charge(other["vendor"])["evidence"] if other["vendor"] else [now_id]),
+                    ],
                     label=f"{who} 운반비 손익분기 계산" if who else "운반비 손익분기 계산",
                 )["id"]
                 entry["transportRoomAgainst"] = {

@@ -683,3 +683,55 @@ def test_matching_route_without_comparable_range_keeps_existing_terms():
     assert area_conflict["status"] == "check"
     assert "가능 지역 밖" in pickup.route_conflict_detail(area_conflict)
     assert pickup.monthly(area_conflict) is None
+
+
+@pytest.mark.parametrize(
+    ("fee", "a_profit", "selected"),
+    [(None, 320000, "org_a"), (69000, 251000, "org_a"), (70000, 250000, "org_a"), (71000, 249000, "org_b")],
+)
+def test_transport_threshold_between_two_buyers(fee, a_profit, selected):
+    runner = defect(monthlyKg=1000, pretreatHoursPerMonth=0)
+    quote = {"status": "visit", "basis": "separate"}
+    if fee is not None:
+        quote["feePerMonthKrw"] = fee
+    a = buyer(quote, price=320, orgId="org_a")
+    b = buyer({"status": "visit", "basis": "included"}, price=250, orgId="org_b")
+    reg = registry()
+    # 두 업체의 처리 방식과 거리는 같다. 비용만 달리하면 70,000원에서 돈 기준으로 동률이다.
+    for profile, expected in ((a, a_profit), (b, 250000)):
+        cost = run(reg, "cost_carbon", stream=runner, vendor=profile)
+        assert claim(cost, "monthlyAfter")["value"] == expected
+    result = run(reg, "optimize_assignment", streams=[runner], vendors=[a, b])
+    [item] = result["output"]["assignments"]
+    assert item["vendorOrgId"] == selected
+    assert item["transportPending"] is (fee is None)
+    if fee is None:
+        assert item["transportMonthly"] is None
+        assert claim(result, item["transportRoom"])["value"] == 70000
+        assert item["transportRoomAgainst"] == {"vendorOrgId": "org_b", "route": "sell"}
+    else:
+        assert item["transportRoom"] is None
+
+
+@pytest.mark.parametrize(("other_basis", "hours"), [("separate", 0), ("included", None)])
+def test_no_vendor_threshold_until_comparable_costs_are_known(other_basis, hours):
+    runner = defect(monthlyKg=1000, pretreatHoursPerMonth=hours)
+    a = buyer({"status": "visit", "basis": "separate"}, price=320, orgId="org_a")
+    b = buyer({"status": "visit", "basis": other_basis}, price=250, orgId="org_b")
+    result = run(registry(), "optimize_assignment", streams=[runner], vendors=[a, b])
+    [item] = result["output"]["assignments"]
+    assert item["vendorOrgId"] == "org_a" and item["transportPending"]
+    assert item["transportRoom"] is None and item["transportRoomAgainst"] is None
+
+
+def test_transport_quote_per_visit_is_multiplied_before_comparing_monthly_profit():
+    runner = defect(monthlyKg=1000, pretreatHoursPerMonth=0)
+    a = buyer(
+        {"status": "visit", "basis": "separate", "feePerPickupKrw": 50000, "pickupsPerMonth": 2},
+        price=320,
+        orgId="org_a",
+    )
+    result = run(registry(), "optimize_assignment", streams=[runner], vendors=[a])
+    [item] = result["output"]["assignments"]
+    assert claim(result, item["transportMonthly"])["value"] == 100000
+    assert claim(result, item["monthlyAfter"])["value"] == 220000
