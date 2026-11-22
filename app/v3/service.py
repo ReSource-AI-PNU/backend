@@ -445,6 +445,7 @@ DEMO_HISTORY_DAYS_AGO = (21, 7)  # 지난 거래의 검수일: 오늘로부터 �
 # (며칠 전, 등급을 몇 단계 내렸는지, 합의 단가에서 깎인 비율). 시연 회사는 회사 기록을 판정에 반영하도록 승인해 둔다
 DEMO_BELOW_STREAM = "st_sprue"
 DEMO_BELOW = ((35, 0, 0.0), (21, 1, 0.1), (7, 1, 0.1))
+DEMO_CORRECTION = {"streamId": "st_film", "field": "moisturePct", "after": 3.0}
 
 
 def _demo_history(app: App) -> str | None:
@@ -514,6 +515,17 @@ def _demo_history(app: App) -> str | None:
                         },
                         thread["vendorOrgId"],
                     )
+        # 시연 담당자가 지난 찾기에서 포장 필름 수분 판정을 고친 기록(가상). 교정은 폐기물 값을 바꾸지 않으므로 다음 찾기
+        # 결과에 "담당자 교정 미반영" 확인 항목이 보인다(memory.correction_checks)
+        film = streams.get(DEMO_CORRECTION["streamId"]) or {}
+        before = (film.get("answers") or {}).get(DEMO_CORRECTION["field"])
+        if before is not None:
+            record_correction(
+                app,
+                session_id,
+                {**DEMO_CORRECTION, "before": before, "note": "시연용 가상 교정"},
+                EMITTER,
+            )
         # 시연 회사는 회사 기록을 판정에 반영하도록 승인해 둔다(체험하기에서 보정이 보이게. 승인 근거도 시연 자료다)
         memory.update(app, EMITTER, {"applyToJudgment": True})
         # 실적 리포트의 계산 근거를 미리 만들어 둔다(체험하기는 읽기 전용이라 새 근거를 쓰지 못한다)

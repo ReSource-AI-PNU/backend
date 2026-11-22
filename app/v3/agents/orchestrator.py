@@ -1825,7 +1825,7 @@ class Orchestrator:
         for sid in thread.stream_ids:
             # 현행 계약 단가, 재투입 입력, 전처리 인건비는 업체에 열지 않는다
             streams.append(without_emitter_only(self.store.get_stream(sid)))
-        return {
+        context: dict[str, Any] = {
             "sessionId": session["id"],
             "today": self.today,
             "thread": thread.to_dict(),
@@ -1838,6 +1838,12 @@ class Orchestrator:
                 "region": emitter.get("region"),
             },
         }
+        # 이 배출 기업과의 지난 검수 요약(회사 기록, 같은 두 회사 사이만, 숫자 없음). 기록이 없거나 배출 기업이 기록 사용을
+        # 껐으면 칸을 두지 않는다(따로 띄운 업체 측 에이전트가 받는 맥락 모양을 기록이 있을 때만 넓힌다)
+        past = self._pair_memory(session, thread)
+        if past:
+            context["pastInspections"] = past
+        return context
 
     def _receive(self, session, thread: Thread, reply: dict[str, Any], turn: Any = None) -> None:
         """업체 측 답을 회사 측에서 다시 검사한 뒤에만 스레드에 붙인다.
@@ -3371,6 +3377,13 @@ class Orchestrator:
                         "evidence": [],
                     }
                 )
+            # 회사 기록: 담당자가 지난 찾기에서 고친 판정이 지금 자료에 반영되지 않았으면 알린다(배출 기업만 본다)
+            checks += memory.correction_checks(
+                self.app,
+                org_id,
+                by_id[sid],
+                ((work.get("identify") or {}).get(sid) or {}).get("grade", {}).get("value"),
+            )
             alternatives = []
             blocked_routes = self._blocked_routes(session, by_id[sid], vendor_id, names)
             blocked_ids = {b["vendorOrgId"] for b in blocked_routes}

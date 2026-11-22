@@ -1903,6 +1903,8 @@ BRIEFING_KEYS = {
     "vendor": {
         "role", "task", "guide", "today", "org", "counterpart", "thread", "guardrails", "streams",
         "criteria", "incoming", "history", "state", "tools", "toolResults", "pool", "rejections",
+        # 회사 기록: 이 배출 기업과의 지난 검수의 날짜·등급(정해진 값)·견줌 결과만. 문서 글은 없다
+        "pastInspections",
     },
 }  # fmt: skip
 

@@ -32,7 +32,9 @@ from app.v3.agents.questions import FIELDS as QUESTION_FIELDS
 from app.v3.evidence.model import Evidence
 from app.v3.intake import grade_model
 from app.v3.judge import personal
+from app.v3.judge.common import quality
 from app.v3.store import NotFound
+from app.v3.textutil import josa, particle
 from app.v3.untrusted import stream_label
 
 # 이 건수부터 판단(계약 검토)에 쓴다. 적은 표본으로 판단을 바꾸지 않는다(feedback.CALIBRATION_NOTE)
@@ -611,3 +613,75 @@ def strength_suggestion(app: Any) -> dict[str, Any]:
             continue
         groups.setdefault((record["emitterOrgId"], record["streamId"]), []).append(rel)
     return {**personal.suggest_strength(groups), "current": PROPOSED_STRENGTH}
+
+
+# 판정 경고로 잇는 교정 항목(탐지 박스·혼입물은 사진마다 달라 견줄 지금 값이 없다)
+_TEXT_FIELDS = ("material", "origin", "form")
+_PCT_FIELDS = ("contaminationPct", "moisturePct")
+
+
+def correction_checks(
+    app: Any, emitter_id: str, stream: dict[str, Any], grade_now: Any = None
+) -> list[dict[str, Any]]:
+    """담당자가 지난 찾기에서 고친 판정이 지금 자료에 반영되지 않았으면 결과 한 줄의 확인 항목(correction_pattern)을 낸다.
+
+    교정은 재학습 데이터로만 남고 폐기물 값을 바꾸지 않는다(feedback.py). 그래서 같은 잘못이 다음 찾기에서 되풀이될 수
+    있다. 항목마다 가장 최근 교정의 고친 값을 지금 값과 견주고, 다르면 알린다. 회사가 기록 사용을 껐으면 내지 않는다.
+    배출 기업만의 확인 항목이다(업체 뷰는 VENDOR_CHECK_KEYS로 거른다). 오염도·수분은 숫자를 문장에 쓰지 않는다.
+    """
+    try:
+        org = app.store.get_org(emitter_id)
+    except NotFound:
+        return []
+    if not enabled(org):
+        return []
+    origin = feedback.data_origin(app, emitter_id)
+    origin = origin if origin in ("real", "demo") else "real"
+    latest: dict[str, dict[str, Any]] = {}
+    for record in feedback.corrections(app, origin=origin):
+        if record.get("orgId") != emitter_id or record.get("streamId") != stream.get("id"):
+            continue
+        field = record.get("field")
+        if field not in (*_TEXT_FIELDS, *_PCT_FIELDS, "grade"):
+            continue
+        before = latest.get(field)
+        if before is None or (record["recordedOn"], record.get("seq") or 0) >= (
+            before["recordedOn"],
+            before.get("seq") or 0,
+        ):
+            latest[field] = record
+    q = quality(stream)
+    out = []
+    for field, record in sorted(latest.items()):
+        label = feedback.FIELD_LABELS.get(field, field)
+        after = record.get("after")
+        if field in _PCT_FIELDS:
+            now = q.get(field)
+            if isinstance(after, (int, float)) and isinstance(now, (int, float)):
+                if abs(float(after) - float(now)) < 1e-9:
+                    continue
+            elif now is None and after is None:
+                continue
+            text = (
+                f"담당자가 지난 찾기에서 이 폐기물의 {josa(label, '을를')} 고친 기록이 있는데, 지금 자료의 값과 다릅니다. "
+                "교정은 판정 값을 바꾸지 않으니, 고친 값이 맞다면 자료 화면에서 측정값을 고쳐 다시 찾아 주세요."
+            )
+        else:
+            now = grade_now if field == "grade" else stream.get(field)
+            if not isinstance(after, str) or str(now or "").strip() == after.strip():
+                continue
+            shown = str(now).strip() if now else "비어 있음"
+            text = (
+                f"담당자가 지난 찾기에서 이 폐기물의 {josa(label, '을를')} '{after.strip()}'{particle(after.strip(), '으로')} 고쳤지만, 지금 판정은 "
+                f"'{shown}'입니다. 교정은 판정 값을 바꾸지 않으니, 고친 값이 맞다면 자료 화면에서 {josa(label, '을를')} "
+                "고쳐 다시 찾아 주세요."
+            )
+        out.append(
+            {
+                "key": "correction_pattern",
+                "status": "conditional",
+                "text": text,
+                "evidence": [record["id"]],
+            }
+        )
+    return out

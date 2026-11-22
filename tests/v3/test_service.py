@@ -335,7 +335,8 @@ def test_handle_vendor_message_is_the_single_entry_for_vendor_agents():
     to_approval(app)
     vendor_org, message, context, reply = seen[0]
     assert message["type"] == "inquiry" and message["threadId"] == context["thread"]["id"]
-    assert set(context) == {"sessionId", "today", "thread", "streams", "emitter"}
+    # pastInspections(회사 기록)는 같은 두 회사 사이의 지난 검수가 있을 때만 붙는다(test_personal.py)
+    assert set(context) - {"pastInspections"} == {"sessionId", "today", "thread", "streams", "emitter"}
     assert all("currentTreatment" not in s for s in context["streams"])
     assert (
         reply["from"] == vendor_org

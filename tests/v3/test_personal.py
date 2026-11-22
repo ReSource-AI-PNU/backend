@@ -267,3 +267,71 @@ def test_demo_shows_the_adjustment():
     history = next(i for i in approval["review"]["items"] if i["key"] == "history")
     assert history["status"] == "check"
     assert service.get_memory(app, HANBIT, HANBIT)["calibration"]["applied"] is not None
+    # 시연 담당자가 포장 필름 수분을 고친 가상 교정이 결과에 "담당자 교정 미반영"으로 보인다
+    film = next(a for a in view["result"]["assignments"] if a["streamId"] == "st_film")
+    assert any(c["key"] == "correction_pattern" for c in film["checks"])
+
+
+# ── 교정 경고, 업체 측 AI ───────────────────────────────────────────
+
+
+def _correct(app, field, before, after):
+    sid = service.list_sessions(app, HANBIT)[0]["id"]
+    body = {"streamId": "st_sprue", "field": field, "before": before, "after": after}
+    service.record_correction(app, sid, body, HANBIT)
+
+
+def test_a_correction_not_yet_applied_is_flagged_on_the_next_search(below):
+    _correct(below, "material", "PP", "PP+ABS")
+    _correct(below, "moisturePct", 1, 4)
+    sprue = _sprue(to_approval(below))
+    found = [c for c in sprue["checks"] if c["key"] == "correction_pattern"]
+    assert len(found) == 2 and all(c["status"] == "conditional" and c["evidence"] for c in found)
+    material = next(c for c in found if "재질" in c["text"])
+    assert "'PP+ABS'로 고쳤지만" in material["text"] and "'PP'" in material["text"]
+    moisture = next(c for c in found if "수분" in c["text"])
+    assert not any(
+        ch.isdigit() for ch in moisture["text"]
+    )  # 숫자는 근거가 열리는 자리에서만 보인다
+
+
+def test_a_correction_already_applied_is_not_flagged(below):
+    _correct(below, "material", "PP+ABS", "PP")  # 지금 값과 같다
+    sprue = _sprue(to_approval(below))
+    assert not [c for c in sprue["checks"] if c["key"] == "correction_pattern"]
+
+
+def test_correction_warnings_stay_with_the_emitter_and_follow_the_switch(below):
+    _correct(below, "material", "PP", "PP+ABS")
+    view = to_approval(below)
+    mine = service.get_view(below, view["session"]["id"], SAEGIL)
+    assert not [
+        c
+        for a in mine["result"]["assignments"]
+        for c in a["checks"]
+        if c["key"] == "correction_pattern"
+    ]
+    service.update_memory(below, HANBIT, {"enabled": False}, HANBIT)
+    sprue = _sprue(to_approval(below))
+    assert not [c for c in sprue["checks"] if c["key"] == "correction_pattern"]
+
+
+def test_vendor_ai_asks_for_grade_confirmation_after_past_downgrades(below):
+    view = to_approval(below)
+    replies = [
+        m
+        for m in thread_of(view, SAEGIL)["messages"]
+        if m["from"] == SAEGIL and m["type"] in ("offer", "conditional")
+    ]
+    sprue = [m for m in replies if "PP 스프루·러너는 지난 반입 검수" in m["text"]]
+    assert sprue and sprue[0]["type"] == "conditional"
+    # 다른 업체는 새길과의 기록을 받지 않는다
+    miso = [m for m in thread_of(view, MISO)["messages"] if m["from"] == MISO]
+    assert not any("지난 반입 검수" in m["text"] for m in miso)
+
+
+def test_vendor_context_has_no_history_when_the_emitter_turned_it_off(below):
+    service.update_memory(below, HANBIT, {"enabled": False}, HANBIT)
+    view = to_approval(below)
+    replies = [m for m in thread_of(view, SAEGIL)["messages"] if m["from"] == SAEGIL]
+    assert not any("지난 반입 검수" in m["text"] for m in replies)

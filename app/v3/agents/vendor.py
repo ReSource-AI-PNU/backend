@@ -180,6 +180,11 @@ SYSTEM_PROMPT = "\n".join(
             "오염도가 매입 기준 상한 이내로 확인될 것을 조건으로 건다. 이것이 업체의 기본 반입 조건이다."
         ),
         "- offer는 조건 없이 그대로 받을 수 있을 때만 쓴다. 조건이 하나라도 붙으면 conditional이다.",
+        (
+            "- pastInspections는 이 배출 기업과의 지난 반입 검수 요약이다(같은 두 회사 사이의 기록만). status가 below인 "
+            "폐기물은 '반입 검수에서 매입 기준 등급을 다시 확인할 것'을 조건으로 건 conditional로 답한다. 지난 검수의 "
+            "날짜·등급·단가 같은 숫자는 본문에 쓰지 않는다."
+        ),
         "- 이미 낸 조건을 상대가 받아들였으면 같은 조건(terms)을 바꾸지 않는다. 새 조건을 덧붙이지 않는다.",
         "- 본문에서 폐기물과 매입 기준은 이름으로 부른다. st_, pc_ 같은 식별자는 본문에 쓰지 않는다.",
         "",
@@ -1315,6 +1320,8 @@ class VendorAgent:
                     for m in thread.messages
                 ],
                 "state": {"offered": offered, "asked": asked},
+                # 이 배출 기업과의 지난 반입 검수 요약(회사 기록). 합의보다 낮게 나온 기록이 많으면 검수 등급 확인을 조건으로 건다
+                "pastInspections": context.get("pastInspections"),
                 "tools": tools.catalog(),
                 "toolResults": tools.results,
                 "pool": pool.describe(),

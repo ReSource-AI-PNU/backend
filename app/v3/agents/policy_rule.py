@@ -536,6 +536,18 @@ class _Vendor(_Base):
         if checks.get("loading_volume") not in (None, "met"):
             tail_lines.append("부피 적재는 겉보기 밀도를 확인한 뒤에 정하는 조건입니다.")
             conditions.append("겉보기 밀도를 확인해 부피 적재가 가능한지 반입 전에 확인할 것")
+        # 회사 기록: 이 배출 기업과의 지난 검수가 합의보다 낮게 나온 적이 많은 폐기물은 검수 등급 확인을 조건으로 건다
+        below = {
+            h.get("streamId")
+            for h in self.b.get("pastInspections") or []
+            if h.get("status") == "below"
+        }
+        for sid in [s for s in stream_ids if s in below and any(i["streamId"] == s for i in items)]:
+            text = "지난 반입 검수에서 합의보다 낮게 나온 적이 여러 번 있어, 반입 검수에서 매입 기준 등급을 다시 확인할 것"
+            conditions.append(f"{self.name(sid)}: {text}")
+            tail_lines.append(
+                f"{josa(self.name(sid), '은는')} {text.replace('확인할 것', '확인하는 조건입니다.')}"
+            )
         if kind == "offer" and conditions:
             # 노선 묶음처럼 조건이 붙는 답은 그대로 받을 수 있는 제안(offer)이 아니다
             kind = "conditional"
