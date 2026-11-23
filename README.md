@@ -53,11 +53,23 @@ python3 -m app.v3.devserver --port 8000
 uv run alembic upgrade head
 ```
 
+## OpenAPI 문서
+
+[저장된 OpenAPI](docs/openapi.json)는 현재 `app.main:app`에서 생성한다. API 경로나 스키마를 바꾼 뒤 아래 명령으로 갱신한다. 이 파일은 생성 시점의 코드 계약이며 운영 서버 버전과는 다를 수 있다.
+
+```bash
+uv run python -m scripts.export_openapi
+```
+
 ## 모델과 외부 서비스
 
 - 회사 측은 Microsoft Foundry, 업체 측은 기본 구성에서 Ollama를 사용한다. 모델 선택과 장애 시 대체 정책은 `app/v3/agents/factory.py`의 환경 변수 설명을 따른다.
 - 근거 저장·검증, Azure AI Search 검색, Document Intelligence 문서 추출, 탐지·3D 재구성, 카카오 도로 거리 등을 설정에 따라 연결한다. 자원이 없거나 호출에 실패한 경우의 보류·대체 처리를 실제 모델 성공으로 설명하지 않는다.
 - `.env.example`과 `app/core/config.py`가 환경 변수 이름의 기준이다. 키는 로컬 환경이나 Key Vault로 주입하며 커밋하지 않는다.
+
+### 선택 구성의 MCP 의존성
+
+**MCP 서버 이미지와 Agent Framework 이미지는 분리한다.** 현재 판단 도구 서버(`app/v3/mcp_server.py`)는 MCP SDK 1.x 장식자 API를 사용하며 `mcp-server` extra는 `mcp>=1.10,<2`로 고정되어 있다. 저장소의 Agent Framework 어댑터가 대상으로 삼은 MCP 도구 구성은 `mcp>=2.2,<3`을 요구하므로 같은 환경에 설치하지 않는다. 선택 어댑터를 활성화할 때는 서버와 에이전트를 별도 이미지로 만들고 HTTP로 연결한다. 기본 Foundry 직접 호출 구성에는 Agent Framework 설치가 필요 없다.
 
 ## 검사
 

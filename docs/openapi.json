@@ -1,8 +1,8 @@
 {
   "openapi": "3.1.0",
   "info": {
-    "title": "Re:Source AI API",
-    "description": "산업 폐기물 등급 판정과 산업단지 묶음 수거 매칭 에이전트 API",
+    "title": "BYPRO API",
+    "description": "배출 기업·처리 업체 AI의 폐플라스틱 거래 조건 조율, 근거 검증과 승인·서류 API",
     "version": "0.1.0"
   },
   "paths": {
@@ -3443,6 +3443,84 @@
         }
       }
     },
+    "/api/v3/orgs/{org_id}/memory": {
+      "get": {
+        "tags": [
+          "v3"
+        ],
+        "summary": "Org Memory",
+        "operationId": "org_memory_api_v3_orgs__org_id__memory_get",
+        "parameters": [
+          {
+            "name": "org_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Org Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "v3"
+        ],
+        "summary": "Put Org Memory",
+        "operationId": "put_org_memory_api_v3_orgs__org_id__memory_put",
+        "parameters": [
+          {
+            "name": "org_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Org Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v3/orgs/{org_id}/streams/{stream_id}": {
       "put": {
         "tags": [
@@ -3467,6 +3545,46 @@
             "schema": {
               "type": "string",
               "title": "Stream Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v3/vendors/{org_id}/permit-catalog": {
+      "get": {
+        "tags": [
+          "v3"
+        ],
+        "summary": "Vendor Permit Catalog",
+        "operationId": "vendor_permit_catalog_api_v3_vendors__org_id__permit_catalog_get",
+        "parameters": [
+          {
+            "name": "org_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Org Id"
             }
           }
         ],
@@ -3545,6 +3663,291 @@
             "schema": {
               "type": "string",
               "title": "Org Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v3/vendors/{org_id}/onboarding": {
+      "get": {
+        "tags": [
+          "v3"
+        ],
+        "summary": "Vendor Onboarding",
+        "operationId": "vendor_onboarding_api_v3_vendors__org_id__onboarding_get",
+        "parameters": [
+          {
+            "name": "org_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Org Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "v3"
+        ],
+        "summary": "Vendor Onboarding Reset",
+        "operationId": "vendor_onboarding_reset_api_v3_vendors__org_id__onboarding_delete",
+        "parameters": [
+          {
+            "name": "org_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Org Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v3/vendors/{org_id}/onboarding/messages": {
+      "post": {
+        "tags": [
+          "v3"
+        ],
+        "summary": "Vendor Onboarding Message",
+        "operationId": "vendor_onboarding_message_api_v3_vendors__org_id__onboarding_messages_post",
+        "parameters": [
+          {
+            "name": "org_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Org Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v3/vendors/{org_id}/onboarding/confirm": {
+      "post": {
+        "tags": [
+          "v3"
+        ],
+        "summary": "Vendor Onboarding Confirm",
+        "operationId": "vendor_onboarding_confirm_api_v3_vendors__org_id__onboarding_confirm_post",
+        "parameters": [
+          {
+            "name": "org_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Org Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v3/vendors/{org_id}/mcp-keys": {
+      "get": {
+        "tags": [
+          "v3"
+        ],
+        "summary": "Vendor Mcp Keys",
+        "operationId": "vendor_mcp_keys_api_v3_vendors__org_id__mcp_keys_get",
+        "parameters": [
+          {
+            "name": "org_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Org Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "v3"
+        ],
+        "summary": "Vendor Mcp Key Create",
+        "operationId": "vendor_mcp_key_create_api_v3_vendors__org_id__mcp_keys_post",
+        "parameters": [
+          {
+            "name": "org_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Org Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v3/vendors/{org_id}/mcp-keys/{key_id}": {
+      "delete": {
+        "tags": [
+          "v3"
+        ],
+        "summary": "Vendor Mcp Key Delete",
+        "operationId": "vendor_mcp_key_delete_api_v3_vendors__org_id__mcp_keys__key_id__delete",
+        "parameters": [
+          {
+            "name": "org_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Org Id"
+            }
+          },
+          {
+            "name": "key_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Key Id"
             }
           }
         ],
@@ -3653,6 +4056,46 @@
         ],
         "summary": "Quote Request",
         "operationId": "quote_request_api_v3_sessions__session_id__quote_request_get",
+        "parameters": [
+          {
+            "name": "session_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Session Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v3/sessions/{session_id}/complex-plan": {
+      "get": {
+        "tags": [
+          "v3"
+        ],
+        "summary": "Complex Plan",
+        "operationId": "complex_plan_api_v3_sessions__session_id__complex_plan_get",
         "parameters": [
           {
             "name": "session_id",
@@ -4530,6 +4973,329 @@
         }
       }
     },
+    "/api/v3/sessions/{session_id}/adaptive": {
+      "get": {
+        "tags": [
+          "v3"
+        ],
+        "summary": "Adaptive State",
+        "operationId": "adaptive_state_api_v3_sessions__session_id__adaptive_get",
+        "parameters": [
+          {
+            "name": "session_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Session Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v3/sessions/{session_id}/scenarios/preview": {
+      "post": {
+        "tags": [
+          "v3"
+        ],
+        "summary": "Scenario Preview",
+        "operationId": "scenario_preview_api_v3_sessions__session_id__scenarios_preview_post",
+        "parameters": [
+          {
+            "name": "session_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Session Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v3/sessions/{session_id}/scenarios/apply": {
+      "post": {
+        "tags": [
+          "v3"
+        ],
+        "summary": "Scenario Apply",
+        "operationId": "scenario_apply_api_v3_sessions__session_id__scenarios_apply_post",
+        "parameters": [
+          {
+            "name": "session_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Session Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v3/survey": {
+      "get": {
+        "tags": [
+          "v3"
+        ],
+        "summary": "Survey View",
+        "operationId": "survey_view_api_v3_survey_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v3/survey/quotes": {
+      "post": {
+        "tags": [
+          "v3"
+        ],
+        "summary": "Survey Quote",
+        "operationId": "survey_quote_api_v3_survey_quotes_post",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v3/survey/quotes/{quote_id}/{action}": {
+      "post": {
+        "tags": [
+          "v3"
+        ],
+        "summary": "Survey Quote Change",
+        "operationId": "survey_quote_change_api_v3_survey_quotes__quote_id___action__post",
+        "parameters": [
+          {
+            "name": "quote_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Quote Id"
+            }
+          },
+          {
+            "name": "action",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Action"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v3/survey/weights": {
+      "post": {
+        "tags": [
+          "v3"
+        ],
+        "summary": "Survey Weights",
+        "operationId": "survey_weights_api_v3_survey_weights_post",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v3/survey/photos": {
+      "post": {
+        "tags": [
+          "v3"
+        ],
+        "summary": "Survey Photo Upload",
+        "operationId": "survey_photo_upload_api_v3_survey_photos_post",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v3/survey/photos/{photo_id}": {
+      "get": {
+        "tags": [
+          "v3"
+        ],
+        "summary": "Survey Photo Read",
+        "operationId": "survey_photo_read_api_v3_survey_photos__photo_id__get",
+        "parameters": [
+          {
+            "name": "photo_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Photo Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "v3"
+        ],
+        "summary": "Survey Photo Share",
+        "operationId": "survey_photo_share_api_v3_survey_photos__photo_id__post",
+        "parameters": [
+          {
+            "name": "photo_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Photo Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v3/accounts/signup": {
       "post": {
         "tags": [
@@ -4611,6 +5377,25 @@
         ],
         "summary": "Change Password",
         "operationId": "change_password_api_v3_accounts_password_post",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v3/orgs/negotiation-test": {
+      "post": {
+        "tags": [
+          "v3-accounts"
+        ],
+        "summary": "Create Negotiation Test",
+        "operationId": "create_negotiation_test_api_v3_orgs_negotiation_test_post",
         "responses": {
           "200": {
             "description": "Successful Response",
@@ -4928,6 +5713,42 @@
         ],
         "summary": "Demo Orgs",
         "operationId": "demo_orgs_api_v3_demo_orgs_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      }
+    },
+    "/mcp/vendor": {
+      "get": {
+        "tags": [
+          "mcp"
+        ],
+        "summary": "Vendor Mcp Stream",
+        "operationId": "vendor_mcp_stream_mcp_vendor_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "mcp"
+        ],
+        "summary": "Vendor Mcp",
+        "operationId": "vendor_mcp_mcp_vendor_post",
         "responses": {
           "200": {
             "description": "Successful Response",
