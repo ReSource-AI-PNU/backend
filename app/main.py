@@ -9,9 +9,9 @@ from app.v3.api import mcp_router as v3_mcp_router
 from app.v3.api import router as v3_router
 
 app = FastAPI(
-    title="Re:Source AI API",
+    title="BYPRO API",
     version="0.1.0",
-    description="산업 폐기물 등급 판정과 산업단지 묶음 수거 매칭 에이전트 API",
+    description="배출 기업·처리 업체 AI의 폐플라스틱 거래 조건 조율, 근거 검증과 승인·서류 API",
 )
 
 app.add_middleware(
